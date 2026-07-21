@@ -28,6 +28,11 @@ function drawBone(ctx,x,y,s,color){
   ctx.arc(x+5*s,y-2*s,2.2*s,0,7); ctx.arc(x+5*s,y+2*s,2.2*s,0,7);
   ctx.fill();
 }
+function drawLock(ctx,x,y,s,color){
+  ctx.strokeStyle=color; ctx.lineWidth=2*s;
+  ctx.beginPath(); ctx.arc(x,y-2.5*s,3*s,Math.PI,0); ctx.stroke();
+  ctx.fillStyle=color; ctx.fillRect(x-4*s,y-3*s,8*s,7*s);
+}
 const SPARKS=[]; // celebratory burst when a shop purchase lands
 function pkFanfare(label,big){
   PK.shopFlash={text:(big?"⬥ ":"✓ ")+label+(big?" EQUIPPED!":" BOUGHT!"), life:big?1.6:1.1, max:big?1.6:1.1, gold:!!big};
@@ -125,6 +130,7 @@ function startPark(){
     barkMax:Math.max(1.2,3-0.06*S.lvl), barkCd:1, pulse:0,
     barkR:60*(0.8+0.4*S.hunger/100), knock:150,
     bones:0, bonesMult:1, kills:0, sideDone:0, relic:null, waveBanner:null, shopFlash:null,
+    worldMult:2, barkBigLvl:0, barkFastLvl:0, speedBonus:null,
     chain:0, chainT:0, inv:0, fx:[],
     x:0,y:0,vx:0,vy:0, joy:null,
     en:[], fr:[], gate:{}, started:false, shop:null, biscuits:[], drops:[]
@@ -210,7 +216,7 @@ function pkSpawnFlock(){
   beep(520,.09,"square",.05); setTimeout(()=>beep(680,.09,"square",.05),90);
 }
 const LASER_SQUAD_SIZE=4;
-const LASER_CHARGE_TIME=1.1, LASER_FIRE_VIS=0.22, LASER_WIDTH=13, LASER_COOLDOWN=2.4;
+const LASER_CHARGE_TIME=1.6, LASER_FIRE_VIS=0.45, LASER_WIDTH=13, LASER_COOLDOWN=2.4, LASER_RECOIL=70;
 function pkLaserRange(){ return Math.min(PK.WW,PK.WH)*0.42; }   // stays under half the world so the
                                                                  // wrap-aware hit-test never disagrees with the straight beam drawn on screen
 // wave 8 boss stage: a small squad of squirrels that root in place, charge a red eye-glow,
@@ -268,22 +274,37 @@ function pkBark(){
   }
   if(hits>0) beep(300,.05);
 }
+const BARK_LVL_CAP=4;
+function pkExpandPark(){
+  PK.worldMult=Math.min(4,PK.worldMult+0.5);
+  const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
+  PK.WW=w*PK.worldMult; PK.WH=h*PK.worldMult;
+  pkBuildBG(PK.WW,PK.WH);
+}
 function pkShopOpen(){
-  const stat=[
-    {n:"BIGGER BARK",   fx:"+14 BARK RADIUS",    c:12,f:()=>PK.barkR+=14},
-    {n:"FASTER BARK",   fx:"-0.35s COOLDOWN",     c:14,f:()=>PK.barkMax=Math.max(0.8,PK.barkMax-0.35)},
-    {n:"MIGHTY KNOCKBACK", fx:"+70 KNOCKBACK",    c:10,f:()=>PK.knock+=70},
-    {n:"SNACK",         fx:"HEAL 30 HP",          c:8, f:()=>PK.hp=Math.min(PK.maxhp,PK.hp+30)},
-    {n:"ZOOMIES",       fx:"+10% SPEED",          c:12,f:()=>PK.spd*=1.1},
-    {n:"TOUGH COAT",    fx:"+15 MAX HP",          c:15,f:()=>{PK.maxhp+=15;PK.hp+=15;}}
+  const statAll=[
+    {n:"BIGGER BARK",   fx:"+14 BARK RADIUS",    c:12, capKey:"barkBigLvl",  f:()=>{PK.barkR+=14; PK.barkBigLvl++;}},
+    {n:"FASTER BARK",   fx:"-0.35s COOLDOWN",     c:14, capKey:"barkFastLvl",f:()=>{PK.barkMax=Math.max(0.8,PK.barkMax-0.35); PK.barkFastLvl++;}},
+    {n:"MIGHTY KNOCKBACK", fx:"+70 KNOCKBACK",    c:10, f:()=>PK.knock+=70},
+    {n:"SNACK",         fx:"HEAL 30 HP",          c:8,  f:()=>PK.hp=Math.min(PK.maxhp,PK.hp+30)},
+    {n:"ZOOMIES",       fx:"+10% SPEED",          c:12, f:()=>PK.spd*=1.1},
+    {n:"TOUGH COAT",    fx:"+15 MAX HP",          c:15, f:()=>{PK.maxhp+=15;PK.hp+=15;}}
   ];
-  const pool=stat.slice();
+  // BIGGER BARK / FASTER BARK stop appearing once leveled to the cap
+  const pool=statAll.filter(o=>!o.capKey || PK[o.capKey]<BARK_LVL_CAP)
+    .map(o=>o.capKey ? {...o, fx:o.fx+" (LV "+(PK[o.capKey]+1)+"/"+BARK_LVL_CAP+")"} : o);
   // rare chance of a big relic offer alongside the usual upgrades \u2014 never the one already equipped
   const candidates=PK_CHARMS.filter(c=>c.id!==PK.relic);
   if(candidates.length && Math.random()<0.4){
     const pick=candidates[Math.floor(Math.random()*candidates.length)];
     pool.push({n:"\u2b25 "+pick.name, fx:pick.fx, c:pick.cost, relic:true,
       f:()=>{ pick.apply(); PK.relic=pick.id; tickTodo("j_collar"); }});
+  }
+  // rare chance to grow the park itself, up to a 4\u00d74 world
+  if(PK.worldMult<4 && Math.random()<0.3){
+    const next=Math.min(4,PK.worldMult+0.5);
+    pool.push({n:"EXPAND THE PARK", fx:"GROW WORLD TO "+next+"\u00d7"+next, c:Math.round(14+(PK.worldMult-2)*16), expand:true,
+      f:()=>pkExpandPark()});
   }
   PK.shop = pool.sort(()=>Math.random()-0.5).slice(0,3);
   PK.joy=null;
@@ -300,7 +321,7 @@ function parkUpdate(dt){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   if(!PK.started){
     PK.started=true;
-    PK.WW=w*2; PK.WH=h*2;
+    PK.WW=w*PK.worldMult; PK.WH=h*PK.worldMult;
     PK.gate={x:PK.WW*0.72, y:PK.WH*0.5};
     PK.x=PK.WW*0.25; PK.y=PK.WH*0.5;
     pkBuildBG(PK.WW,PK.WH);
@@ -309,6 +330,14 @@ function parkUpdate(dt){
   // a wave only ends once its full quota has spawned AND every last enemy is down \u2014
   // no more clearing out on a clock while stragglers are still alive
   if(PK.waveSpawned>=PK.waveQuota && PK.en.length===0){
+    // clear the wave within 60s and a charm slot unlocks in the shop; otherwise it shows
+    // locked with a padlock and how far over 60s the clear took
+    if(PK.waveT<=60){
+      const cands=PK_CHARMS.filter(c=>c.id!==PK.relic);
+      PK.speedBonus={unlocked:true, over:0, charm:cands.length?cands[Math.floor(Math.random()*cands.length)]:null};
+    } else {
+      PK.speedBonus={unlocked:false, over:Math.round(PK.waveT-60), charm:null};
+    }
     PK.waveT=0; PK.wave++;
     if(PK.wave>=3) tickTodo("j_wave3");
     PK.barkMax=Math.max(1,PK.barkMax-0.12); PK.barkR+=5;
@@ -385,9 +414,11 @@ function parkUpdate(dt){
             if(PK.hp<=0) return pkDeath();
           }
           e.laserState="fire"; e.fireT=0;
+          e.kx=-ux*LASER_RECOIL; e.ky=-uy*LASER_RECOIL;   // small recoil jolt to sell the beam's power
         }
       } else if(e.laserState==="fire"){
         e.fireT+=dt;
+        e.x=(e.x+e.kx*dt+WW)%WW; e.y=(e.y+e.ky*dt+WH)%WH;   // rides out the recoil, decaying via the shared kx/ky damping above
         if(e.fireT>=LASER_FIRE_VIS){ e.laserState="seek"; e.cd=LASER_COOLDOWN+Math.random()*0.8; }
       }
       e.ft+=dt; if(e.ft>0.12){ e.ft=0; e.fi++; }
@@ -754,31 +785,63 @@ function pkPadDraw(t){
     ctx.fillStyle="#e8c14a"; ctx.font="9px 'Press Start 2P',monospace"; ctx.textAlign="left";
     ctx.fillText(PK.bones+" BONES", w/2-20, wbY+wbH*0.66);
     ctx.textAlign="left";
-    // one card-button per offer \u2014 relics glow gold and pulse to stand out as the big pick
+    // one card-button per offer \u2014 relics glow gold, park-expansions glow blue, to stand out
     PK.shop.forEach((o,i)=>{
       const y=h*(0.36+i*0.12), cardH=h*0.10, top=y-cardH*0.5;
       const afford=PK.bones>=o.c;
-      const pulse=o.relic ? 0.7+0.3*Math.sin(performance.now()/180) : 1;
+      const glowCol = o.relic?"#e8c14a":o.expand?"#6cf":null;
+      const pulse=glowCol ? 0.7+0.3*Math.sin(performance.now()/180) : 1;
       ctx.save();
-      if(o.relic) ctx.globalAlpha=pulse;
-      ctx.strokeStyle = o.relic ? "#e8c14a" : (afford?"#fff":"#663333");
-      ctx.lineWidth = o.relic?3:2;
+      if(glowCol) ctx.globalAlpha=pulse;
+      ctx.strokeStyle = glowCol || (afford?"#fff":"#663333");
+      ctx.lineWidth = glowCol?3:2;
       ctx.strokeRect(w*0.10, top, w*0.80, cardH);
       ctx.restore();
       ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
-      ctx.fillStyle = o.relic?"#e8c14a":(afford?"#fff":"#a55");
+      ctx.fillStyle = glowCol || (afford?"#fff":"#a55");
       ctx.fillText(o.n, w*0.145, y-1);
       ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle="#999";
       ctx.fillText(o.fx, w*0.145, y+11);
       ctx.textAlign="right"; ctx.font="7px 'Press Start 2P',monospace";
-      ctx.fillStyle = afford ? (o.relic?"#e8c14a":"#fff") : "#f22";
+      ctx.fillStyle = afford ? (glowCol||"#fff") : "#f22";
       ctx.fillText(o.c+"\u25C6", w*0.855, y+3);
       ctx.textAlign="left";
     });
+    // speed-clear bonus row \u2014 wipe a wave inside 60s and a charm slot unlocks here; otherwise
+    // it's shown locked with a padlock and how far over 60s the clear took
+    if(PK.speedBonus){
+      const by=h*0.665, bh=h*0.09, btop=by-bh*0.5;
+      if(PK.speedBonus.unlocked && PK.speedBonus.charm){
+        const ch=PK.speedBonus.charm, afford=PK.bones>=ch.cost;
+        const pulse=0.7+0.3*Math.sin(performance.now()/180);
+        ctx.save(); ctx.globalAlpha=pulse;
+        ctx.strokeStyle="#e8c14a"; ctx.lineWidth=3;
+        ctx.strokeRect(w*0.10, btop, w*0.80, bh);
+        ctx.restore();
+        ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
+        ctx.fillStyle=afford?"#e8c14a":"#a55";
+        ctx.fillText("\u2605 "+ch.name, w*0.145, by-1);
+        ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle="#999";
+        ctx.fillText("60s CLEAR BONUS \u2014 "+ch.fx, w*0.145, by+11);
+        ctx.textAlign="right"; ctx.font="7px 'Press Start 2P',monospace";
+        ctx.fillStyle=afford?"#e8c14a":"#f22";
+        ctx.fillText(ch.cost+"\u25C6", w*0.855, by+3);
+        ctx.textAlign="left";
+      } else {
+        ctx.strokeStyle="#444"; ctx.lineWidth=2;
+        ctx.strokeRect(w*0.10, btop, w*0.80, bh);
+        drawLock(ctx, w*0.145+5, by-2, 0.9, "#666");
+        ctx.font="7px 'Press Start 2P',monospace"; ctx.fillStyle="#666"; ctx.textAlign="left";
+        ctx.fillText("CHARM LOCKED", w*0.21, by-1);
+        ctx.font="6px 'Press Start 2P',monospace";
+        ctx.fillText("+"+(PK.speedBonus?PK.speedBonus.over:0)+"s OVER THE 60s CLEAR", w*0.21, by+11);
+        ctx.textAlign="left";
+      }
+    }
     ctx.strokeStyle="#666"; ctx.lineWidth=2;
-    ctx.strokeRect(w*0.30,h*0.685,w*0.40,h*0.06);
+    ctx.strokeRect(w*0.30,h*0.79,w*0.40,h*0.06);
     ctx.fillStyle="#888"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText("SKIP", w/2, h*0.685+h*0.06*0.65);
+    ctx.fillText("SKIP", w/2, h*0.79+h*0.06*0.65);
   }
   ctx.textAlign="left";
 }
@@ -797,7 +860,16 @@ function pkPadDraw(t){
           return;
         }
       }
-      if(Math.abs(yF-0.72)<0.06){ PK.shop=null; beep(400,.05); }
+      if(PK.speedBonus && PK.speedBonus.unlocked && PK.speedBonus.charm && Math.abs(yF-0.665)<0.05){
+        const ch=PK.speedBonus.charm;
+        if(PK.bones>=ch.cost){
+          PK.bones-=ch.cost; ch.apply(); PK.relic=ch.id; tickTodo("j_collar");
+          PK.speedBonus.charm=null;
+          pkFanfare(ch.name,true); PK.shop=null;
+        } else beep(150,.1);
+        return;
+      }
+      if(Math.abs(yF-0.82)<0.06){ PK.shop=null; beep(400,.05); }
       return;
     }
     PK.joy={ox:e.clientX-r.left,oy:e.clientY-r.top,dx:0,dy:0};
