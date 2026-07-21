@@ -1960,6 +1960,7 @@ $("#adopt").onclick=()=>{
   $("#game").classList.remove("hidden");
   beep(440,.1); setTimeout(()=>beep(660,.12),120);
   toast("BONES IS HOME. KEEP HIM ALIVE.");
+  saveGame(true);
 };
 $("#bHome1").onclick=leaveWork;
 $("#bStamp").onclick=stampNow;
@@ -2152,7 +2153,10 @@ $("#goClose").onclick=()=>$("#goout").classList.remove("show");
 $("#shopClose").onclick=()=>$("#shopPanel").classList.remove("show");
 $("#camstate").onclick=openStatus;
 $("#needAlert").onclick=openStatus;
-$("#bSave").onclick=()=>{ beep(500,.05); toast("SAVE BANKS PROGRESS IN THE APP BUILD \u2014 PROTOTYPE IS SESSION-ONLY.",1); };
+$("#bSave").onclick=()=>{
+  if(!STORAGE_OK){ beep(150,.15); toast("SAVE UNAVAILABLE \u2014 STORAGE IS BLOCKED ON THIS DEVICE.",1); return; }
+  saveGame();
+};
 $("#bCall").onclick=()=>{
   if(R.active||OUTING.active) return toast("BONES ISN'T HOME",1);
   if(S.pup.owned && S.sel==="pup"){
@@ -2249,8 +2253,59 @@ $("#devBad").onclick=()=>{
 };
 $("#devDay").onclick=()=>{ CLK.h=23.98; toast("FAST-FORWARDING TO MIDNIGHT (DEV)"); };
 
+/* ---------- save / persistence ---------- */
+const SAVE_KEY="bones_save_v1";
+function hasStorage(){
+  try{ const k="__bones_test__"; localStorage.setItem(k,"1"); localStorage.removeItem(k); return true; }
+  catch(e){ return false; }
+}
+const STORAGE_OK = hasStorage();
+
+// merges saved data onto the live defaults object instead of replacing it,
+// so a save from an older version that's missing newer keys doesn't erase their defaults
+function deepAssign(target,src){
+  if(!src || typeof src!=="object") return;
+  for(const k in src){
+    const sv=src[k];
+    if(sv && typeof sv==="object" && !Array.isArray(sv) && target[k] && typeof target[k]==="object" && !Array.isArray(target[k])) deepAssign(target[k],sv);
+    else target[k]=sv;
+  }
+}
+function snapshot(){
+  return { v:1, S, PUP, BALL, BOWL:{level:BOWL.level}, FBOWL:{level:FBOWL.level}, STAY, CLK, TODO_NEW,
+    XPANIM:{lvl:XPANIM.lvl,frac:XPANIM.frac,ready:XPANIM.ready,pauseT:XPANIM.pauseT} };
+}
+function saveGame(silent){
+  if(!STORAGE_OK) return false;
+  try{ localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot()));
+    if(!silent){ beep(500,.05); toast("SAVED."); }
+    return true;
+  }catch(e){ if(!silent) toast("SAVE FAILED — STORAGE MAY BE FULL.",1); return false; }
+}
+function loadGame(){
+  if(!STORAGE_OK) return false;
+  try{
+    const raw=localStorage.getItem(SAVE_KEY);
+    if(!raw) return false;
+    const data=JSON.parse(raw);
+    if(!data || !data.S) return false;
+    deepAssign(S,data.S); deepAssign(PUP,data.PUP); deepAssign(BALL,data.BALL);
+    if(data.BOWL) BOWL.level=data.BOWL.level;
+    if(data.FBOWL) FBOWL.level=data.FBOWL.level;
+    deepAssign(STAY,data.STAY); deepAssign(CLK,data.CLK);
+    if(Array.isArray(data.TODO_NEW)) TODO_NEW=data.TODO_NEW.slice();
+    if(data.XPANIM) Object.assign(XPANIM,data.XPANIM);
+    else { XPANIM.lvl=S.lvl; XPANIM.frac=clamp(S.xp/xpNeed(S.lvl),0,1); } // save predates XPANIM persistence
+    return true;
+  }catch(e){ return false; }
+}
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="hidden") saveGame(true); });
+window.addEventListener("pagehide",()=>saveGame(true));
+setInterval(()=>{ if(!$("#game").classList.contains("hidden")) saveGame(true); }, 15000);
 
 /* ---------- main loop ---------- */
+const RESTORED = loadGame();
+if(RESTORED){ $("#start").classList.add("hidden"); $("#game").classList.remove("hidden"); }
 $("#startDog").src = PORTRAITS.happy;
 buildMeters(); renderMeters(); renderShop(); renderTodo(); renderDogSel();
 let nagNext = performance.now()/1000 + 45;
