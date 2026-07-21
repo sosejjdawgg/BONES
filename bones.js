@@ -409,7 +409,15 @@ $("#dogcv").addEventListener("pointerdown",e=>{
     for(let i=0;i<5;i++) DRIPS.push({x:fx+(Math.random()-0.5)*0.03, y:fy+0.015, vy:0.14+Math.random()*0.2, life:0.6+Math.random()*0.3});
     beep(480,.04); return;
   }
-  if(S.ballOwned && !BALL.pcarried && Math.hypot(fx-BALL.x,(fy-BALL.y)*1.4)<0.07){ // grab the ball
+  // poo piles: tap to pick up \u2014 checked before the ball/bowls/bed so an accident
+  // sitting in front of them always wins the tap, since it can't be moved out of the way
+  for(let i=0;i<POOS.length;i++){
+    if(fy>0.68 && Math.abs(fx-POOS[i].x)<0.05){
+      POOS.splice(i,1); addXP(2); beep(500,.05);
+      toast("PICKED UP. GOOD OWNER."); return;
+    }
+  }
+  if(S.ballOwned && !BALL.pcarried && Math.hypot(fx-BALL.x,(fy-BALL.y)*1.4)<0.07){ // grab the ball \u2014 checked next since it can be dragged clear
     BALL.held=true; BALL.tx=fx; BALL.ty=fy;
     try{ e.currentTarget.setPointerCapture(e.pointerId); }catch(_){}
     return;
@@ -431,13 +439,6 @@ $("#dogcv").addEventListener("pointerdown",e=>{
   if(fy>0.70){
     if(px>=wbX-6 && px<=wbX+wbW+4){ tapBowl("water"); return; }
     if(px>=fbX2-4 && px<=fbX2+wbW+6){ tapBowl("food"); return; }
-  }
-  // poo piles: tap to pick up
-  for(let i=0;i<POOS.length;i++){
-    if(fy>0.68 && Math.abs(fx-POOS[i].x)<0.05){
-      POOS.splice(i,1); addXP(2); beep(500,.05);
-      toast("PICKED UP. GOOD OWNER."); return;
-    }
   }
   const onDog = fx>CAM.x-0.02 && fx<CAM.x+CAMDWF+0.04 && fy>0.30;
   if(S.pup.owned && fx>PUP.x-0.02 && fx<PUP.x+PUP.w+0.04 && fy>0.55){
