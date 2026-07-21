@@ -82,6 +82,7 @@ for(const k in ENEMYFRAMES) ENEMYIMG[k] = ENEMYFRAMES[k].map(u=>{ const i=new Im
 function startPark(){
   Object.assign(PK,{
     active:true,t:0,wave:1,waveT:0,spawnT:1,
+    waveQuota:pkWaveQuota(1), waveSpawned:0, flockDone:false,
     maxhp:Math.round(50+50*S.mood/100),
     spd:95*(0.75+0.5*S.energy/100)*(S.senior?0.85:1),
     barkMax:Math.max(1.2,3-0.06*S.lvl), barkCd:1, pulse:0,
@@ -97,7 +98,7 @@ function startPark(){
   hidePortrait(); closeStatus();
   showScreen("park");
   $("#camstate").textContent="DOGPARK";
-  toast("SURVIVE. BANK XP AT THE RED GATE.");
+  toast("SURVIVE. BANK XP AT THE RED EXIT.");
   beep(660,.08); setTimeout(()=>beep(880,.08),120);
 }
 function pkGain(n,x,y){
@@ -144,6 +145,47 @@ function pkSpawnAlpha(){
     hp:4, sp:52, ph:0, kx:0, ky:0, dir:1, fi:0, ft:0});
   toast("\u2620 THE ALPHA CAT IS HERE.",1);
   beep(120,.35,"sawtooth",.05);
+}
+// a flock of 10-20 birds flies straight in on a shared bearing, from any direction. they
+// don't home in like a lone dive-bomber \u2014 they hold their trajectory and, if they'd fly
+// clean off the engagement area, rubber-band their heading back toward the fray instead of
+// leaving. they keep looping through until every last one is knocked down.
+function pkSpawnFlock(){
+  const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
+  const WW=PK.WW||w*2, WH=PK.WH||h*2;
+  const n=10+Math.floor(Math.random()*11);
+  const ang=Math.random()*6.283, perp=ang+Math.PI/2;
+  const R=Math.max(w,h)*0.8;
+  const cx=PK.x-Math.cos(ang)*R, cy=PK.y-Math.sin(ang)*R;   // upstream of the flight path
+  const sp=80+Math.random()*25;
+  for(let i=0;i<n;i++){
+    const off=(i-(n-1)/2)*16+(Math.random()-0.5)*10;         // staggered wedge formation
+    const sxo=cx+Math.cos(perp)*off, syo=cy+Math.sin(perp)*off;
+    PK.en.push({t:"bird", flock:true, x:(sxo+WW)%WW, y:(syo+WH)%WH,
+      hp:1, sp, vx:Math.cos(ang)*sp, vy:Math.sin(ang)*sp,
+      ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
+  }
+  PK.waveSpawned += n;
+  toast(n+" BIRDS INBOUND!",1);
+  beep(520,.09,"square",.05); setTimeout(()=>beep(680,.09,"square",.05),90);
+}
+// how many enemies a wave spawns before it's cleared, echoing each wave's existing spawn
+// cadence (so the ramp still feels like the same mission structure) \u2014 just measured as a
+// kill quota instead of a fixed 20s clock. doubled from wave 10 on.
+function pkWaveBaseQuota(wv){
+  let interval=1.4, burst=1;
+  if(wv===1) interval=1.8;
+  else if(wv===2){ interval=2.4; burst=3; }
+  else if(wv===3) interval=0.9;
+  else if(wv===4) interval=0.55;
+  else if(wv===5) interval=1.6;
+  else interval=Math.max(0.35,1.4-wv*0.09);
+  const n=Math.round(20/interval)*burst;
+  return wv===5 ? n+1 : n;   // +1 for the alpha boss
+}
+function pkWaveQuota(wv){
+  const base=pkWaveBaseQuota(wv);
+  return wv>=10 ? base*2 : base;
 }
 function pkBark(){
   PK.barkCd=PK.barkMax; PK.pulse=0.35;
@@ -192,29 +234,37 @@ function parkUpdate(dt){
     pkBuildBG(PK.WW,PK.WH);
   }
   const WW=PK.WW, WH=PK.WH;
-  if(PK.waveT>20){
+  // a wave only ends once its full quota has spawned AND every last enemy is down \u2014
+  // no more clearing out on a clock while stragglers are still alive
+  if(PK.waveSpawned>=PK.waveQuota && PK.en.length===0){
     PK.waveT=0; PK.wave++;
     if(PK.wave>=3) tickTodo("j_wave3");
     PK.barkMax=Math.max(1,PK.barkMax-0.12); PK.barkR+=5;
+    PK.waveQuota=pkWaveQuota(PK.wave); PK.waveSpawned=0; PK.flockDone=false;
     const WNAME={2:"SQUIRREL AMBUSH",3:"BIRD DIVES",4:"THE PACK",5:"\u2620 THE ALPHA"};
     toast("WAVE "+PK.wave+(WNAME[PK.wave]?" \u2014 "+WNAME[PK.wave]:""));
     beep(500,.08);
-    if(PK.wave===5) pkSpawnAlpha();
+    if(PK.wave===5){ pkSpawnAlpha(); PK.waveSpawned++; }
     pkShopOpen();
   }
+  // one bird flock per wave (from wave 2 on), a few seconds in
+  if(!PK.flockDone && PK.wave>=2 && PK.waveT>3){
+    PK.flockDone=true;
+    pkSpawnFlock();
+  }
   PK.spawnT-=dt;
-  if(PK.spawnT<=0){
+  if(PK.spawnT<=0 && PK.waveSpawned<PK.waveQuota){
     const wv=PK.wave;
-    if(wv===1){ PK.spawnT=1.8; pkSpawnType("cat"); }                                     // STRAYS: slow, tanky, teaches the bark
+    if(wv===1){ PK.spawnT=1.8; pkSpawnType("cat"); PK.waveSpawned++; }                    // STRAYS: slow, tanky, teaches the bark
     else if(wv===2){ PK.spawnT=2.4; const a2=Math.random()*6.283;                        // SQUIRREL AMBUSH: bursts from one bearing
-      for(let i=0;i<3;i++) pkSpawnType("sq", a2+(Math.random()-0.5)*0.5); }
+      for(let i=0;i<3;i++) pkSpawnType("sq", a2+(Math.random()-0.5)*0.5); PK.waveSpawned+=3; }
     else if(wv===3){ PK.spawnT=0.9;                                                      // BIRD DIVES: mostly ahead of your movement
       const mv=Math.atan2(PK.vy,PK.vx);
       pkSpawnType(Math.random()<0.75?"bird":"sq",
-        (Math.random()<0.6 && (Math.abs(PK.vx)+Math.abs(PK.vy))>10) ? mv+(Math.random()-0.5)*0.8 : undefined); }
-    else if(wv===4){ PK.spawnT=0.55; pkSpawn(w,h); }                                     // THE PACK: pure density
-    else if(wv===5){ PK.spawnT=1.6; pkSpawnType("sq"); }                                 // THE ALPHA: boss + light trickle
-    else { PK.spawnT=Math.max(0.35,1.4-wv*0.09); pkSpawn(w,h); }
+        (Math.random()<0.6 && (Math.abs(PK.vx)+Math.abs(PK.vy))>10) ? mv+(Math.random()-0.5)*0.8 : undefined); PK.waveSpawned++; }
+    else if(wv===4){ PK.spawnT=0.55; pkSpawn(w,h); PK.waveSpawned++; }                    // THE PACK: pure density
+    else if(wv===5){ PK.spawnT=1.6; pkSpawnType("sq"); PK.waveSpawned++; }                // THE ALPHA: boss + light trickle
+    else { PK.spawnT=Math.max(0.35,1.4-wv*0.09); pkSpawn(w,h); PK.waveSpawned++; }
   }
   let mx=0,my=0;
   if(PK.joy){ mx=PK.joy.dx; my=PK.joy.dy; }
@@ -227,6 +277,29 @@ function parkUpdate(dt){
   for(let i=PK.en.length-1;i>=0;i--){
     const e=PK.en[i];
     e.kx*=0.88; e.ky*=0.88;
+    if(e.flock){
+      // straight-line flight, no homing — if it'd fly clean out of the fray, rubber-band
+      // the heading back toward the player's area instead of leaving
+      const dxw=wd(PK.x-e.x,WW), dyw=wd(PK.y-e.y,WH);
+      const d=Math.hypot(dxw,dyw)||1;
+      const leash=Math.max(w,h)*0.9;
+      if(d>leash){
+        const ang2=Math.atan2(dyw,dxw)+(Math.random()-0.5)*0.5;
+        e.vx=Math.cos(ang2)*e.sp; e.vy=Math.sin(ang2)*e.sp;
+      }
+      e.dir = e.vx<0 ? -1 : 1;
+      e.ph+=dt*6;
+      e.ft+=dt; if(e.ft>0.12){ e.ft=0; e.fi++; }
+      e.x=(e.x+(e.vx+e.kx)*dt+WW)%WW;
+      e.y=(e.y+(e.vy+e.ky)*dt+WH)%WH;
+      if(d<14 && PK.inv<=0){
+        PK.hp-=8; PK.inv=0.6;
+        e.kx=-dxw/d*220; e.ky=-dyw/d*220;
+        beep(110,.12,"sawtooth");
+        if(PK.hp<=0) return pkDeath();
+      }
+      continue;
+    }
     const dxw=wd(PK.x-e.x,WW), dyw=wd(PK.y-e.y,WH);
     const d=Math.hypot(dxw,dyw)||1;
     let sx=dxw/d*e.sp, sy=dyw/d*e.sp;
@@ -372,16 +445,22 @@ function parkDraw(t){
     const pul=0.6+0.4*Math.sin(t*5);
     if(gx>-30&&gx<w+30&&gy2>-45&&gy2<h+45){
       ctx.strokeStyle="#f22"; ctx.globalAlpha=pul; ctx.lineWidth=4;
-      ctx.strokeRect(gx-14,gy2-26,28,52); ctx.globalAlpha=1;
-      ctx.fillStyle="#f22"; ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="center";
-      ctx.fillText("BANK",gx,gy2-32); ctx.fillText("XP",gx,gy2+42); ctx.textAlign="left";
+      ctx.strokeRect(gx-24,gy2-16,48,32); ctx.globalAlpha=1;
+      ctx.fillStyle="#f22"; ctx.globalAlpha=pul;
+      ctx.font="11px 'Press Start 2P',monospace"; ctx.textAlign="center";
+      ctx.fillText("EXIT",gx,gy2+4);
+      ctx.textAlign="left"; ctx.globalAlpha=1;
     } else {
       const ang=Math.atan2(gy2-DY,gx-DX);
-      const ex=DX+Math.cos(ang)*(Math.min(w,h)/2-26), ey=DY+Math.sin(ang)*(Math.min(w,h)/2-26);
+      const ex=DX+Math.cos(ang)*(Math.min(w,h)/2-30), ey=DY+Math.sin(ang)*(Math.min(w,h)/2-30);
       ctx.save(); ctx.translate(ex,ey); ctx.rotate(ang);
       ctx.fillStyle="#f22"; ctx.globalAlpha=pul;
       ctx.beginPath(); ctx.moveTo(12,0); ctx.lineTo(-8,-8); ctx.lineTo(-8,8); ctx.closePath(); ctx.fill();
       ctx.restore(); ctx.globalAlpha=1;
+      ctx.fillStyle="#f22"; ctx.globalAlpha=pul;
+      ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
+      ctx.fillText("EXIT", ex-Math.cos(ang)*24, ey-Math.sin(ang)*24+3);
+      ctx.textAlign="left"; ctx.globalAlpha=1;
     }
   }
   if(PARKGHOST){
@@ -468,7 +547,8 @@ function parkDraw(t){
   }
   ctx.fillStyle="rgba(0,0,0,.38)"; ctx.fillRect(0,0,w,44);
   ctx.fillStyle="#fff";
-  ctx.textAlign="right"; ctx.fillText("WAVE "+PK.wave,w-10,34); ctx.textAlign="left";
+  const leftToClear=Math.max(0,PK.waveQuota-PK.waveSpawned)+PK.en.length;
+  ctx.textAlign="right"; ctx.fillText("WAVE "+PK.wave+"  "+leftToClear+" LEFT",w-10,34); ctx.textAlign="left";
   ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.strokeRect(10,26,90,8);
   ctx.fillStyle=PK.hp<PK.maxhp*0.3?"#f22":"#fff";
   ctx.fillRect(12,28,86*clamp(PK.hp/PK.maxhp,0,1),4);
