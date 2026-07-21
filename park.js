@@ -1,7 +1,25 @@
 /* ===== GO TO THE PARK (Dogpark) ===== */
+// Dogpark is its own self-contained roguelite: BONES (dropped by enemies) is a mini-currency
+// that only exists inside a run, spent on stat upgrades and rare charm relics between waves.
+// None of it carries over — only a small trickle of real hub XP makes it home, earned from
+// how many enemies you downed and how many side objectives (hoop/tunnel/ramp) you hit.
 const PK={active:false};
 function wd(d,M){ return ((d + M/2) % M + M) % M - M/2; }  // shortest signed delta on the looping world
-const BANK_RATE=0.22; // run-XP is big and spendable; only this fraction becomes real leveling XP
+const XP_PER_KILL=0.4, XP_PER_SIDE=2;
+function pkRunXP(){ return Math.max(0, Math.round(PK.kills*XP_PER_KILL + PK.sideDone*XP_PER_SIDE)); }
+// Dogpark-only relic pool — same lore/names as the Home Shop charms, but tuned to the verbs
+// that actually exist in a Dogpark run (bark, speed, knockback, hp) rather than the runner's
+// jump/score stats. Bought with bones from the between-wave shop; one active at a time, and
+// none of it persists once the run ends.
+const PK_CHARMS=[
+  {id:"spike", name:"SPIKED COLLAR", cost:18, fx:"+20% SPEED", apply:()=>{PK.spd*=1.2;}},
+  {id:"band",  name:"RED BANDANA",   cost:14, fx:"+25% BARK RADIUS", apply:()=>{PK.barkR*=1.25;}},
+  {id:"bell",  name:"BRASS BELL",    cost:16, fx:"-25% BARK COOLDOWN", apply:()=>{PK.barkMax=Math.max(0.6,PK.barkMax*0.75);}},
+  {id:"bonec", name:"BONE CHARM",    cost:20, fx:"+30% BONES FROM DROPS", apply:()=>{PK.bonesMult=(PK.bonesMult||1)*1.3;}},
+  {id:"tag",   name:"STEEL TAG",     cost:22, fx:"+30 MAX HP, HEAL 30", apply:()=>{PK.maxhp+=30; PK.hp=Math.min(PK.maxhp,PK.hp+30);}},
+  {id:"rope",  name:"LUCKY ROPE",    cost:18, fx:"+40% KNOCKBACK", apply:()=>{PK.knock*=1.4;}},
+  {id:"shadow",name:"SHADOW LEASH",  cost:24, fx:"+30% SPEED, RISKIER", apply:()=>{PK.spd*=1.3;}}
+];
 function pkReveal(biscuits, xpFinal){
   const el=$("#resScore");
   const dur=900, start=performance.now();
@@ -87,25 +105,27 @@ function startPark(){
     spd:95*(0.75+0.5*S.energy/100)*(S.senior?0.85:1),
     barkMax:Math.max(1.2,3-0.06*S.lvl), barkCd:1, pulse:0,
     barkR:60*(0.8+0.4*S.hunger/100), knock:150,
-    xp:0, chain:0, chainT:0, inv:0, fx:[],
+    bones:0, bonesMult:1, kills:0, sideDone:0, relic:null, waveBanner:null,
+    chain:0, chainT:0, inv:0, fx:[],
     x:0,y:0,vx:0,vy:0, joy:null,
     en:[], fr:[], gate:{}, started:false, shop:null, biscuits:[], drops:[]
   });
   PK.hp=PK.maxhp;
   PK.acts=[{k:"hoop",x:.15,y:.125,cd:0},{k:"tunnel",x:.35,y:.36,cd:0},{k:"ramp",x:.11,y:.39,cd:0},{k:"tunnel",x:.62,y:.70,cd:0},{k:"hoop",x:.85,y:.20,cd:0}];
+  PK.waveBanner={text:"WAVE 1", life:2.2, max:2.2};
   S.outTimer=0;
   tickTodo("d_park");
   hidePortrait(); closeStatus();
   showScreen("park");
   $("#camstate").textContent="DOGPARK";
-  toast("SURVIVE. BANK XP AT THE RED EXIT.");
+  toast("SURVIVE. COLLECT BONES, BANK XP AT THE RED EXIT.");
   beep(660,.08); setTimeout(()=>beep(880,.08),120);
 }
 function pkGain(n,x,y){
   PK.chain = PK.chainT>0 ? Math.min(6,PK.chain+1) : 1;
   PK.chainT=3;
-  const g=n+(PK.chain-1);
-  PK.xp+=g;
+  const g=Math.round((n+(PK.chain-1))*(PK.bonesMult||1));
+  PK.bones+=g;
   PK.fx.push({x,y,txt:"+"+g,life:0.9});
 }
 function pkSpawn(w,h){
@@ -219,6 +239,7 @@ function pkBark(){
       if(e.hp<=0){
         // they drop a bone where they die — BONES must go collect it
         PK.drops.push({x:e.x, y:e.y, v:e.alpha?10:e.t==="cat"?3:e.t==="bird"?2:1, gold:!!e.alpha, life:25});
+        PK.kills++;
         hits++;
         PK.en.splice(i,1);
       }
@@ -228,14 +249,23 @@ function pkBark(){
   if(hits>0) beep(300,.05);
 }
 function pkShopOpen(){
-  PK.shop=[
+  const stat=[
     {n:"BIGGER BARK",c:12,f:()=>PK.barkR+=14},
     {n:"FASTER BARK",c:14,f:()=>PK.barkMax=Math.max(0.8,PK.barkMax-0.35)},
     {n:"MIGHTY KNOCKBACK",c:10,f:()=>PK.knock+=70},
     {n:"SNACK \u2014 HEAL 30",c:8,f:()=>PK.hp=Math.min(PK.maxhp,PK.hp+30)},
     {n:"ZOOMIES +10% SPEED",c:12,f:()=>PK.spd*=1.1},
     {n:"TOUGH COAT +15 HP",c:15,f:()=>{PK.maxhp+=15;PK.hp+=15;}}
-  ].sort(()=>Math.random()-0.5).slice(0,3);
+  ];
+  const pool=stat.slice();
+  // rare chance of a big relic offer alongside the usual upgrades \u2014 never the one already equipped
+  const candidates=PK_CHARMS.filter(c=>c.id!==PK.relic);
+  if(candidates.length && Math.random()<0.4){
+    const pick=candidates[Math.floor(Math.random()*candidates.length)];
+    pool.push({n:"\u2b25 "+pick.name+" \u2014 "+pick.fx, c:pick.cost, relic:true,
+      f:()=>{ pick.apply(); PK.relic=pick.id; tickTodo("j_collar"); }});
+  }
+  PK.shop = pool.sort(()=>Math.random()-0.5).slice(0,3);
   PK.joy=null;
 }
 function parkUpdate(dt){
@@ -244,6 +274,7 @@ function parkUpdate(dt){
   PK.t+=dt; PK.waveT+=dt;
   PK.chainT=Math.max(0,PK.chainT-dt); if(PK.chainT<=0) PK.chain=0;
   PK.inv=Math.max(0,PK.inv-dt); PK.pulse=Math.max(0,PK.pulse-dt);
+  if(PK.waveBanner){ PK.waveBanner.life-=dt; if(PK.waveBanner.life<=0) PK.waveBanner=null; }
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   if(!PK.started){
     PK.started=true;
@@ -261,7 +292,9 @@ function parkUpdate(dt){
     PK.barkMax=Math.max(1,PK.barkMax-0.12); PK.barkR+=5;
     PK.waveQuota=pkWaveQuota(PK.wave); PK.waveSpawned=0; PK.flockDone=false;
     const WNAME={2:"SQUIRREL AMBUSH",3:"BIRD DIVES",4:"THE PACK",5:"\u2620 THE ALPHA",8:"\u26a0 LASER SQUIRRELS"};
-    toast("WAVE "+PK.wave+(WNAME[PK.wave]?" \u2014 "+WNAME[PK.wave]:""));
+    const waveLabel="WAVE "+PK.wave+(WNAME[PK.wave]?" \u2014 "+WNAME[PK.wave]:"");
+    toast(waveLabel);
+    PK.waveBanner={text:waveLabel, life:2.2, max:2.2};
     beep(500,.08);
     if(PK.wave===5){ pkSpawnAlpha(); PK.waveSpawned++; }
     if(PK.wave===8){ pkSpawnLaserSquad(); PK.waveSpawned+=LASER_SQUAD_SIZE; }
@@ -391,15 +424,15 @@ function parkUpdate(dt){
   for(const a of PK.acts){
     a.cd=Math.max(0,a.cd-dt);
     if(a.cd<=0 && Math.hypot(wd(a.x*WW-PK.x,WW),wd(a.y*WH-PK.y,WH))<22){
-      a.cd=3; pkGain(3+Math.floor(Math.random()*3), a.x*WW, a.y*WH); beep(700,.06);
+      a.cd=3; pkGain(3+Math.floor(Math.random()*3), a.x*WW, a.y*WH); PK.sideDone++; beep(700,.06);
     }
   }
   if(PARKGHOST && Math.hypot(wd(PARKGHOST.x-PK.x,WW),wd(PARKGHOST.y-PK.y,WH))<18){
-    PK.xp+=PARKGHOST.xp;
-    PK.fx.push({x:PK.x,y:PK.y-22,txt:"+"+PARKGHOST.xp+" RECOVERED",life:1.4});
+    PK.bones+=PARKGHOST.bones;
+    PK.fx.push({x:PK.x,y:PK.y-22,txt:"+"+PARKGHOST.bones+" RECOVERED",life:1.4});
     PARKGHOST=null;
     for(let i=0;i<14;i++) pkSpawn(w,h);   // they smelled it
-    toast("XP RECOVERED \u2014 BUT THEY SMELLED IT.",1);
+    toast("BONES RECOVERED \u2014 BUT THEY SMELLED IT.",1);
     beep(140,.3,"sawtooth");
   }
   for(let i=PK.fx.length-1;i>=0;i--){ PK.fx[i].life-=dt; if(PK.fx[i].life<=0) PK.fx.splice(i,1); }
@@ -420,33 +453,34 @@ function pkExitCosts(){
 }
 function pkDeath(){
   PK.active=false;
-  const lost=Math.round(PK.xp*0.9), kept=PK.xp-lost;
-  if(lost>0) PARKGHOST={x:PK.x,y:PK.y,xp:lost + (PARKGHOST?PARKGHOST.xp:0)};
-  if(kept>0) addXP(Math.max(1,Math.round(kept*BANK_RATE)));
+  const lost=Math.round(PK.bones*0.9), kept=PK.bones-lost;
+  if(lost>0) PARKGHOST={x:PK.x,y:PK.y,bones:lost + (PARKGHOST?PARKGHOST.bones:0)};
+  const earned=Math.round(pkRunXP()*0.5);   // dying costs you half of what the run actually earned
+  if(earned>0) addXP(earned);
   pkExitCosts(); S.fun=clamp(S.fun+10,0,100);
-  const keptXP=Math.max(0,Math.round(kept*BANK_RATE));
   $("#resTitle").textContent="OVERRUN AT THE PARK"; $("#resTitle").style.color="#f22";
   $("#resPortrait").src=PORTRAITS.sad; $("#resPortrait").classList.add("show");
   $("#resScore").textContent=kept+" BONES";
-  $("#resLines").innerHTML="90% OF HIS BONES ("+lost+") LIE WHERE HE FELL.<br>NEXT VISIT: GO CLAIM THEM \u2014 IF YOU DARE.";
+  $("#resLines").innerHTML="90% OF HIS BONES ("+lost+") LIE WHERE HE FELL.<br>"+PK.kills+" DOWNED, "+PK.sideDone+" SIDE OBJECTIVES \u2014 "+earned+" XP MADE IT HOME.<br>NEXT VISIT: GO CLAIM THE REST \u2014 IF YOU DARE.";
   $("#result").classList.add("show");
   beep(140,.3,"sawtooth");
-  setTimeout(()=>pkReveal(kept,keptXP),400);
+  setTimeout(()=>pkReveal(kept,earned),400);
 }
 function pkBank(){
   PK.active=false;
-  const g=PK.xp;
-  addXP(Math.max(1,Math.round(g*BANK_RATE))); LVLFX=1.2;
+  const g=PK.bones;
+  const earned=pkRunXP();
+  if(earned>0) addXP(earned);
+  LVLFX = earned>0 ? 1.2 : 0;
   pkExitCosts(); S.fun=clamp(S.fun+20,0,100); S.mood=clamp(S.mood+8,0,100);
-  const bankedXP=Math.max(1,Math.round(g*BANK_RATE));
   $("#resTitle").textContent="XP BANKED"; $("#resTitle").style.color="#fff";
-  $("#resPortrait").src = bankedXP>=8 ? PORTRAITS.happy : PORTRAITS.content;
+  $("#resPortrait").src = earned>=8 ? PORTRAITS.happy : PORTRAITS.content;
   $("#resPortrait").classList.add("show");
   $("#resScore").textContent=g+" BONES";
-  $("#resLines").innerHTML="WAVE "+PK.wave+" REACHED.<br>A GOOD DAY AT THE PARK.";
+  $("#resLines").innerHTML="WAVE "+PK.wave+" REACHED.<br>"+PK.kills+" DOWNED, "+PK.sideDone+" SIDE OBJECTIVES.<br>A GOOD DAY AT THE PARK.";
   $("#result").classList.add("show");
   beep(660,.1); setTimeout(()=>beep(880,.1),100); setTimeout(()=>beep(1170,.14),200);
-  setTimeout(()=>pkReveal(g,bankedXP),500);
+  setTimeout(()=>pkReveal(g,earned),500);
 }
 function drawEnemyVector(ctx,e,ex,ey){
   ctx.strokeStyle="#fff"; ctx.fillStyle="#000"; ctx.lineWidth=2;
@@ -626,19 +660,27 @@ function parkDraw(t){
     ctx.fillText(f4.txt,px2,py2-(0.9-f4.life)*24);
     ctx.globalAlpha=1;
   }
+  // wave-transition banner \u2014 pops in, holds, fades, so a new wave actually reads as an event
+  if(PK.waveBanner){
+    const {text,life,max}=PK.waveBanner, el=max-life;
+    let alpha; if(el<0.15) alpha=el/0.15; else if(life<0.6) alpha=Math.max(0,life/0.6); else alpha=1;
+    ctx.save(); ctx.globalAlpha=alpha;
+    ctx.fillStyle="rgba(0,0,0,.6)"; ctx.fillRect(0,h*0.36,w,h*0.15);
+    ctx.strokeStyle="#f22"; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.moveTo(0,h*0.36); ctx.lineTo(w,h*0.36); ctx.moveTo(0,h*0.51); ctx.lineTo(w,h*0.51); ctx.stroke();
+    ctx.fillStyle="#fff"; ctx.font="13px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText(text, w/2, h*0.45); ctx.textAlign="left";
+    ctx.restore();
+  }
   ctx.fillStyle="rgba(0,0,0,.38)"; ctx.fillRect(0,0,w,44);
-  ctx.fillStyle="#fff";
-  const leftToClear=Math.max(0,PK.waveQuota-PK.waveSpawned)+PK.en.length;
-  ctx.textAlign="right"; ctx.fillText("WAVE "+PK.wave+"  "+leftToClear+" LEFT",w-10,34); ctx.textAlign="left";
   ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.strokeRect(10,26,90,8);
   ctx.fillStyle=PK.hp<PK.maxhp*0.3?"#f22":"#fff";
   ctx.fillRect(12,28,86*clamp(PK.hp/PK.maxhp,0,1),4);
+  if(PK.relic){
+    const rc=PK_CHARMS.find(c=>c.id===PK.relic);
+    if(rc){ ctx.fillStyle="#f22"; ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="left"; ctx.fillText("\u2b25 "+rc.name, 10, 41); }
+  }
   pkPadDraw(t);
-}
-function pkFlee(){
-  pkDeath();
-  $("#resTitle").textContent="FLED THE PARK";
-  $("#resLines").innerHTML=DN("BONES BOLTED FOR HOME.<br>90% OF HIS BONES LEFT BEHIND \u2014 CLAIM THEM NEXT VISIT.");
 }
 function pkPadDraw(t){
   const [ctx,w,h]=fit($("#parkcv"));
@@ -649,10 +691,13 @@ function pkPadDraw(t){
     ctx.fillText(DN("DRAG ANYWHERE TO MOVE BONES"), w/2, h/2);
   }
   ctx.fillStyle="#fff"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
-  ctx.fillText("\u25C6 "+PK.xp+" BONES", 14, 29);
-  ctx.strokeStyle="#f22"; ctx.lineWidth=2; ctx.strokeRect(w-96,12,84,26);
-  ctx.fillStyle="#f22"; ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="center";
-  ctx.fillText("FLEE -90%XP", w-54, 29);
+  ctx.fillText("\u25C6 "+PK.bones+" BONES", 14, 29);
+  const leftToClear=Math.max(0,PK.waveQuota-PK.waveSpawned)+PK.en.length;
+  ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.strokeRect(w-100,10,90,30);
+  ctx.fillStyle="#fff"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
+  ctx.fillText("WAVE "+PK.wave, w-55, 23);
+  ctx.font="6px 'Press Start 2P',monospace";
+  ctx.fillText(leftToClear+" LEFT", w-55, 34);
   if(PK.joy){
     ctx.strokeStyle="#fff"; ctx.globalAlpha=0.5; ctx.lineWidth=2;
     ctx.beginPath(); ctx.arc(PK.joy.ox,PK.joy.oy,26,0,7); ctx.stroke();
@@ -663,12 +708,13 @@ function pkPadDraw(t){
   if(PK.shop){
     ctx.strokeStyle="#fff"; ctx.lineWidth=3; ctx.strokeRect(w*0.08,h*0.10,w*0.84,h*0.74);
     ctx.fillStyle="#fff"; ctx.font="9px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText("PARK SHOP \u2014 SPEND RUN XP", w/2, h*0.20);
+    ctx.fillText("PARK SHOP \u2014 SPEND BONES", w/2, h*0.20);
     ctx.font="8px 'Press Start 2P',monospace";
     PK.shop.forEach((o,i)=>{
       const y=h*(0.36+i*0.12);
-      ctx.fillStyle = PK.xp>=o.c ? "#fff" : "#f22";
-      ctx.fillText(o.n+"  ["+o.c+" XP]", w/2, y);
+      const afford=PK.bones>=o.c;
+      ctx.fillStyle = o.relic ? (afford?"#e8c14a":"#f22") : (afford?"#fff":"#f22");
+      ctx.fillText(o.n+"  ["+o.c+" BONES]", w/2, y);
     });
     ctx.fillStyle="#888"; ctx.fillText("TAP HERE TO SKIP", w/2, h*0.72);
   }
@@ -679,14 +725,12 @@ function pkPadDraw(t){
   cv.addEventListener("pointerdown",e=>{
     if(!PK.active) return;
     const r=cv.getBoundingClientRect();
-    const px=e.clientX-r.left, py=e.clientY-r.top;
-    if(!PK.shop && px>r.width-96 && py<44){ pkFlee(); return; }
     if(PK.shop){
       const yF=(e.clientY-r.top)/r.height;
       for(let i=0;i<3;i++){
         if(Math.abs(yF-(0.36+i*0.12))<0.05){
           const o=PK.shop[i];
-          if(PK.xp>=o.c){ PK.xp-=o.c; o.f(); beep(760,.07); toast(o.n+" \u2014 BOUGHT"); PK.shop=null; }
+          if(PK.bones>=o.c){ PK.bones-=o.c; o.f(); beep(760,.07); toast(o.n+" \u2014 BOUGHT"); PK.shop=null; }
           else beep(150,.1);
           return;
         }

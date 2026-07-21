@@ -1512,26 +1512,7 @@ function renderShopSup(){
 }
 function renderShop(){
   renderShopSup();
-  $("#shop").innerHTML = CHARMS.map(c=>{
-    if(c.id==="legacy" && !S.owned.legacy) return "";
-    const locked = S.lvl < c.unlock && !S.owned[c.id];
-    const owned = !!S.owned[c.id];
-    const eq = S.equipped===c.id;
-    let btn;
-    if(locked) btn = `<button class="tiny" disabled>REACH LV.${c.unlock}</button>`;
-    else if(!owned) btn = `<button class="tiny" data-buy="${c.id}" ${S.money<c.cost?"disabled":""}>BUY $${c.cost}</button>`;
-    else btn = `<button class="tiny" data-eq="${c.id}">${eq?"UNEQUIP":"EQUIP"}</button>`;
-    const ic = CHARMICONS[c.id] ? `<img class="cicon" src="${CHARMICONS[c.id]}">` : "";
-    return `<div class="charm ${locked?"locked":""} ${eq?"eq":""}">${ic}<div class="nm">${c.name}</div><div class="fx">${c.fx}</div>${btn}</div>`;
-  }).join("");
 }
-$("#shop").addEventListener("click",e=>{
-  const b=e.target.closest("button"); if(!b) return;
-  if(b.dataset.buy){ const c=CHARMS.find(x=>x.id===b.dataset.buy);
-    if(S.money>=c.cost){ S.money-=c.cost; S.owned[c.id]=1; S.equipped=c.id; beep(880); toast(c.name+" EQUIPPED"); tickTodo("j_collar"); } }
-  if(b.dataset.eq){ S.equipped = S.equipped===b.dataset.eq ? null : b.dataset.eq; beep(660); }
-  renderMeters(); renderShop();
-});
 
 /* ---------- mode switching ---------- */
 let MODE="home";
