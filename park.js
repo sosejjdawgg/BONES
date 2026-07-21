@@ -20,6 +20,25 @@ const PK_CHARMS=[
   {id:"rope",  name:"LUCKY ROPE",    cost:18, fx:"+40% KNOCKBACK", apply:()=>{PK.knock*=1.4;}},
   {id:"shadow",name:"SHADOW LEASH",  cost:24, fx:"+30% SPEED, RISKIER", apply:()=>{PK.spd*=1.3;}}
 ];
+function drawBone(ctx,x,y,s,color){
+  ctx.fillStyle=color;
+  ctx.fillRect(x-5*s, y-1.5*s, 10*s, 3*s);
+  ctx.beginPath();
+  ctx.arc(x-5*s,y-2*s,2.2*s,0,7); ctx.arc(x-5*s,y+2*s,2.2*s,0,7);
+  ctx.arc(x+5*s,y-2*s,2.2*s,0,7); ctx.arc(x+5*s,y+2*s,2.2*s,0,7);
+  ctx.fill();
+}
+const SPARKS=[]; // celebratory burst when a shop purchase lands
+function pkFanfare(label,big){
+  PK.shopFlash={text:(big?"⬥ ":"✓ ")+label+(big?" EQUIPPED!":" BOUGHT!"), life:big?1.6:1.1, max:big?1.6:1.1, gold:!!big};
+  const n=big?18:9;
+  for(let i=0;i<n;i++){
+    const a=Math.random()*6.283, sp=(big?60:40)+Math.random()*(big?60:40);
+    SPARKS.push({x:PK.x,y:PK.y-18,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-20,life:0.6+Math.random()*0.5,gold:!!big});
+  }
+  if(big){ beep(700,.07); setTimeout(()=>beep(950,.08),90); setTimeout(()=>beep(1250,.1),170); }
+  else beep(880,.08);
+}
 function pkReveal(biscuits, xpFinal){
   const el=$("#resScore");
   const dur=900, start=performance.now();
@@ -105,7 +124,7 @@ function startPark(){
     spd:95*(0.75+0.5*S.energy/100)*(S.senior?0.85:1),
     barkMax:Math.max(1.2,3-0.06*S.lvl), barkCd:1, pulse:0,
     barkR:60*(0.8+0.4*S.hunger/100), knock:150,
-    bones:0, bonesMult:1, kills:0, sideDone:0, relic:null, waveBanner:null,
+    bones:0, bonesMult:1, kills:0, sideDone:0, relic:null, waveBanner:null, shopFlash:null,
     chain:0, chainT:0, inv:0, fx:[],
     x:0,y:0,vx:0,vy:0, joy:null,
     en:[], fr:[], gate:{}, started:false, shop:null, biscuits:[], drops:[]
@@ -113,6 +132,7 @@ function startPark(){
   PK.hp=PK.maxhp;
   PK.acts=[{k:"hoop",x:.15,y:.125,cd:0},{k:"tunnel",x:.35,y:.36,cd:0},{k:"ramp",x:.11,y:.39,cd:0},{k:"tunnel",x:.62,y:.70,cd:0},{k:"hoop",x:.85,y:.20,cd:0}];
   PK.waveBanner={text:"WAVE 1", life:2.2, max:2.2};
+  SPARKS.length=0;
   S.outTimer=0;
   tickTodo("d_park");
   hidePortrait(); closeStatus();
@@ -250,19 +270,19 @@ function pkBark(){
 }
 function pkShopOpen(){
   const stat=[
-    {n:"BIGGER BARK",c:12,f:()=>PK.barkR+=14},
-    {n:"FASTER BARK",c:14,f:()=>PK.barkMax=Math.max(0.8,PK.barkMax-0.35)},
-    {n:"MIGHTY KNOCKBACK",c:10,f:()=>PK.knock+=70},
-    {n:"SNACK \u2014 HEAL 30",c:8,f:()=>PK.hp=Math.min(PK.maxhp,PK.hp+30)},
-    {n:"ZOOMIES +10% SPEED",c:12,f:()=>PK.spd*=1.1},
-    {n:"TOUGH COAT +15 HP",c:15,f:()=>{PK.maxhp+=15;PK.hp+=15;}}
+    {n:"BIGGER BARK",   fx:"+14 BARK RADIUS",    c:12,f:()=>PK.barkR+=14},
+    {n:"FASTER BARK",   fx:"-0.35s COOLDOWN",     c:14,f:()=>PK.barkMax=Math.max(0.8,PK.barkMax-0.35)},
+    {n:"MIGHTY KNOCKBACK", fx:"+70 KNOCKBACK",    c:10,f:()=>PK.knock+=70},
+    {n:"SNACK",         fx:"HEAL 30 HP",          c:8, f:()=>PK.hp=Math.min(PK.maxhp,PK.hp+30)},
+    {n:"ZOOMIES",       fx:"+10% SPEED",          c:12,f:()=>PK.spd*=1.1},
+    {n:"TOUGH COAT",    fx:"+15 MAX HP",          c:15,f:()=>{PK.maxhp+=15;PK.hp+=15;}}
   ];
   const pool=stat.slice();
   // rare chance of a big relic offer alongside the usual upgrades \u2014 never the one already equipped
   const candidates=PK_CHARMS.filter(c=>c.id!==PK.relic);
   if(candidates.length && Math.random()<0.4){
     const pick=candidates[Math.floor(Math.random()*candidates.length)];
-    pool.push({n:"\u2b25 "+pick.name+" \u2014 "+pick.fx, c:pick.cost, relic:true,
+    pool.push({n:"\u2b25 "+pick.name, fx:pick.fx, c:pick.cost, relic:true,
       f:()=>{ pick.apply(); PK.relic=pick.id; tickTodo("j_collar"); }});
   }
   PK.shop = pool.sort(()=>Math.random()-0.5).slice(0,3);
@@ -275,6 +295,8 @@ function parkUpdate(dt){
   PK.chainT=Math.max(0,PK.chainT-dt); if(PK.chainT<=0) PK.chain=0;
   PK.inv=Math.max(0,PK.inv-dt); PK.pulse=Math.max(0,PK.pulse-dt);
   if(PK.waveBanner){ PK.waveBanner.life-=dt; if(PK.waveBanner.life<=0) PK.waveBanner=null; }
+  if(PK.shopFlash){ PK.shopFlash.life-=dt; if(PK.shopFlash.life<=0) PK.shopFlash=null; }
+  for(let i=SPARKS.length-1;i>=0;i--){ const s=SPARKS[i]; s.x+=s.vx*dt; s.y+=s.vy*dt; s.vy+=140*dt; s.life-=dt; if(s.life<=0) SPARKS.splice(i,1); }
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   if(!PK.started){
     PK.started=true;
@@ -634,13 +656,14 @@ function parkDraw(t){
     const [dx2,dy2]=SC(dr.x,dr.y);
     if(dx2<-20||dx2>w+20||dy2<-20||dy2>h+20) continue;
     if(dr.life<5 && Math.floor(dr.life*6)%2) continue;   // blink out
-    const c=dr.gold?"#e8c14a":"#fff", s=dr.gold?1.5:1;
-    ctx.fillStyle=c;
-    ctx.fillRect(dx2-5*s, dy2-1.5*s, 10*s, 3*s);
-    ctx.beginPath();
-    ctx.arc(dx2-5*s,dy2-2*s,2.2*s,0,7); ctx.arc(dx2-5*s,dy2+2*s,2.2*s,0,7);
-    ctx.arc(dx2+5*s,dy2-2*s,2.2*s,0,7); ctx.arc(dx2+5*s,dy2+2*s,2.2*s,0,7);
-    ctx.fill();
+    drawBone(ctx, dx2, dy2, dr.gold?1.5:1, dr.gold?"#e8c14a":"#fff");
+  }
+  for(const s of SPARKS){
+    const [sx,sy]=SC(s.x,s.y);
+    ctx.globalAlpha=Math.max(0,s.life);
+    ctx.fillStyle=s.gold?"#e8c14a":"#fff";
+    ctx.fillRect(sx-2,sy-2,4,4);
+    ctx.globalAlpha=1;
   }
   if(PK.chain>1){
     const f3=clamp(PK.chainT/3,0,1), c3=Math.round(120+135*f3);
@@ -672,6 +695,20 @@ function parkDraw(t){
     ctx.fillText(text, w/2, h*0.45); ctx.textAlign="left";
     ctx.restore();
   }
+  // shop-purchase fanfare — a satisfying beat so spending bones actually feels like a reward
+  if(PK.shopFlash){
+    const {text,life,max,gold}=PK.shopFlash, el=max-life;
+    let alpha; if(el<0.12) alpha=el/0.12; else if(life<0.5) alpha=Math.max(0,life/0.5); else alpha=1;
+    const pop = el<0.18 ? 1+0.25*(1-el/0.18) : 1;
+    const col=gold?"#e8c14a":"#fff";
+    ctx.save(); ctx.globalAlpha=alpha;
+    ctx.fillStyle="rgba(0,0,0,.6)"; ctx.fillRect(0,h*0.58,w,h*0.13);
+    ctx.strokeStyle=col; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.moveTo(0,h*0.58); ctx.lineTo(w,h*0.58); ctx.moveTo(0,h*0.71); ctx.lineTo(w,h*0.71); ctx.stroke();
+    ctx.fillStyle=col; ctx.font=Math.round((gold?12:10)*pop)+"px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText(text, w/2, h*0.665); ctx.textAlign="left";
+    ctx.restore();
+  }
   ctx.fillStyle="rgba(0,0,0,.38)"; ctx.fillRect(0,0,w,44);
   ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.strokeRect(10,26,90,8);
   ctx.fillStyle=PK.hp<PK.maxhp*0.3?"#f22":"#fff";
@@ -690,8 +727,9 @@ function pkPadDraw(t){
     ctx.fillStyle="#444"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
     ctx.fillText(DN("DRAG ANYWHERE TO MOVE BONES"), w/2, h/2);
   }
+  drawBone(ctx, 20, 26, 1, "#fff");
   ctx.fillStyle="#fff"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
-  ctx.fillText("\u25C6 "+PK.bones+" BONES", 14, 29);
+  ctx.fillText(PK.bones+" BONES", 30, 29);
   const leftToClear=Math.max(0,PK.waveQuota-PK.waveSpawned)+PK.en.length;
   ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.strokeRect(w-100,10,90,30);
   ctx.fillStyle="#fff"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
@@ -706,17 +744,41 @@ function pkPadDraw(t){
     ctx.globalAlpha=1;
   }
   if(PK.shop){
-    ctx.strokeStyle="#fff"; ctx.lineWidth=3; ctx.strokeRect(w*0.08,h*0.10,w*0.84,h*0.74);
-    ctx.fillStyle="#fff"; ctx.font="9px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText("PARK SHOP \u2014 SPEND BONES", w/2, h*0.20);
-    ctx.font="8px 'Press Start 2P',monospace";
+    ctx.strokeStyle="#fff"; ctx.lineWidth=3; ctx.strokeRect(w*0.06,h*0.07,w*0.88,h*0.86);
+    ctx.fillStyle="#fff"; ctx.font="10px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText("\u2605 PARK SHOP \u2605", w/2, h*0.145);
+    // wallet banner \u2014 the balance you're about to spend, front and center
+    const wbW=w*0.5, wbX=w/2-wbW/2, wbY=h*0.175, wbH=h*0.075;
+    ctx.strokeStyle="#e8c14a"; ctx.lineWidth=2; ctx.strokeRect(wbX,wbY,wbW,wbH);
+    drawBone(ctx, w/2-32, wbY+wbH*0.6, 1.1, "#e8c14a");
+    ctx.fillStyle="#e8c14a"; ctx.font="9px 'Press Start 2P',monospace"; ctx.textAlign="left";
+    ctx.fillText(PK.bones+" BONES", w/2-20, wbY+wbH*0.66);
+    ctx.textAlign="left";
+    // one card-button per offer \u2014 relics glow gold and pulse to stand out as the big pick
     PK.shop.forEach((o,i)=>{
-      const y=h*(0.36+i*0.12);
+      const y=h*(0.36+i*0.12), cardH=h*0.10, top=y-cardH*0.5;
       const afford=PK.bones>=o.c;
-      ctx.fillStyle = o.relic ? (afford?"#e8c14a":"#f22") : (afford?"#fff":"#f22");
-      ctx.fillText(o.n+"  ["+o.c+" BONES]", w/2, y);
+      const pulse=o.relic ? 0.7+0.3*Math.sin(performance.now()/180) : 1;
+      ctx.save();
+      if(o.relic) ctx.globalAlpha=pulse;
+      ctx.strokeStyle = o.relic ? "#e8c14a" : (afford?"#fff":"#663333");
+      ctx.lineWidth = o.relic?3:2;
+      ctx.strokeRect(w*0.10, top, w*0.80, cardH);
+      ctx.restore();
+      ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
+      ctx.fillStyle = o.relic?"#e8c14a":(afford?"#fff":"#a55");
+      ctx.fillText(o.n, w*0.145, y-1);
+      ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle="#999";
+      ctx.fillText(o.fx, w*0.145, y+11);
+      ctx.textAlign="right"; ctx.font="7px 'Press Start 2P',monospace";
+      ctx.fillStyle = afford ? (o.relic?"#e8c14a":"#fff") : "#f22";
+      ctx.fillText(o.c+"\u25C6", w*0.855, y+3);
+      ctx.textAlign="left";
     });
-    ctx.fillStyle="#888"; ctx.fillText("TAP HERE TO SKIP", w/2, h*0.72);
+    ctx.strokeStyle="#666"; ctx.lineWidth=2;
+    ctx.strokeRect(w*0.30,h*0.685,w*0.40,h*0.06);
+    ctx.fillStyle="#888"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText("SKIP", w/2, h*0.685+h*0.06*0.65);
   }
   ctx.textAlign="left";
 }
@@ -730,7 +792,7 @@ function pkPadDraw(t){
       for(let i=0;i<3;i++){
         if(Math.abs(yF-(0.36+i*0.12))<0.05){
           const o=PK.shop[i];
-          if(PK.bones>=o.c){ PK.bones-=o.c; o.f(); beep(760,.07); toast(o.n+" \u2014 BOUGHT"); PK.shop=null; }
+          if(PK.bones>=o.c){ PK.bones-=o.c; o.f(); pkFanfare(o.n.replace(/^\u2b25 /,""),!!o.relic); PK.shop=null; }
           else beep(150,.1);
           return;
         }
