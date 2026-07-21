@@ -6,6 +6,7 @@ const DPR = Math.min(2, window.devicePixelRatio||1);
 /* ---------- audio ---------- */
 let AC=null;
 function beep(f=440,d=.06,type="square",g=.04){
+  if(!SETTINGS.sound) return;
   try{
     AC = AC || new (window.AudioContext||window.webkitAudioContext)();
     const o=AC.createOscillator(), gn=AC.createGain();
@@ -41,6 +42,7 @@ const S = {
   bedOwned:false, todoWork:false, todoLvl5:false, todoBed:false, todoPark:false, todoBall:false, todoBowls:false, twW:false, twF:false, todoHide:false, outTimer:0,
   lvl:1, xp:0, gen:1, senior:false, seniorDays:0, lifePathChosen:false, litter:false, memorialSrc:null, pendingStage:[]
 };
+const SETTINGS = { sound:true, reduceMotion:false };
 const CHARMS = [
   {id:"spike", name:"SPIKED COLLAR", cost:15, unlock:2,   fx:"+15% SPEED / -10% JUMP",            mod:{spd:1.15,jmp:0.90}},
   {id:"band",  name:"RED BANDANA",   cost:10, unlock:5,   fx:"+15% JUMP",                          mod:{jmp:1.15}},
@@ -2182,9 +2184,42 @@ $("#goClose").onclick=()=>$("#goout").classList.remove("show");
 $("#shopClose").onclick=()=>$("#shopPanel").classList.remove("show");
 $("#camstate").onclick=openStatus;
 $("#needAlert").onclick=openStatus;
-$("#bSave").onclick=()=>{
+$("#bMenu").onclick=()=>{ $("#menuPanel").classList.add("show"); beep(500,.05); };
+$("#menuClose").onclick=()=>$("#menuPanel").classList.remove("show");
+$("#mSave").onclick=()=>{
+  $("#menuPanel").classList.remove("show");
   if(!STORAGE_OK){ beep(150,.15); toast("SAVE UNAVAILABLE \u2014 STORAGE IS BLOCKED ON THIS DEVICE.",1); return; }
   saveGame();
+};
+$("#mCare").onclick=()=>{ $("#menuPanel").classList.remove("show"); $("#careGuidePanel").classList.add("show"); beep(500,.05); };
+$("#careClose").onclick=()=>$("#careGuidePanel").classList.remove("show");
+function renderSettings(){
+  $("#setSound").textContent = SETTINGS.sound ? "ON" : "OFF";
+  $("#setMotion").textContent = SETTINGS.reduceMotion ? "ON" : "OFF";
+}
+$("#mSettings").onclick=()=>{ $("#menuPanel").classList.remove("show"); renderSettings(); $("#settingsPanel").classList.add("show"); beep(500,.05); };
+$("#settingsClose").onclick=()=>$("#settingsPanel").classList.remove("show");
+$("#setSound").onclick=()=>{
+  SETTINGS.sound=!SETTINGS.sound; renderSettings();
+  if(SETTINGS.sound) beep(500,.05);
+  saveGame(true);
+};
+$("#setMotion").onclick=()=>{
+  SETTINGS.reduceMotion=!SETTINGS.reduceMotion;
+  document.body.classList.toggle("reduce-motion",SETTINGS.reduceMotion);
+  renderSettings(); beep(500,.05); saveGame(true);
+};
+function startNewGame(){
+  SAVE_SUSPENDED=true;   // block the pagehide autosave the reload is about to trigger
+  try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
+  location.reload();
+}
+$("#mNewGame").onclick=()=>{
+  $("#menuPanel").classList.remove("show");
+  openChoice("START OVER?",
+    "THIS DELETES "+NAME()+"'S SAVE FOR GOOD \u2014 THERE'S NO GETTING IT BACK.<br><br>ARE YOU SURE?",
+    "YES, START OVER", startNewGame,
+    "CANCEL", null);
 };
 $("#bCall").onclick=()=>{
   if(R.active||OUTING.active) return toast("BONES ISN'T HOME",1);
@@ -2289,6 +2324,8 @@ function hasStorage(){
   catch(e){ return false; }
 }
 const STORAGE_OK = hasStorage();
+let SAVE_SUSPENDED=false; // set right before a New Game wipe so the pagehide/visibilitychange
+                          // autosave firing during the reload can't write the save right back
 
 // merges saved data onto the live defaults object instead of replacing it,
 // so a save from an older version that's missing newer keys doesn't erase their defaults
@@ -2301,11 +2338,11 @@ function deepAssign(target,src){
   }
 }
 function snapshot(){
-  return { v:1, S, PUP, BALL, BOWL:{level:BOWL.level}, FBOWL:{level:FBOWL.level}, STAY, CLK, TODO_NEW,
+  return { v:1, S, PUP, BALL, BOWL:{level:BOWL.level}, FBOWL:{level:FBOWL.level}, STAY, CLK, TODO_NEW, SETTINGS,
     XPANIM:{lvl:XPANIM.lvl,frac:XPANIM.frac,ready:XPANIM.ready,pauseT:XPANIM.pauseT} };
 }
 function saveGame(silent){
-  if(!STORAGE_OK) return false;
+  if(!STORAGE_OK || SAVE_SUSPENDED) return false;
   try{ localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot()));
     if(!silent){ beep(500,.05); toast("SAVED."); }
     return true;
@@ -2322,6 +2359,7 @@ function loadGame(){
     if(data.BOWL) BOWL.level=data.BOWL.level;
     if(data.FBOWL) FBOWL.level=data.FBOWL.level;
     deepAssign(STAY,data.STAY); deepAssign(CLK,data.CLK);
+    if(data.SETTINGS) deepAssign(SETTINGS,data.SETTINGS);
     if(Array.isArray(data.TODO_NEW)) TODO_NEW=data.TODO_NEW.slice();
     if(data.XPANIM) Object.assign(XPANIM,data.XPANIM);
     else { XPANIM.lvl=S.lvl; XPANIM.frac=clamp(S.xp/xpNeed(S.lvl),0,1); } // save predates XPANIM persistence
@@ -2335,6 +2373,7 @@ setInterval(()=>{ if(!$("#game").classList.contains("hidden")) saveGame(true); }
 /* ---------- main loop ---------- */
 const RESTORED = loadGame();
 if(RESTORED){ $("#start").classList.add("hidden"); $("#game").classList.remove("hidden"); }
+document.body.classList.toggle("reduce-motion", SETTINGS.reduceMotion);
 $("#startDog").src = PORTRAITS.happy;
 buildMeters(); renderMeters(); renderShop(); renderTodo(); renderDogSel();
 let nagNext = performance.now()/1000 + 45;
