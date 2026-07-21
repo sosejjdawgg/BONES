@@ -169,10 +169,29 @@ function pkSpawnFlock(){
   toast(n+" BIRDS INBOUND!",1);
   beep(520,.09,"square",.05); setTimeout(()=>beep(680,.09,"square",.05),90);
 }
+const LASER_SQUAD_SIZE=4;
+const LASER_CHARGE_TIME=1.1, LASER_FIRE_VIS=0.22, LASER_WIDTH=13, LASER_COOLDOWN=2.4;
+function pkLaserRange(){ return Math.min(PK.WW,PK.WH)*0.42; }   // stays under half the world so the
+                                                                 // wrap-aware hit-test never disagrees with the straight beam drawn on screen
+// wave 8 boss stage: a small squad of squirrels that root in place, charge a red eye-glow,
+// then burst a long linear laser out along whichever way they're facing
+function pkSpawnLaserSquad(){
+  const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
+  const WW=PK.WW, WH=PK.WH;
+  for(let i=0;i<LASER_SQUAD_SIZE;i++){
+    const ang=(i/LASER_SQUAD_SIZE)*6.283+Math.random()*0.4, R=Math.max(w,h)*0.6;
+    PK.en.push({t:"sq", laser:true, x:(PK.x+Math.cos(ang)*R+WW)%WW, y:(PK.y+Math.sin(ang)*R+WH)%WH,
+      hp:3, sp:58, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
+      laserState:"seek", chargeT:0, aimAng:0, fireT:0, cd:1.2+Math.random()*1.2});
+  }
+  toast("⚠ LASER SQUIRRELS — WATCH THE RED EYES",1);
+  beep(140,.3,"sawtooth",.05); setTimeout(()=>beep(180,.3,"sawtooth",.05),120);
+}
 // how many enemies a wave spawns before it's cleared, echoing each wave's existing spawn
 // cadence (so the ramp still feels like the same mission structure) \u2014 just measured as a
 // kill quota instead of a fixed 20s clock. doubled from wave 10 on.
 function pkWaveBaseQuota(wv){
+  if(wv===8) return LASER_SQUAD_SIZE;   // boss stage: exactly the laser squad, no filler trash
   let interval=1.4, burst=1;
   if(wv===1) interval=1.8;
   else if(wv===2){ interval=2.4; burst=3; }
@@ -241,14 +260,16 @@ function parkUpdate(dt){
     if(PK.wave>=3) tickTodo("j_wave3");
     PK.barkMax=Math.max(1,PK.barkMax-0.12); PK.barkR+=5;
     PK.waveQuota=pkWaveQuota(PK.wave); PK.waveSpawned=0; PK.flockDone=false;
-    const WNAME={2:"SQUIRREL AMBUSH",3:"BIRD DIVES",4:"THE PACK",5:"\u2620 THE ALPHA"};
+    const WNAME={2:"SQUIRREL AMBUSH",3:"BIRD DIVES",4:"THE PACK",5:"\u2620 THE ALPHA",8:"\u26a0 LASER SQUIRRELS"};
     toast("WAVE "+PK.wave+(WNAME[PK.wave]?" \u2014 "+WNAME[PK.wave]:""));
     beep(500,.08);
     if(PK.wave===5){ pkSpawnAlpha(); PK.waveSpawned++; }
+    if(PK.wave===8){ pkSpawnLaserSquad(); PK.waveSpawned+=LASER_SQUAD_SIZE; }
     pkShopOpen();
   }
-  // one bird flock per wave (from wave 2 on), a few seconds in
-  if(!PK.flockDone && PK.wave>=2 && PK.waveT>3){
+  // one bird flock per wave (from wave 2 on) \u2014 skipped on the wave 8 boss stage so the
+  // laser squirrels get a clean, focused fight instead of being diluted by a flock
+  if(!PK.flockDone && PK.wave>=2 && PK.wave!==8 && PK.waveT>3){
     PK.flockDone=true;
     pkSpawnFlock();
   }
@@ -264,6 +285,7 @@ function parkUpdate(dt){
         (Math.random()<0.6 && (Math.abs(PK.vx)+Math.abs(PK.vy))>10) ? mv+(Math.random()-0.5)*0.8 : undefined); PK.waveSpawned++; }
     else if(wv===4){ PK.spawnT=0.55; pkSpawn(w,h); PK.waveSpawned++; }                    // THE PACK: pure density
     else if(wv===5){ PK.spawnT=1.6; pkSpawnType("sq"); PK.waveSpawned++; }                // THE ALPHA: boss + light trickle
+    else if(wv===8){ PK.spawnT=99; }                                                      // LASER SQUIRRELS: boss squad only, no filler
     else { PK.spawnT=Math.max(0.35,1.4-wv*0.09); pkSpawn(w,h); PK.waveSpawned++; }
   }
   let mx=0,my=0;
@@ -277,6 +299,45 @@ function parkUpdate(dt){
   for(let i=PK.en.length-1;i>=0;i--){
     const e=PK.en[i];
     e.kx*=0.88; e.ky*=0.88;
+    if(e.laser){
+      const dxw=wd(PK.x-e.x,WW), dyw=wd(PK.y-e.y,WH);
+      const d=Math.hypot(dxw,dyw)||1;
+      if(e.laserState==="seek"){
+        // ordinary squirrel chase until it's in range and its cooldown clears
+        const sx=dxw/d*e.sp, sy=dyw/d*e.sp;
+        e.dir = sx<0 ? -1 : 1;
+        e.x=(e.x+(sx+e.kx)*dt+WW)%WW;
+        e.y=(e.y+(sy+e.ky)*dt+WH)%WH;
+        e.cd-=dt;
+        if(e.cd<=0 && d<pkLaserRange()*0.85){
+          e.laserState="charge"; e.chargeT=0; e.aimAng=Math.atan2(dyw,dxw);
+        }
+        if(d<14 && PK.inv<=0){
+          PK.hp-=8; PK.inv=0.6;
+          e.kx=-dxw/d*220; e.ky=-dyw/d*220;
+          beep(110,.12,"sawtooth");
+          if(PK.hp<=0) return pkDeath();
+        }
+      } else if(e.laserState==="charge"){
+        // rooted in place, red eye-glow grows — telegraphed, dodgeable
+        e.chargeT+=dt;
+        if(e.chargeT>=LASER_CHARGE_TIME){
+          const ux=Math.cos(e.aimAng), uy=Math.sin(e.aimAng);
+          const along=dxw*ux+dyw*uy, perp=Math.abs(dxw*uy-dyw*ux);
+          if(along>0 && along<pkLaserRange() && perp<LASER_WIDTH && PK.inv<=0){
+            PK.hp-=20; PK.inv=0.6;
+            beep(160,.25,"sawtooth");
+            if(PK.hp<=0) return pkDeath();
+          }
+          e.laserState="fire"; e.fireT=0;
+        }
+      } else if(e.laserState==="fire"){
+        e.fireT+=dt;
+        if(e.fireT>=LASER_FIRE_VIS){ e.laserState="seek"; e.cd=LASER_COOLDOWN+Math.random()*0.8; }
+      }
+      e.ft+=dt; if(e.ft>0.12){ e.ft=0; e.fi++; }
+      continue;
+    }
     if(e.flock){
       // straight-line flight, no homing — if it'd fly clean out of the fray, rubber-band
       // the heading back toward the player's area instead of leaving
@@ -399,9 +460,29 @@ function drawEnemyVector(ctx,e,ex,ey){
   }
   ctx.fillStyle="#f22"; ctx.fillRect(ex+1,ey-3,2,2);
 }
+function drawLaserFX(ctx,e,sx,sy){
+  const eyeX=sx+(e.dir<0?-4:4), eyeY=sy-11;
+  if(e.laserState==="charge"){
+    const p=clamp(e.chargeT/LASER_CHARGE_TIME,0,1);
+    ctx.fillStyle="#f22"; ctx.globalAlpha=0.5+0.5*p;
+    ctx.beginPath(); ctx.arc(eyeX,eyeY,1+p*4,0,7); ctx.fill();
+    ctx.globalAlpha=1;
+  } else if(e.laserState==="fire"){
+    const ang=e.aimAng, range=pkLaserRange(), fade=1-clamp(e.fireT/LASER_FIRE_VIS,0,1);
+    ctx.save(); ctx.globalAlpha=fade;
+    ctx.strokeStyle="#f22"; ctx.lineWidth=7;
+    ctx.beginPath(); ctx.moveTo(eyeX,eyeY); ctx.lineTo(eyeX+Math.cos(ang)*range, eyeY+Math.sin(ang)*range); ctx.stroke();
+    ctx.strokeStyle="#fff"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(eyeX,eyeY); ctx.lineTo(eyeX+Math.cos(ang)*range, eyeY+Math.sin(ang)*range); ctx.stroke();
+    ctx.fillStyle="#fff";
+    ctx.beginPath(); ctx.arc(eyeX,eyeY,2+3*fade,0,7); ctx.fill();
+    ctx.restore();
+  }
+}
 function drawEnemy(ctx,e,sx,sy){
   ctx.fillStyle="rgba(0,0,0,.25)";
   ctx.beginPath(); ctx.ellipse(sx, sy+2, 9, 3, 0, 0, 7); ctx.fill();
+  if(e.laser) drawLaserFX(ctx,e,sx,sy);
   const frames = ENEMYIMG[e.t];
   const img = frames && frames[e.fi % frames.length];
   if(!img || !img.complete || !img.naturalWidth){ drawEnemyVector(ctx,e,sx,sy); return; }
