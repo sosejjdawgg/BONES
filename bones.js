@@ -406,6 +406,7 @@ $("#dogcv").addEventListener("pointerdown",e=>{
   if(Math.hypot(fx-spx,fy-spy)<0.06){                       // grab the sponge off the wall
     SPONGE.held=true; SPONGE.x=fx; SPONGE.y=fy;
     try{ e.currentTarget.setPointerCapture(e.pointerId); }catch(_){}
+    for(let i=0;i<5;i++) DRIPS.push({x:fx+(Math.random()-0.5)*0.03, y:fy+0.015, vy:0.14+Math.random()*0.2, life:0.6+Math.random()*0.3});
     beep(480,.04); return;
   }
   if(S.ballOwned && !BALL.pcarried && Math.hypot(fx-BALL.x,(fy-BALL.y)*1.4)<0.07){ // grab the ball
@@ -413,7 +414,11 @@ $("#dogcv").addEventListener("pointerdown",e=>{
     try{ e.currentTarget.setPointerCapture(e.pointerId); }catch(_){}
     return;
   }
-  if(fx>0.50 && fx<0.80 && fy>0.62){
+  // bowls (bottom-left) + the bed, tucked in right beside them
+  const uPx=r.height/42, wbX=0.04*r.width, wbW=4*uPx, fbX2=wbX+wbW+8;
+  const bedXpx=fbX2+wbW+16, bedWpx=r.width*0.22;
+  const px=fx*r.width;
+  if(px>=bedXpx && px<=bedXpx+bedWpx && fy>0.62){
     if(!S.bedOwned){
       S.bedHinted=true;
       toast("HE HAS NOWHERE PROPER TO SLEEP \u2014 SEE THE LIST",1);
@@ -423,9 +428,6 @@ $("#dogcv").addEventListener("pointerdown",e=>{
     }
     toggleRest(); return;
   } // the bed
-  // bowls (bottom-left): tap to refill
-  const uPx=r.height/42, wbX=0.04*r.width, wbW=4*uPx, fbX2=wbX+wbW+8;
-  const px=fx*r.width;
   if(fy>0.70){
     if(px>=wbX-6 && px<=wbX+wbW+4){ tapBowl("water"); return; }
     if(px>=fbX2-4 && px<=fbX2+wbW+6){ tapBowl("food"); return; }
@@ -465,6 +467,7 @@ $("#dogcv").addEventListener("pointermove",e=>{
   const fx=(e.clientX-r.left)/r.width, fy=(e.clientY-r.top)/r.height;
   if(SPONGE.held){
     SPONGE.x=fx; SPONGE.y=fy;
+    if(Math.random()<0.4){ DRIPS.push({x:fx+(Math.random()-0.5)*0.015,y:fy+0.015,vy:0.12+Math.random()*0.18,life:0.5+Math.random()*0.3}); if(DRIPS.length>50) DRIPS.splice(0,DRIPS.length-50); }
     if(fx>CAM.x-0.02 && fx<CAM.x+CAMDWF+0.04 && fy>0.30 && fy<0.85 && !R.active && !OUTING.active && !PK.active){
       S.clean=clamp(S.clean+0.6,0,100); WASH.heat=0.5;
       if(Math.random()<0.5){ SUDS.push({x:fx,y:fy,life:0.9,r:3+Math.random()*5}); if(SUDS.length>60) SUDS.splice(0,SUDS.length-60); }
@@ -786,6 +789,7 @@ const BALL = { x:0.28, y:0.795, vx:0, vy:0, held:false, tx:0, ty:0, cool:0, off:
 const HP = []; let heartNext=0;
 const WASH={active:false,pending:false,timer:0,heat:0};
 const SUDS=[];
+const DRIPS=[]; // blue water drips shed by the wet sponge
 const OUTING={active:false,timer:0,kind:""};
 function startOuting(kind,dur){
   OUTING.active=true; OUTING.timer=dur; OUTING.kind=kind;
@@ -848,6 +852,9 @@ function camBehavior(dt){
   }
   for(let i=HP.length-1;i>=0;i--){ const p=HP[i]; p.rise+=26*dt; p.life-=dt; if(p.life<=0) HP.splice(i,1); }
   for(let i=SUDS.length-1;i>=0;i--){ const s=SUDS[i]; s.y-=0.04*dt; s.life-=dt; if(s.life<=0) SUDS.splice(i,1); }
+  if(SPONGE.held && Math.random()<0.3) DRIPS.push({x:SPONGE.x+(Math.random()-0.5)*0.01, y:SPONGE.y+0.015, vy:0.12+Math.random()*0.18, life:0.5+Math.random()*0.3});
+  for(let i=DRIPS.length-1;i>=0;i--){ const d=DRIPS[i]; d.y+=d.vy*dt; d.life-=dt; if(d.life<=0) DRIPS.splice(i,1); }
+  if(DRIPS.length>60) DRIPS.splice(0,DRIPS.length-60);
   PET.timer+=dt; if(PET.timer>20){ PET.timer=0; PET.left=6; }
   PET.heat=Math.max(0,PET.heat-dt);
   if(BALL.carried && CAM.state!=="fetch") dropBallHere(); // watchdog: no eternal ball-mouth
@@ -1225,12 +1232,12 @@ function drawCam(t){
     ctx.strokeRect(w*0.14-3, h*0.15-3, mw2+6, mh2+6);
     ctx.drawImage(MEMIMG, w*0.14, h*0.15, mw2, mh2);
   }
-  // dog bed (or the sad empty spot where one should be)
-  const bx=w*0.52, bw2=w*0.26, bh2=h*0.085;
+  // dog bed (or the sad empty spot where one should be) — half height, tucked beside the bowls
+  const bx=fbX+bwlW+16, bw2=w*0.22, bh2=h*0.0425;
   if(S.bedOwned){
     ctx.fillStyle="#26262c"; ctx.fillRect(bx,gy-bh2,bw2,bh2);
     ctx.strokeRect(bx,gy-bh2,bw2,bh2);
-    ctx.strokeRect(bx+5,gy-bh2+5,bw2-10,bh2-5);
+    ctx.strokeRect(bx+4,gy-bh2+3,bw2-8,bh2-4);
   } else {
     const hint = (S.lvl>=2 || S.bedHinted) && Math.floor(t*2)%2===0;
     ctx.save(); ctx.setLineDash([6,6]); ctx.strokeStyle=hint?"#f22":"#555"; ctx.lineWidth=2;
@@ -1249,13 +1256,34 @@ function drawCam(t){
       ctx.fillStyle="#fff";
     }
   }
-  // wall sponge (drag onto BONES to scrub)
+  // wall sponge (drag onto BONES to scrub) — yellow, chamfered sponge silhouette with pore dimples
   {
     const sx=(SPONGE.held?SPONGE.x:0.135)*w, sy=(SPONGE.held?SPONGE.y:0.50)*h;
     if(!SPONGE.held){ ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(sx,sy-14); ctx.lineTo(sx,sy-8); ctx.stroke(); } // hook
-    ctx.fillStyle="#fff"; ctx.fillRect(sx-9,sy-6,18,12);
-    ctx.fillStyle="#f22"; ctx.fillRect(sx-9,sy-1,18,3);
+    const sw2=20, sh2=13, c2=4;
+    ctx.fillStyle="#e8c93a";
+    ctx.beginPath();
+    ctx.moveTo(sx-sw2/2+c2, sy-sh2/2);
+    ctx.lineTo(sx+sw2/2-c2, sy-sh2/2);
+    ctx.lineTo(sx+sw2/2, sy-sh2/2+c2);
+    ctx.lineTo(sx+sw2/2, sy+sh2/2-c2);
+    ctx.lineTo(sx+sw2/2-c2, sy+sh2/2);
+    ctx.lineTo(sx-sw2/2+c2, sy+sh2/2);
+    ctx.lineTo(sx-sw2/2, sy+sh2/2-c2);
+    ctx.lineTo(sx-sw2/2, sy-sh2/2+c2);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle="#a8891f"; ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle="#c9a62e";
+    for(const [px2,py2] of [[-6,-3],[2,-3],[-2,1],[5,2],[-6,3]]) ctx.fillRect(sx+px2-1,sy+py2-1,2,2);
     ctx.strokeStyle="#fff"; ctx.lineWidth=3;
+  }
+  // blue drips shed by the wet sponge
+  for(const d of DRIPS){
+    ctx.globalAlpha=Math.max(0,d.life);
+    ctx.fillStyle="#3b82f6";
+    ctx.fillRect(d.x*w-2, d.y*h-2, 4, 4);
+    ctx.fillRect(d.x*w-1, d.y*h-6, 2, 4);
+    ctx.globalAlpha=1;
   }
   // supply-item highlight pulse
   if(PULSE.t>0 && Math.floor(t*4)%2){
@@ -1263,7 +1291,7 @@ function drawCam(t){
     if(PULSE.k==="water") ctx.strokeRect(w*0.04-4, gy-u*1.6-4, u*4+8, u*1.6+8);
     else if(PULSE.k==="food") ctx.strokeRect(w*0.04+u*4+4, gy-u*1.6-4, u*4+8, u*1.6+8);
     else if(PULSE.k==="sponge") ctx.strokeRect(0.135*w-14, 0.50*h-12, 28, 24);
-    else if(PULSE.k==="bed") ctx.strokeRect(w*0.52-4, gy-h*0.085-4, w*0.26+8, h*0.085+8);
+    else if(PULSE.k==="bed") ctx.strokeRect(bx-4, gy-bh2-4, bw2+8, bh2+8);
     ctx.strokeStyle="#fff";
   }
   // indoor accidents
