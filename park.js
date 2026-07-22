@@ -34,8 +34,8 @@ function drawLock(ctx,x,y,s,color){
   ctx.fillStyle=color; ctx.fillRect(x-4*s,y-3*s,8*s,7*s);
 }
 const SPARKS=[]; // celebratory burst when a shop purchase lands
-function pkFanfare(label,big){
-  PK.shopFlash={text:(big?"⬥ ":"✓ ")+label+(big?" EQUIPPED!":" BOUGHT!"), life:big?1.6:1.1, max:big?1.6:1.1, gold:!!big};
+function pkFanfare(label,big,rawText){
+  PK.shopFlash={text:rawText || ((big?"⬥ ":"✓ ")+label+(big?" EQUIPPED!":" BOUGHT!")), life:big?1.6:1.1, max:big?1.6:1.1, gold:!!big};
   const n=big?18:9;
   for(let i=0;i<n;i++){
     const a=Math.random()*6.283, sp=(big?60:40)+Math.random()*(big?60:40);
@@ -125,6 +125,7 @@ function startPark(){
   Object.assign(PK,{
     active:true,t:0,wave:1,waveT:0,spawnT:1,
     waveQuota:pkWaveQuota(1), waveSpawned:0, flockDone:false,
+    goldenDone:false, goldenAt:3+Math.random()*8,
     maxhp:Math.round(50+50*S.mood/100),
     spd:95*(0.75+0.5*S.energy/100)*(S.senior?0.85:1),
     barkMax:Math.max(1.2,3-0.06*S.lvl), barkCd:1, pulse:0,
@@ -148,7 +149,7 @@ function startPark(){
   beep(660,.08); setTimeout(()=>beep(880,.08),120);
 }
 function pkGain(n,x,y){
-  PK.chain = PK.chainT>0 ? Math.min(6,PK.chain+1) : 1;
+  PK.chain = PK.chainT>0 ? Math.min(3,PK.chain+1) : 1;   // capped lower — chain bonus was inflating bones well past shop costs
   PK.chainT=3;
   const g=Math.round((n+(PK.chain-1))*(PK.bonesMult||1));
   PK.bones+=g;
@@ -191,6 +192,18 @@ function pkSpawnAlpha(){
     hp:4, sp:52, ph:0, kx:0, ky:0, dir:1, fi:0, ft:0});
   toast("\u2620 THE ALPHA CAT IS HERE.",1);
   beep(120,.35,"sawtooth",.05);
+}
+// a golden bird carrying a gold bone — one per stage, optional, never counts toward the wave
+// quota. flies a fast, straight line across the world; catch it (like the friend NPC) for a
+// big bones payout, or miss it and it just disappears.
+function pkSpawnGoldenBird(){
+  const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
+  const WW=PK.WW||w*2, WH=PK.WH||h*2;
+  const side=Math.random()<0.5?-1:1, sp=150+Math.random()*30;
+  PK.fr.push({golden:true, x:(PK.x+side*w*0.7+WW)%WW, y:(PK.y+(Math.random()-0.5)*h*0.6+WH)%WH,
+    vx:-side*sp, life:11});
+  toast("A GOLDEN BIRD FLIES BY — CATCH IT!",1);
+  beep(900,.05); setTimeout(()=>beep(1200,.06),70);
 }
 // a flock of 10-20 birds flies straight in on a shared bearing, from any direction. they
 // don't home in like a lone dive-bomber \u2014 they hold their trajectory and, if they'd fly
@@ -263,8 +276,10 @@ function pkBark(){
     if(d<PK.barkR){
       e.hp--;
       if(e.hp<=0){
-        // they drop a bone where they die — BONES must go collect it
-        PK.drops.push({x:e.x, y:e.y, v:e.alpha?10:e.t==="cat"?3:e.t==="bird"?2:1, gold:!!e.alpha, life:25});
+        // they drop a bone where they die — BONES must go collect it. kept low: with the chain
+        // bonus on top, the old values (10/3/2/1) were putting ~60 bones in reach by wave 2
+        // against shop costs of 10-24, so the shop never felt like a real choice.
+        PK.drops.push({x:e.x, y:e.y, v:e.alpha?6:e.t==="cat"?2:1, gold:!!e.alpha, life:25});
         PK.kills++;
         hits++;
         PK.en.splice(i,1);
@@ -342,6 +357,7 @@ function parkUpdate(dt){
     if(PK.wave>=3) tickTodo("j_wave3");
     PK.barkMax=Math.max(1,PK.barkMax-0.12); PK.barkR+=5;
     PK.waveQuota=pkWaveQuota(PK.wave); PK.waveSpawned=0; PK.flockDone=false;
+    PK.goldenDone=false; PK.goldenAt=3+Math.random()*8;
     const WNAME={2:"SQUIRREL AMBUSH",3:"BIRD DIVES",4:"THE PACK",5:"\u2620 THE ALPHA",8:"\u26a0 LASER SQUIRRELS"};
     const waveLabel="WAVE "+PK.wave+(WNAME[PK.wave]?" \u2014 "+WNAME[PK.wave]:"");
     toast(waveLabel);
@@ -356,6 +372,11 @@ function parkUpdate(dt){
   if(!PK.flockDone && PK.wave>=2 && PK.wave!==8 && PK.waveT>3){
     PK.flockDone=true;
     pkSpawnFlock();
+  }
+  // one golden bird per stage — optional, never counts toward the wave quota
+  if(!PK.goldenDone && PK.waveT>PK.goldenAt){
+    PK.goldenDone=true;
+    pkSpawnGoldenBird();
   }
   PK.spawnT-=dt;
   if(PK.spawnT<=0 && PK.waveSpawned<PK.waveQuota){
@@ -466,10 +487,13 @@ function parkUpdate(dt){
     const f=PK.fr[i];
     f.x=(f.x+f.vx*dt+WW)%WW; f.life-=dt;
     if(Math.hypot(wd(f.x-PK.x,WW),wd(f.y-PK.y,WH))<20){
-      PK.hp=Math.min(PK.maxhp,PK.hp+15);
-      pkGain(9,f.x,f.y);
-      S.mood=clamp(S.mood+2,0,100);
-      beep(760,.08);
+      if(f.golden){ pkGain(20,f.x,f.y); pkFanfare(null,true,"★ GOLDEN BONE CAUGHT!"); }
+      else {
+        PK.hp=Math.min(PK.maxhp,PK.hp+15);
+        pkGain(9,f.x,f.y);
+        S.mood=clamp(S.mood+2,0,100);
+        beep(760,.08);
+      }
       PK.fr.splice(i,1); continue;
     }
     if(f.life<=0) PK.fr.splice(i,1);
@@ -652,12 +676,21 @@ function parkDraw(t){
     if(fx2<-40||fx2>w+40||fy2<-40||fy2>h+40) continue;
     ctx.fillStyle="rgba(0,0,0,.25)";
     ctx.beginPath(); ctx.ellipse(fx2,fy2+12,12,4,0,0,7); ctx.fill();
-    const img=FRIENDIMG[Math.floor(t*8)%FRIENDIMG.length];
-    if(img.complete&&img.naturalWidth){ ctx.save(); ctx.imageSmoothingEnabled=false;
-      const fh2=26, fw2=fh2*img.naturalWidth/img.naturalHeight;
+    if(f.golden){
+      const glow=0.6+0.4*Math.sin(performance.now()/150);
+      ctx.save(); ctx.globalAlpha=glow; ctx.strokeStyle="#e8c14a"; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(fx2,fy2-6,15,0,7); ctx.stroke(); ctx.restore();
+    }
+    const birdFrames=ENEMYIMG.bird;
+    const frames = f.golden && birdFrames ? birdFrames : FRIENDIMG;
+    const img=frames[Math.floor(t*8)%frames.length];
+    if(img && img.complete && img.naturalWidth){ ctx.save(); ctx.imageSmoothingEnabled=false;
+      const fh2=f.golden?18:26, fw2=fh2*img.naturalWidth/img.naturalHeight;
       if(f.vx<0){ ctx.translate(fx2*2,0); ctx.scale(-1,1); }
+      if(f.golden) ctx.filter="sepia(1) saturate(6) hue-rotate(-15deg) brightness(1.3)";
       ctx.drawImage(img,fx2-fw2/2,fy2-fh2/2,fw2,fh2); ctx.restore(); }
-    if(Math.floor(t*3)%2){ ctx.fillStyle="#f6a"; ctx.fillRect(fx2-2,fy2-22,4,4); }
+    if(f.golden) drawBone(ctx, fx2, fy2+11, 0.75, "#e8c14a");
+    else if(Math.floor(t*3)%2){ ctx.fillStyle="#f6a"; ctx.fillRect(fx2-2,fy2-22,4,4); }
   }
   for(const e of PK.en){
     const [ex2,ey2]=SC(e.x,e.y);
@@ -777,17 +810,18 @@ function pkPadDraw(t){
   if(PK.shop){
     ctx.strokeStyle="#fff"; ctx.lineWidth=3; ctx.strokeRect(w*0.06,h*0.07,w*0.88,h*0.86);
     ctx.fillStyle="#fff"; ctx.font="10px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText("\u2605 PARK SHOP \u2605", w/2, h*0.145);
+    ctx.fillText("\u2605 PARK SHOP \u2605", w/2, h*0.13);
     // wallet banner \u2014 the balance you're about to spend, front and center
-    const wbW=w*0.5, wbX=w/2-wbW/2, wbY=h*0.175, wbH=h*0.075;
+    const wbW=w*0.5, wbX=w/2-wbW/2, wbY=h*0.16, wbH=h*0.07;
     ctx.strokeStyle="#e8c14a"; ctx.lineWidth=2; ctx.strokeRect(wbX,wbY,wbW,wbH);
-    drawBone(ctx, w/2-32, wbY+wbH*0.6, 1.1, "#e8c14a");
+    drawBone(ctx, w/2-32, wbY+wbH*0.58, 1.1, "#e8c14a");
     ctx.fillStyle="#e8c14a"; ctx.font="9px 'Press Start 2P',monospace"; ctx.textAlign="left";
-    ctx.fillText(PK.bones+" BONES", w/2-20, wbY+wbH*0.66);
+    ctx.fillText(PK.bones+" BONES", w/2-20, wbY+wbH*0.64);
     ctx.textAlign="left";
-    // one card-button per offer \u2014 relics glow gold, park-expansions glow blue, to stand out
+    // one card-button per offer, evenly spaced \u2014 relics glow gold, park-expansions glow blue
+    const ROW_STEP=h*0.125, cardH=h*0.09, row0=h*0.335;
     PK.shop.forEach((o,i)=>{
-      const y=h*(0.36+i*0.12), cardH=h*0.10, top=y-cardH*0.5;
+      const y=row0+i*ROW_STEP, top=y-cardH*0.5;
       const afford=PK.bones>=o.c;
       const glowCol = o.relic?"#e8c14a":o.expand?"#6cf":null;
       const pulse=glowCol ? 0.7+0.3*Math.sin(performance.now()/180) : 1;
@@ -799,49 +833,50 @@ function pkPadDraw(t){
       ctx.restore();
       ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
       ctx.fillStyle = glowCol || (afford?"#fff":"#a55");
-      ctx.fillText(o.n, w*0.145, y-1);
+      ctx.fillText(o.n, w*0.145, y-2);
       ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle="#999";
-      ctx.fillText(o.fx, w*0.145, y+11);
+      ctx.fillText(o.fx, w*0.145, y+10);
       ctx.textAlign="right"; ctx.font="7px 'Press Start 2P',monospace";
       ctx.fillStyle = afford ? (glowCol||"#fff") : "#f22";
-      ctx.fillText(o.c+"\u25C6", w*0.855, y+3);
+      ctx.fillText(o.c+"\u25C6", w*0.855, y+2);
       ctx.textAlign="left";
     });
     // speed-clear bonus row \u2014 wipe a wave inside 60s and a charm slot unlocks here; otherwise
     // it's shown locked with a padlock and how far over 60s the clear took
+    const bonusY=row0+3*ROW_STEP, bonusTop=bonusY-cardH*0.5;
     if(PK.speedBonus){
-      const by=h*0.665, bh=h*0.09, btop=by-bh*0.5;
       if(PK.speedBonus.unlocked && PK.speedBonus.charm){
         const ch=PK.speedBonus.charm, afford=PK.bones>=ch.cost;
         const pulse=0.7+0.3*Math.sin(performance.now()/180);
         ctx.save(); ctx.globalAlpha=pulse;
         ctx.strokeStyle="#e8c14a"; ctx.lineWidth=3;
-        ctx.strokeRect(w*0.10, btop, w*0.80, bh);
+        ctx.strokeRect(w*0.10, bonusTop, w*0.80, cardH);
         ctx.restore();
         ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
         ctx.fillStyle=afford?"#e8c14a":"#a55";
-        ctx.fillText("\u2605 "+ch.name, w*0.145, by-1);
+        ctx.fillText("\u2605 "+ch.name, w*0.145, bonusY-2);
         ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle="#999";
-        ctx.fillText("60s CLEAR BONUS \u2014 "+ch.fx, w*0.145, by+11);
+        ctx.fillText("60s CLEAR BONUS \u2014 "+ch.fx, w*0.145, bonusY+10);
         ctx.textAlign="right"; ctx.font="7px 'Press Start 2P',monospace";
         ctx.fillStyle=afford?"#e8c14a":"#f22";
-        ctx.fillText(ch.cost+"\u25C6", w*0.855, by+3);
+        ctx.fillText(ch.cost+"\u25C6", w*0.855, bonusY+2);
         ctx.textAlign="left";
       } else {
         ctx.strokeStyle="#444"; ctx.lineWidth=2;
-        ctx.strokeRect(w*0.10, btop, w*0.80, bh);
-        drawLock(ctx, w*0.145+5, by-2, 0.9, "#666");
+        ctx.strokeRect(w*0.10, bonusTop, w*0.80, cardH);
+        drawLock(ctx, w*0.145+5, bonusY-3, 0.9, "#666");
         ctx.font="7px 'Press Start 2P',monospace"; ctx.fillStyle="#666"; ctx.textAlign="left";
-        ctx.fillText("CHARM LOCKED", w*0.21, by-1);
+        ctx.fillText("CHARM LOCKED", w*0.21, bonusY-2);
         ctx.font="6px 'Press Start 2P',monospace";
-        ctx.fillText("+"+(PK.speedBonus?PK.speedBonus.over:0)+"s OVER THE 60s CLEAR", w*0.21, by+11);
+        ctx.fillText("+"+(PK.speedBonus?PK.speedBonus.over:0)+"s OVER THE 60s CLEAR", w*0.21, bonusY+10);
         ctx.textAlign="left";
       }
     }
+    const skipY=row0+4*ROW_STEP-cardH*0.15, skipH=h*0.06;
     ctx.strokeStyle="#666"; ctx.lineWidth=2;
-    ctx.strokeRect(w*0.30,h*0.79,w*0.40,h*0.06);
+    ctx.strokeRect(w*0.30,skipY,w*0.40,skipH);
     ctx.fillStyle="#888"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText("SKIP", w/2, h*0.79+h*0.06*0.65);
+    ctx.fillText("SKIP", w/2, skipY+skipH*0.65);
   }
   ctx.textAlign="left";
 }
@@ -852,15 +887,17 @@ function pkPadDraw(t){
     const r=cv.getBoundingClientRect();
     if(PK.shop){
       const yF=(e.clientY-r.top)/r.height;
+      // must mirror pkPadDraw's row0/ROW_STEP/cardH layout exactly, or taps miss the cards
+      const rowStepF=0.125, cardHF=0.09, row0F=0.335, tolF=cardHF/2;
       for(let i=0;i<3;i++){
-        if(Math.abs(yF-(0.36+i*0.12))<0.05){
+        if(Math.abs(yF-(row0F+i*rowStepF))<tolF){
           const o=PK.shop[i];
           if(PK.bones>=o.c){ PK.bones-=o.c; o.f(); pkFanfare(o.n.replace(/^\u2b25 /,""),!!o.relic); PK.shop=null; }
           else beep(150,.1);
           return;
         }
       }
-      if(PK.speedBonus && PK.speedBonus.unlocked && PK.speedBonus.charm && Math.abs(yF-0.665)<0.05){
+      if(PK.speedBonus && PK.speedBonus.unlocked && PK.speedBonus.charm && Math.abs(yF-(row0F+3*rowStepF))<tolF){
         const ch=PK.speedBonus.charm;
         if(PK.bones>=ch.cost){
           PK.bones-=ch.cost; ch.apply(); PK.relic=ch.id; tickTodo("j_collar");
@@ -869,7 +906,8 @@ function pkPadDraw(t){
         } else beep(150,.1);
         return;
       }
-      if(Math.abs(yF-0.82)<0.06){ PK.shop=null; beep(400,.05); }
+      const skipYF=row0F+4*rowStepF-cardHF*0.15+0.03;
+      if(Math.abs(yF-skipYF)<0.045){ PK.shop=null; beep(400,.05); }
       return;
     }
     PK.joy={ox:e.clientX-r.left,oy:e.clientY-r.top,dx:0,dy:0};
