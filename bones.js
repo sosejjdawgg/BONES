@@ -2240,10 +2240,15 @@ $("#bSnacks").onclick=()=>{
 };
 let PIN="";
 function pinRender(){ $("#pinDots").textContent=[0,1,2,3].map(i=>i<PIN.length?"\u25CF":"\u2013").join(" "); }
-$("#devToggle").onclick=()=>{
+// shared by #devToggle (Home footer) and #pkDevToggle (a small always-there corner tap inside
+// Dogpark) \u2014 #pinPanel itself is a global overlay, but its only trigger used to live in Home's
+// footer, which is invisible while any other screen (like the park) is active
+function toggleDevMode(){
   if(!$("#devbar").classList.contains("hidden")){ $("#devbar").classList.add("hidden"); $("#pkDevbar").classList.add("hidden"); return; } // tap again hides
   PIN=""; pinRender(); $("#pinPanel").classList.add("show"); beep(400,.04);
-};
+}
+$("#devToggle").onclick=toggleDevMode;
+$("#pkDevToggle").onclick=toggleDevMode;
 (function(){
   const pad=$("#pinPad");
   [1,2,3,4,5,6,7,8,9,0].forEach(n=>{
