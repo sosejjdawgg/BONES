@@ -3,7 +3,7 @@
 // that only exists inside a run, spent on stat upgrades and rare charm relics between waves.
 // None of it carries over — only a small trickle of real hub XP makes it home, earned from
 // how many enemies you downed and how many side objectives (hoop/tunnel/ramp) you hit.
-const PK={active:false};
+const PK={active:false, godMode:false}; // godMode is a dev-only toggle and deliberately isn't reset per-run
 function wd(d,M){ return ((d + M/2) % M + M) % M - M/2; }  // shortest signed delta on the looping world
 const XP_PER_KILL=0.4, XP_PER_SIDE=2;
 function pkRunXP(){ return Math.max(0, Math.round(PK.kills*XP_PER_KILL + PK.sideDone*XP_PER_SIDE)); }
@@ -396,7 +396,7 @@ function parkUpdate(dt){
         if(e.cd<=0 && d<pkLaserRange()*0.85){
           e.laserState="charge"; e.chargeT=0; e.aimAng=Math.atan2(dyw,dxw);
         }
-        if(d<14 && PK.inv<=0){
+        if(d<14 && PK.inv<=0 && !PK.godMode){
           PK.hp-=8; PK.inv=0.6;
           e.kx=-dxw/d*220; e.ky=-dyw/d*220;
           beep(110,.12,"sawtooth");
@@ -408,7 +408,7 @@ function parkUpdate(dt){
         if(e.chargeT>=LASER_CHARGE_TIME){
           const ux=Math.cos(e.aimAng), uy=Math.sin(e.aimAng);
           const along=dxw*ux+dyw*uy, perp=Math.abs(dxw*uy-dyw*ux);
-          if(along>0 && along<pkLaserRange() && perp<LASER_WIDTH && PK.inv<=0){
+          if(along>0 && along<pkLaserRange() && perp<LASER_WIDTH && PK.inv<=0 && !PK.godMode){
             PK.hp-=20; PK.inv=0.6;
             beep(160,.25,"sawtooth");
             if(PK.hp<=0) return pkDeath();
@@ -439,7 +439,7 @@ function parkUpdate(dt){
       e.ft+=dt; if(e.ft>0.12){ e.ft=0; e.fi++; }
       e.x=(e.x+(e.vx+e.kx)*dt+WW)%WW;
       e.y=(e.y+(e.vy+e.ky)*dt+WH)%WH;
-      if(d<14 && PK.inv<=0){
+      if(d<14 && PK.inv<=0 && !PK.godMode){
         PK.hp-=8; PK.inv=0.6;
         e.kx=-dxw/d*220; e.ky=-dyw/d*220;
         beep(110,.12,"sawtooth");
@@ -455,7 +455,7 @@ function parkUpdate(dt){
     e.ft+=dt; if(e.ft>0.12){ e.ft=0; e.fi++; }
     e.x=(e.x+(sx+e.kx)*dt+WW)%WW;
     e.y=(e.y+(sy+e.ky)*dt+WH)%WH;
-    if(d<14 && PK.inv<=0){
+    if(d<14 && PK.inv<=0 && !PK.godMode){
       PK.hp-=(e.alpha?14:8); PK.inv=0.6;
       e.kx=-dxw/d*220; e.ky=-dyw/d*220;
       beep(110,.12,"sawtooth");

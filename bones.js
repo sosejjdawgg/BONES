@@ -2241,7 +2241,7 @@ $("#bSnacks").onclick=()=>{
 let PIN="";
 function pinRender(){ $("#pinDots").textContent=[0,1,2,3].map(i=>i<PIN.length?"\u25CF":"\u2013").join(" "); }
 $("#devToggle").onclick=()=>{
-  if(!$("#devbar").classList.contains("hidden")){ $("#devbar").classList.add("hidden"); return; } // tap again hides
+  if(!$("#devbar").classList.contains("hidden")){ $("#devbar").classList.add("hidden"); $("#pkDevbar").classList.add("hidden"); return; } // tap again hides
   PIN=""; pinRender(); $("#pinPanel").classList.add("show"); beep(400,.04);
 };
 (function(){
@@ -2255,6 +2255,7 @@ $("#devToggle").onclick=()=>{
         if(PIN==="1234"){
           $("#pinPanel").classList.remove("show");
           $("#devbar").classList.remove("hidden");
+          $("#pkDevbar").classList.remove("hidden");
           toast("MAINTENANCE MODE."); beep(880,.08);
         } else { toast("WRONG CODE",1); beep(150,.15); PIN=""; pinRender(); }
       }
@@ -2297,6 +2298,26 @@ $("#devBad").onclick=()=>{
   toast("NEGLECT SIMULATED (DEV)",1); renderMeters();
 };
 $("#devDay").onclick=()=>{ CLK.h=23.98; toast("FAST-FORWARDING TO MIDNIGHT (DEV)"); };
+// Dogpark-only dev tools — the bar itself is nested inside #park, so it's only ever
+// visible while a run is on screen; unlocking it still goes through the same PIN as #devbar.
+$("#pkDevSkip").onclick=()=>{
+  if(!PK.active) return;
+  PK.en.length=0; PK.waveSpawned=PK.waveQuota;
+  toast("WAVE SKIPPED (DEV)");
+};
+$("#pkDevHeal").onclick=()=>{
+  if(!PK.active) return;
+  PK.hp=PK.maxhp; toast("FULL HEAL (DEV)");
+};
+$("#pkDevGod").onclick=()=>{
+  PK.godMode=!PK.godMode;
+  $("#pkDevGod").classList.toggle("active",PK.godMode);
+  toast(PK.godMode?"GOD MODE ON (DEV)":"GOD MODE OFF (DEV)");
+};
+$("#pkDevBones").onclick=()=>{
+  if(!PK.active) return;
+  PK.bones+=50; toast("+50 BONES (DEV)");
+};
 
 /* ---------- save / persistence ---------- */
 const SAVE_KEY="bones_save_v1";
