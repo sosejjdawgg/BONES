@@ -65,10 +65,13 @@ button.red:active{background:#f22;color:#000}
 #portrait span.red{border-color:#f22;color:#f22}
 #preSavage{display:none;height:34%;max-height:170px;border:3px solid #f22;image-rendering:pixelated}
 #preSavage.show{display:block}
-#resPortrait{display:none;height:30%;max-height:150px;border:3px solid #fff;image-rendering:pixelated}
+#resPortrait{display:none;height:30%;max-height:150px;border:3px solid #fff;image-rendering:pixelated;transition:transform .1s ease}
 #resPortrait.show{display:block}
 #resScore{transition:transform .15s ease}
 #resScore.pop{transform:scale(1.18)}
+#resRow{display:flex;align-items:flex-end;gap:14px;justify-content:center}
+#resPileWrap{display:flex;flex-direction:column;align-items:center;gap:6px}
+#revealcv{border:3px solid #fff;background:#000;width:130px;height:130px;image-rendering:pixelated}
 
 /* CAM ACTION STRIP + HOVER STATUS BUBBLE */
 #camActions{position:absolute;left:6px;bottom:6px;z-index:4;display:flex;gap:6px}
@@ -266,7 +269,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.32a</span>
+          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.33a</span>
         </div>
       </div>
 
@@ -334,7 +337,11 @@ body.reduce-motion *{animation:none!important}
           <span class="gh">PLAY FETCH</span><br>
           OWN A BALL? DRAG IT ACROSS DOGCAM AND LET GO — HE'LL CHASE IT DOWN AND BRING IT BACK. OR TAP PLAY FETCH FROM HOME AND HE'LL START THE GAME HIMSELF.<br><br>
           <span class="gh">WALKS & THE DOGPARK</span><br>
-          TAP GO OUT FOR WORK, TRAINING OR THE BEACH — OR HEAD TO THE DOGPARK ONCE HE HITS LV.5. SURVIVE THE WAVES AND BANK THE XP AT THE RED EXIT BEFORE HE GETS OVERRUN.<br><br>
+          TAP GO OUT FOR WORK, TRAINING OR THE BEACH — OR HEAD TO THE DOGPARK ONCE HE HITS LV.5. BARK AT SQUIRRELS, BIRDS & CATS TO SCARE THEM OFF — HE DOESN'T HURT ANYONE, THEY JUST DROP A BONE AND SCUTTLE AWAY. SURVIVE THE WAVES AND REACH THE RED EXIT TO BANK REAL XP BEFORE HE GETS OVERRUN.<br><br>
+          <span class="gh">THE DOGPARK ECONOMY</span><br>
+          EVERY SCARED-OFF CRITTER DROPS ONE BONE. SPEND THEM BETWEEN WAVES ON UPGRADES, RARE CHARMS, OR GROWING THE PARK ITSELF — OR TAP THE BONES COUNTER ANY TIME TO TRADE SOME FOR XP, MONEY OR A SNACK. CLEAR A WAVE INSIDE 60 SECONDS AND A BONUS CHARM UNLOCKS IN THE SHOP. KEEP AN EYE OUT FOR THE GOLDEN BIRD — CATCH IT FOR A BIG BONES PAYOUT.<br><br>
+          <span class="gh">SIDE MISSIONS</span><br>
+          BARK AT EVERY KIND OF CRITTER IN ONE RUN FOR +20 XP. SURVIVE WAVE 1 FOR +10 XP. THESE PAY OUT STRAIGHT AWAY, NO NEED TO BANK FIRST.<br><br>
           <span class="gh">BATH TIME</span><br>
           GRAB THE SPONGE OFF THE WALL AND DRAG IT ACROSS HIM TO SCRUB HIM SPOTLESS.<br><br>
           <span class="gh">REST UP</span><br>
@@ -422,9 +429,14 @@ body.reduce-motion *{animation:none!important}
 
       <!-- RESULT -->
       <div id="result" class="overpanel">
-        <img id="resPortrait" alt="BONES">
         <h2 id="resTitle">RUN OVER</h2>
-        <div class="big" id="resScore">0</div>
+        <div id="resRow">
+          <img id="resPortrait" alt="BONES">
+          <div id="resPileWrap">
+            <canvas id="revealcv" width="130" height="130"></canvas>
+            <div class="big" id="resScore">0</div>
+          </div>
+        </div>
         <div class="lines" id="resLines"></div>
         <button id="bResHome" style="font-size:11px;padding:12px 22px">BACK HOME</button>
       </div>

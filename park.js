@@ -33,6 +33,14 @@ function drawLock(ctx,x,y,s,color){
   ctx.beginPath(); ctx.arc(x,y-2.5*s,3*s,Math.PI,0); ctx.stroke();
   ctx.fillStyle=color; ctx.fillRect(x-4*s,y-3*s,8*s,7*s);
 }
+// tap the bones counter any time (not just between waves) to cash spare bones in for something
+// useful back in the main hub — deliberately a worse rate than just letting kills bank XP
+// normally, so it's a way to not waste leftover bones rather than a primary strategy
+const BONES_EXCHANGE=[
+  {label:"XP",    sub:"10 BONES → 2 XP",    cost:10, f:()=>addXP(2)},
+  {label:"MONEY", sub:"10 BONES → $5",      cost:10, f:()=>{S.money+=5;}},
+  {label:"SNACK", sub:"15 BONES → 1 SNACK", cost:15, f:()=>{S.snacks+=1;}}
+];
 const SPARKS=[]; // celebratory burst when a shop purchase lands
 function pkFanfare(label,big,rawText){
   PK.shopFlash={text:rawText || ((big?"⬥ ":"✓ ")+label+(big?" EQUIPPED!":" BOUGHT!")), life:big?1.6:1.1, max:big?1.6:1.1, gold:!!big};
@@ -44,19 +52,54 @@ function pkFanfare(label,big,rawText){
   if(big){ beep(700,.07); setTimeout(()=>beep(950,.08),90); setTimeout(()=>beep(1250,.1),170); }
   else beep(880,.08);
 }
-function pkReveal(biscuits, xpFinal){
-  const el=$("#resScore");
-  const dur=900, start=performance.now();
+// end-of-run reveal: bones fall from above into a growing pile while the counter climbs, then
+// a separate XP count-up. On a clean bank the portrait climbs from CONTENT to HAPPY as the pile
+// grows — reusing the existing portrait art rather than needing new "excited dog" frames.
+function pkReveal(biscuits, xpFinal, mode){
+  const cv=$("#revealcv"), ctx=cv.getContext("2d"), el=$("#resScore");
+  const W=cv.width, H=cv.height;
+  const cap=Math.min(biscuits,36);                        // animate at most 36 icons; the counter still shows the true total
+  const perCol=6, colW=(W-24)/perCol;
+  const drops=[]; for(let i=0;i<cap;i++) drops.push({t:i*0.045, landed:false, col:i%perCol, row:Math.floor(i/perCol)});
+  const fallDur=0.32, pileDur = cap>0 ? cap*0.045+fallDur+0.3 : 0.3;
+  const start=performance.now();
+  function drawPile(elapsed){
+    ctx.clearRect(0,0,W,H);
+    ctx.strokeStyle="#444"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(4,H-10); ctx.lineTo(W-4,H-10); ctx.stroke();
+    const s=Math.max(0.55,1.15-cap*0.015);
+    for(const d of drops){
+      const dt2=elapsed-d.t; if(dt2<0) continue;
+      const tx=12+d.col*colW+colW/2, ty=H-14-d.row*9;
+      const y = dt2<fallDur ? -10+(dt2/fallDur)*(ty+10) : ty;
+      if(dt2>=fallDur && !d.landed){ d.landed=true; beep(480+d.row*22,.03,"square",.02); }
+      drawBone(ctx, tx, y, s, "#e8c14a");
+    }
+  }
   function step(now){
-    const p2=Math.min(1,(now-start)/dur);
-    const shown = p2<0.5
-      ? Math.round(biscuits*(1-p2*2))                    // biscuits count DOWN
-      : Math.round(xpFinal*((p2-0.5)*2));                 // then XP counts UP
-    el.textContent = p2<0.5 ? shown+" BONES" : shown+" XP";
-    if(Math.random()<0.35) beep(380+p2*500,.02,"square",.015);
-    if(p2<1){ requestAnimationFrame(step); }
-    else{ el.textContent=xpFinal+" XP"; el.classList.add("pop"); setTimeout(()=>el.classList.remove("pop"),160);
-      beep(760,.09); setTimeout(()=>beep(1040,.12),110); }
+    const elapsed=(now-start)/1000;
+    drawPile(elapsed);
+    const frac=Math.min(1, elapsed/pileDur);
+    el.textContent = Math.round(biscuits*frac)+" BONES";
+    if(mode==="bank"){
+      $("#resPortrait").src = frac>0.55 ? PORTRAITS.happy : PORTRAITS.content;
+      $("#resPortrait").style.transform = "scale("+(1+0.05*frac*Math.abs(Math.sin(elapsed*9)))+")";
+    }
+    if(frac<1){ requestAnimationFrame(step); return; }
+    el.textContent=biscuits+" BONES";
+    if(mode==="bank") $("#resPortrait").style.transform="scale(1)";
+    setTimeout(()=>{
+      const xpStart=performance.now();
+      function xpStep(now2){
+        const p2=Math.min(1,(now2-xpStart)/700);
+        el.textContent = Math.round(xpFinal*p2)+" XP";
+        if(Math.random()<0.4) beep(600+p2*400,.02,"square",.015);
+        if(p2<1){ requestAnimationFrame(xpStep); return; }
+        el.textContent=xpFinal+" XP"; el.classList.add("pop"); setTimeout(()=>el.classList.remove("pop"),160);
+        beep(760,.09); setTimeout(()=>beep(1040,.12),110);
+      }
+      requestAnimationFrame(xpStep);
+    }, 300);
   }
   requestAnimationFrame(step);
 }
@@ -126,6 +169,7 @@ function startPark(){
     active:true,t:0,wave:1,waveT:0,spawnT:1,
     waveQuota:pkWaveQuota(1), waveSpawned:0, flockDone:false,
     goldenDone:false, goldenAt:3+Math.random()*8,
+    convertOpen:false, barkedTypes:{}, missionBarkAll:false, missionSurviveW1:false,
     maxhp:Math.round(50+50*S.mood/100),
     spd:95*(0.75+0.5*S.energy/100)*(S.senior?0.85:1),
     barkMax:Math.max(1.2,3-0.06*S.lvl), barkCd:1, pulse:0,
@@ -265,24 +309,33 @@ function pkWaveQuota(wv){
   const base=pkWaveBaseQuota(wv);
   return wv>=10 ? base*2 : base;
 }
+const FLEE_SPEED=115, FLEE_TIME=2.2;   // how fast, and how long, a scared-off enemy scuttles before despawning
 function pkBark(){
   PK.barkCd=PK.barkMax; PK.pulse=0.35;
   beep(190,.1,"square",.06);
   let hits=0;
   for(let i=PK.en.length-1;i>=0;i--){
     const e=PK.en[i];
+    if(e.fleeing) continue;   // already scared off — can't be hit again
     const dxw=wd(e.x-PK.x,PK.WW), dyw=wd(e.y-PK.y,PK.WH);
     const d=Math.hypot(dxw,dyw)||1;
     if(d<PK.barkR){
       e.hp--;
+      // every enemy type barked at counts toward the "bark at everybody" side mission
+      PK.barkedTypes[e.t]=true;
+      if(!PK.missionBarkAll && PK.barkedTypes.sq && PK.barkedTypes.bird && PK.barkedTypes.cat){
+        PK.missionBarkAll=true; addXP(20);
+        pkFanfare(null,false,"✓ BARKED AT EVERYONE — +20 XP");
+      }
       if(e.hp<=0){
-        // they drop a bone where they die — BONES must go collect it. kept low: with the chain
-        // bonus on top, the old values (10/3/2/1) were putting ~60 bones in reach by wave 2
-        // against shop costs of 10-24, so the shop never felt like a real choice.
-        PK.drops.push({x:e.x, y:e.y, v:e.alpha?6:e.t==="cat"?2:1, gold:!!e.alpha, life:25});
+        // he doesn't kill anyone anymore: one bone drops where they were caught, they look
+        // shocked, then scuttle off-screen on their own — pkEn's fleeing branch handles the rest
+        PK.drops.push({x:e.x, y:e.y, v:1, gold:!!e.alpha, life:25});
         PK.kills++;
         hits++;
-        PK.en.splice(i,1);
+        e.fleeing=true; e.shockT=0.35; e.fleeT=0;
+        e.fleeVx=-dxw/d*FLEE_SPEED; e.fleeVy=-dyw/d*FLEE_SPEED;
+        beep(950,.08,"square",.04);
       }
       else { e.kx=dxw/d*PK.knock; e.ky=dyw/d*PK.knock; }
     }
@@ -326,7 +379,7 @@ function pkShopOpen(){
 }
 function parkUpdate(dt){
   if(!PK.active) return;
-  if(PK.shop) return;   // world pauses while shopping
+  if(PK.shop || PK.convertOpen) return;   // world pauses while shopping or exchanging bones
   PK.t+=dt; PK.waveT+=dt;
   PK.chainT=Math.max(0,PK.chainT-dt); if(PK.chainT<=0) PK.chain=0;
   PK.inv=Math.max(0,PK.inv-dt); PK.pulse=Math.max(0,PK.pulse-dt);
@@ -342,9 +395,14 @@ function parkUpdate(dt){
     pkBuildBG(PK.WW,PK.WH);
   }
   const WW=PK.WW, WH=PK.WH;
-  // a wave only ends once its full quota has spawned AND every last enemy is down \u2014
-  // no more clearing out on a clock while stragglers are still alive
-  if(PK.waveSpawned>=PK.waveQuota && PK.en.length===0){
+  // a wave only ends once its full quota has spawned AND every last enemy is down (fleeing
+  // stragglers don't count \u2014 they're already defeated, just scuttling off in the background)
+  if(PK.waveSpawned>=PK.waveQuota && !PK.en.some(e=>!e.fleeing)){
+    // survive the very first wave and it's a straight-up XP bonus
+    if(PK.wave===1 && !PK.missionSurviveW1){
+      PK.missionSurviveW1=true; addXP(10);
+      pkFanfare(null,false,"\u2713 SURVIVED WAVE 1 \u2014 +10 XP");
+    }
     // clear the wave within 60s and a charm slot unlocks in the shop; otherwise it shows
     // locked with a padlock and how far over 60s the clear took
     if(PK.waveT<=60){
@@ -400,10 +458,21 @@ function parkUpdate(dt){
   PK.x=(PK.x+PK.vx*dt+WW)%WW;
   PK.y=(PK.y+PK.vy*dt+WH)%WH;
   PK.barkCd-=dt;
-  if(PK.barkCd<=0 && PK.en.some(e=>Math.hypot(wd(e.x-PK.x,WW),wd(e.y-PK.y,WH))<PK.barkR)) pkBark();
+  if(PK.barkCd<=0 && PK.en.some(e=>!e.fleeing && Math.hypot(wd(e.x-PK.x,WW),wd(e.y-PK.y,WH))<PK.barkR)) pkBark();
   for(let i=PK.en.length-1;i>=0;i--){
     const e=PK.en[i];
     e.kx*=0.88; e.ky*=0.88;
+    if(e.fleeing){
+      e.shockT=Math.max(0,e.shockT-dt);
+      if(e.shockT<=0){
+        e.x=(e.x+e.fleeVx*dt+WW)%WW; e.y=(e.y+e.fleeVy*dt+WH)%WH;
+        e.dir = e.fleeVx<0 ? -1 : 1;
+        e.fleeT+=dt;
+      }
+      e.ft+=dt; if(e.ft>0.12){ e.ft=0; e.fi++; }
+      if(e.fleeT>FLEE_TIME) PK.en.splice(i,1);
+      continue;
+    }
     if(e.laser){
       const dxw=wd(PK.x-e.x,WW), dyw=wd(PK.y-e.y,WH);
       const d=Math.hypot(dxw,dyw)||1;
@@ -541,7 +610,7 @@ function pkDeath(){
   $("#resLines").innerHTML="90% OF HIS BONES ("+lost+") LIE WHERE HE FELL.<br>"+PK.kills+" DOWNED, "+PK.sideDone+" SIDE OBJECTIVES \u2014 "+earned+" XP MADE IT HOME.<br>NEXT VISIT: GO CLAIM THE REST \u2014 IF YOU DARE.";
   $("#result").classList.add("show");
   beep(140,.3,"sawtooth");
-  setTimeout(()=>pkReveal(kept,earned),400);
+  setTimeout(()=>pkReveal(kept,earned,"death"),400);
 }
 function pkBank(){
   PK.active=false;
@@ -551,13 +620,13 @@ function pkBank(){
   LVLFX = earned>0 ? 1.2 : 0;
   pkExitCosts(); S.fun=clamp(S.fun+20,0,100); S.mood=clamp(S.mood+8,0,100);
   $("#resTitle").textContent="XP BANKED"; $("#resTitle").style.color="#fff";
-  $("#resPortrait").src = earned>=8 ? PORTRAITS.happy : PORTRAITS.content;
+  $("#resPortrait").src = PORTRAITS.content;   // pkReveal takes it from here, building to HAPPY as the pile grows
   $("#resPortrait").classList.add("show");
   $("#resScore").textContent=g+" BONES";
   $("#resLines").innerHTML="WAVE "+PK.wave+" REACHED.<br>"+PK.kills+" DOWNED, "+PK.sideDone+" SIDE OBJECTIVES.<br>A GOOD DAY AT THE PARK.";
   $("#result").classList.add("show");
   beep(660,.1); setTimeout(()=>beep(880,.1),100); setTimeout(()=>beep(1170,.14),200);
-  setTimeout(()=>pkReveal(g,earned),500);
+  setTimeout(()=>pkReveal(g,earned,"bank"),500);
 }
 function drawEnemyVector(ctx,e,ex,ey){
   ctx.strokeStyle="#fff"; ctx.fillStyle="#000"; ctx.lineWidth=2;
@@ -594,6 +663,10 @@ function drawEnemy(ctx,e,sx,sy){
   ctx.fillStyle="rgba(0,0,0,.25)";
   ctx.beginPath(); ctx.ellipse(sx, sy+2, 9, 3, 0, 0, 7); ctx.fill();
   if(e.laser) drawLaserFX(ctx,e,sx,sy);
+  if(e.fleeing && e.shockT>0 && Math.floor(performance.now()/90)%2){
+    ctx.fillStyle="#fff"; ctx.font="bold 13px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText("!", sx, sy-24); ctx.textAlign="left";
+  }
   const frames = ENEMYIMG[e.t];
   const img = frames && frames[e.fi % frames.length];
   if(!img || !img.complete || !img.naturalWidth){ drawEnemyVector(ctx,e,sx,sy); return; }
@@ -791,10 +864,11 @@ function pkPadDraw(t){
     ctx.fillStyle="#444"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
     ctx.fillText(DN("DRAG ANYWHERE TO MOVE BONES"), w/2, h/2);
   }
-  drawBone(ctx, 20, 26, 1, "#fff");
+  ctx.strokeStyle="#666"; ctx.lineWidth=2; ctx.strokeRect(8,10,110,30);
+  drawBone(ctx, 24, 26, 1, "#fff");
   ctx.fillStyle="#fff"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
-  ctx.fillText(PK.bones+" BONES", 30, 29);
-  const leftToClear=Math.max(0,PK.waveQuota-PK.waveSpawned)+PK.en.length;
+  ctx.fillText(PK.bones+" BONES", 34, 29);
+  const leftToClear=Math.max(0,PK.waveQuota-PK.waveSpawned)+PK.en.filter(e=>!e.fleeing).length;
   ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.strokeRect(w-100,10,90,30);
   ctx.fillStyle="#fff"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
   ctx.fillText("WAVE "+PK.wave, w-55, 23);
@@ -806,6 +880,39 @@ function pkPadDraw(t){
     ctx.fillStyle="#fff";
     ctx.beginPath(); ctx.arc(PK.joy.ox+PK.joy.dx*22,PK.joy.oy+PK.joy.dy*22,9,0,7); ctx.fill();
     ctx.globalAlpha=1;
+  }
+  if(PK.convertOpen){
+    ctx.strokeStyle="#fff"; ctx.lineWidth=3; ctx.strokeRect(w*0.06,h*0.07,w*0.88,h*0.55);
+    ctx.fillStyle="#fff"; ctx.font="10px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText("EXCHANGE BONES", w/2, h*0.135);
+    const wbW=w*0.5, wbX=w/2-wbW/2, wbY=h*0.165, wbH=h*0.065;
+    ctx.strokeStyle="#e8c14a"; ctx.lineWidth=2; ctx.strokeRect(wbX,wbY,wbW,wbH);
+    drawBone(ctx, w/2-30, wbY+wbH*0.6, 1, "#e8c14a");
+    ctx.fillStyle="#e8c14a"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
+    ctx.fillText(PK.bones+" BONES", w/2-18, wbY+wbH*0.65);
+    ctx.textAlign="left";
+    const cRowStep=h*0.10, cCardH=h*0.075, cRow0=h*0.33;
+    BONES_EXCHANGE.forEach((o,i)=>{
+      const y=cRow0+i*cRowStep, top=y-cCardH*0.5;
+      const afford=PK.bones>=o.cost;
+      ctx.strokeStyle = afford?"#fff":"#663333"; ctx.lineWidth=2;
+      ctx.strokeRect(w*0.10, top, w*0.80, cCardH);
+      ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
+      ctx.fillStyle = afford?"#fff":"#a55";
+      ctx.fillText(o.label, w*0.145, y-1);
+      ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle="#999";
+      ctx.fillText(o.sub, w*0.145, y+11);
+      ctx.textAlign="right"; ctx.font="7px 'Press Start 2P',monospace";
+      ctx.fillStyle = afford?"#fff":"#f22";
+      ctx.fillText(o.cost+"◆", w*0.855, y+2);
+      ctx.textAlign="left";
+    });
+    const doneY=cRow0+3*cRowStep, doneH=h*0.05;
+    ctx.strokeStyle="#666"; ctx.lineWidth=2;
+    ctx.strokeRect(w*0.30,doneY-doneH*0.5,w*0.40,doneH);
+    ctx.fillStyle="#888"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText("DONE", w/2, doneY+doneH*0.15);
+    ctx.textAlign="left";
   }
   if(PK.shop){
     ctx.strokeStyle="#fff"; ctx.lineWidth=3; ctx.strokeRect(w*0.06,h*0.07,w*0.88,h*0.86);
@@ -910,6 +1017,22 @@ function pkPadDraw(t){
       if(Math.abs(yF-skipYF)<0.045){ PK.shop=null; beep(400,.05); }
       return;
     }
+    if(PK.convertOpen){
+      const yF=(e.clientY-r.top)/r.height;
+      const cRowStep=0.10, cCardH=0.075, cRow0=0.33, tolF=cCardH/2;
+      for(let i=0;i<3;i++){
+        if(Math.abs(yF-(cRow0+i*cRowStep))<tolF){
+          const o=BONES_EXCHANGE[i];
+          if(PK.bones>=o.cost){ PK.bones-=o.cost; o.f(); beep(700,.06); toast(o.sub+" — DONE"); }
+          else beep(150,.1);
+          return;
+        }
+      }
+      if(Math.abs(yF-(cRow0+3*cRowStep))<0.04){ PK.convertOpen=false; beep(400,.05); }
+      return;
+    }
+    const px=e.clientX-r.left, py=e.clientY-r.top;
+    if(px>8 && px<118 && py>10 && py<40){ PK.convertOpen=true; beep(500,.05); return; }
     PK.joy={ox:e.clientX-r.left,oy:e.clientY-r.top,dx:0,dy:0};
     try{cv.setPointerCapture(e.pointerId);}catch(_){}
   });
