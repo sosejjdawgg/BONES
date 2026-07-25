@@ -97,11 +97,23 @@ function pkReveal(biscuits, xpFinal, mode){
         if(p2<1){ requestAnimationFrame(xpStep); return; }
         el.textContent=xpFinal+" XP"; el.classList.add("pop"); setTimeout(()=>el.classList.remove("pop"),160);
         beep(760,.09); setTimeout(()=>beep(1040,.12),110);
+        if(biscuits>0) setTimeout(()=>pkOfferGardenBury(biscuits),500);
       }
       requestAnimationFrame(xpStep);
     }, 300);
   }
   requestAnimationFrame(step);
+}
+function pkOfferGardenBury(biscuits){
+  $("#result").classList.remove("show");
+  openChoice("BONES LEFT OVER",
+    "YOU HAVE "+biscuits+" BONES LEFT OVER.<br><br>BURY THEM IN THE GARDEN FOR XP?",
+    "BURY THEM — +"+biscuits+" XP", ()=>{
+      addXP(biscuits); beep(700,.08); setTimeout(()=>beep(950,.09),100);
+      toast("+"+biscuits+" XP FROM THE GARDEN.");
+      $("#result").classList.add("show");
+    },
+    "LEAVE THEM", ()=>{ $("#result").classList.add("show"); });
 }
 let PARKGHOST=null;
 const FRIENDIMG = FRIENDFRAMES.map(u=>{ const i=new Image(); i.src=u; return i; });
