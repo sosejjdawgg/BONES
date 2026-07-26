@@ -105,8 +105,8 @@ function tickStats(dt){
   S.outTimer += dt;
   if(S.clean<70) SPONGE.rew=false;
   if(POOS.length){ S.mood=clamp(S.mood-0.025*POOS.length*dt,0,100); S.clean=clamp(S.clean-0.01*POOS.length*dt,0,100); }
-  if(S.outTimer>360 && POOS.length<3 && !R.active && !OUTING.active){
-    S.outTimer=120;
+  if(S.outTimer>150 && POOS.length<3 && !R.active && !OUTING.active){
+    S.outTimer=40;
     POOS.push({x:0.22+Math.random()*0.24});
     toast("BONES POOPED INDOORS \u2014 TAP TO PICK UP",1); beep(160,.15,"sawtooth",.03);
   }
@@ -1190,6 +1190,10 @@ function drawCam(t){
   ctx.fillStyle="#34343c"; ctx.fillRect(0,0,w,h);
   ctx.fillStyle="#2a2a31"; ctx.fillRect(0,h*0.82,w,h*0.18);
   const gy=h*0.82, u=h/42;
+  // shared bowl/bed layout — declared early so both the PULSE reticle (drawn now) and the
+  // actual bowl/bed sprites (drawn after BONES, so he can't visually cover them) agree on position
+  const bwlX=w*0.04, bwlW=u*4, bwlH=u*1.6, fbX=bwlX+bwlW+8;
+  const bx=fbX+bwlW+16, bw2=w*0.22, bh2=h*0.0425;
   ctx.strokeStyle="#fff"; ctx.lineWidth=3;
   ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(w,gy); ctx.stroke();
   ctx.strokeRect(w*0.72,h*0.14,w*0.18,h*0.20); // window
@@ -1208,46 +1212,12 @@ function drawCam(t){
     }
     ctx.strokeStyle="#fff"; ctx.lineWidth=3;
   }
-  // water bowl (blue) + food bowl (kibble chunks), both tappable
-  const bwlX=w*0.04, bwlW=u*4, bwlH=u*1.6;
-  if(BOWL.level>0.03){
-    ctx.fillStyle="#3b82f6";
-    ctx.fillRect(bwlX+3, gy-3-(bwlH-6)*BOWL.level, bwlW-6, (bwlH-6)*BOWL.level);
-  }
-  ctx.strokeStyle = ((BOWL.level<=0.05 && (S.thirst<40 || !S.firstWater)) && Math.floor(t*2)%2===0) ? "#f22" : "#fff";
-  ctx.strokeRect(bwlX, gy-bwlH, bwlW, bwlH);
-  const fbX=bwlX+bwlW+8;
-  if(FBOWL.level>0.03){
-    ctx.fillStyle="#8a5a2b";
-    const nCh=Math.round(FBOWL.level*8);
-    for(let i=0;i<nCh;i++){
-      const cxp=fbX+4+(i%4)*(bwlW-10)/3, cyp=gy-5-Math.floor(i/4)*(bwlH*0.35);
-      ctx.fillRect(cxp, cyp-3, 4, 4);
-    }
-  }
-  ctx.strokeStyle = ((FBOWL.level<=0.05 && (S.hunger<40 || !S.firstFood)) && Math.floor(t*2+1)%2===0) ? "#f22" : "#fff";
-  ctx.strokeRect(fbX, gy-bwlH, bwlW, bwlH);
-  ctx.strokeStyle="#fff";
   // memorial photo of the previous BONES (tappable)
   if(S.memorialSrc && MEMIMG && MEMIMG.complete){
     const mw2=w*0.11, mh2=mw2*1.25;
     ctx.strokeStyle="#fff"; ctx.lineWidth=3;
     ctx.strokeRect(w*0.14-3, h*0.15-3, mw2+6, mh2+6);
     ctx.drawImage(MEMIMG, w*0.14, h*0.15, mw2, mh2);
-  }
-  // dog bed (or the sad empty spot where one should be) — half height, tucked beside the bowls
-  const bx=fbX+bwlW+16, bw2=w*0.22, bh2=h*0.0425;
-  if(S.bedOwned){
-    ctx.fillStyle="#26262c"; ctx.fillRect(bx,gy-bh2,bw2,bh2);
-    ctx.strokeRect(bx,gy-bh2,bw2,bh2);
-    ctx.strokeRect(bx+4,gy-bh2+3,bw2-8,bh2-4);
-  } else {
-    const hint = (S.lvl>=2 || S.bedHinted) && Math.floor(t*2)%2===0;
-    ctx.save(); ctx.setLineDash([6,6]); ctx.strokeStyle=hint?"#f22":"#555"; ctx.lineWidth=2;
-    ctx.strokeRect(bx,gy-bh2,bw2,bh2); ctx.restore();
-    ctx.fillStyle="#555"; ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText("NO BED", bx+bw2/2, gy-bh2/2+2); ctx.textAlign="left";
-    ctx.strokeStyle="#fff"; ctx.lineWidth=3;
   }
   if(S.bedOwned && S.pup.owned){
     const bx3=w*0.83, bw3=w*0.13, bh3=h*0.05;
@@ -1361,6 +1331,42 @@ function drawCam(t){
     if(flip){ ctx.translate(dx*2+dw,0); ctx.scale(-1,1); }
     ctx.drawImage(img, dx, gy-dh+bob, dw, dh);
     ctx.restore();
+  }
+  // water bowl (blue) + food bowl (kibble chunks), both tappable — drawn on top of BONES so
+  // he never visually swallows them up when he dips down to drink/eat. an opaque backing
+  // fill first means an empty bowl still blocks him out instead of showing him through the rim.
+  ctx.fillStyle="#34343c"; ctx.fillRect(bwlX, gy-bwlH, bwlW, bwlH);
+  if(BOWL.level>0.03){
+    ctx.fillStyle="#3b82f6";
+    ctx.fillRect(bwlX+3, gy-3-(bwlH-6)*BOWL.level, bwlW-6, (bwlH-6)*BOWL.level);
+  }
+  ctx.strokeStyle = ((BOWL.level<=0.05 && (S.thirst<40 || !S.firstWater)) && Math.floor(t*2)%2===0) ? "#f22" : "#fff";
+  ctx.strokeRect(bwlX, gy-bwlH, bwlW, bwlH);
+  ctx.fillStyle="#34343c"; ctx.fillRect(fbX, gy-bwlH, bwlW, bwlH);
+  if(FBOWL.level>0.03){
+    ctx.fillStyle="#8a5a2b";
+    const nCh=Math.round(FBOWL.level*8);
+    for(let i=0;i<nCh;i++){
+      const cxp=fbX+4+(i%4)*(bwlW-10)/3, cyp=gy-5-Math.floor(i/4)*(bwlH*0.35);
+      ctx.fillRect(cxp, cyp-3, 4, 4);
+    }
+  }
+  ctx.strokeStyle = ((FBOWL.level<=0.05 && (S.hunger<40 || !S.firstFood)) && Math.floor(t*2+1)%2===0) ? "#f22" : "#fff";
+  ctx.strokeRect(fbX, gy-bwlH, bwlW, bwlH);
+  ctx.strokeStyle="#fff";
+  // dog bed (or the sad empty spot where one should be) — half height, tucked beside the bowls;
+  // also drawn on top of BONES so he can't visually cover it when he heads over to rest
+  if(S.bedOwned){
+    ctx.fillStyle="#26262c"; ctx.fillRect(bx,gy-bh2,bw2,bh2);
+    ctx.strokeRect(bx,gy-bh2,bw2,bh2);
+    ctx.strokeRect(bx+4,gy-bh2+3,bw2-8,bh2-4);
+  } else {
+    const hint = (S.lvl>=2 || S.bedHinted) && Math.floor(t*2)%2===0;
+    ctx.save(); ctx.setLineDash([6,6]); ctx.strokeStyle=hint?"#f22":"#555"; ctx.lineWidth=2;
+    ctx.strokeRect(bx,gy-bh2,bw2,bh2); ctx.restore();
+    ctx.fillStyle="#555"; ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText("NO BED", bx+bw2/2, gy-bh2/2+2); ctx.textAlign="left";
+    ctx.strokeStyle="#fff"; ctx.lineWidth=3;
   }
   if(CAM.woof>0 && stt==="bark"){
     const wx=Math.min(w-72,dx+dw*0.5), wy=gy-dh-32;
