@@ -305,17 +305,18 @@ function buyBed(){
   renderMeters(); renderSupplies();
 }
 const TODO_META=[
-  ["park","todoPark",'REACH LEVEL 5<br><span class="tiny">UNLOCKS THE DOGPARK</span>',"DOGPARK OPEN"],
-  ["work","todoWork",'GO TO WORK \u2014 KEEP AN EYE<br>ON BONES <span class="tiny">REWARD $25</span>',"+$25"],
   ["bowls","todoBowls",'REFILL BOTH OF HIS BOWLS<br><span class="tiny">WATER + FOOD \u2014 +$5</span>',"+$5"],
-  ["lvl5","todoLvl5",'TRAIN BONES TO LEVEL 15<br><span class="tiny">UNLOCKS COMPETITIONS</span>',"COMPETITIONS OPEN"],
   ["bed","todoBed",'BUY BONES A DOG BED<br><span class="tiny">PERFECT SLEEP</span>',"SWEET DREAMS"],
+  ["ball","todoBall",'GET BONES A BALL<br><span class="tiny">FETCH & TRICK SHOTS</span>',"GAME ON"],
+  ["work","todoWork",'GO TO WORK \u2014 KEEP AN EYE<br>ON BONES <span class="tiny">REWARD $25</span>',"+$25"],
+  ["park","todoPark",'TRAIN BONES TO LEVEL 5<br><span class="tiny">UNLOCKS THE DOGPARK</span>',"DOGPARK OPEN"],
+  ["lvl5","todoLvl5",'TRAIN BONES TO LEVEL 15<br><span class="tiny">UNLOCKS COMPETITIONS</span>',"COMPETITIONS OPEN"],
   ["d_happy","dHappy",'MAKE BONES HAPPY<br><span class="tiny">MOOD 90+ \u2014 50 XP</span>',"+50 XP",1],
-  ["d_nour","dNour",'NOURISH BONES<br><span class="tiny">WATER + FOOD \u2014 10 XP</span>',"+10 XP",1],
-  ["d_ball","dBall",'PLAY WITH THE BALL<br><span class="tiny">10 XP</span>',"+10 XP",1],
+  ["d_clean","dClean",'CLEAN BONES<br><span class="tiny">SPONGE HIM SPOTLESS \u2014 10 XP</span>',"+10 XP",1],
   ["d_park","dPark",'TAKE BONES TO THE PARK<br><span class="tiny">12 XP</span>',"+12 XP",1],
   ["d_bone","dBone",'ATTEMPT THE DAILY BONE<br><span class="tiny">12 XP</span>',"+12 XP",1],
-  ["d_clean","dClean",'CLEAN BONES<br><span class="tiny">SPONGE HIM SPOTLESS \u2014 10 XP</span>',"+10 XP",1],
+  ["d_nour","dNour",'NOURISH BONES<br><span class="tiny">WATER + FOOD \u2014 10 XP</span>',"+10 XP",1],
+  ["d_ball","dBall",'PLAY WITH THE BALL<br><span class="tiny">10 XP</span>',"+10 XP",1],
   ["j_wave3","jWave3",'SURVIVE UNTIL WAVE 3<br><span class="tiny">IN THE DOGPARK \u2014 40 XP</span>',"+40 XP",2],
   ["j_collar","jCollar",'BUY BONES A NEW COLLAR<br><span class="tiny">ANY CHARM \u2014 25 XP</span>',"+25 XP",2],
   ["j_trick","jTrick",'TEACH BONES A TRICK<br><span class="tiny">TAP HIM WHILE HE BEGS \u2014 25 XP</span>',"+25 XP",2],
@@ -338,7 +339,7 @@ function startersDone(){ return TODO_META.filter(m=>!m[4]).every(m=>S[m[1]]); }
 function renderTodo(){
   const bar=$("#todoBar"), list=$("#todoList");
   const jOpen=startersDone();
-  const n=TODO_META.reduce((a,m)=>a+((!S[m[1]] && (m[4]!==2||jOpen) && (m[4]!==3||S.pup.owned) && !(m[0]==="d_ball"&&!S.ballOwned))?1:0),0);
+  const n=TODO_META.reduce((a,m)=>a+((!S[m[1]] && (m[4]!==2||jOpen) && (m[4]!==3||S.pup.owned) && !(m[0]==="d_ball"&&!S.ballOwned) && !(m[0]==="lvl5"&&!S.todoPark))?1:0),0);
   bar.textContent = TODO_NEW.length ? "\u2605 TO-DO "+TODO_NEW.length+" READY!" : (n ? "\u25B8 TO-DO "+n+" LEFT" : "\u2713 TO-DO");
   bar.classList.toggle("pulse", TODO_NEW.length>0);
   let html="";
@@ -347,8 +348,10 @@ function renderTodo(){
     html+='<div class="prow claim" data-k="'+k+'"><span class="nm">\u2611 '+m[2]+'<br><b style="color:#f22">TAP TO CLAIM '+m[3]+'</b></span></div>';
   }
   const sect=t=>'<div class="tiny" style="color:#777;letter-spacing:2px;padding:4px 0">'+t+'</div>';
-  const rows=stage=>TODO_META.filter(m=>(m[4]||0)===stage && !S[m[1]] && !(m[0]==="d_ball" && !S.ballOwned)).map(m=>{
-    const btn = m[0]==="bed" ? '<button data-todo="bed" '+(S.money<25?"disabled":"")+'>BUY $25</button>' : "";
+  const rows=stage=>TODO_META.filter(m=>(m[4]||0)===stage && !S[m[1]] && !(m[0]==="d_ball" && !S.ballOwned) && !(m[0]==="lvl5" && !S.todoPark)).map(m=>{
+    const btn = m[0]==="bed" ? '<button data-todo="bed" '+(S.money<25?"disabled":"")+'>BUY $25</button>'
+      : m[0]==="ball" ? (S.lvl<2 ? '<button data-todo="ball">LOCKED</button>' : '<button data-todo="ball" '+(S.money<5?"disabled":"")+'>BUY $5</button>')
+      : "";
     return '<div class="prow"><span class="nm">\u2610 '+m[2]+'</span>'+btn+'</div>';
   }).join("");
   const st=rows(0), dl=rows(1), jr=rows(2);
@@ -2137,6 +2140,14 @@ function claimTodo(k,row){
 $("#todoList").addEventListener("click",e=>{
   const bt=e.target.closest("button");
   if(bt && bt.dataset.todo==="bed"){ buyBed(); renderTodo(); return; }
+  if(bt && bt.dataset.todo==="ball"){
+    if(S.lvl<2){ toast("A BALL UNLOCKS AT LV.2",1); return; }
+    if(S.ballOwned || S.money<5) return;
+    S.money-=5; S.ballOwned=true; BALL.x=0.28; BALL.y=0.795; BALL.vx=0; BALL.vy=0; BALL.off=false;
+    tickTodo("ball"); toast("A BALL! FLING IT — HE'LL BRING IT BACK."); beep(700,.07); setTimeout(()=>beep(950,.09),100);
+    renderMeters(); renderSupplies(); renderTodo();
+    return;
+  }
   const row=e.target.closest(".prow.claim");
   if(row) claimTodo(row.dataset.k,row);
 });
