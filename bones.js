@@ -37,7 +37,7 @@ const S = {
   streak:0, dayNeglected:false, sick:false, sickTimer:0, wellTimer:0,
   kibble:3, snacks:2, beach:false, compsToday:0,
   jWave3:false, jCollar:false, jTrick:false,
-  dHappy:false, dNour:false, dBall:false, dPark:false, dBone:false, dClean:false, dWater:false, dFood:false,
+  dHappy:false, dNour:false, dBall:false, dPark:false, dClean:false, dWater:false, dFood:false,
   hoopOwned:false, ballOwned:false, firstWater:false, firstFood:false, bedHinted:false,
   bedOwned:false, todoWork:false, todoLvl5:false, todoBed:false, todoPark:false, todoBall:false, todoBowls:false, twW:false, twF:false, todoHide:false, outTimer:0,
   lvl:1, xp:0, gen:1, senior:false, seniorDays:0, lifePathChosen:false, litter:false, memorialSrc:null, pendingStage:[]
@@ -86,7 +86,7 @@ function renderMeters(){
   const neg=S.money<0, mstr=(neg?"-$":"$")+Math.abs(S.money);
   for(const id of ["money1","money2"]){ const el=$("#"+id); el.textContent=mstr; el.style.color=neg?"#f22":"#fff"; }
   $("#clock").textContent = "DAY "+CLK.day+" "+String(Math.floor(CLK.h)).padStart(2,"0")+":00";
-  $("#bests").textContent = "STREAK "+S.streak+"d  \u2022  BEST DAILY "+S.bestDaily+" / FREE "+S.bestPractice;
+  $("#bests").textContent = "STREAK "+S.streak+"d";
 }
 
 /* ---------- stats sim ---------- */
@@ -126,7 +126,7 @@ function tickStats(dt){
     } else { if(S.streak>0) toast("STREAK BROKEN \u2014 BONES WAS NEGLECTED"); S.streak=0; }
     S.dayNeglected=false;
     S.compsToday=0;
-    for(const k of ["dHappy","dNour","dBall","dPark","dBone","dClean","dWater","dFood","pFeed","pPlay","pPet"]) S[k]=false;
+    for(const k of ["dHappy","dNour","dBall","dPark","dClean","dWater","dFood","pFeed","pPlay","pPet"]) S[k]=false;
     TODO_NEW=TODO_NEW.filter(k=>!k.startsWith("d_"));   // unclaimed daily rewards expire
     renderTodo();
     if(S.senior){ S.seniorDays++; if(S.seniorDays===5) setTimeout(startGoodbye,800); }
@@ -314,7 +314,6 @@ const TODO_META=[
   ["d_happy","dHappy",'MAKE BONES HAPPY<br><span class="tiny">MOOD 90+ \u2014 50 XP</span>',"+50 XP",1],
   ["d_clean","dClean",'CLEAN BONES<br><span class="tiny">SPONGE HIM SPOTLESS \u2014 10 XP</span>',"+10 XP",1],
   ["d_park","dPark",'TAKE BONES TO THE PARK<br><span class="tiny">12 XP</span>',"+12 XP",1],
-  ["d_bone","dBone",'ATTEMPT THE DAILY BONE<br><span class="tiny">12 XP</span>',"+12 XP",1],
   ["d_nour","dNour",'NOURISH BONES<br><span class="tiny">WATER + FOOD \u2014 10 XP</span>',"+10 XP",1],
   ["d_ball","dBall",'PLAY WITH THE BALL<br><span class="tiny">10 XP</span>',"+10 XP",1],
   ["j_wave3","jWave3",'SURVIVE UNTIL WAVE 3<br><span class="tiny">IN THE DOGPARK \u2014 40 XP</span>',"+40 XP",2],
@@ -2066,7 +2065,6 @@ $("#suppliesList").addEventListener("click",e=>{
 function renderGoOut(){
   const rows=[];
   rows.push('<div class="prow"><span class="nm">&#9830; STAMPING PLANT<br><span class="tiny">EARN MONEY</span></span><button data-go="work">GO</button></div>');
-  rows.push('<div class="prow" style="border-color:#f22"><span class="nm" style="color:#f22">&#9733; THE DAILY BONE<br><span class="tiny">1 ATTEMPT / RANKED</span></span><button data-go="daily" class="red">GO</button></div>');
   const compL=S.lvl<15, beachL=S.lvl<9, litL=S.lvl<18;
   rows.push('<div class="prow'+(compL?" locked":"")+'"><span class="nm">&#9733; DOG COMPETITION<br><span class="tiny">'+(compL?"UNLOCKS LV.15":"PRIZE MONEY \u2014 "+(3-S.compsToday)+"/3 TODAY")+'</span></span><button data-go="comp" '+(compL?"disabled":"")+'>ENTER</button></div>');
   const agiL=S.lvl<8;
@@ -2080,7 +2078,6 @@ $("#gooutList").addEventListener("click",e=>{
   const g=t.dataset.go;
   $("#goout").classList.remove("show");
   if(g==="work") enterWork();
-  if(g==="daily") openDailyPick();
   if(g==="comp") openPre("comp");
   if(g==="agility"){
     if(S.energy<20) return toast("BONES IS TOO TIRED TO TRAIN",1);
@@ -2123,7 +2120,7 @@ $("#todoBar").onclick=()=>{
 function todoReward(k){
   ({work:()=>S.money+=25, bowls:()=>S.money+=5,
     d_happy:()=>addXP(50), d_nour:()=>addXP(10), d_ball:()=>addXP(10),
-    d_park:()=>addXP(12), d_bone:()=>addXP(12), d_clean:()=>addXP(10),
+    d_park:()=>addXP(12), d_clean:()=>addXP(10),
     j_wave3:()=>addXP(40), j_collar:()=>addXP(25), j_trick:()=>addXP(25),
     p_feed:()=>pupAddXP(8), p_play:()=>pupAddXP(10), p_pet:()=>pupAddXP(6)}[k]||(()=>{}))();
 }
@@ -2151,15 +2148,6 @@ $("#todoList").addEventListener("click",e=>{
   const row=e.target.closest(".prow.claim");
   if(row) claimTodo(row.dataset.k,row);
 });
-const BOARD=[{n:"MATILDA",s:2140},{n:"JAYNATHON",s:1870},{n:"JAXEPH",s:1420}];
-function openDailyPick(){
-  const rows=[...BOARD,{n:"YOU",s:S.bestDaily,me:1}].sort((a,b)=>b.s-a.s);
-  $("#dpBoard").innerHTML="LOCAL LEADERBOARD<br><br>"+rows.map((r,i)=>(i+1)+". "+(r.me?'<span style="color:#f22">':'')+r.n+" \u2014 "+r.s+(r.me?"</span>":"")).join("<br>");
-  $("#dailyPick").classList.add("show");
-}
-$("#dpRanked").onclick=()=>{ $("#dailyPick").classList.remove("show"); openPre("daily"); };
-$("#dpPractice").onclick=()=>{ $("#dailyPick").classList.remove("show"); openPre("practice"); };
-$("#dpClose").onclick=()=>$("#dailyPick").classList.remove("show");
 function renderDogSel(){
   const el=$("#dogSel"), sec=$("#dogSelSect");
   if(!el) return;
