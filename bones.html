@@ -73,6 +73,10 @@ button.red:active{background:#f22;color:#000}
 #resRow{display:flex;align-items:flex-end;gap:14px;justify-content:center}
 #resPileWrap{display:flex;flex-direction:column;align-items:center;gap:6px}
 #revealcv{border:3px solid #fff;background:#000;width:130px;height:130px;image-rendering:pixelated}
+#bedtimeImg{width:170px;height:170px;object-fit:cover;object-position:top;border:3px solid #fff;background:#000;image-rendering:pixelated}
+#bedtimeBtns{display:flex;gap:10px;opacity:0;pointer-events:none;transition:opacity .5s}
+#bedtimeBtns.ready{opacity:1;pointer-events:auto}
+#bedtimeBtns button{font-size:9px;line-height:1.7}
 
 /* CAM ACTION STRIP + HOVER STATUS BUBBLE */
 #camActions{position:absolute;left:6px;bottom:6px;z-index:4;display:flex;gap:6px}
@@ -270,7 +274,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.36a</span>
+          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.38a</span>
         </div>
       </div>
 
@@ -442,6 +446,17 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div class="lines" id="resLines"></div>
         <button id="bResHome" style="font-size:11px;padding:12px 22px">BACK HOME</button>
+      </div>
+
+      <!-- BEDTIME -->
+      <div id="bedtimePanel" class="overpanel">
+        <h2 style="color:#f22">BONES MUST SLEEP NOW</h2>
+        <img id="bedtimeImg" alt="BONES SLEEPING">
+        <div class="lines" id="bedtimeLines">HIS EYES ARE HEAVY... TIME FOR BED.</div>
+        <div id="bedtimeBtns">
+          <button id="bBedWork">GO TO WORK<br><span class="tiny">EARN CASH WHILE HE RESTS</span></button>
+          <button id="bBedSkip">SKIP TO 06:00</button>
+        </div>
       </div>
     </div>
   </div>

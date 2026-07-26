@@ -97,7 +97,7 @@ function tickStats(dt){
   S.thirst = clamp(S.thirst - 0.30*nm*dt, 0, 100);
   S.clean  = clamp(S.clean  - 0.09*nm*dt, 0, 100);
   S.fun    = clamp(S.fun    - 0.15*nm*dt, 0, 100);
-  const resting = CAM.state==="rest";
+  const resting = CAM.state==="rest" || CAM.state==="bedsleep";
   S.energy = clamp(S.energy + (resting?2.4:(MODE==="home"?0.10:-0.02))*dt, 0, 100);
   const target=(S.hunger+S.thirst+S.energy+S.clean+S.fun)/5;
   S.mood = clamp(S.mood + (target-S.mood)*0.05*dt - (m.moodDrain?0.15*dt:0), 0, 100);
@@ -119,6 +119,7 @@ function tickStats(dt){
   CLK.h += dt/10;
   if(CLK.h>=24){
     CLK.h-=24; CLK.day++;
+    SLEEP.pending=true;
     if(!S.dayNeglected){
       S.streak++; S.money+=5; addXP(25);
       toast("GOOD CARE STREAK: "+S.streak+" DAY"+(S.streak>1?"S":"")+" \u2014 +$5"); beep(760,.08); setTimeout(()=>beep(980,.08),100);
@@ -787,6 +788,7 @@ function pupTick(dt){
 }
 const PET = { left:6, timer:0, lp:0, px:0, py:0, stroked:false, heat:0, down:false };
 const CLK = { h:8, day:1 };
+const SLEEP = { pending:false, active:false };
 const FLY = { active:false, x:0, y:0.45, dir:1, t:0, next:35+Math.random()*50 };
 const BALL = { x:0.28, y:0.795, vx:0, vy:0, held:false, tx:0, ty:0, cool:0, off:false, offSide:1, carried:false, pcarried:false, carryT:0 };
 const HP = []; let heartNext=0;
@@ -1179,11 +1181,9 @@ function camBehavior(dt){
   }
 }
 function nightAmount(){
-  // darkest at 0-4h & 22-24h, fully bright 8-18h, smooth transitions
+  // bright all day, dims through the 23:00 hour, fully dark right at midnight (bedtime)
   const h=CLK.h;
-  const d = Math.min(Math.abs(h-3), Math.abs(h-27), Math.abs(h-3-24));
-  const n = clamp(1 - d/9, 0, 1);
-  return h>18||h<8 ? clamp(n,0.15,0.62) : 0;
+  return h<23 ? 0 : clamp(h-23,0,1);
 }
 function drawCam(t){
   const [ctx,w,h]=fit($("#dogcv"));
@@ -1310,12 +1310,12 @@ function drawCam(t){
     }
   }
   const stt=CAM.state;
-  const fkey = stt==="zoomies" ? "come" : stt==="chase" ? "come" : stt==="fetch" ? (CAM.fetchPhase===4?"idle":"come") : (stt==="drinkgo"||stt==="eatgo"||stt==="beggo") ? "walk" : (stt==="drink"||stt==="eat") ? "sniff" : stt==="beg" ? "idle" : stt==="wash" ? (WASH.heat>0.05?"shake":"idle") : stt;
+  const fkey = stt==="zoomies" ? "come" : stt==="chase" ? "come" : stt==="fetch" ? (CAM.fetchPhase===4?"idle":"come") : (stt==="drinkgo"||stt==="eatgo"||stt==="beggo") ? "walk" : (stt==="drink"||stt==="eat") ? "sniff" : stt==="beg" ? "idle" : stt==="wash" ? (WASH.heat>0.05?"shake":"idle") : stt==="bedsleep" ? "rest" : stt;
   let frames = DOGIMG[fkey] || DOGIMG.idle;
   if(S.senior && (fkey==="walk"||fkey==="idle"||fkey==="sniff"||fkey==="come")) frames=SENIORIMG;
   if(stt==="beg"||stt==="begwait"||stt==="stay") frames=BEGIMG;
   const img = frames[CAM.fi % frames.length];
-  const dhF = stt==="rest"?0.28 : stt==="stay"?0.46 : stt==="catch"?0.52 : stt==="bark"?0.46 : (stt==="come"||stt==="chase"||stt==="fetch"||stt==="zoomies")?0.46 : 0.44;
+  const dhF = (stt==="rest"||stt==="bedsleep")?0.28 : stt==="stay"?0.46 : stt==="catch"?0.52 : stt==="bark"?0.46 : (stt==="come"||stt==="chase"||stt==="fetch"||stt==="zoomies")?0.46 : 0.44;
   let scl = stageScale(Math.min(XPANIM.lvl,S.lvl));   // growth only through the ceremony
   if(EVO.active){
     const et=EVO.t-1.0;
@@ -1550,6 +1550,35 @@ function leaveWork(){
   W.run=false;
   transition("DRIVING HOME",()=>{ showScreen("home"); renderMeters(); renderShop(); });
 }
+
+/* ---------- bedtime: forced nightly sleep at midnight ---------- */
+function triggerBedtime(){
+  SLEEP.active=true;
+  hidePortrait(); closeStatus();
+  CAM.state="bedsleep"; CAM.fi=0; CAM.t=0; CAM.until=99;
+  const img=$("#bedtimeImg");
+  img.src=SLEEPFRAMES[0];
+  $("#bedtimeLines").textContent="HIS EYES ARE HEAVY... TIME FOR BED.";
+  $("#bedtimeBtns").classList.remove("ready");
+  $("#bedtimePanel").classList.add("show");
+  beep(220,.25,"sawtooth");
+  setTimeout(()=>{ img.src=SLEEPFRAMES[1]; $("#bedtimeLines").textContent="HE'S FAST ASLEEP."; beep(180,.3,"sine"); },1400);
+  setTimeout(()=>{ $("#bedtimeBtns").classList.add("ready"); },2200);
+}
+function closeBedtime(){
+  $("#bedtimePanel").classList.remove("show");
+  SLEEP.active=false;
+}
+function skipToMorning(){
+  let remaining=(6-CLK.h)*10;
+  while(remaining>0){ const step=Math.min(1,remaining); tickStats(step); remaining-=step; }
+  CAM.state="idle"; CAM.fi=0; CAM.until=1;
+  renderMeters(); renderTodo();
+  toast("MORNING — 06:00. BONES IS UP.");
+  beep(660,.1); setTimeout(()=>beep(880,.1),120);
+}
+$("#bBedWork").onclick=()=>{ closeBedtime(); enterWork(); };
+$("#bBedSkip").onclick=()=>{ closeBedtime(); skipToMorning(); };
 function drawSym(ctx,sym,cx,cy,r,col){
   ctx.strokeStyle=col; ctx.fillStyle=col; ctx.lineWidth=3;
   if(sym==="circle"){ ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.stroke(); }
@@ -2398,6 +2427,9 @@ function loop(now){
   meterAcc+=dt;
   if(meterAcc>0.5){ meterAcc=0; renderMeters(); }
   if(!$("#game").classList.contains("hidden")){
+    if(SLEEP.pending && !SLEEP.active && MODE==="home" && !R.active && !PK.active && !OUTING.active){
+      SLEEP.pending=false; triggerBedtime();
+    }
     if(!R.active && !PK.active){ camBehavior(dt); pupTick(dt); }
     if(MODE==="park" && PK.active){ parkUpdate(dt); parkDraw(t); }
     else drawCam(t);
