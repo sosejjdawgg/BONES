@@ -65,8 +65,10 @@ button.red:active{background:#f22;color:#000}
 #portrait span.red{border-color:#f22;color:#f22}
 #preSavage{display:none;height:34%;max-height:170px;border:3px solid #f22;image-rendering:pixelated}
 #preSavage.show{display:block}
-#resPortrait{display:none;height:130px;width:auto;border:3px solid #fff;image-rendering:pixelated;transition:transform .1s ease}
-#resPortrait.show{display:block}
+#resPortraitWrap{display:none;position:relative;width:130px;height:130px;border:3px solid #fff;background:#000}
+#resPortraitWrap.show{display:block}
+#resPortrait{width:100%;height:100%;object-fit:contain;image-rendering:pixelated;transition:transform .1s ease}
+#resDrool{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
 #resScore{transition:transform .15s ease}
 #resScore.pop{transform:scale(1.18)}
 #resRow{display:flex;align-items:flex-end;gap:14px;justify-content:center}
@@ -269,7 +271,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.34a</span>
+          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.35a</span>
         </div>
       </div>
 
@@ -431,7 +433,10 @@ body.reduce-motion *{animation:none!important}
       <div id="result" class="overpanel">
         <h2 id="resTitle">RUN OVER</h2>
         <div id="resRow">
-          <img id="resPortrait" alt="BONES">
+          <div id="resPortraitWrap">
+            <img id="resPortrait" alt="BONES">
+            <canvas id="resDrool" width="130" height="130"></canvas>
+          </div>
           <div id="resPileWrap">
             <canvas id="revealcv" width="130" height="130"></canvas>
             <div class="big" id="resScore">0</div>

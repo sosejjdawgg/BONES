@@ -55,8 +55,32 @@ function pkFanfare(label,big,rawText){
 // end-of-run reveal: bones fall from above into a growing pile while the counter climbs, then
 // a separate XP count-up. On a clean bank the portrait climbs from CONTENT to HAPPY as the pile
 // grows — reusing the existing portrait art rather than needing new "excited dog" frames.
+function drawDrool(ctx,W,H,frac,t){
+  ctx.clearRect(0,0,W,H);
+  if(frac<=0.02) return;
+  ctx.save();
+  const mx=W*0.47, my=H*0.75;
+  const streams = frac<0.34?1:(frac<0.7?2:3);
+  const baseLen = 4+frac*22;
+  for(let s=0;s<streams;s++){
+    const xOff=(s-(streams-1)/2)*7;
+    const speed=0.55+frac*0.9, period=1.7/speed;
+    const phase=((t/period)+s*0.37)%1;
+    const grad=ctx.createLinearGradient(mx+xOff,my,mx+xOff,my+baseLen);
+    grad.addColorStop(0,"rgba(225,240,255,0.85)"); grad.addColorStop(1,"rgba(225,240,255,0)");
+    ctx.fillStyle=grad;
+    ctx.beginPath(); ctx.ellipse(mx+xOff,my+baseLen*0.5,2.2,baseLen*0.55,0,0,Math.PI*2); ctx.fill();
+    const dropY=my+baseLen*0.3+phase*(H-my-baseLen*0.3);
+    const dropAlpha=frac*(1-phase*0.55);
+    ctx.fillStyle="rgba(220,235,255,"+Math.max(0,dropAlpha).toFixed(2)+")";
+    ctx.beginPath(); ctx.ellipse(mx+xOff,dropY,2,3.4,0,0,Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+}
 function pkReveal(biscuits, xpFinal, mode){
   const cv=$("#revealcv"), ctx=cv.getContext("2d"), el=$("#resScore");
+  const dcv=$("#resDrool"), dctx=dcv.getContext("2d"), DW=dcv.width, DH=dcv.height;
+  dctx.clearRect(0,0,DW,DH);
   const W=cv.width, H=cv.height;
   const cap=Math.min(biscuits,36);                        // animate at most 36 icons; the counter still shows the true total
   const perCol=6, colW=(W-24)/perCol;
@@ -80,10 +104,12 @@ function pkReveal(biscuits, xpFinal, mode){
     const elapsed=(now-start)/1000;
     drawPile(elapsed);
     const frac=Math.min(1, elapsed/pileDur);
-    el.textContent = Math.round(biscuits*frac)+" BONES";
+    const shown=Math.round(biscuits*frac);
+    el.textContent = shown+" BONES";
     if(mode==="bank"){
       $("#resPortrait").src = frac>0.55 ? PORTRAITS.happy : PORTRAITS.content;
       $("#resPortrait").style.transform = "scale("+(1+0.05*frac*Math.abs(Math.sin(elapsed*9)))+")";
+      drawDrool(dctx,DW,DH, Math.min(1,shown/200), now/1000);
     }
     if(frac<1){ requestAnimationFrame(step); return; }
     el.textContent=biscuits+" BONES";
@@ -93,14 +119,21 @@ function pkReveal(biscuits, xpFinal, mode){
       function xpStep(now2){
         const p2=Math.min(1,(now2-xpStart)/700);
         el.textContent = Math.round(xpFinal*p2)+" XP";
+        if(mode==="bank") drawDrool(dctx,DW,DH, Math.min(1,biscuits/200), now2/1000);
         if(Math.random()<0.4) beep(600+p2*400,.02,"square",.015);
         if(p2<1){ requestAnimationFrame(xpStep); return; }
         el.textContent=xpFinal+" XP"; el.classList.add("pop"); setTimeout(()=>el.classList.remove("pop"),160);
         beep(760,.09); setTimeout(()=>beep(1040,.12),110);
+        if(mode==="bank") requestAnimationFrame(idleDrool);
         if(biscuits>0) setTimeout(()=>pkOfferGardenBury(biscuits),500);
       }
       requestAnimationFrame(xpStep);
     }, 300);
+  }
+  function idleDrool(now3){
+    if(!$("#result").classList.contains("show")) return;
+    drawDrool(dctx,DW,DH, Math.min(1,biscuits/200), now3/1000);
+    requestAnimationFrame(idleDrool);
   }
   requestAnimationFrame(step);
 }
@@ -617,7 +650,7 @@ function pkDeath(){
   if(earned>0) addXP(earned);
   pkExitCosts(); S.fun=clamp(S.fun+10,0,100);
   $("#resTitle").textContent="OVERRUN AT THE PARK"; $("#resTitle").style.color="#f22";
-  $("#resPortrait").src=PORTRAITS.sad; $("#resPortrait").classList.add("show");
+  $("#resPortrait").src=PORTRAITS.sad; $("#resPortraitWrap").classList.add("show");
   $("#resScore").textContent=kept+" BONES";
   $("#resLines").innerHTML="90% OF HIS BONES ("+lost+") LIE WHERE HE FELL.<br>"+PK.kills+" DOWNED, "+PK.sideDone+" SIDE OBJECTIVES \u2014 "+earned+" XP MADE IT HOME.<br>NEXT VISIT: GO CLAIM THE REST \u2014 IF YOU DARE.";
   $("#result").classList.add("show");
@@ -633,7 +666,7 @@ function pkBank(){
   pkExitCosts(); S.fun=clamp(S.fun+20,0,100); S.mood=clamp(S.mood+8,0,100);
   $("#resTitle").textContent="XP BANKED"; $("#resTitle").style.color="#fff";
   $("#resPortrait").src = PORTRAITS.content;   // pkReveal takes it from here, building to HAPPY as the pile grows
-  $("#resPortrait").classList.add("show");
+  $("#resPortraitWrap").classList.add("show");
   $("#resScore").textContent=g+" BONES";
   $("#resLines").innerHTML="WAVE "+PK.wave+" REACHED.<br>"+PK.kills+" DOWNED, "+PK.sideDone+" SIDE OBJECTIVES.<br>A GOOD DAY AT THE PARK.";
   $("#result").classList.add("show");

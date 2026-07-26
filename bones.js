@@ -1700,7 +1700,7 @@ function startRun(mode){
 function endRun(success,msg){
   msg=DN(msg);
   R.active=false;
-  $("#resPortrait").classList.remove("show");
+  $("#resPortraitWrap").classList.remove("show");
   let compPrize=0;
   const daily=R.mode==="daily";
   let score=0;
