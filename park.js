@@ -353,7 +353,7 @@ function pkSpawnBirdGroup(){
   const cx=(PK.x+Math.cos(ang)*R+WW)%WW, cy=(PK.y+Math.sin(ang)*R+WH)%WH;
   const n=3+Math.floor(Math.random()*2);
   for(let i=0;i<n;i++){
-    const ox=(Math.random()-0.5)*26, oy=(Math.random()-0.5)*18;
+    const ox=(Math.random()-0.5)*40, oy=(Math.random()-0.5)*30;
     PK.en.push({t:"bird", standing:true, x:(cx+ox+WW)%WW, y:(cy+oy+WH)%WH,
       hp:1, hpMax:1, small:true, sp:0, ph:Math.random()*6, kx:0, ky:0, dir:Math.random()<0.5?-1:1, fi:0, ft:0});
   }
@@ -423,13 +423,13 @@ function pkSpawnZombieCats(n){
 // a uniform spawn interval.
 function pkWaveBaseQuota(wv){
   if(wv===8) return LASER_SQUAD_SIZE;   // boss stage: exactly the laser squad, no filler trash
-  if(wv===1) return 12;   // ~3-4 roosts of 3-4 birds each
-  if(wv===2) return 5;    // dozing sentries \u2014 the once-per-wave flock adds its own 10-20 on top
-  if(wv===3) return 18;   // ~3 ambush bursts of 5-7
-  if(wv===4) return 8;    // ~2 formation squads of 3-4
-  if(wv===5) return 21;   // ~6 zombie-cat swarms of 3-4
+  if(wv===1) return 24;   // ~6-8 roosts of 3-4 birds each (doubled)
+  if(wv===2) return 10;   // dozing sentries \u2014 the once-per-wave flock adds its own 10-20 on top (doubled)
+  if(wv===3) return 36;   // ~6 ambush bursts of 5-7 (doubled)
+  if(wv===4) return 16;   // ~4 formation squads of 3-4 (doubled)
+  if(wv===5) return 42;   // ~12 zombie-cat swarms of 3-4 (doubled)
   const interval=Math.max(0.35,1.4-wv*0.09);
-  return Math.round(20/interval);
+  return Math.round(40/interval);   // doubled
 }
 const WAVE_LEN_MULT=1.3;   // every wave runs 30% longer than its base target
 function pkWaveQuota(wv){
@@ -559,7 +559,7 @@ function parkUpdate(dt){
     toast(waveLabel);
     PK.waveBanner={text:waveLabel, life:2.2, max:2.2};
     beep(500,.08);
-    if(PK.wave===2){ pkSpawnSentrySquirrels(5); PK.waveSpawned+=5; }
+    if(PK.wave===2){ pkSpawnSentrySquirrels(10); PK.waveSpawned+=10; }
     if(PK.wave===8){ pkSpawnLaserSquad(); PK.waveSpawned+=LASER_SQUAD_SIZE; }
     pkShopOpen();
   }
@@ -630,7 +630,8 @@ function parkUpdate(dt){
       e.x=(e.x+e.spookVx*dt+WW)%WW; e.y=(e.y+e.spookVy*dt+WH)%WH;
       e.dir = e.spookVx<0 ? -1 : 1;
       e.ft+=dt; if(e.ft>0.1){ e.ft=0; e.fi++; }
-      if(e.spookT>SPOOK_LIFE){ PK.en.splice(i,1); continue; }   // got away clean — doesn't block the wave
+      // settles back down instead of vanishing — stays in the world, ready to spook again if approached
+      if(e.spookT>SPOOK_LIFE){ e.spooked=false; e.standing=true; e.spookVx=0; e.spookVy=0; }
       continue;
     }
     // WAVE 2 — a dozing sentry squirrel: stays put until BONES wanders close, then wakes
@@ -1231,6 +1232,12 @@ function pkPadDraw(t){
   ctx.fillText("WAVE "+PK.wave, w-55, 23);
   ctx.font="6px 'Press Start 2P',monospace";
   ctx.fillText(leftToClear+" LEFT", w-55, 34);
+  const waveTotal=Math.max(1,PK.waveQuota), wavePct=clamp(Math.round((1-leftToClear/waveTotal)*100),0,100);
+  ctx.fillStyle="#fff"; ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="center";
+  ctx.fillText(wavePct+"% CLEAR", w-55, 51);
+  ctx.strokeStyle="#666"; ctx.lineWidth=1; ctx.strokeRect(w-100,54,90,8);
+  ctx.fillStyle="#4a9"; ctx.fillRect(w-99,55,88*wavePct/100,6);
+  ctx.textAlign="left";
   if(PK.starT>0){
     const bw=Math.min(140,w*0.55), bx=w/2-bw/2;
     ctx.fillStyle="rgba(255,217,74,.18)"; ctx.fillRect(bx,44,bw,18);
