@@ -38,8 +38,8 @@ const S = {
   kibble:3, snacks:2, beach:false, compsToday:0,
   jWave3:false, jCollar:false, jTrick:false,
   dHappy:false, dNour:false, dBall:false, dPark:false, dClean:false, dWater:false, dFood:false,
-  hoopOwned:false, ballOwned:false, shampooOwned:false, firstWater:false, firstFood:false, bedHinted:false,
-  bedOwned:false, todoWork:false, todoLvl5:false, todoBed:false, todoPark:false, todoBall:false, todoBowls:false, twW:false, twF:false, todoHide:false, outTimer:0,
+  hoopOwned:false, ballOwned:false, shampooOwned:false, shampooPct:0, firstWater:false, firstFood:false, bedHinted:false,
+  bedTier:0, todoWork:false, todoLvl5:false, todoBed:false, todoPark:false, todoBall:false, todoBowls:false, twW:false, twF:false, todoHide:false, outTimer:0,
   lvl:1, xp:0, gen:1, senior:false, seniorDays:0, lifePathChosen:false, litter:false, memorialSrc:null, pendingStage:[]
 };
 const SETTINGS = { sound:true, reduceMotion:false };
@@ -98,7 +98,8 @@ function tickStats(dt){
   S.clean  = clamp(S.clean  - 0.09*nm*dt, 0, 100);
   S.fun    = clamp(S.fun    - 0.15*nm*dt, 0, 100);
   const resting = CAM.state==="rest" || CAM.state==="bedsleep";
-  S.energy = clamp(S.energy + (resting?2.4:(MODE==="home"?0.10:-0.02))*dt, 0, 100);
+  const energyCap = resting ? (bedAdequate()?100:70) : 100;
+  S.energy = clamp(S.energy + (resting?2.4:(MODE==="home"?0.10:-0.02))*dt, 0, energyCap);
   const target=(S.hunger+S.thirst+S.energy+S.clean+S.fun)/5;
   S.mood = clamp(S.mood + (target-S.mood)*0.05*dt - (m.moodDrain?0.15*dt:0), 0, 100);
   S.petCd = Math.max(0, S.petCd-dt);
@@ -107,7 +108,8 @@ function tickStats(dt){
   if(POOS.length){ S.mood=clamp(S.mood-0.025*POOS.length*dt,0,100); S.clean=clamp(S.clean-0.01*POOS.length*dt,0,100); }
   if(S.outTimer>150 && POOS.length<3 && !R.active && !OUTING.active){
     S.outTimer=40;
-    POOS.push({x:0.22+Math.random()*0.24});
+    const cv=$("#dogcv"), br=bedRect(cv.clientWidth,cv.clientHeight);   // lands right on the bed spot \u2014 an inadequate bed means a rough night
+    POOS.push({x:(br.bx+Math.random()*br.bw2)/cv.clientWidth});
     toast("BONES POOPED INDOORS \u2014 TAP TO PICK UP",1); beep(160,.15,"sawtooth",.03);
   }
   // 24h game clock: 10 real seconds = 1 game hour (1 day = 4 min)
@@ -171,6 +173,52 @@ function NAME(){ return (S.dogName||"BONES")+(S.gen>1?[" II"," III"," IV"," V","
 function DN(s){ return (S.dogName && S.dogName!=="BONES") ? String(s).replace(/BONES/g,S.dogName) : s; }
 function stageName(l){ const v=l===undefined?S.lvl:l; return v<10?"PUPPY":v<25?"JUNIOR":(S.senior?"SENIOR":"PRIME"); }
 function stageScale(l){ const v=l===undefined?S.lvl:l; return v<10?0.5:v<25?0.82:(S.senior?0.94:1); }
+/* ---------- dog bed: sized to match BONES' current growth stage ---------- */
+function dogStageIdx(){ return S.lvl<10?1:(S.lvl<25?2:3); }
+function bedAdequate(){ return S.bedTier>=dogStageIdx(); }
+function bedTierName(n){ return ["NONE","PUPPY BED","MEDIUM BED","LARGE BED"][n]||"NONE"; }
+function bedRect(w,h){
+  const u=h/42, bwlX=w*0.04, bwlW=u*4, fbX=bwlX+bwlW+8;
+  const bx=fbX+bwlW+16;
+  const sizeTier = S.bedTier>0 ? S.bedTier : dogStageIdx();  // the "no bed" outline hints the size he actually needs
+  const bw2=w*(0.15+0.065*(sizeTier-1)), bh2=h*(0.030+0.012*(sizeTier-1));
+  return {bx,bw2,bh2};
+}
+function drawDogBed(ctx,bx,gy,bw2,bh2,t,owned,adequate){
+  if(!owned){
+    const hint=(S.lvl>=2||S.bedHinted)&&Math.floor(t*2)%2===0;
+    ctx.save(); ctx.setLineDash([6,6]); ctx.strokeStyle=hint?"#f22":"#555"; ctx.lineWidth=2;
+    ctx.strokeRect(bx,gy-bh2,bw2,bh2); ctx.restore();
+    ctx.fillStyle="#555"; ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText("NO BED", bx+bw2/2, gy-bh2/2+2); ctx.textAlign="left";
+    ctx.strokeStyle="#fff"; ctx.lineWidth=3;
+    return;
+  }
+  // puffy bolster rim, warm tones, sunken cushion — a proper cozy pet bed instead of a plain box
+  const rim=Math.max(3,bh2*0.24);
+  ctx.fillStyle="#6b4a34";
+  ctx.beginPath();
+  ctx.moveTo(bx+rim,gy-bh2); ctx.lineTo(bx+bw2-rim,gy-bh2);
+  ctx.quadraticCurveTo(bx+bw2,gy-bh2,bx+bw2,gy-bh2+rim);
+  ctx.lineTo(bx+bw2,gy-rim); ctx.quadraticCurveTo(bx+bw2,gy,bx+bw2-rim,gy);
+  ctx.lineTo(bx+rim,gy); ctx.quadraticCurveTo(bx,gy,bx,gy-rim);
+  ctx.lineTo(bx,gy-bh2+rim); ctx.quadraticCurveTo(bx,gy-bh2,bx+rim,gy-bh2);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.stroke();
+  ctx.fillStyle="#c99a6b";
+  ctx.fillRect(bx+rim*1.4, gy-bh2+rim*1.4, bw2-rim*2.8, bh2-rim*2.2);
+  ctx.strokeStyle="#7a5638"; ctx.lineWidth=1;
+  ctx.strokeRect(bx+rim*1.4, gy-bh2+rim*1.4, bw2-rim*2.8, bh2-rim*2.2);
+  ctx.strokeStyle="rgba(122,86,56,.6)"; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(bx+bw2*0.32,gy-bh2*0.28); ctx.quadraticCurveTo(bx+bw2*0.5,gy-bh2*0.05,bx+bw2*0.68,gy-bh2*0.28); ctx.stroke();
+  ctx.strokeStyle="#fff"; ctx.lineWidth=3;
+  if(!adequate){
+    ctx.fillStyle = Math.floor(t*2)%2 ? "#f22" : "#fff";
+    ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText("TOO SMALL", bx+bw2/2, gy-bh2-6);
+    ctx.textAlign="left";
+  }
+}
 const LVLREWARDS={2:"SPIKED COLLAR IN SHOP",5:"RED BANDANA IN SHOP",7:"BRASS BELL IN SHOP",8:"AGILITY TRAINING UNLOCKED",10:"BONE CHARM IN SHOP",13:"STEEL TAG IN SHOP",16:"LUCKY ROPE IN SHOP",18:"LITTER OPTION UNLOCKED",21:"SHADOW LEASH IN SHOP",26:"CHAIN COLLAR IN SHOP"};
 function xpNeed(l){ return 20+l*8; }
 function addXP(n){
@@ -297,12 +345,19 @@ function drawAttention(st){
   CAM.state=st; CAM.until=99; CAM.t=0; CAM.fi=0;
 }
 function buyBed(){
-  if(S.bedOwned) return;
+  if(S.bedTier>0) return;
   if(S.money<25) return toast("NOT ENOUGH \u2014 THE BED IS $25",1);
-  S.money-=25; S.bedOwned=true;
+  S.money-=25; S.bedTier=dogStageIdx();
   tickTodo("bed");
   toast("BONES HAS A PROPER BED NOW."); heartsBurst(2); beep(700,.08);
   renderMeters(); renderSupplies();
+}
+function buyBiggerBed(){
+  if(bedAdequate()) return;
+  if(S.money<45) return toast("NOT ENOUGH \u2014 A BIGGER BED IS $45",1);
+  S.money-=45; S.bedTier=dogStageIdx();
+  toast("A BIGGER BED \u2014 HE CAN STRETCH OUT NOW."); heartsBurst(2); beep(700,.08); setTimeout(()=>beep(950,.09),100);
+  renderMeters(); renderSupplies(); renderShop();
 }
 const TODO_META=[
   ["bowls","todoBowls",'REFILL BOTH OF HIS BOWLS<br><span class="tiny">WATER + FOOD \u2014 +$5</span>',"+$5"],
@@ -409,7 +464,7 @@ $("#dogcv").addEventListener("pointerdown",e=>{
   }
   const spx=SPONGE.held?SPONGE.x:0.135, spy=SPONGE.held?SPONGE.y:0.50;
   if(Math.hypot(fx-spx,fy-spy)<0.06){                       // grab the sponge off the wall
-    if(!S.shampooOwned){
+    if(S.shampooPct<=0){
       openChoice("NO DOG SHAMPOO", "BONES NEEDS SHAMPOO BEFORE YOU CAN WASH HIM.",
         "GO TO SHOP", ()=>openShopPanel(), "CANCEL", ()=>{});
       beep(300,.1); return;
@@ -434,15 +489,22 @@ $("#dogcv").addEventListener("pointerdown",e=>{
   }
   // bowls (bottom-left) + the bed, tucked in right beside them
   const uPx=r.height/42, wbX=0.04*r.width, wbW=4*uPx, fbX2=wbX+wbW+8;
-  const bedXpx=fbX2+wbW+16, bedWpx=r.width*0.22;
+  const {bx:bedXpx, bw2:bedWpx} = bedRect(r.width, r.height);
   const px=fx*r.width;
   if(px>=bedXpx && px<=bedXpx+bedWpx && fy>0.62){
-    if(!S.bedOwned){
+    if(S.bedTier===0){
       S.bedHinted=true;
       toast("HE HAS NOWHERE PROPER TO SLEEP \u2014 SEE THE LIST",1);
       beep(300,.1);
       renderTodo(); $("#todoPanel").classList.add("show");
       return;
+    }
+    if(!bedAdequate()){
+      openChoice("HE'S OUTGROWN HIS BED",
+        "IT'S TOO SMALL FOR HIM NOW \u2014 HE WON'T GET A FULL NIGHT'S REST.<br><br>UPGRADE TO A BIGGER BED?",
+        "BIGGER BED \u2014 $45", ()=>buyBiggerBed(),
+        "NOT NOW", ()=>toggleRest());
+      beep(300,.1); return;
     }
     toggleRest(); return;
   } // the bed
@@ -479,8 +541,9 @@ $("#dogcv").addEventListener("pointermove",e=>{
   if(SPONGE.held){
     SPONGE.x=fx; SPONGE.y=fy;
     if(Math.random()<0.4){ DRIPS.push({x:fx+(Math.random()-0.5)*0.015,y:fy+0.015,vy:0.12+Math.random()*0.18,life:0.5+Math.random()*0.3}); if(DRIPS.length>50) DRIPS.splice(0,DRIPS.length-50); }
-    if(fx>CAM.x-0.02 && fx<CAM.x+CAMDWF+0.04 && fy>0.30 && fy<0.85 && !R.active && !OUTING.active && !PK.active){
+    if(fx>CAM.x-0.02 && fx<CAM.x+CAMDWF+0.04 && fy>0.30 && fy<0.85 && !R.active && !OUTING.active && !PK.active && S.shampooPct>0){
       S.clean=clamp(S.clean+0.6,0,100); WASH.heat=0.5;
+      S.shampooPct=clamp(S.shampooPct-0.2,0,100);
       if(Math.random()<0.5){ SUDS.push({x:fx,y:fy,life:0.9,r:3+Math.random()*5}); if(SUDS.length>60) SUDS.splice(0,SUDS.length-60); }
       if(S.clean>=100 && !SPONGE.rew){
         SPONGE.rew=true; addXP(6); heartsBurst(2);
@@ -787,7 +850,7 @@ function pupTick(dt){
     PUP.t=0;
     if(P2.thirst<48 && BOWL.level>0.05){ PUP.st="go"; PUP.tx=0.06; PUP.next="drink"; PUP.until=99; return; }
     if(P2.hunger<48 && FBOWL.level>0.05){ PUP.st="go"; PUP.tx=0.14; PUP.next="eat"; PUP.until=99; return; }
-    if((CLK.h>=22||CLK.h<6) && S.bedOwned){ PUP.st="go"; PUP.tx=0.845; PUP.next="nap"; PUP.until=99; return; }
+    if((CLK.h>=22||CLK.h<6) && S.bedTier>0){ PUP.st="go"; PUP.tx=0.845; PUP.next="nap"; PUP.until=99; return; }
     PUP.st = Math.random()<0.5 ? "walk" : "idle";
     PUP.dir = Math.random()<0.5?-1:1;
     PUP.until = 1.5+Math.random()*2.5;
@@ -1068,9 +1131,9 @@ function camBehavior(dt){
     return;
   }
   if(CAM.state==="rest"){
-    const cap=S.bedOwned?100:70;
+    const cap=bedAdequate()?100:70;
     if(S.energy>=cap){
-      if(!S.bedOwned) toast("NO PROPER BED \u2014 BONES ONLY RESTS TO 70%",1);
+      if(!bedAdequate()) toast(S.bedTier===0?"NO PROPER BED \u2014 BONES ONLY RESTS TO 70%":"BED TOO SMALL \u2014 BONES ONLY RESTS TO 70%",1);
       toggleRest();
     }
     return;
@@ -1201,26 +1264,28 @@ function drawSunray(ctx,w,h,t){
   const vis = 1-nightAmount();
   if(vis<=0.02) return;
   ctx.save();
-  const ox=w*0.76, oy=h*0.30, dirAng=2.5;
+  const ox=w*0.74, oy=h*0.29, dirAng=2.55;
   const dx=Math.cos(dirAng), dy=Math.sin(dirAng), px=-dy, py=dx;
-  const len=Math.max(w,h)*1.15;
-  for(let i=0;i<2;i++){
-    const spread=(i-0.5)*0.14;
-    const cdx=Math.cos(dirAng+spread), cdy=Math.sin(dirAng+spread);
-    const cpx=-cdy, cpy=cdx;
-    const w0=10+i*4, w1=54+i*14;
-    const shimmer=0.5+0.5*Math.sin(t*0.22+i*2.3);
-    const alpha=(0.05+0.035*shimmer)*vis;
-    const x0=ox+cpx*w0, y0=oy+cpy*w0, x1=ox-cpx*w0, y1=oy-cpy*w0;
-    const x2=ox+cdx*len-cpx*w1, y2=oy+cdy*len-cpy*w1;
-    const x3=ox+cdx*len+cpx*w1, y3=oy+cdy*len+cpy*w1;
-    const grad=ctx.createLinearGradient(ox,oy, ox+cdx*len, oy+cdy*len);
+  const len=Math.max(w,h)*1.2;
+  // venetian-blind slats: several parallel bands fanning from the window with dark gaps
+  // between them, instead of one smooth wedge — that's what gives real blind-light its stripes
+  const nSlats=7, spanNear=22, spanFar=145;
+  for(let i=0;i<nSlats;i++){
+    const f0=i/nSlats, f1=f0+0.58/nSlats;   // slat is ~58% of its slot; the rest is shadow
+    const nearA=(f0-0.5)*spanNear, nearB=(f1-0.5)*spanNear;
+    const farA=(f0-0.5)*spanFar, farB=(f1-0.5)*spanFar;
+    const shimmer=0.5+0.5*Math.sin(t*0.2+i*1.35);
+    const alpha=(0.055+0.032*shimmer)*vis;
+    const x0=ox+px*nearA, y0=oy+py*nearA, x1=ox+px*nearB, y1=oy+py*nearB;
+    const x2=ox+dx*len+px*farB, y2=oy+dy*len+py*farB;
+    const x3=ox+dx*len+px*farA, y3=oy+dy*len+py*farA;
+    const grad=ctx.createLinearGradient(ox,oy, ox+dx*len, oy+dy*len);
     grad.addColorStop(0,"rgba(255,247,214,"+alpha+")");
-    grad.addColorStop(0.65,"rgba(255,247,214,"+(alpha*0.35)+")");
+    grad.addColorStop(0.6,"rgba(255,247,214,"+(alpha*0.4)+")");
     grad.addColorStop(1,"rgba(255,247,214,0)");
     ctx.fillStyle=grad;
     ctx.beginPath();
-    ctx.moveTo(x0,y0); ctx.lineTo(x1,y1); ctx.lineTo(x3,y3); ctx.lineTo(x2,y2);
+    ctx.moveTo(x0,y0); ctx.lineTo(x1,y1); ctx.lineTo(x2,y2); ctx.lineTo(x3,y3);
     ctx.closePath(); ctx.fill();
   }
   for(let i=0;i<10;i++){
@@ -1243,11 +1308,20 @@ function drawCam(t){
   // shared bowl/bed layout — declared early so both the PULSE reticle (drawn now) and the
   // actual bowl/bed sprites (drawn after BONES, so he can't visually cover them) agree on position
   const bwlX=w*0.04, bwlW=u*4, bwlH=u*1.6, fbX=bwlX+bwlW+8;
-  const bx=fbX+bwlW+16, bw2=w*0.22, bh2=h*0.0425;
+  const {bx,bw2,bh2} = bedRect(w,h);
   ctx.strokeStyle="#fff"; ctx.lineWidth=3;
   ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(w,gy); ctx.stroke();
   ctx.strokeRect(w*0.72,h*0.14,w*0.18,h*0.20); // window
   ctx.beginPath(); ctx.moveTo(w*0.81,h*0.14); ctx.lineTo(w*0.81,h*0.34); ctx.stroke();
+  { // venetian blinds — explains the striped light drawSunray() throws across the room
+    const winX=w*0.72, winY=h*0.14, winW=w*0.18, winH=h*0.20, slatN=7;
+    ctx.strokeStyle="#15151a"; ctx.lineWidth=1.4;
+    for(let i=1;i<slatN;i++){
+      const sy=winY+(winH/slatN)*i;
+      ctx.beginPath(); ctx.moveTo(winX+1,sy); ctx.lineTo(winX+winW-1,sy); ctx.stroke();
+    }
+    ctx.strokeStyle="#fff"; ctx.lineWidth=3;
+  }
   if(S.hoopOwned){
     const hx0=HOOP.x0*w, hx1=HOOP.x1*w, hy=HOOP.y*h;
     ctx.strokeStyle="#888"; ctx.lineWidth=2;
@@ -1269,7 +1343,7 @@ function drawCam(t){
     ctx.strokeRect(w*0.14-3, h*0.15-3, mw2+6, mh2+6);
     ctx.drawImage(MEMIMG, w*0.14, h*0.15, mw2, mh2);
   }
-  if(S.bedOwned && S.pup.owned){
+  if(S.bedTier>0 && S.pup.owned){
     const bx3=w*0.83, bw3=w*0.13, bh3=h*0.05;
     ctx.strokeRect(bx3,gy-bh3,bw3,bh3);
     ctx.strokeRect(bx3+4,gy-bh3+4,bw3-8,bh3-4);
@@ -1316,20 +1390,6 @@ function drawCam(t){
     else if(PULSE.k==="sponge") ctx.strokeRect(0.135*w-14, 0.50*h-12, 28, 24);
     else if(PULSE.k==="bed") ctx.strokeRect(bx-4, gy-bh2-4, bw2+8, bh2+8);
     ctx.strokeStyle="#fff";
-  }
-  // indoor accidents
-  for(const p of POOS){
-    const pxp=p.x*w;
-    ctx.fillStyle="#6b4423";
-    ctx.fillRect(pxp-7,gy-5,14,5);
-    ctx.fillRect(pxp-5,gy-9,10,4);
-    ctx.fillRect(pxp-2,gy-12,5,3);
-    if(Math.floor(t*2)%2){
-      ctx.strokeStyle="#888"; ctx.lineWidth=1;
-      ctx.beginPath(); ctx.moveTo(pxp-4,gy-16); ctx.lineTo(pxp-6,gy-22);
-      ctx.moveTo(pxp+4,gy-16); ctx.lineTo(pxp+2,gy-22); ctx.stroke();
-      ctx.strokeStyle="#fff"; ctx.lineWidth=3;
-    }
   }
   if(R.active || OUTING.active || PK.active){
     for(let i=0;i<160;i++){
@@ -1404,20 +1464,27 @@ function drawCam(t){
   ctx.strokeStyle = ((FBOWL.level<=0.05 && (S.hunger<40 || !S.firstFood)) && Math.floor(t*2+1)%2===0) ? "#f22" : "#fff";
   ctx.strokeRect(fbX, gy-bwlH, bwlW, bwlH);
   ctx.strokeStyle="#fff";
-  // dog bed (or the sad empty spot where one should be) — half height, tucked beside the bowls;
-  // also drawn on top of BONES so he can't visually cover it when he heads over to rest
-  if(S.bedOwned){
-    ctx.fillStyle="#26262c"; ctx.fillRect(bx,gy-bh2,bw2,bh2);
-    ctx.strokeRect(bx,gy-bh2,bw2,bh2);
-    ctx.strokeRect(bx+4,gy-bh2+3,bw2-8,bh2-4);
-  } else {
-    const hint = (S.lvl>=2 || S.bedHinted) && Math.floor(t*2)%2===0;
-    ctx.save(); ctx.setLineDash([6,6]); ctx.strokeStyle=hint?"#f22":"#555"; ctx.lineWidth=2;
-    ctx.strokeRect(bx,gy-bh2,bw2,bh2); ctx.restore();
-    ctx.fillStyle="#555"; ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText("NO BED", bx+bw2/2, gy-bh2/2+2); ctx.textAlign="left";
-    ctx.strokeStyle="#fff"; ctx.lineWidth=3;
+  // dog bed (or the sad empty spot where one should be) — sized to BONES' current growth stage,
+  // and drawn on top of him so he can't visually cover it when he heads over to rest
+  drawDogBed(ctx,bx,gy,bw2,bh2,t,S.bedTier>0,bedAdequate());
+  // indoor accidents — drawn last of the room fixtures so a poo pile is always visible (and
+  // tappable) on top of everything, even if it landed right on the bed
+  for(const p of POOS){
+    const pxp=p.x*w;
+    ctx.strokeStyle="rgba(0,0,0,.6)"; ctx.lineWidth=1.4;
+    ctx.strokeRect(pxp-7.5,gy-5.5,15,6); ctx.strokeRect(pxp-5.5,gy-9.5,11,5); ctx.strokeRect(pxp-2.5,gy-12.5,6,4);
+    ctx.fillStyle="#6b4423";
+    ctx.fillRect(pxp-7,gy-5,14,5);
+    ctx.fillRect(pxp-5,gy-9,10,4);
+    ctx.fillRect(pxp-2,gy-12,5,3);
+    if(Math.floor(t*2)%2){
+      ctx.strokeStyle="#888"; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(pxp-4,gy-16); ctx.lineTo(pxp-6,gy-22);
+      ctx.moveTo(pxp+4,gy-16); ctx.lineTo(pxp+2,gy-22); ctx.stroke();
+      ctx.strokeStyle="#fff"; ctx.lineWidth=3;
+    }
   }
+  ctx.strokeStyle="#fff"; ctx.lineWidth=3;
   if(CAM.woof>0 && stt==="bark"){
     const wx=Math.min(w-72,dx+dw*0.5), wy=gy-dh-32;
     ctx.fillStyle="#000"; ctx.strokeStyle="#fff"; ctx.lineWidth=3;
@@ -1485,8 +1552,10 @@ function drawCam(t){
             "GO THERE NOW",()=>startPark(), "LATER",null);
         }
         else if(stg===50) openLifeChoice();
-        else if(stg===10) startEvo("A JUNIOR",0.5,0.82,"HE'S BIGGER AND STRONGER.<br><br>COMING UP:<br>STEEL TAG \u2014 LV.13<br>LUCKY ROPE \u2014 LV.16<br>THE LITTER \u2014 LV.18");
-        else if(stg===25) startEvo("IN HIS PRIME",0.82,1,"FULL SIZE. PEAK CONDITION.<br>TOP FORM MULTIPLIERS ON EVERY RUN.<br><br>AHEAD:<br>SHADOW LEASH \u2014 LV.21<br>CHAIN COLLAR \u2014 LV.26<br>THE CROSSROADS \u2014 LV.50");
+        else if(stg===10){ startEvo("A JUNIOR",0.5,0.82,"HE'S BIGGER AND STRONGER.<br><br>COMING UP:<br>STEEL TAG \u2014 LV.13<br>LUCKY ROPE \u2014 LV.16<br>THE LITTER \u2014 LV.18");
+          if(S.bedTier>0 && !bedAdequate()) setTimeout(()=>toast("HE'S OUTGROWN HIS BED \u2014 TIME FOR A BIGGER ONE",1),3000); }
+        else if(stg===25){ startEvo("IN HIS PRIME",0.82,1,"FULL SIZE. PEAK CONDITION.<br>TOP FORM MULTIPLIERS ON EVERY RUN.<br><br>AHEAD:<br>SHADOW LEASH \u2014 LV.21<br>CHAIN COLLAR \u2014 LV.26<br>THE CROSSROADS \u2014 LV.50");
+          if(S.bedTier>0 && !bedAdequate()) setTimeout(()=>toast("HE'S OUTGROWN HIS BED \u2014 TIME FOR A BIGGER ONE",1),3000); }
       }
     }
   } else if(EVO.active || XPLOCK){
@@ -1653,6 +1722,17 @@ const ICONS = {
   })
 };
 function icn(key){ return '<img class="shopicon" src="'+ICONS[key]+'" alt="">'; }
+function pctIcon(pct){
+  // a clean ring gauge — the % itself reads better as text beside it than crammed inside 22px
+  const src=makeIcon((x,w,h)=>{
+    const cx=w/2, cy=h/2, r=w*0.36;
+    x.strokeStyle="#444"; x.lineWidth=4;
+    x.beginPath(); x.arc(cx,cy,r,0,Math.PI*2); x.stroke();
+    x.strokeStyle = pct<25 ? "#f22" : "#3fa5c9"; x.lineWidth=4;
+    x.beginPath(); x.arc(cx,cy,r,-Math.PI/2,-Math.PI/2+Math.PI*2*clamp(pct/100,0,1)); x.stroke();
+  });
+  return '<img class="shopicon" src="'+src+'" alt="">';
+}
 
 /* ---------- shop ---------- */
 function openShopPanel(){ renderShop(); $("#shopPanel").classList.add("show"); }
@@ -1661,9 +1741,13 @@ function renderShopSup(){
   el.innerHTML =
     '<div class="prow"><span class="nm">'+icn("kibble")+' KIBBLE x'+S.kibble+'<br><span class="tiny">1 POUR \u2014 3 FILL A BOWL</span></span><button data-sup="kibble" '+(S.money<2?"disabled":"")+'>BUY $2</button></div>'+
     '<div class="prow"><span class="nm">'+icn("snack")+' SNACKS x'+S.snacks+'<br><span class="tiny">+ENERGY +MOOD, FAST</span></span><button data-sup="snack" '+(S.money<3?"disabled":"")+'>BUY $3</button></div>'+
-    (S.bedOwned?"":'<div class="prow"><span class="nm">'+icn("bed")+' DOG BED<br><span class="tiny">PERFECT SLEEP \u2014 ONE-TIME</span></span><button data-sup="bed" '+(S.money<25?"disabled":"")+'>BUY $25</button></div>')+
+    (S.bedTier===0
+      ? '<div class="prow"><span class="nm">'+icn("bed")+' DOG BED<br><span class="tiny">PERFECT SLEEP \u2014 ONE-TIME</span></span><button data-sup="bed" '+(S.money<25?"disabled":"")+'>BUY $25</button></div>'
+      : !bedAdequate()
+        ? '<div class="prow" style="border-color:#f22"><span class="nm" style="color:#f22">'+icn("bed")+' BIGGER BED<br><span class="tiny">HE\'S OUTGROWN HIS BED</span></span><button data-sup="biggerbed" '+(S.money<45?"disabled":"")+'>BUY $45</button></div>'
+        : "")+
     (S.lvl<2||S.ballOwned?"":'<div class="prow"><span class="nm">'+icn("ball")+' RUBBER BALL<br><span class="tiny">FETCH, TRICK SHOTS \u2014 ONE-TIME</span></span><button data-sup="ball" '+(S.money<5?"disabled":"")+'>BUY $5</button></div>')+
-    (S.shampooOwned?"":'<div class="prow"><span class="nm">'+icn("shampoo")+' DOG SHAMPOO<br><span class="tiny">NEEDED TO WASH HIM \u2014 ONE-TIME</span></span><button data-sup="shampoo" '+(S.money<5?"disabled":"")+'>BUY $5</button></div>')+
+    '<div class="prow"><span class="nm">'+icn("shampoo")+' DOG SHAMPOO '+Math.round(S.shampooPct)+'%<br><span class="tiny">TOPS UP FOR BATHS</span></span><button data-sup="shampoo" '+(S.money<5||S.shampooPct>=100?"disabled":"")+'>BUY $5</button></div>'+
     (S.hoopOwned?"":'<div class="prow"><span class="nm">'+icn("hoop")+' BASKETBALL HOOP<br><span class="tiny">TRICK SHOTS BY THE WINDOW \u2014 ONE-TIME</span></span><button data-sup="hoop" '+(S.money<40?"disabled":"")+'>BUY $40</button></div>');
 }
 function renderShop(){
@@ -2182,12 +2266,15 @@ function renderSupplies(){
   $("#suppliesList").innerHTML =
     it(icn("water"),"WATER BOWL","TAP TO POUR \u2014 FREE. HE DRINKS WHEN THIRSTY","water")+
     it(icn("food"),"FOOD BOWL","POUR KIBBLE (x"+S.kibble+" LEFT) \u2014 3 POURS FILL","food")+
-    (S.shampooOwned
+    (S.shampooPct>0
       ? it(icn("sponge"),"SPONGE","DRAG OFF THE WALL \u2014 SCRUB HIM CLEAN","sponge")
       : it(icn("sponge"),"SPONGE","NEEDS SHAMPOO \u2014 FIND IT IN THE SHOP","spongebuy",false))+
-    (S.bedOwned
-      ? it(icn("bed"),"DOG BED","TAP THE BED \u2014 FULL REST","bed")
-      : it(icn("bed"),"DOG BED","NOT OWNED \u2014 FIND IT IN THE SHOP","bedbuy",false))+
+    (S.bedTier===0
+      ? it(icn("bed"),"DOG BED","NOT OWNED \u2014 FIND IT IN THE SHOP","bedbuy",false)
+      : bedAdequate()
+        ? it(icn("bed"),"DOG BED ("+bedTierName(S.bedTier)+")","TAP THE BED \u2014 FULL REST","bed")
+        : it(icn("bed"),"DOG BED ("+bedTierName(S.bedTier)+")","HE'S OUTGROWN IT \u2014 UPGRADE IN SHOP","bedbuy",false))+
+    (S.shampooOwned ? it(pctIcon(S.shampooPct),"DOG SHAMPOO "+Math.round(S.shampooPct)+"%","BATHS USE IT UP \u2014 RESTOCK IN THE SHOP","shampooinfo") : "")+
     it(icn("kibble"),"KIBBLE x"+S.kibble,"RESTOCK IN THE SHOP","food")+
     it(icn("snack"),"SNACKS x"+S.snacks,"USE THE FEED SNACKS BUTTON","snack");
 }
@@ -2195,9 +2282,10 @@ $("#shopSup").addEventListener("click",e=>{
   const t=e.target.closest("button"); if(!t) return;
   if(t.dataset.sup==="kibble"&&S.money>=2){ S.money-=2; S.kibble++; beep(600,.05); }
   if(t.dataset.sup==="bed") buyBed();
+  if(t.dataset.sup==="biggerbed") buyBiggerBed();
   if(t.dataset.sup==="ball"&&S.money>=5&&!S.ballOwned){ S.money-=5; S.ballOwned=true; BALL.x=0.28; BALL.y=0.795; BALL.vx=0; BALL.vy=0; BALL.off=false; beep(700,.07); setTimeout(()=>beep(950,.09),100); toast("A BALL! FLING IT \u2014 HE'LL BRING IT BACK."); }
   if(t.dataset.sup==="hoop"&&S.money>=40&&!S.hoopOwned){ S.money-=40; S.hoopOwned=true; beep(880,.08); setTimeout(()=>beep(1170,.1),100); toast("HOOP MOUNTED BY THE WINDOW. SWISH \u2014 +1 XP A BASKET."); }
-  if(t.dataset.sup==="shampoo"&&S.money>=5&&!S.shampooOwned){ S.money-=5; S.shampooOwned=true; beep(700,.07); setTimeout(()=>beep(950,.09),100); toast("SHAMPOO STOCKED \u2014 TIME FOR A BATH!"); }
+  if(t.dataset.sup==="shampoo"&&S.money>=5&&S.shampooPct<100){ S.money-=5; S.shampooOwned=true; S.shampooPct=100; beep(700,.07); setTimeout(()=>beep(950,.09),100); toast("SHAMPOO TOPPED UP \u2014 TIME FOR A BATH!"); }
   if(t.dataset.sup==="snack"&&S.money>=3){ S.money-=3; S.snacks++; beep(600,.05); }
   renderMeters(); renderShop();
 });
@@ -2210,12 +2298,13 @@ $("#suppliesList").addEventListener("click",e=>{
     sponge:"SPONGE: DRAG IT OFF THE WALL AND SCRUB HIM. SUDS = CLEAN.",
     bed:"THE BED: TAP IT AND HE'LL GO REST TO FULL ENERGY.",
     snack:"SNACKS: THE FEED SNACKS BUTTON HYPES HIM UP FAST.",
-    bedbuy:"NO BED YET \u2014 HE ONLY RESTS TO 70%. IT'S IN THE SHOP.",
-    spongebuy:"NO SHAMPOO YET \u2014 HE CAN'T BE WASHED. IT'S IN THE SHOP."
+    bedbuy: S.bedTier===0 ? "NO BED YET \u2014 HE ONLY RESTS TO 70%. IT'S IN THE SHOP." : "HE'S OUTGROWN THIS BED \u2014 HE ONLY RESTS TO 70%. UPGRADE IN THE SHOP.",
+    spongebuy:"NO SHAMPOO YET \u2014 HE CAN'T BE WASHED. IT'S IN THE SHOP.",
+    shampooinfo:"DOG SHAMPOO: EACH BATH USES SOME UP. RESTOCK IT IN THE SHOP."
   }[k];
   if(!info) return;
   toast(info);
-  if(k!=="snack"&&k!=="bedbuy"&&k!=="spongebuy") setPulse(k);
+  if(k!=="snack"&&k!=="bedbuy"&&k!=="spongebuy"&&k!=="shampooinfo") setPulse(k);
   if(k==="bedbuy"||k==="spongebuy") openShopPanel();
   beep(520,.05);
 });
@@ -2470,7 +2559,7 @@ $("#devEvo").onclick=()=>{
 };
 $("#devStock").onclick=()=>{ S.kibble+=10; S.snacks+=10; toast("+10 KIBBLE +10 SNACKS (DEV)"); renderMeters(); };
 $("#devSick").onclick=()=>{ S.sick=!S.sick; toast(S.sick?"BONES IS SICK (DEV)":"CURED (DEV)"); renderMeters(); };
-$("#devPoo").onclick=()=>{ if(POOS.length<3){ POOS.push({x:0.22+Math.random()*0.24}); toast("DROPPED ONE (DEV)"); } };
+$("#devPoo").onclick=()=>{ if(POOS.length<3){ const cv=$("#dogcv"), br=bedRect(cv.clientWidth,cv.clientHeight); POOS.push({x:(br.bx+Math.random()*br.bw2)/cv.clientWidth}); toast("DROPPED ONE (DEV)"); } };
 $("#devReset").onclick=()=>{ S.dailyUsed=false; toast("DAY RESET (DEV)"); };
 function devSync(){
   XPANIM.lvl=S.lvl;
