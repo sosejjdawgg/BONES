@@ -104,7 +104,7 @@ function pkReveal(biscuits, xpFinal, mode){
         if(p2<1){ requestAnimationFrame(xpStep); return; }
         el.textContent=xpFinal+" XP"; el.classList.add("pop"); setTimeout(()=>el.classList.remove("pop"),160);
         beep(760,.09); setTimeout(()=>beep(1040,.12),110);
-        if(biscuits>0) setTimeout(()=>pkOfferGardenBury(biscuits),500);
+        PK.pendingBury=biscuits;   // offered only once BACK HOME is pressed — see #bResHome
       }
       requestAnimationFrame(xpStep);
     }, 300);
@@ -118,9 +118,9 @@ function pkOfferGardenBury(biscuits){
     "BURY THEM — +"+biscuits+" XP", ()=>{
       addXP(biscuits); beep(700,.08); setTimeout(()=>beep(950,.09),100);
       toast("+"+biscuits+" XP FROM THE GARDEN.");
-      $("#result").classList.add("show");
+      showScreen("home"); renderMeters(); renderShop();
     },
-    "LEAVE THEM", ()=>{ $("#result").classList.add("show"); });
+    "LEAVE THEM", ()=>{ showScreen("home"); renderMeters(); renderShop(); });
 }
 let PARKGHOST=null;
 const FRIENDIMG = FRIENDFRAMES.map(u=>{ const i=new Image(); i.src=u; return i; });
@@ -197,7 +197,7 @@ function startPark(){
     worldMult:2, barkBigLvl:0, barkFastLvl:0, speedBonus:null,
     chain:0, chainT:0, inv:0, fx:[],
     x:0,y:0,vx:0,vy:0, joy:null,
-    en:[], fr:[], gate:{}, started:false, shop:null, biscuits:[], drops:[]
+    en:[], fr:[], gate:{}, started:false, shop:null, biscuits:[], drops:[], pendingBury:0
   });
   PK.hp=PK.maxhp;
   PK.acts=[{k:"hoop",x:.15,y:.125,cd:0},{k:"tunnel",x:.35,y:.36,cd:0},{k:"ramp",x:.11,y:.39,cd:0},{k:"tunnel",x:.62,y:.70,cd:0},{k:"hoop",x:.85,y:.20,cd:0}];
@@ -228,8 +228,9 @@ function pkSpawn(w,h){
   const r=Math.random(), wv=PK.wave;
   const type = r<Math.max(0.2,0.55-wv*0.04)?"sq" : r<0.8?"bird":"cat";
   const ang=Math.random()*6.283, R=Math.max(w,h)*0.62;
+  const hp0=type==="cat"?2:1;
   PK.en.push({t:type, x:(PK.x+Math.cos(ang)*R+WW)%WW, y:(PK.y+Math.sin(ang)*R+WH)%WH,
-    hp:type==="cat"?2:1,
+    hp:hp0, hpMax:hp0,
     sp:(type==="sq"?70:type==="bird"?85:45)*(1+wv*0.05),
     ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
 }
@@ -243,8 +244,11 @@ function pkSpawnType(type, ang){
   }
   const a2 = ang===undefined ? Math.random()*6.283 : ang;
   const R=Math.max(w,h)*0.62, wv=PK.wave;
+  // wave 1 is the tutorial wave: its cats ("STRAYS") are smaller and drop in one hit
+  const small = type==="cat" && wv===1;
+  const hp0 = small ? 1 : (type==="cat"?2:1);
   PK.en.push({t:type, x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
-    hp:type==="cat"?2:1,
+    hp:hp0, hpMax:hp0, small,
     sp:(type==="sq"?70:type==="bird"?85:45)*(1+wv*0.05),
     ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
 }
@@ -252,7 +256,7 @@ function pkSpawnAlpha(){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW, WH=PK.WH, a2=Math.random()*6.283, R=Math.max(w,h)*0.62;
   PK.en.push({t:"cat", alpha:true, x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
-    hp:4, sp:52, ph:0, kx:0, ky:0, dir:1, fi:0, ft:0});
+    hp:4, hpMax:4, sp:52, ph:0, kx:0, ky:0, dir:1, fi:0, ft:0});
   toast("\u2620 THE ALPHA CAT IS HERE.",1);
   beep(120,.35,"sawtooth",.05);
 }
@@ -284,7 +288,7 @@ function pkSpawnFlock(){
     const off=(i-(n-1)/2)*16+(Math.random()-0.5)*10;         // staggered wedge formation
     const sxo=cx+Math.cos(perp)*off, syo=cy+Math.sin(perp)*off;
     PK.en.push({t:"bird", flock:true, x:(sxo+WW)%WW, y:(syo+WH)%WH,
-      hp:1, sp, vx:Math.cos(ang)*sp, vy:Math.sin(ang)*sp,
+      hp:1, hpMax:1, sp, vx:Math.cos(ang)*sp, vy:Math.sin(ang)*sp,
       ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
   }
   PK.waveSpawned += n;
@@ -303,7 +307,7 @@ function pkSpawnLaserSquad(){
   for(let i=0;i<LASER_SQUAD_SIZE;i++){
     const ang=(i/LASER_SQUAD_SIZE)*6.283+Math.random()*0.4, R=Math.max(w,h)*0.6;
     PK.en.push({t:"sq", laser:true, x:(PK.x+Math.cos(ang)*R+WW)%WW, y:(PK.y+Math.sin(ang)*R+WH)%WH,
-      hp:3, sp:58, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
+      hp:3, hpMax:3, sp:58, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
       laserState:"seek", chargeT:0, aimAng:0, fireT:0, cd:1.2+Math.random()*1.2});
   }
   toast("⚠ LASER SQUIRRELS — WATCH THE RED EYES",1);
@@ -589,7 +593,7 @@ function parkUpdate(dt){
   for(const a of PK.acts){
     a.cd=Math.max(0,a.cd-dt);
     if(a.cd<=0 && Math.hypot(wd(a.x*WW-PK.x,WW),wd(a.y*WH-PK.y,WH))<22){
-      a.cd=3; pkGain(3+Math.floor(Math.random()*3), a.x*WW, a.y*WH); PK.sideDone++; beep(700,.06);
+      a.cd=3; pkGain(2, a.x*WW, a.y*WH); PK.sideDone++; beep(700,.06);
     }
   }
   if(PARKGHOST && Math.hypot(wd(PARKGHOST.x-PK.x,WW),wd(PARKGHOST.y-PK.y,WH))<18){
@@ -678,6 +682,16 @@ function drawLaserFX(ctx,e,sx,sy){
     ctx.restore();
   }
 }
+function drawEnemyHP(ctx,e,sx,sy,eh){
+  // only surfaces once an enemy has taken a hit — untouched enemies stay clean/uncluttered
+  if(!e.hpMax || e.hpMax<=1 || e.hp>=e.hpMax || e.fleeing) return;
+  const bw=16, bh=3, bx=sx-bw/2, by=sy-eh-7;
+  ctx.fillStyle="rgba(0,0,0,.5)"; ctx.fillRect(bx-1,by-1,bw+2,bh+2);
+  ctx.strokeStyle="#fff"; ctx.lineWidth=1; ctx.strokeRect(bx+0.5,by+0.5,bw-1,bh-1);
+  const frac=clamp(e.hp/e.hpMax,0,1);
+  ctx.fillStyle = frac<0.4 ? "#f22" : "#fff";
+  ctx.fillRect(bx+1,by+1,(bw-2)*frac,bh-2);
+}
 function drawEnemy(ctx,e,sx,sy){
   ctx.fillStyle="rgba(0,0,0,.25)";
   ctx.beginPath(); ctx.ellipse(sx, sy+2, 9, 3, 0, 0, 7); ctx.fill();
@@ -689,7 +703,7 @@ function drawEnemy(ctx,e,sx,sy){
   const frames = ENEMYIMG[e.t];
   const img = frames && frames[e.fi % frames.length];
   if(!img || !img.complete || !img.naturalWidth){ drawEnemyVector(ctx,e,sx,sy); return; }
-  const eh = e.alpha?32 : e.t==="cat"?22:e.t==="bird"?18:16;
+  const eh = e.alpha?32 : e.t==="cat"?(e.small?22*0.7:22):e.t==="bird"?18:16;
   const ew = eh*img.naturalWidth/img.naturalHeight;
   if(e.alpha){
     ctx.strokeStyle="#f22"; ctx.lineWidth=2;
@@ -701,6 +715,7 @@ function drawEnemy(ctx,e,sx,sy){
   if(e.dir<0){ ctx.translate(sx*2,0); ctx.scale(-1,1); }
   ctx.drawImage(img, sx-ew/2, sy-eh, ew, eh);
   ctx.restore();
+  drawEnemyHP(ctx,e,sx,sy,eh);
 }
 function parkDraw(t){
   if(!PK.active) return;

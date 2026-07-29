@@ -38,7 +38,7 @@ const S = {
   kibble:3, snacks:2, beach:false, compsToday:0,
   jWave3:false, jCollar:false, jTrick:false,
   dHappy:false, dNour:false, dBall:false, dPark:false, dClean:false, dWater:false, dFood:false,
-  hoopOwned:false, ballOwned:false, firstWater:false, firstFood:false, bedHinted:false,
+  hoopOwned:false, ballOwned:false, shampooOwned:false, firstWater:false, firstFood:false, bedHinted:false,
   bedOwned:false, todoWork:false, todoLvl5:false, todoBed:false, todoPark:false, todoBall:false, todoBowls:false, twW:false, twF:false, todoHide:false, outTimer:0,
   lvl:1, xp:0, gen:1, senior:false, seniorDays:0, lifePathChosen:false, litter:false, memorialSrc:null, pendingStage:[]
 };
@@ -409,6 +409,11 @@ $("#dogcv").addEventListener("pointerdown",e=>{
   }
   const spx=SPONGE.held?SPONGE.x:0.135, spy=SPONGE.held?SPONGE.y:0.50;
   if(Math.hypot(fx-spx,fy-spy)<0.06){                       // grab the sponge off the wall
+    if(!S.shampooOwned){
+      openChoice("NO DOG SHAMPOO", "BONES NEEDS SHAMPOO BEFORE YOU CAN WASH HIM.",
+        "GO TO SHOP", ()=>openShopPanel(), "CANCEL", ()=>{});
+      beep(300,.1); return;
+    }
     SPONGE.held=true; SPONGE.x=fx; SPONGE.y=fy;
     try{ e.currentTarget.setPointerCapture(e.pointerId); }catch(_){}
     for(let i=0;i<5;i++) DRIPS.push({x:fx+(Math.random()-0.5)*0.03, y:fy+0.015, vy:0.14+Math.random()*0.2, life:0.6+Math.random()*0.3});
@@ -1183,9 +1188,52 @@ function camBehavior(dt){
   }
 }
 function nightAmount(){
-  // bright all day, dims through the 23:00 hour, fully dark right at midnight (bedtime)
+  // bright all day, dims through the 23:00 hour, fully dark right at midnight (bedtime) —
+  // and stays fully dark through the sleep choice, so it never flashes bright mid-decision
+  if(SLEEP.active) return 1;
   const h=CLK.h;
   return h<23 ? 0 : clamp(h-23,0,1);
+}
+// soft window-light: two overlapping gradient beams fan down-left from the window across the
+// room, plus a handful of drifting dust motes catching the light — fades out with nightAmount()
+// so it only shows during the brighter hours, never competing with the night tint
+function drawSunray(ctx,w,h,t){
+  const vis = 1-nightAmount();
+  if(vis<=0.02) return;
+  ctx.save();
+  const ox=w*0.76, oy=h*0.30, dirAng=2.5;
+  const dx=Math.cos(dirAng), dy=Math.sin(dirAng), px=-dy, py=dx;
+  const len=Math.max(w,h)*1.15;
+  for(let i=0;i<2;i++){
+    const spread=(i-0.5)*0.14;
+    const cdx=Math.cos(dirAng+spread), cdy=Math.sin(dirAng+spread);
+    const cpx=-cdy, cpy=cdx;
+    const w0=10+i*4, w1=54+i*14;
+    const shimmer=0.5+0.5*Math.sin(t*0.22+i*2.3);
+    const alpha=(0.05+0.035*shimmer)*vis;
+    const x0=ox+cpx*w0, y0=oy+cpy*w0, x1=ox-cpx*w0, y1=oy-cpy*w0;
+    const x2=ox+cdx*len-cpx*w1, y2=oy+cdy*len-cpy*w1;
+    const x3=ox+cdx*len+cpx*w1, y3=oy+cdy*len+cpy*w1;
+    const grad=ctx.createLinearGradient(ox,oy, ox+cdx*len, oy+cdy*len);
+    grad.addColorStop(0,"rgba(255,247,214,"+alpha+")");
+    grad.addColorStop(0.65,"rgba(255,247,214,"+(alpha*0.35)+")");
+    grad.addColorStop(1,"rgba(255,247,214,0)");
+    ctx.fillStyle=grad;
+    ctx.beginPath();
+    ctx.moveTo(x0,y0); ctx.lineTo(x1,y1); ctx.lineTo(x3,y3); ctx.lineTo(x2,y2);
+    ctx.closePath(); ctx.fill();
+  }
+  for(let i=0;i<10;i++){
+    const seed=i*13.37;
+    const travel=(t*(7+(i%4)*2)+seed*11)%len;
+    const wobble=Math.sin(t*0.5+seed)*8;
+    const mx=ox+dx*travel+px*wobble, my=oy+dy*travel+py*wobble;
+    const a=(0.3+0.3*Math.sin(t*1.4+seed))*vis;
+    if(a<=0.04 || my>h*0.85) continue;
+    ctx.fillStyle="rgba(255,250,225,"+a+")";
+    ctx.fillRect(mx,my,1.5,1.5);
+  }
+  ctx.restore();
 }
 function drawCam(t){
   const [ctx,w,h]=fit($("#dogcv"));
@@ -1392,6 +1440,7 @@ function drawCam(t){
     ctx.drawImage(im2, p.x*w-hw2/2, gy-h*0.52-p.rise, hw2, hh2);
     ctx.globalAlpha=1;
   }
+  drawSunray(ctx,w,h,t);
   // night overlay + sick tint, drawn last
   const night = nightAmount();
   if(night>0){ ctx.fillStyle="rgba(6,10,28,"+night+")"; ctx.fillRect(0,0,w,h); }
@@ -1507,16 +1556,115 @@ function drawCam(t){
 
 /* ---------- home actions ---------- */
 
+/* ---------- shop icons — small line-art pictograms so every row shows what it actually is ---------- */
+function makeIcon(draw){
+  const c=document.createElement("canvas"); c.width=30; c.height=30;
+  const x=c.getContext("2d"); x.imageSmoothingEnabled=false;
+  draw(x,30,30);
+  return c.toDataURL();
+}
+const ICONS = {
+  water: makeIcon((x,w,h)=>{
+    x.strokeStyle="#fff"; x.lineWidth=2;
+    x.beginPath(); x.moveTo(w*0.20,h*0.42); x.lineTo(w*0.26,h*0.78); x.quadraticCurveTo(w*0.5,h*0.90,w*0.74,h*0.78); x.lineTo(w*0.80,h*0.42); x.stroke();
+    x.fillStyle="#3b82f6";
+    x.beginPath(); x.moveTo(w*0.24,h*0.50); x.lineTo(w*0.28,h*0.74); x.quadraticCurveTo(w*0.5,h*0.84,w*0.72,h*0.74); x.lineTo(w*0.76,h*0.50); x.closePath(); x.fill();
+    x.strokeStyle="#cfe6ff"; x.lineWidth=1.4;
+    x.beginPath(); x.moveTo(w*0.32,h*0.60); x.quadraticCurveTo(w*0.42,h*0.56,w*0.5,h*0.60); x.quadraticCurveTo(w*0.58,h*0.64,w*0.68,h*0.60); x.stroke();
+    x.strokeStyle="#fff"; x.lineWidth=2;
+    x.beginPath(); x.ellipse(w*0.5,h*0.42,w*0.30,h*0.07,0,0,Math.PI*2); x.stroke();
+  }),
+  food: makeIcon((x,w,h)=>{
+    x.strokeStyle="#fff"; x.lineWidth=2;
+    x.beginPath(); x.moveTo(w*0.20,h*0.42); x.lineTo(w*0.26,h*0.78); x.quadraticCurveTo(w*0.5,h*0.90,w*0.74,h*0.78); x.lineTo(w*0.80,h*0.42); x.stroke();
+    x.beginPath(); x.ellipse(w*0.5,h*0.42,w*0.30,h*0.07,0,0,Math.PI*2); x.stroke();
+    x.fillStyle="#8a5a2b";
+    const chunks=[[0.40,0.55],[0.50,0.50],[0.60,0.56],[0.45,0.65],[0.56,0.66]];
+    for(const [cxf,cyf] of chunks) x.fillRect(w*cxf-2.5,h*cyf-2.5,5,5);
+  }),
+  sponge: makeIcon((x,w,h)=>{
+    x.fillStyle="#e8c93a";
+    const sw=w*0.62, sh=h*0.42, cx=w/2, cy=h*0.56, c2=4;
+    x.beginPath();
+    x.moveTo(cx-sw/2+c2, cy-sh/2); x.lineTo(cx+sw/2-c2, cy-sh/2); x.lineTo(cx+sw/2, cy-sh/2+c2);
+    x.lineTo(cx+sw/2, cy+sh/2-c2); x.lineTo(cx+sw/2-c2, cy+sh/2); x.lineTo(cx-sw/2+c2, cy+sh/2);
+    x.lineTo(cx-sw/2, cy+sh/2-c2); x.lineTo(cx-sw/2, cy-sh/2+c2); x.closePath(); x.fill();
+    x.strokeStyle="#a8891f"; x.lineWidth=1.4; x.stroke();
+    x.fillStyle="#c9a62e";
+    for(const [px,py] of [[-7,-4],[3,-3],[-3,2],[6,3],[-7,5]]) x.fillRect(cx+px-1,cy+py-1,2,2);
+    x.strokeStyle="#fff"; x.lineWidth=2;
+    x.beginPath(); x.moveTo(cx,cy-sh/2-8); x.lineTo(cx,cy-sh/2-2); x.stroke();
+  }),
+  bed: makeIcon((x,w,h)=>{
+    x.fillStyle="#26262c"; x.strokeStyle="#fff"; x.lineWidth=2;
+    x.fillRect(w*0.15,h*0.40,w*0.70,h*0.34); x.strokeRect(w*0.15,h*0.40,w*0.70,h*0.34);
+    x.strokeRect(w*0.22,h*0.46,w*0.56,h*0.22);
+    x.beginPath(); x.moveTo(w*0.15,h*0.40); x.lineTo(w*0.15,h*0.74); x.moveTo(w*0.85,h*0.40); x.lineTo(w*0.85,h*0.74); x.stroke();
+  }),
+  kibble: makeIcon((x,w,h)=>{
+    x.fillStyle="#8a5a2b";
+    const chunks=[[0.36,0.62],[0.50,0.52],[0.64,0.62],[0.43,0.72],[0.57,0.72],[0.50,0.40]];
+    for(const [cxf,cyf] of chunks){ x.fillRect(w*cxf-3.5,h*cyf-3.5,7,7); }
+    x.strokeStyle="#c99a5b"; x.lineWidth=1;
+    for(const [cxf,cyf] of chunks) x.strokeRect(w*cxf-3.5,h*cyf-3.5,7,7);
+  }),
+  snack: makeIcon((x,w,h)=>{
+    x.fillStyle="#e8b98a"; x.strokeStyle="#a8754a"; x.lineWidth=1.5;
+    const bx=w*0.28,by=h*0.36,bw=w*0.44,bh=h*0.34;
+    x.beginPath();
+    x.arc(bx,by,bh*0.42,0,Math.PI*2);
+    x.arc(bx+bw*0.5,by,bh*0.5,0,Math.PI*2);
+    x.arc(bx+bw,by,bh*0.42,0,Math.PI*2);
+    x.arc(bx,by+bh*0.7,bh*0.42,0,Math.PI*2);
+    x.arc(bx+bw*0.5,by+bh*0.7,bh*0.5,0,Math.PI*2);
+    x.arc(bx+bw,by+bh*0.7,bh*0.42,0,Math.PI*2);
+    x.fill(); x.stroke();
+  }),
+  ball: makeIcon((x,w,h)=>{
+    x.fillStyle="#f22"; x.beginPath(); x.arc(w/2,h*0.56,w*0.30,0,Math.PI*2); x.fill();
+    x.strokeStyle="#fff"; x.lineWidth=1.6;
+    x.beginPath(); x.arc(w/2,h*0.56,w*0.30,0,Math.PI*2); x.stroke();
+    x.beginPath(); x.moveTo(w/2,h*0.26); x.lineTo(w/2,h*0.86); x.stroke();
+    x.beginPath(); x.moveTo(w*0.22,h*0.56); x.lineTo(w*0.78,h*0.56); x.stroke();
+    x.fillStyle="rgba(255,255,255,.55)";
+    x.beginPath(); x.arc(w*0.40,h*0.46,w*0.07,0,Math.PI*2); x.fill();
+  }),
+  hoop: makeIcon((x,w,h)=>{
+    x.strokeStyle="#f22"; x.lineWidth=2.4;
+    x.beginPath(); x.ellipse(w/2,h*0.38,w*0.34,h*0.09,0,0,Math.PI*2); x.stroke();
+    x.strokeStyle="#aaa"; x.lineWidth=1.2;
+    for(let i=0;i<5;i++){
+      const t0=i/4, nx=w*0.5+(t0-0.5)*w*0.62;
+      x.beginPath(); x.moveTo(nx,h*0.40); x.lineTo(w*0.5+(t0-0.5)*w*0.22,h*0.78); x.stroke();
+    }
+    x.strokeStyle="#888"; x.lineWidth=2;
+    x.beginPath(); x.moveTo(w*0.84,h*0.20); x.lineTo(w*0.68,h*0.34); x.stroke();
+    x.beginPath(); x.moveTo(w*0.90,h*0.30); x.lineTo(w*0.74,h*0.40); x.stroke();
+  }),
+  shampoo: makeIcon((x,w,h)=>{
+    x.fillStyle="#3fa5c9"; x.strokeStyle="#fff"; x.lineWidth=1.8;
+    x.fillRect(w*0.32,h*0.24,w*0.14,h*0.10); x.strokeRect(w*0.32,h*0.24,w*0.14,h*0.10);
+    x.fillRect(w*0.24,h*0.36,w*0.52,h*0.48); x.strokeRect(w*0.24,h*0.36,w*0.52,h*0.48);
+    x.fillStyle="rgba(255,255,255,.5)";
+    x.fillRect(w*0.30,h*0.46,w*0.08,h*0.30);
+    x.strokeStyle="#fff"; x.lineWidth=1.2;
+    x.beginPath(); x.arc(w*0.70,h*0.20,2.4,0,Math.PI*2); x.stroke();
+    x.beginPath(); x.arc(w*0.78,h*0.30,1.6,0,Math.PI*2); x.stroke();
+  })
+};
+function icn(key){ return '<img class="shopicon" src="'+ICONS[key]+'" alt="">'; }
+
 /* ---------- shop ---------- */
 function openShopPanel(){ renderShop(); $("#shopPanel").classList.add("show"); }
 function renderShopSup(){
   const el=$("#shopSup"); if(!el) return;
   el.innerHTML =
-    '<div class="prow"><span class="nm">&#9670; KIBBLE x'+S.kibble+'<br><span class="tiny">1 POUR \u2014 3 FILL A BOWL</span></span><button data-sup="kibble" '+(S.money<2?"disabled":"")+'>BUY $2</button></div>'+
-    '<div class="prow"><span class="nm">&#9679; SNACKS x'+S.snacks+'<br><span class="tiny">+ENERGY +MOOD, FAST</span></span><button data-sup="snack" '+(S.money<3?"disabled":"")+'>BUY $3</button></div>'+
-    (S.bedOwned?"":'<div class="prow"><span class="nm">&#9632; DOG BED<br><span class="tiny">PERFECT SLEEP \u2014 ONE-TIME</span></span><button data-sup="bed" '+(S.money<25?"disabled":"")+'>BUY $25</button></div>')+
-    (S.lvl<2||S.ballOwned?"":'<div class="prow"><span class="nm">&#9679; RUBBER BALL<br><span class="tiny">FETCH, TRICK SHOTS \u2014 ONE-TIME</span></span><button data-sup="ball" '+(S.money<5?"disabled":"")+'>BUY $5</button></div>')+
-    (S.hoopOwned?"":'<div class="prow"><span class="nm">&#9675; BASKETBALL HOOP<br><span class="tiny">TRICK SHOTS BY THE WINDOW \u2014 ONE-TIME</span></span><button data-sup="hoop" '+(S.money<40?"disabled":"")+'>BUY $40</button></div>');
+    '<div class="prow"><span class="nm">'+icn("kibble")+' KIBBLE x'+S.kibble+'<br><span class="tiny">1 POUR \u2014 3 FILL A BOWL</span></span><button data-sup="kibble" '+(S.money<2?"disabled":"")+'>BUY $2</button></div>'+
+    '<div class="prow"><span class="nm">'+icn("snack")+' SNACKS x'+S.snacks+'<br><span class="tiny">+ENERGY +MOOD, FAST</span></span><button data-sup="snack" '+(S.money<3?"disabled":"")+'>BUY $3</button></div>'+
+    (S.bedOwned?"":'<div class="prow"><span class="nm">'+icn("bed")+' DOG BED<br><span class="tiny">PERFECT SLEEP \u2014 ONE-TIME</span></span><button data-sup="bed" '+(S.money<25?"disabled":"")+'>BUY $25</button></div>')+
+    (S.lvl<2||S.ballOwned?"":'<div class="prow"><span class="nm">'+icn("ball")+' RUBBER BALL<br><span class="tiny">FETCH, TRICK SHOTS \u2014 ONE-TIME</span></span><button data-sup="ball" '+(S.money<5?"disabled":"")+'>BUY $5</button></div>')+
+    (S.shampooOwned?"":'<div class="prow"><span class="nm">'+icn("shampoo")+' DOG SHAMPOO<br><span class="tiny">NEEDED TO WASH HIM \u2014 ONE-TIME</span></span><button data-sup="shampoo" '+(S.money<5?"disabled":"")+'>BUY $5</button></div>')+
+    (S.hoopOwned?"":'<div class="prow"><span class="nm">'+icn("hoop")+' BASKETBALL HOOP<br><span class="tiny">TRICK SHOTS BY THE WINDOW \u2014 ONE-TIME</span></span><button data-sup="hoop" '+(S.money<40?"disabled":"")+'>BUY $40</button></div>');
 }
 function renderShop(){
   renderShopSup();
@@ -1780,6 +1928,11 @@ document.addEventListener("visibilitychange",()=>{
   }
 });
 $("#bResHome").onclick=()=>{
+  if(PK.pendingBury>0){
+    const b=PK.pendingBury; PK.pendingBury=0;
+    pkOfferGardenBury(b);
+    return;
+  }
   $("#result").classList.remove("show");
   showScreen("home"); renderMeters(); renderShop();
 };
@@ -2027,14 +2180,16 @@ function openSupplies(){ renderSupplies(); $("#supplies").classList.add("show");
 function renderSupplies(){
   const it=(icon,name,tiny,key,owned)=>'<div class="prow'+(owned===false?' locked':'')+'" data-it="'+key+'"><span class="nm">'+icon+' '+name+'<br><span class="tiny">'+tiny+'</span></span></div>';
   $("#suppliesList").innerHTML =
-    it("&#9679;","WATER BOWL","TAP TO POUR \u2014 FREE. HE DRINKS WHEN THIRSTY","water")+
-    it("&#9670;","FOOD BOWL","POUR KIBBLE (x"+S.kibble+" LEFT) \u2014 3 POURS FILL","food")+
-    it("&#10047;","SPONGE","DRAG OFF THE WALL \u2014 SCRUB HIM CLEAN","sponge")+
+    it(icn("water"),"WATER BOWL","TAP TO POUR \u2014 FREE. HE DRINKS WHEN THIRSTY","water")+
+    it(icn("food"),"FOOD BOWL","POUR KIBBLE (x"+S.kibble+" LEFT) \u2014 3 POURS FILL","food")+
+    (S.shampooOwned
+      ? it(icn("sponge"),"SPONGE","DRAG OFF THE WALL \u2014 SCRUB HIM CLEAN","sponge")
+      : it(icn("sponge"),"SPONGE","NEEDS SHAMPOO \u2014 FIND IT IN THE SHOP","spongebuy",false))+
     (S.bedOwned
-      ? it("&#9632;","DOG BED","TAP THE BED \u2014 FULL REST","bed")
-      : it("&#9632;","DOG BED","NOT OWNED \u2014 FIND IT IN THE SHOP","bedbuy",false))+
-    it("&#9670;","KIBBLE x"+S.kibble,"RESTOCK IN THE SHOP","food")+
-    it("&#9679;","SNACKS x"+S.snacks,"USE THE FEED SNACKS BUTTON","snack");
+      ? it(icn("bed"),"DOG BED","TAP THE BED \u2014 FULL REST","bed")
+      : it(icn("bed"),"DOG BED","NOT OWNED \u2014 FIND IT IN THE SHOP","bedbuy",false))+
+    it(icn("kibble"),"KIBBLE x"+S.kibble,"RESTOCK IN THE SHOP","food")+
+    it(icn("snack"),"SNACKS x"+S.snacks,"USE THE FEED SNACKS BUTTON","snack");
 }
 $("#shopSup").addEventListener("click",e=>{
   const t=e.target.closest("button"); if(!t) return;
@@ -2042,6 +2197,7 @@ $("#shopSup").addEventListener("click",e=>{
   if(t.dataset.sup==="bed") buyBed();
   if(t.dataset.sup==="ball"&&S.money>=5&&!S.ballOwned){ S.money-=5; S.ballOwned=true; BALL.x=0.28; BALL.y=0.795; BALL.vx=0; BALL.vy=0; BALL.off=false; beep(700,.07); setTimeout(()=>beep(950,.09),100); toast("A BALL! FLING IT \u2014 HE'LL BRING IT BACK."); }
   if(t.dataset.sup==="hoop"&&S.money>=40&&!S.hoopOwned){ S.money-=40; S.hoopOwned=true; beep(880,.08); setTimeout(()=>beep(1170,.1),100); toast("HOOP MOUNTED BY THE WINDOW. SWISH \u2014 +1 XP A BASKET."); }
+  if(t.dataset.sup==="shampoo"&&S.money>=5&&!S.shampooOwned){ S.money-=5; S.shampooOwned=true; beep(700,.07); setTimeout(()=>beep(950,.09),100); toast("SHAMPOO STOCKED \u2014 TIME FOR A BATH!"); }
   if(t.dataset.sup==="snack"&&S.money>=3){ S.money-=3; S.snacks++; beep(600,.05); }
   renderMeters(); renderShop();
 });
@@ -2054,12 +2210,13 @@ $("#suppliesList").addEventListener("click",e=>{
     sponge:"SPONGE: DRAG IT OFF THE WALL AND SCRUB HIM. SUDS = CLEAN.",
     bed:"THE BED: TAP IT AND HE'LL GO REST TO FULL ENERGY.",
     snack:"SNACKS: THE FEED SNACKS BUTTON HYPES HIM UP FAST.",
-    bedbuy:"NO BED YET \u2014 HE ONLY RESTS TO 70%. IT'S IN THE SHOP."
+    bedbuy:"NO BED YET \u2014 HE ONLY RESTS TO 70%. IT'S IN THE SHOP.",
+    spongebuy:"NO SHAMPOO YET \u2014 HE CAN'T BE WASHED. IT'S IN THE SHOP."
   }[k];
   if(!info) return;
   toast(info);
-  if(k!=="snack"&&k!=="bedbuy") setPulse(k);
-  if(k==="bedbuy") openShopPanel();
+  if(k!=="snack"&&k!=="bedbuy"&&k!=="spongebuy") setPulse(k);
+  if(k==="bedbuy"||k==="spongebuy") openShopPanel();
   beep(520,.05);
 });
 function renderGoOut(){
