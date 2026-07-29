@@ -222,7 +222,7 @@ function startPark(){
     chain:0, chainT:0, inv:0, fx:[],
     x:0,y:0,vx:0,vy:0, joy:null,
     en:[], fr:[], gate:{}, started:false, shop:null, biscuits:[], drops:[], pendingBury:0, nuts:[],
-    powerups:[], starT:0, zoom:1
+    powerups:[], starT:0, zoom:1, stalkCatT:0
   });
   PK.hp=PK.maxhp;
   PK.acts=[{k:"hoop",x:.15,y:.125,cd:0},{k:"tunnel",x:.35,y:.36,cd:0},{k:"ramp",x:.11,y:.39,cd:0},{k:"tunnel",x:.62,y:.70,cd:0},{k:"hoop",x:.85,y:.20,cd:0}];
@@ -344,6 +344,7 @@ const SENTRY_WAKE_R=90;                                       // wave 2: how clo
 const JUMP_ATK_SPEED=210, JUMP_ATK_TIME=0.3, NUT_SPEED=145;   // wave 3: melee lunge vs. thrown nut
 const FORM_RADIUS=95, FORM_TOL=18, FORM_CHARGE=LASER_CHARGE_TIME*1.15, FORM_KNOCK=54; // wave 4: box-in formation
 const ZOMBIE_BURST_SPEED=190, ZOMBIE_BURST_CD=5;              // wave 5: slow shuffle -> sudden lunge
+const STALK_CAT_CAP=2, STALK_AGGRO_R=65, STALK_WANDER_R=40, STALK_LEAP_SPEED=185, STALK_LEAP_TIME=0.3, STALK_CHASE_SPD=62;   // wave 1: cats stalking near the roosts
 // WAVE 1 — STRAYS: small roosts of birds standing perfectly still until BONES gets close,
 // at which point the whole roost startles and scatters. still just as hittable mid-scatter.
 function pkSpawnBirdGroup(){
@@ -358,6 +359,27 @@ function pkSpawnBirdGroup(){
       hp:1, hpMax:1, small:true, sp:0, ph:Math.random()*6, kx:0, ky:0, dir:Math.random()<0.5?-1:1, fi:0, ft:0});
   }
   return n;
+}
+// WAVE 1 — a small cat stalking around a bird roost. Doesn't count toward the wave quota and
+// doesn't block the wave clearing — it's a persistent side hazard, capped at STALK_CAT_CAP
+// alive at once. Leave it alone and it just prowls; get too close and it aggroes, leaping in
+// then chasing him down for good (no settling back down once it's on the hunt).
+function pkSpawnStalkCat(){
+  const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
+  const WW=PK.WW||w*2, WH=PK.WH||h*2;
+  const birds=PK.en.filter(e=>e.t==="bird" && !e.fleeing);
+  let ax,ay;
+  if(birds.length){
+    const b=birds[Math.floor(Math.random()*birds.length)];
+    ax=b.x; ay=b.y;
+  } else {
+    const ang=Math.random()*6.283, R=Math.max(w,h)*0.55;
+    ax=(PK.x+Math.cos(ang)*R+WW)%WW; ay=(PK.y+Math.sin(ang)*R+WH)%WH;
+  }
+  const ox=(Math.random()-0.5)*50, oy=(Math.random()-0.5)*36;
+  PK.en.push({t:"cat", stalk:true, small:true, x:(ax+ox+WW)%WW, y:(ay+oy+WH)%WH,
+    hp:1, hpMax:1, sp:0, ph:Math.random()*6, kx:0, ky:0, dir:Math.random()<0.5?-1:1, fi:0, ft:0,
+    anchorX:(ax+ox+WW)%WW, anchorY:(ay+oy+WH)%WH, wanderAng:Math.random()*6.283, wanderT:0});
 }
 // WAVE 2 — dozing sentries scattered across the whole park; leave them be and they leave you
 // be, but get within range and they wake up and give chase like any other squirrel.
@@ -535,7 +557,7 @@ function parkUpdate(dt){
   // a wave only ends once its full quota has spawned AND every last enemy is down (fleeing
   // stragglers don't count \u2014 they're already defeated, just scuttling off in the background;
   // spooked-but-alive roost birds that got away clean also don't block the clear)
-  if(PK.waveSpawned>=PK.waveQuota && !PK.en.some(e=>!e.fleeing && !e.spooked)){
+  if(PK.waveSpawned>=PK.waveQuota && !PK.en.some(e=>!e.fleeing && !e.spooked && !e.stalk && !e.stalkAggro)){
     // survive the very first wave and it's a straight-up XP bonus
     if(PK.wave===1 && !PK.missionSurviveW1){
       PK.missionSurviveW1=true; addXP(10);
@@ -573,6 +595,15 @@ function parkUpdate(dt){
   if(!PK.goldenDone && PK.waveT>PK.goldenAt){
     PK.goldenDone=true;
     pkSpawnGoldenBird();
+  }
+  // WAVE 1 — keep exactly STALK_CAT_CAP stalking cats prowling the roosts at any given time
+  if(PK.wave===1){
+    PK.stalkCatT=(PK.stalkCatT||0)-dt;
+    const liveStalkCats=PK.en.filter(e=>e.t==="cat" && (e.stalk||e.stalkAggro) && !e.fleeing).length;
+    if(liveStalkCats<STALK_CAT_CAP && PK.stalkCatT<=0){
+      pkSpawnStalkCat();
+      PK.stalkCatT=1+Math.random()*1.2;
+    }
   }
   PK.spawnT-=dt;
   if(PK.spawnT<=0 && PK.waveSpawned<PK.waveQuota){
@@ -632,6 +663,45 @@ function parkUpdate(dt){
       e.ft+=dt; if(e.ft>0.1){ e.ft=0; e.fi++; }
       // settles back down instead of vanishing — stays in the world, ready to spook again if approached
       if(e.spookT>SPOOK_LIFE){ e.spooked=false; e.standing=true; e.spookVx=0; e.spookVy=0; }
+      continue;
+    }
+    // WAVE 1 — a stalking cat prowling near a roost: wanders a small patch until BONES gets
+    // close, then aggroes for good (leaps in, then keeps chasing — no calming back down)
+    if(e.stalk){
+      const dxw0=wd(PK.x-e.x,WW), dyw0=wd(PK.y-e.y,WH), d0=Math.hypot(dxw0,dyw0)||1;
+      if(d0<STALK_AGGRO_R){
+        e.stalk=false; e.stalkAggro=true; e.leapT=STALK_LEAP_TIME;
+        e.lvx=dxw0/d0*STALK_LEAP_SPEED; e.lvy=dyw0/d0*STALK_LEAP_SPEED;
+        beep(160,.09,"square",.05);
+      } else {
+        e.wanderT-=dt;
+        if(e.wanderT<=0){ e.wanderAng=Math.random()*6.283; e.wanderT=0.7+Math.random()*0.9; }
+        const adx=wd(e.anchorX-e.x,WW), ady=wd(e.anchorY-e.y,WH), adist=Math.hypot(adx,ady)||1;
+        let mvx,mvy;
+        if(adist>STALK_WANDER_R){ mvx=adx/adist*22; mvy=ady/adist*22; }
+        else { mvx=Math.cos(e.wanderAng)*16; mvy=Math.sin(e.wanderAng)*16; }
+        e.dir = mvx<0 ? -1 : 1;
+        e.x=(e.x+mvx*dt+WW)%WW; e.y=(e.y+mvy*dt+WH)%WH;
+        e.ft+=dt; if(e.ft>0.2){ e.ft=0; e.fi++; }
+        continue;
+      }
+    }
+    if(e.stalkAggro){
+      const dxw=wd(PK.x-e.x,WW), dyw=wd(PK.y-e.y,WH), d=Math.hypot(dxw,dyw)||1;
+      if(e.leapT>0){
+        e.leapT-=dt;
+        e.x=(e.x+e.lvx*dt+WW)%WW; e.y=(e.y+e.lvy*dt+WH)%WH;
+        e.dir = e.lvx<0 ? -1 : 1;
+      } else {
+        const sx=dxw/d*STALK_CHASE_SPD, sy=dyw/d*STALK_CHASE_SPD;
+        e.dir = sx<0 ? -1 : 1;
+        e.x=(e.x+(sx+e.kx)*dt+WW)%WW; e.y=(e.y+(sy+e.ky)*dt+WH)%WH;
+      }
+      e.ft+=dt; if(e.ft>0.1){ e.ft=0; e.fi++; }
+      if(d<14 && PK.inv<=0 && !pkInvuln()){
+        PK.hp-=8; PK.inv=0.6; e.kx=-dxw/d*220; e.ky=-dyw/d*220;
+        beep(110,.12,"sawtooth"); if(PK.hp<=0) return pkDeath();
+      }
       continue;
     }
     // WAVE 2 — a dozing sentry squirrel: stays put until BONES wanders close, then wakes
@@ -978,7 +1048,7 @@ function drawEnemy(ctx,e,sx,sy){
   ctx.fillStyle="rgba(0,0,0,.25)";
   ctx.beginPath(); ctx.ellipse(sx, sy+2, 9, 3, 0, 0, 7); ctx.fill();
   if(e.laser || e.formation) drawLaserFX(ctx,e,sx,sy);
-  if((e.fleeing && e.shockT>0 || (e.spooked && e.spookT<0.3)) && Math.floor(performance.now()/90)%2){
+  if((e.fleeing && e.shockT>0 || (e.spooked && e.spookT<0.3) || (e.stalkAggro && e.leapT>0)) && Math.floor(performance.now()/90)%2){
     ctx.fillStyle="#fff"; ctx.font="bold 13px 'Press Start 2P',monospace"; ctx.textAlign="center";
     ctx.fillText("!", sx, sy-24); ctx.textAlign="left";
   }
