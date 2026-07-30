@@ -276,7 +276,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.50a</span>
+          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.51a</span>
         </div>
       </div>
 
@@ -325,7 +325,6 @@ body.reduce-motion *{animation:none!important}
         <button class="tiny pclose" id="menuClose">&#10005; CLOSE</button>
         <h2>&#9776; MENU</h2>
         <div style="display:flex;flex-direction:column;gap:10px;width:82%">
-          <button class="menurow" id="mSave">&#9635; SAVE NOW</button>
           <button class="menurow" id="mCare">&#9829; CARE GUIDE</button>
           <button class="menurow" id="mSettings">&#9670; SETTINGS</button>
           <button class="menurow red" id="mNewGame">&#10005; NEW GAME</button>
@@ -369,6 +368,16 @@ body.reduce-motion *{animation:none!important}
           <div class="settingrow"><span>SOUND</span><button class="tiny" id="setSound">ON</button></div>
           <div class="settingrow"><span>REDUCE MOTION</span><button class="tiny" id="setMotion">OFF</button></div>
         </div>
+        <div id="saveCard" style="border:3px solid #fff;padding:12px 14px;width:82%;font-size:7px;line-height:2.1;text-align:left;box-sizing:border-box">
+          <div style="display:flex;justify-content:space-between"><span id="saveName">BONES</span><span id="saveLvl">LV. 1</span></div>
+          <div style="display:flex;justify-content:space-between"><span>MONEY</span><span id="saveMoney">$0</span></div>
+          <div style="display:flex;justify-content:space-between"><span>NOW</span><span id="saveDay">DAY 1 08:00</span></div>
+          <div style="border-top:1px solid #444;margin-top:6px;padding-top:6px;color:#8a8a8a;display:flex;justify-content:space-between">
+            <span>LAST SAVED</span><span id="saveLast" style="color:#8a8a8a">— NEVER —</span>
+          </div>
+        </div>
+        <button class="menurow" id="mSaveGame" style="width:82%">&#9635; SAVE GAME</button>
+        <div id="saveStatus" style="font-size:7px;color:#8a8a8a;min-height:10px;width:82%;text-align:center">PROGRESS ONLY PERSISTS WHEN YOU SAVE.</div>
       </div>
 
       <!-- CHARM SHOP -->

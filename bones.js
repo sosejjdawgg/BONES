@@ -40,7 +40,8 @@ const S = {
   dHappy:false, dNour:false, dBall:false, dPark:false, dClean:false, dWater:false, dFood:false,
   hoopOwned:false, ballOwned:false, shampooOwned:false, shampooPct:0, firstWater:false, firstFood:false, bedHinted:false,
   bedTier:0, todoWork:false, todoLvl5:false, todoBed:false, todoPark:false, todoBall:false, todoBowls:false, twW:false, twF:false, todoHide:false, outTimer:0,
-  lvl:1, xp:0, gen:1, senior:false, seniorDays:0, lifePathChosen:false, litter:false, memorialSrc:null, pendingStage:[]
+  lvl:1, xp:0, gen:1, senior:false, seniorDays:0, lifePathChosen:false, litter:false, memorialSrc:null, pendingStage:[],
+  lastSaveAt:null, lastSaveDay:0, lastSaveH:0
 };
 const SETTINGS = { sound:true, reduceMotion:false };
 const CHARMS = [
@@ -2447,31 +2448,51 @@ $("#camstate").onclick=openStatus;
 $("#needAlert").onclick=openStatus;
 $("#bMenu").onclick=()=>{ $("#menuPanel").classList.add("show"); beep(500,.05); };
 $("#menuClose").onclick=()=>$("#menuPanel").classList.remove("show");
-$("#mSave").onclick=()=>{
-  $("#menuPanel").classList.remove("show");
-  if(!STORAGE_OK){ beep(150,.15); toast("SAVE UNAVAILABLE \u2014 STORAGE IS BLOCKED ON THIS DEVICE.",1); return; }
-  saveGame();
-};
 $("#mCare").onclick=()=>{ $("#menuPanel").classList.remove("show"); $("#careGuidePanel").classList.add("show"); beep(500,.05); };
 $("#careClose").onclick=()=>$("#careGuidePanel").classList.remove("show");
+function dayClock(day,h){ return "DAY "+day+" "+String(Math.floor(h)).padStart(2,"0")+":00"; }
 function renderSettings(){
   $("#setSound").textContent = SETTINGS.sound ? "ON" : "OFF";
   $("#setMotion").textContent = SETTINGS.reduceMotion ? "ON" : "OFF";
+  $("#saveName").textContent = NAME();
+  $("#saveLvl").textContent = "LV. "+S.lvl;
+  $("#saveMoney").textContent = "$"+S.money;
+  $("#saveDay").textContent = dayClock(CLK.day,CLK.h);
+  $("#saveLast").textContent = S.lastSaveAt ? dayClock(S.lastSaveDay,S.lastSaveH) : "\u2014 NEVER \u2014";
 }
-$("#mSettings").onclick=()=>{ $("#menuPanel").classList.remove("show"); renderSettings(); $("#settingsPanel").classList.add("show"); beep(500,.05); };
+$("#mSettings").onclick=()=>{
+  $("#menuPanel").classList.remove("show"); renderSettings();
+  $("#saveStatus").textContent="PROGRESS ONLY PERSISTS WHEN YOU SAVE.";
+  $("#settingsPanel").classList.add("show"); beep(500,.05);
+};
 $("#settingsClose").onclick=()=>$("#settingsPanel").classList.remove("show");
 $("#setSound").onclick=()=>{
   SETTINGS.sound=!SETTINGS.sound; renderSettings();
   if(SETTINGS.sound) beep(500,.05);
-  saveGame(true);
 };
 $("#setMotion").onclick=()=>{
   SETTINGS.reduceMotion=!SETTINGS.reduceMotion;
   document.body.classList.toggle("reduce-motion",SETTINGS.reduceMotion);
-  renderSettings(); beep(500,.05); saveGame(true);
+  renderSettings(); beep(500,.05);
+};
+// Pok\u00e9mon-style save: nothing persists until this is pressed \u2014 a short "saving, don't turn off
+// the power" beat, then the card updates to show exactly when/what got saved.
+$("#mSaveGame").onclick=()=>{
+  if(!STORAGE_OK){ beep(150,.15); toast("SAVE UNAVAILABLE \u2014 STORAGE IS BLOCKED ON THIS DEVICE.",1); return; }
+  $("#mSaveGame").disabled=true;
+  $("#saveStatus").textContent="SAVING... DON'T CLOSE THE APP.";
+  beep(400,.05);
+  setTimeout(()=>{
+    S.lastSaveAt=Date.now(); S.lastSaveDay=CLK.day; S.lastSaveH=CLK.h;
+    const ok=saveGame(true);
+    $("#saveStatus").textContent = ok ? "SAVED!" : "SAVE FAILED \u2014 STORAGE MAY BE FULL.";
+    renderSettings();
+    $("#mSaveGame").disabled=false;
+    if(ok){ beep(700,.06); setTimeout(()=>beep(950,.08),100); }
+    else beep(150,.15);
+  }, 500);
 };
 function startNewGame(){
-  SAVE_SUSPENDED=true;   // block the pagehide autosave the reload is about to trigger
   try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
   location.reload();
 }
@@ -2611,8 +2632,6 @@ function hasStorage(){
   catch(e){ return false; }
 }
 const STORAGE_OK = hasStorage();
-let SAVE_SUSPENDED=false; // set right before a New Game wipe so the pagehide/visibilitychange
-                          // autosave firing during the reload can't write the save right back
 
 // merges saved data onto the live defaults object instead of replacing it,
 // so a save from an older version that's missing newer keys doesn't erase their defaults
@@ -2629,7 +2648,7 @@ function snapshot(){
     XPANIM:{lvl:XPANIM.lvl,frac:XPANIM.frac,ready:XPANIM.ready,pauseT:XPANIM.pauseT} };
 }
 function saveGame(silent){
-  if(!STORAGE_OK || SAVE_SUSPENDED) return false;
+  if(!STORAGE_OK) return false;
   try{ localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot()));
     if(!silent){ beep(500,.05); toast("SAVED."); }
     return true;
@@ -2653,13 +2672,15 @@ function loadGame(){
     return true;
   }catch(e){ return false; }
 }
-document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="hidden") saveGame(true); });
-window.addEventListener("pagehide",()=>saveGame(true));
-setInterval(()=>{ if(!$("#game").classList.contains("hidden")) saveGame(true); }, 15000);
+// no autosave by design — progress only persists when SAVE GAME is pressed in Settings,
+// same as an old cartridge: forget to save and a closed tab loses the session's progress.
 
 /* ---------- main loop ---------- */
 const RESTORED = loadGame();
-if(RESTORED){ $("#start").classList.add("hidden"); $("#game").classList.remove("hidden"); }
+if(RESTORED){
+  $("#start").classList.add("hidden"); $("#game").classList.remove("hidden");
+  setTimeout(()=>toast(S.lastSaveAt ? "WELCOME BACK — LAST SAVED "+dayClock(S.lastSaveDay,S.lastSaveH) : "WELCOME BACK",1),500);
+}
 document.body.classList.toggle("reduce-motion", SETTINGS.reduceMotion);
 $("#startDog").src = PORTRAITS.happy;
 buildMeters(); renderMeters(); renderShop(); renderTodo(); renderDogSel();
