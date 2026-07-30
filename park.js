@@ -445,13 +445,13 @@ function pkSpawnZombieCats(n){
 // a uniform spawn interval.
 function pkWaveBaseQuota(wv){
   if(wv===8) return LASER_SQUAD_SIZE;   // boss stage: exactly the laser squad, no filler trash
-  if(wv===1) return 24;   // ~6-8 roosts of 3-4 birds each (doubled)
-  if(wv===2) return 10;   // dozing sentries \u2014 the once-per-wave flock adds its own 10-20 on top (doubled)
-  if(wv===3) return 36;   // ~6 ambush bursts of 5-7 (doubled)
-  if(wv===4) return 16;   // ~4 formation squads of 3-4 (doubled)
-  if(wv===5) return 42;   // ~12 zombie-cat swarms of 3-4 (doubled)
+  if(wv===1) return 12;   // ~3-4 roosts of 3-4 birds each
+  if(wv===2) return 5;    // dozing sentries \u2014 the once-per-wave flock adds its own 10-20 on top
+  if(wv===3) return 18;   // ~3 ambush bursts of 5-7
+  if(wv===4) return 8;    // ~2 formation squads of 3-4
+  if(wv===5) return 21;   // ~6 zombie-cat swarms of 3-4
   const interval=Math.max(0.35,1.4-wv*0.09);
-  return Math.round(40/interval);   // doubled
+  return Math.round(20/interval);
 }
 const WAVE_LEN_MULT=1.3;   // every wave runs 30% longer than its base target
 function pkWaveQuota(wv){
@@ -581,7 +581,7 @@ function parkUpdate(dt){
     toast(waveLabel);
     PK.waveBanner={text:waveLabel, life:2.2, max:2.2};
     beep(500,.08);
-    if(PK.wave===2){ pkSpawnSentrySquirrels(10); PK.waveSpawned+=10; }
+    if(PK.wave===2){ pkSpawnSentrySquirrels(5); PK.waveSpawned+=5; }
     if(PK.wave===8){ pkSpawnLaserSquad(); PK.waveSpawned+=LASER_SQUAD_SIZE; }
     pkShopOpen();
   }
