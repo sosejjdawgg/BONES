@@ -749,7 +749,139 @@ const FBOWL = { level:0 };
 const POOS=[];
 const TAPS={water:{t:0,combo:0},food:{t:0,combo:0}};
 const SPONGE={held:false,x:0.135,y:0.50,rew:false};
-const SNACKTRACK={t:[]};
+// Bone treats are real objects in the room, not an instant stat bump: each one you give is
+// tossed in, tumbles, bounces, rolls to a stop and piles on whatever settled before it, and
+// only counts once BONES trots over and actually eats it.
+const TREATS=[];
+const BONE_G=3.1, BONE_REST=0.42, BONE_FRIC=0.88, BONE_HW=0.034, BONE_STACK=0.032;
+const BONE_FLOOR_Y=0.791, BONE_MAX=12, BONE_ZOOM_AT=5;   // centre height that sits a bone flat on the floor line
+// a bone rests on the floor, or on the highest already-settled bone it overlaps
+function boneSupportY(tr){
+  let y=BONE_FLOOR_Y;
+  for(const o of TREATS){
+    if(o===tr || !o.settled) continue;
+    if(o.y<=tr.y+0.002) continue;                 // only bones underneath can hold this one up
+    if(Math.abs(o.x-tr.x)<BONE_HW*1.35) y=Math.min(y, o.y-BONE_STACK);
+  }
+  return y;
+}
+function tickTreats(dt){
+  for(const tr of TREATS){
+    const fy=boneSupportY(tr);
+    if(tr.settled && fy>tr.y+0.004) tr.settled=false;   // whatever it was resting on is gone
+    if(!tr.settled){
+      tr.vy += BONE_G*dt;
+      tr.x += tr.vx*dt; tr.y += tr.vy*dt; tr.rot += tr.vrot*dt;
+      if(tr.x<0.03){ tr.x=0.03; tr.vx=Math.abs(tr.vx)*0.55; tr.vrot*=-0.6; }
+      if(tr.x>0.97){ tr.x=0.97; tr.vx=-Math.abs(tr.vx)*0.55; tr.vrot*=-0.6; }
+      if(tr.y>=fy){
+        tr.y=fy;
+        if(Math.abs(tr.vy)>0.14){            // bounce, squashing on impact
+          tr.vy=-tr.vy*BONE_REST; tr.vx*=BONE_FRIC; tr.vrot*=0.55; tr.squash=0.5;
+          beep(300+Math.random()*120,.03,"square",.012);
+        } else { tr.vy=0; tr.settled=true; tr.vrot*=0.3; }
+      }
+    } else {
+      tr.y=fy;
+      tr.x += tr.vx*dt; tr.rot += tr.vrot*dt;
+      tr.vx*=(1-3.2*dt); tr.vrot*=(1-3.4*dt);
+      if(Math.abs(tr.vx)<0.004) tr.vx=0;
+      if(Math.abs(tr.vrot)<0.3){          // spin bleeds off, then it eases flat on the pile
+        tr.vrot=0;
+        const flat=Math.round(tr.rot/Math.PI)*Math.PI;
+        tr.rot += (flat-tr.rot)*Math.min(1,6*dt);
+      }
+      if(tr.x<0.03){ tr.x=0.03; tr.vx=0; }
+      if(tr.x>0.97){ tr.x=0.97; tr.vx=0; }
+    }
+    if(tr.squash) tr.squash=Math.max(0,tr.squash-dt*2.4);
+  }
+  // relaxation pass: bones sharing a layer shoulder each other apart instead of interpenetrating,
+  // so a heap spreads along the floor first and only then starts climbing
+  for(let i=0;i<TREATS.length;i++){
+    for(let j=i+1;j<TREATS.length;j++){
+      const a=TREATS[i], b=TREATS[j];
+      if(Math.abs(b.y-a.y)>BONE_STACK*0.9) continue;   // different layers never clash
+      const dx=b.x-a.x, d=Math.abs(dx), minD=BONE_HW*1.15;
+      if(d>=minD) continue;
+      const s = d<1e-5 ? (Math.random()<0.5?-1:1) : (dx>0?1:-1);
+      const push=(minD-d)*0.5;
+      a.x=clamp(a.x-s*push,0.03,0.97); b.x=clamp(b.x+s*push,0.03,0.97);
+      a.vx-=s*push*2.0; b.vx+=s*push*2.0;
+      a.vrot-=s*push*7; b.vrot+=s*push*7;
+    }
+  }
+}
+// The bone itself: a hard brutalist silhouette — heavy black outline laid down by drawing the
+// shape oversized underneath — with warm ivory on top, a shadowed underside and a hard specular
+// band, so it reads as a solid object rather than a flat sticker.
+function boneShapePath(ctx){
+  ctx.beginPath();
+  ctx.rect(-6.0,-2.6,12.0,5.2);
+  ctx.moveTo(-3.0,-3.3); ctx.arc(-6.0,-3.3,3.0,0,7);
+  ctx.moveTo(-3.0, 3.3); ctx.arc(-6.0, 3.3,3.0,0,7);
+  ctx.moveTo( 9.0,-3.3); ctx.arc( 6.0,-3.3,3.0,0,7);
+  ctx.moveTo( 9.0, 3.3); ctx.arc( 6.0, 3.3,3.0,0,7);
+}
+function drawBoneTreat(ctx,px,py,s,rot,squash){
+  const sq=1-(squash||0)*0.45;
+  ctx.save();
+  ctx.translate(px,py); ctx.rotate(rot||0); ctx.scale(s*(1+(squash||0)*0.18), s*sq);
+  ctx.save(); ctx.scale(1.22,1.22); boneShapePath(ctx); ctx.fillStyle="#0b0a08"; ctx.fill(); ctx.restore();
+  boneShapePath(ctx); ctx.fillStyle="#f4ecdb"; ctx.fill();
+  ctx.save(); boneShapePath(ctx); ctx.clip();
+  ctx.fillStyle="#c9b99b"; ctx.fillRect(-11,0.9,22,9);      // weight underneath
+  ctx.fillStyle="#8f8064"; ctx.fillRect(-11,3.1,22,9);      // deepest shadow at the base
+  ctx.fillStyle="#fffdf5"; ctx.fillRect(-11,-6.6,22,2.0);   // hard specular band along the top
+  ctx.restore();
+  ctx.restore();
+}
+function nearestTreatIdx(){
+  let best=-1, bd=9;
+  for(let i=0;i<TREATS.length;i++){
+    const d=Math.abs(TREATS[i].x-CAM.x);
+    if(d<bd){ bd=d; best=i; }
+  }
+  return best;
+}
+function eatBoneEffects(){
+  S.hunger=clamp(S.hunger+8,0,100); S.energy=clamp(S.energy+12,0,100);
+  S.mood=clamp(S.mood+8,0,100); S.fun=clamp(S.fun+6,0,100);
+  addXP(2); heartsBurst(1);
+  beep(700,.05); setTimeout(()=>beep(940,.06),80);
+  renderMeters(); renderNourish();
+}
+function triggerBoneZoomies(){
+  if(CAM.state==="zoomies"||R.active||OUTING.active||PK.active||WASH.active) return;
+  S.mood=clamp(S.mood+25,0,100); S.fun=clamp(S.fun+20,0,100);
+  CAM.state="zoomies"; CAM.zTarget=CAM.x<0.4?0.98:-0.18; CAM.t=0; CAM.until=5.5; CAM.fi=0;
+  heartsBurst(6); toast("THE ZOOMIES!! HE'S SENDING BONES FLYING!");
+  beep(500,.05); setTimeout(()=>beep(750,.05),90); setTimeout(()=>beep(1000,.06),180);
+}
+function giveBone(){
+  if(S.pup.owned && S.sel==="pup"){
+    if(S.snacks<=0){ toast("NO BONES LEFT — RESTOCK IN THE SHOP",1); return openShopPanel(); }
+    S.snacks--;
+    S.pup.hunger=clamp(S.pup.hunger+12,0,100); S.pup.mood=clamp(S.pup.mood+10,0,100);
+    pupAddXP(2); tickTodo("p_feed");
+    heartsBurst(2); beep(700,.06); toast(S.pup.name+" GOBBLES IT UP!");
+    renderMeters(); renderNourish(); return;
+  }
+  if(S.snacks<=0){ toast("NO BONES LEFT — RESTOCK IN THE SHOP",1); return openShopPanel(); }
+  if(TREATS.length>=BONE_MAX){ toast("THAT'S PLENTY OF BONES ON THE FLOOR!",1); beep(200,.08); return; }
+  S.snacks--;
+  TREATS.push({
+    x:clamp(CAM.x+(Math.random()-0.5)*0.36, 0.08, 0.92),
+    y:0.10+Math.random()*0.07,
+    vx:(Math.random()-0.5)*0.26, vy:0.04,
+    rot:Math.random()*6.283, vrot:(Math.random()-0.5)*16,
+    settled:false, squash:0
+  });
+  beep(560+Math.random()*90,.05);
+  toast("A BONE FOR "+NAME()+" — "+S.snacks+" LEFT");
+  renderMeters(); renderNourish(); renderSupplies();
+  if(TREATS.length>=BONE_ZOOM_AT) triggerBoneZoomies();
+}
 const PULSE={k:null,t:0};
 function setPulse(k){ PULSE.k=k; PULSE.t=3; }
 const PUP={x:0.72,dir:-1,st:"idle",t:0,until:2,fi:0,ft:0,w:0.1,hF:0.12,tx:0,next:"idle"};
@@ -1114,6 +1246,16 @@ function camBehavior(dt){
   if(CAM.state==="zoomies"){
     CAM.dir = CAM.zTarget>CAM.x?1:-1;
     CAM.x += CAM.dir*0.62*dt;
+    // barrelling through the pile sends bones tumbling everywhere
+    for(const tr of TREATS){
+      if(Math.abs(tr.x-CAM.x)<0.075 && tr.y>0.72){
+        tr.settled=false;
+        tr.vx += CAM.dir*(0.30+Math.random()*0.40);
+        tr.vy = -(0.32+Math.random()*0.45);
+        tr.vrot = (Math.random()-0.5)*26;
+        tr.squash=0.4;
+      }
+    }
     if(Math.abs(CAM.x-CAM.zTarget)<0.04) CAM.zTarget = CAM.zTarget>0.4 ? -0.18 : 0.98;
     CAM.zHeart=(CAM.zHeart||0)-dt;
     if(CAM.zHeart<=0){ CAM.zHeart=0.22; heartsBurst(1); beep(680+Math.random()*260,.04,"square",.025); }
@@ -1155,6 +1297,24 @@ function camBehavior(dt){
       S.mood=clamp(S.mood+5,0,100); addXP(6); heartsBurst(2);
       toast(S.clean>=99 ? "SQUEAKY CLEAN!" : "BATH TIME OVER."); beep(880,.08);
       CAM.state="shake"; CAM.t=0; CAM.until=1.4; CAM.fi=0; // shakes himself dry
+    }
+    return;
+  }
+  // trotting over to a bone on the floor, then wolfing it down
+  if(CAM.state==="treatgo"){
+    const i=nearestTreatIdx();
+    if(i<0){ CAM.state="idle"; CAM.t=0; CAM.until=1; CAM.fi=0; return; }
+    const tx=TREATS[i].x;
+    CAM.dir = tx>CAM.x?1:-1;
+    CAM.x += CAM.dir*0.17*dt;
+    if(Math.abs(CAM.x-tx)<0.035){ CAM.state="treateat"; CAM.t=0; CAM.until=0.7; CAM.fi=0; }
+    return;
+  }
+  if(CAM.state==="treateat"){
+    if(CAM.t>=CAM.until){
+      const i=nearestTreatIdx();
+      if(i>=0 && Math.abs(TREATS[i].x-CAM.x)<0.09){ TREATS.splice(i,1); eatBoneEffects(); }
+      CAM.state="idle"; CAM.t=0; CAM.until=0.4; CAM.fi=0;
     }
     return;
   }
@@ -1237,7 +1397,8 @@ function camBehavior(dt){
   }
   if(CAM.t>=CAM.until){
     CAM.t=0; CAM.fi=0;
-    if(S.thirst<48 && BOWL.level>0.05){ CAM.state="drinkgo"; CAM.until=99; }
+    if(TREATS.some(tr=>tr.settled)){ CAM.state="treatgo"; CAM.until=99; }   // a bone on the floor wins every time
+    else if(S.thirst<48 && BOWL.level>0.05){ CAM.state="drinkgo"; CAM.until=99; }
     else if(S.hunger<48 && FBOWL.level>0.05){ CAM.state="eatgo"; CAM.until=99; }
     else if((S.thirst<45 && BOWL.level<=0.05) || (S.hunger<45 && FBOWL.level<=0.05)){
       CAM.begKind = (S.thirst<45 && BOWL.level<=0.05) ? "water" : "food";
@@ -1439,7 +1600,7 @@ function drawCam(t){
     }
   }
   const stt=CAM.state;
-  const fkey = stt==="zoomies" ? "come" : stt==="chase" ? "come" : stt==="fetch" ? (CAM.fetchPhase===4?"idle":"come") : (stt==="drinkgo"||stt==="eatgo"||stt==="beggo") ? "walk" : (stt==="drink"||stt==="eat") ? "sniff" : stt==="beg" ? "idle" : stt==="wash" ? (WASH.heat>0.05?"shake":"idle") : stt==="bedsleep" ? "rest" : stt;
+  const fkey = stt==="zoomies" ? "come" : stt==="chase" ? "come" : stt==="fetch" ? (CAM.fetchPhase===4?"idle":"come") : (stt==="drinkgo"||stt==="eatgo"||stt==="beggo"||stt==="treatgo") ? "walk" : (stt==="drink"||stt==="eat"||stt==="treateat") ? "sniff" : stt==="beg" ? "idle" : stt==="wash" ? (WASH.heat>0.05?"shake":"idle") : stt==="bedsleep" ? "rest" : stt;
   let frames = DOGIMG[fkey] || DOGIMG.idle;
   if(S.senior && (fkey==="walk"||fkey==="idle"||fkey==="sniff"||fkey==="come")) frames=SENIORIMG;
   if(stt==="beg"||stt==="begwait"||stt==="stay") frames=BEGIMG;
@@ -1456,7 +1617,7 @@ function drawCam(t){
     CAMDWF = dw/w;
     const bob = stt==="walk" ? Math.sin(t*10)*1.5 : 0;
     ctx.save(); ctx.imageSmoothingEnabled=false;
-    const flip = (stt==="zoomies"||stt==="walk"||stt==="sniff"||stt==="idle"||stt==="catch"||stt==="come"||stt==="chase"||stt==="fetch"||stt==="drinkgo"||stt==="drink"||stt==="eatgo"||stt==="eat"||stt==="beggo"||stt==="beg"||stt==="begwait"||stt==="stay") && CAM.dir<0;
+    const flip = (stt==="zoomies"||stt==="walk"||stt==="sniff"||stt==="idle"||stt==="catch"||stt==="come"||stt==="chase"||stt==="fetch"||stt==="drinkgo"||stt==="drink"||stt==="eatgo"||stt==="eat"||stt==="treatgo"||stt==="treateat"||stt==="beggo"||stt==="beg"||stt==="begwait"||stt==="stay") && CAM.dir<0;
     if(flip){ ctx.translate(dx*2+dw,0); ctx.scale(-1,1); }
     ctx.drawImage(img, dx, gy-dh+bob, dw, dh);
     ctx.restore();
@@ -1502,6 +1663,14 @@ function drawCam(t){
       ctx.moveTo(pxp+4,gy-16); ctx.lineTo(pxp+2,gy-22); ctx.stroke();
       ctx.strokeStyle="#fff"; ctx.lineWidth=3;
     }
+  }
+  // bone treats scattered on the floor — drawn last so the pile always reads on top
+  for(const tr of TREATS){
+    const px=tr.x*w, py=tr.y*h;
+    const air=clamp((gy-py)/70,0,1);
+    ctx.fillStyle="rgba(0,0,0,"+(0.36*(1-air*0.62))+")";
+    ctx.beginPath(); ctx.ellipse(px, gy-1.5, 9.5*(1-air*0.3), 2.8*(1-air*0.3), 0,0,7); ctx.fill();
+    drawBoneTreat(ctx,px,py,1.25,tr.rot,tr.squash);
   }
   ctx.strokeStyle="#fff"; ctx.lineWidth=3;
   if(CAM.woof>0 && stt==="bark"){
@@ -1760,7 +1929,7 @@ function renderShopSup(){
   // same low-lock-first ordering as GO OUT
   const rows=[
     {req:0, html:'<div class="prow"><span class="nm">'+icn("kibble")+' KIBBLE x'+S.kibble+'<br><span class="tiny">1 POUR \u2014 3 FILL A BOWL</span></span><button data-sup="kibble" '+(S.money<2?"disabled":"")+'>BUY $2</button></div>'},
-    {req:0, html:'<div class="prow"><span class="nm">'+icn("snack")+' SNACKS x'+S.snacks+'<br><span class="tiny">+ENERGY +MOOD, FAST</span></span><button data-sup="snack" '+(S.money<3?"disabled":"")+'>BUY $3</button></div>'},
+    {req:0, html:'<div class="prow"><span class="nm">'+icn("snack")+' BONE TREATS x'+S.snacks+'<br><span class="tiny">HIS FAVOURITE \u2014 +ENERGY +MOOD</span></span><button data-sup="snack" '+(S.money<3?"disabled":"")+'>BUY $3</button></div>'},
     {req:0, html:'<div class="prow"><span class="nm">'+icn("shampoo")+' DOG SHAMPOO '+Math.round(S.shampooPct)+'%<br><span class="tiny">TOPS UP FOR BATHS</span></span><button data-sup="shampoo" '+(S.money<5||S.shampooPct>=100?"disabled":"")+'>BUY $5</button></div>'},
     {req:1, html:(S.bedTier===0
       ? '<div class="prow"><span class="nm">'+icn("bed")+' DOG BED<br><span class="tiny">PERFECT SLEEP \u2014 ONE-TIME</span></span><button data-sup="bed" '+(S.money<25?"disabled":"")+'>BUY $25</button></div>'
@@ -2273,7 +2442,7 @@ $("#adopt").onclick=()=>{
 $("#bHome1").onclick=leaveWork;
 $("#bStamp").onclick=stampNow;
 $("#rSnack").onclick=()=>{ if(S.money<3) return toast("NO MONEY",1);
-  S.money-=3; S.hunger=clamp(S.hunger+22,0,100); beep(520); toast("REMOTE SNACK DISPENSED"); renderMeters(); };
+  S.money-=3; S.hunger=clamp(S.hunger+22,0,100); beep(520); toast("REMOTE BONE DISPENSED"); renderMeters(); };
 $("#rWalk").onclick=()=>{ if(S.money<5) return toast("NO MONEY",1);
   S.money-=5; S.mood=clamp(S.mood+18,0,100); S.clean=clamp(S.clean-4,0,100); beep(640); toast("DOGWALKER BOOKED"); renderMeters(); };
 $("#bWalk").onclick=()=>{
@@ -2305,7 +2474,7 @@ function renderSupplies(){
         : it(icn("bed"),"DOG BED ("+bedTierName(S.bedTier)+")","HE'S OUTGROWN IT \u2014 UPGRADE IN SHOP","bedbuy",false))+
     (S.shampooOwned ? it(pctIcon(S.shampooPct),"DOG SHAMPOO "+Math.round(S.shampooPct)+"%","BATHS USE IT UP \u2014 RESTOCK IN THE SHOP","shampooinfo") : "")+
     it(icn("kibble"),"KIBBLE x"+S.kibble,"RESTOCK IN THE SHOP","food")+
-    it(icn("snack"),"SNACKS x"+S.snacks,"USE THE FEED SNACKS BUTTON","snack");
+    it(icn("snack"),"BONE TREATS x"+S.snacks,"GIVE ONE FROM NOURISH BONES","snack");
 }
 $("#shopSup").addEventListener("click",e=>{
   const t=e.target.closest("button"); if(!t) return;
@@ -2326,7 +2495,7 @@ $("#suppliesList").addEventListener("click",e=>{
     food:"FOOD BOWL: TAPS POUR KIBBLE. HE FEEDS HIMSELF WHEN HUNGRY.",
     sponge:"SPONGE: DRAG IT OFF THE WALL AND SCRUB HIM. SUDS = CLEAN.",
     bed:"THE BED: TAP IT AND HE'LL GO REST TO FULL ENERGY.",
-    snack:"SNACKS: THE FEED SNACKS BUTTON HYPES HIM UP FAST.",
+    snack:"BONE TREATS: GIVE HIM ONE AND HE TROTS OVER TO CHEW IT. FIVE ON THE FLOOR AND HE GETS THE ZOOMIES.",
     bedbuy: S.bedTier===0 ? "NO BED YET \u2014 HE ONLY RESTS TO 70%. IT'S IN THE SHOP." : "HE'S OUTGROWN THIS BED \u2014 HE ONLY RESTS TO 70%. UPGRADE IN THE SHOP.",
     spongebuy:"NO SHAMPOO YET \u2014 HE CAN'T BE WASHED. IT'S IN THE SHOP.",
     shampooinfo:"DOG SHAMPOO: EACH BATH USES SOME UP. RESTOCK IT IN THE SHOP."
@@ -2548,31 +2717,6 @@ $("#bCall").onclick=()=>{
   }
   CAM.needCheck=true; callBones();
 };
-function feedSnack(){
-  if(S.pup.owned && S.sel==="pup"){
-    if(S.snacks<=0){ toast("NO SNACKS \u2014 RESTOCK IN THE SHOP",1); return openShopPanel(); }
-    S.snacks--;
-    S.pup.hunger=clamp(S.pup.hunger+12,0,100); S.pup.mood=clamp(S.pup.mood+10,0,100);
-    pupAddXP(2); tickTodo("p_feed");
-    heartsBurst(2); beep(700,.06); toast(S.pup.name+" GOBBLES IT UP!"); renderMeters();
-    return;
-  }
-  if(S.snacks<=0){ toast("NO SNACKS \u2014 RESTOCK IN THE SHOP",1); return openShopPanel(); }
-  S.snacks--; S.hunger=clamp(S.hunger+8,0,100); S.energy=clamp(S.energy+12,0,100); S.mood=clamp(S.mood+8,0,100); S.fun=clamp(S.fun+6,0,100);
-  addXP(2); heartsBurst(1); beep(640,.06); toast("SNACK! "+S.snacks+" LEFT."); renderMeters(); renderSupplies();
-  const now=performance.now()/1000;
-  SNACKTRACK.t = SNACKTRACK.t.filter(x=>now-x<8); SNACKTRACK.t.push(now);
-  if(SNACKTRACK.t.length>=5 && CAM.state!=="zoomies" && !R.active && !OUTING.active && !PK.active){
-    SNACKTRACK.t=[];
-    S.mood=clamp(S.mood+25,0,100); S.fun=clamp(S.fun+20,0,100);
-    CAM.state="zoomies"; CAM.zTarget=CAM.x<0.4?0.98:-0.18; CAM.t=0; CAM.until=5.5; CAM.fi=0;
-    heartsBurst(6); toast("THE ZOOMIES!! HE'S SO HAPPY!"); beep(500,.05); setTimeout(()=>beep(750,.05),90); setTimeout(()=>beep(1000,.06),180);
-  }
-  if(CAM.state!=="zoomies" && !R.active && !OUTING.active && !PK.active && !WASH.active){
-    CAM.state="begwait"; CAM.t=0; CAM.until=4; CAM.fi=0; CAM.dir=-1;
-    showPortrait("treat",4200);
-  }
-}
 /* ---------- NOURISH BONES: everything that feeds hunger / thirst / energy in one place ---------- */
 function openNourish(){ renderNourish(); $("#nourish").classList.add("show"); beep(500,.05); }
 function renderNourish(){
@@ -2582,7 +2726,7 @@ function renderNourish(){
   const rows=[
     {req:0, html:'<div class="prow"><span class="nm">'+icn("water")+' WATER BOWL — '+Math.round(BOWL.level*100)+'%<br><span class="tiny">'+(waterFull?"FULL — HE\'LL DRINK WHEN THIRSTY":"FREE POUR — FILLS THIRST")+'</span></span><button data-nsh="water" '+(waterFull?"disabled":"")+'>POUR</button></div>'},
     {req:0, html:'<div class="prow"><span class="nm">'+icn("food")+' FOOD BOWL — '+Math.round(FBOWL.level*100)+'%<br><span class="tiny">KIBBLE x'+S.kibble+(foodFull?" — BOWL FULL":" — 3 POURS FILL IT")+'</span></span><button data-nsh="food" '+(foodFull||S.kibble<=0?"disabled":"")+'>POUR</button></div>'},
-    {req:0, html:'<div class="prow"><span class="nm">'+icn("snack")+' SNACKS x'+S.snacks+'<br><span class="tiny">+HUNGER +ENERGY +MOOD, INSTANT</span></span><button data-nsh="snack" '+(S.snacks<=0?"disabled":"")+'>FEED</button></div>'},
+    {req:0, html:'<div class="prow"><span class="nm">'+icn("snack")+' BONE TREATS x'+S.snacks+'<br><span class="tiny">TOSS HIM ONE \u2014 HE WILL COME AND EAT IT</span></span><button data-nsh="snack" '+(S.snacks<=0?"disabled":"")+'>GIVE BONE</button></div>'},
     {req:9, html:'<div class="prow'+(S.money<2?" locked":"")+'"><span class="nm">'+icn("kibble")+' RESTOCK KIBBLE<br><span class="tiny">BUY A BAG — $2</span></span><button data-nsh="buykibble" '+(S.money<2?"disabled":"")+'>BUY $2</button></div>'},
     {req:9, html:'<div class="prow'+(S.money<3?" locked":"")+'"><span class="nm">'+icn("snack")+' RESTOCK SNACKS<br><span class="tiny">BUY A BOX — $3</span></span><button data-nsh="buysnack" '+(S.money<3?"disabled":"")+'>BUY $3</button></div>'}
   ];
@@ -2595,7 +2739,7 @@ $("#nourishList").addEventListener("click",e=>{
   const k=t.dataset.nsh;
   if(k==="water") tapBowl("water");
   if(k==="food") tapBowl("food");
-  if(k==="snack"){ $("#nourish").classList.remove("show"); feedSnack(); return; }
+  if(k==="snack") giveBone();   // panel stays open, so you can hand him several in a row
   if(k==="buykibble" && S.money>=2){ S.money-=2; S.kibble++; beep(600,.05); }
   if(k==="buysnack" && S.money>=3){ S.money-=3; S.snacks++; beep(600,.05); }
   renderMeters(); renderNourish(); renderShop();
@@ -2761,7 +2905,7 @@ function loop(now){
       SLEEP.pending=false; triggerBedtime();
     }
     // at work the dogcam runs on fast-forward, so BONES visibly races through his routine
-    if(!R.active && !PK.active){ camBehavior(dt*WORK_FF); pupTick(dt*WORK_FF); }
+    if(!R.active && !PK.active){ camBehavior(dt*WORK_FF); pupTick(dt*WORK_FF); tickTreats(dt*WORK_FF); }
     if(MODE==="park" && PK.active){ parkUpdate(dt); parkDraw(t); }
     else drawCam(t);
     if(OUTING.active){
