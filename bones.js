@@ -85,21 +85,27 @@ function renderMeters(){
   na.classList.toggle("crit", minv<40);
   const neg=S.money<0, mstr=(neg?"-$":"$")+Math.abs(S.money);
   for(const id of ["money1","money2","money3"]){ const el=$("#"+id); if(el){ el.textContent=mstr; el.style.color=neg?"#f22":"#fff"; } }
-  $("#clock").textContent = "DAY "+CLK.day+" "+String(Math.floor(CLK.h)).padStart(2,"0")+":00";
+  $("#clock").textContent = "DAY "+CLK.day+" "+String(Math.floor(CLK.h)).padStart(2,"0")+":00"+(atWorkNow()?" ▶▶":"");
   $("#bests").textContent = "STREAK "+S.streak+"d";
 }
 
 /* ---------- stats sim ---------- */
+// While the owner is out at a job the dogcam runs on fast-forward: the clock races, BONES
+// scampers through his usual routine at speed, and his needs drain a little quicker than they
+// would at home — so leaving him alone for a shift has a real cost.
+const WORK_CLOCK_FF=2.5, WORK_NEED_FF=1.25;
+let WORK_FF=1, NEED_FF=1;
+function atWorkNow(){ return MODE==="work" || MODE==="paperboy"; }
 function tickStats(dt){
   const m=mods();
-  const nm=S.senior?0.6:1;
+  const nm=(S.senior?0.6:1)*NEED_FF;
   S.hunger = clamp(S.hunger - 0.18*nm*dt, 0, 100);
   S.thirst = clamp(S.thirst - 0.30*nm*dt, 0, 100);
   S.clean  = clamp(S.clean  - 0.09*nm*dt, 0, 100);
   S.fun    = clamp(S.fun    - 0.15*nm*dt, 0, 100);
   const resting = CAM.state==="rest" || CAM.state==="bedsleep";
   const energyCap = resting ? (bedAdequate()?100:70) : 100;
-  S.energy = clamp(S.energy + (resting?2.4:(MODE==="home"?0.10:-0.02))*dt, 0, energyCap);
+  S.energy = clamp(S.energy + (resting?2.4:(MODE==="home"?0.10:-0.02*NEED_FF))*dt, 0, energyCap);
   const target=(S.hunger+S.thirst+S.energy+S.clean+S.fun)/5;
   S.mood = clamp(S.mood + (target-S.mood)*0.05*dt - (m.moodDrain?0.15*dt:0), 0, 100);
   S.petCd = Math.max(0, S.petCd-dt);
@@ -118,7 +124,7 @@ function tickStats(dt){
   if(!S.sick && S.sickTimer>75){ S.sick=true; toast("BONES IS SICK. HE NEEDS CARE \u2014 NO RUNS UNTIL HE RECOVERS.",1); beep(100,.4,"sawtooth"); }
   if(S.sick && S.wellTimer>25){ S.sick=false; S.sickTimer=0; toast("BONES IS FEELING BETTER."); beep(700,.1); }
   if(avgStat()<25) S.dayNeglected=true;
-  CLK.h += dt/10;
+  CLK.h += dt*WORK_FF/10;
   if(CLK.h>=24){
     CLK.h-=24; CLK.day++;
     SLEEP.pending=true;
@@ -1266,35 +1272,46 @@ function drawSunray(ctx,w,h,t){
   const vis = 1-nightAmount();
   if(vis<=0.02) return;
   ctx.save();
-  const ox=w*0.74, oy=h*0.29, dirAng=2.55;
-  const dx=Math.cos(dirAng), dy=Math.sin(dirAng), px=-dy, py=dx;
-  const len=Math.max(w,h)*1.2;
-  // venetian-blind slats: several parallel bands fanning from the window with dark gaps
-  // between them, instead of one smooth wedge — that's what gives real blind-light its stripes
-  const nSlats=7, spanNear=22, spanFar=145;
+  // the shaft is pinned to the window's own corners: its top edge leaves the top-left corner
+  // and its bottom edge leaves the bottom-right one — the two extremes of the opening as seen
+  // along the light — so the beam visibly belongs to the window instead of floating mid-room
+  const winX=w*0.72, winY=h*0.14, winW=w*0.18, winH=h*0.20;
+  const ax=winX, ay=winY;                      // top-left corner  -> upper edge of the shaft
+  const cx=winX+winW, cy=winY+winH;            // bottom-right corner -> lower edge
+  const angTop=2.83, angBot=2.29;              // edges splay slightly, so the shaft fans out
+  const len=Math.max(w,h)*1.35;
+  const txp=ax+Math.cos(angTop)*len, typ=ay+Math.sin(angTop)*len;
+  const bxp=cx+Math.cos(angBot)*len, byp=cy+Math.sin(angBot)*len;
+  // venetian-blind slats: parallel bands with dark gaps between them, each one starting on the
+  // window plane and widening toward the floor — that's what gives real blind-light its stripes
+  const nSlats=7;
   for(let i=0;i<nSlats;i++){
     const f0=i/nSlats, f1=f0+0.58/nSlats;   // slat is ~58% of its slot; the rest is shadow
-    const nearA=(f0-0.5)*spanNear, nearB=(f1-0.5)*spanNear;
-    const farA=(f0-0.5)*spanFar, farB=(f1-0.5)*spanFar;
+    const n0x=ax+(cx-ax)*f0, n0y=ay+(cy-ay)*f0;
+    const n1x=ax+(cx-ax)*f1, n1y=ay+(cy-ay)*f1;
+    const f0x=txp+(bxp-txp)*f0, f0y=typ+(byp-typ)*f0;
+    const f1x=txp+(bxp-txp)*f1, f1y=typ+(byp-typ)*f1;
     const shimmer=0.5+0.5*Math.sin(t*0.2+i*1.35);
     const alpha=(0.055+0.032*shimmer)*vis;
-    const x0=ox+px*nearA, y0=oy+py*nearA, x1=ox+px*nearB, y1=oy+py*nearB;
-    const x2=ox+dx*len+px*farB, y2=oy+dy*len+py*farB;
-    const x3=ox+dx*len+px*farA, y3=oy+dy*len+py*farA;
-    const grad=ctx.createLinearGradient(ox,oy, ox+dx*len, oy+dy*len);
+    const grad=ctx.createLinearGradient((ax+cx)/2,(ay+cy)/2,(txp+bxp)/2,(typ+byp)/2);
     grad.addColorStop(0,"rgba(255,247,214,"+alpha+")");
     grad.addColorStop(0.6,"rgba(255,247,214,"+(alpha*0.4)+")");
     grad.addColorStop(1,"rgba(255,247,214,0)");
     ctx.fillStyle=grad;
     ctx.beginPath();
-    ctx.moveTo(x0,y0); ctx.lineTo(x1,y1); ctx.lineTo(x2,y2); ctx.lineTo(x3,y3);
+    ctx.moveTo(n0x,n0y); ctx.lineTo(n1x,n1y); ctx.lineTo(f1x,f1y); ctx.lineTo(f0x,f0y);
     ctx.closePath(); ctx.fill();
   }
+  // dust motes riding the beam — same drift/twinkle as before, just re-aimed down the new shaft
+  const mox=(ax+cx)/2, moy=(ay+cy)/2;
+  const mdx0=(txp+bxp)/2-mox, mdy0=(typ+byp)/2-moy, mlen=Math.hypot(mdx0,mdy0)||1;
+  const dx=mdx0/mlen, dy=mdy0/mlen, px=-dy, py=dx;
   for(let i=0;i<10;i++){
     const seed=i*13.37;
     const travel=(t*(7+(i%4)*2)+seed*11)%len;
-    const wobble=Math.sin(t*0.5+seed)*8;
-    const mx=ox+dx*travel+px*wobble, my=oy+dy*travel+py*wobble;
+    const spread=8+(travel/len)*46;    // motes fan out with the beam
+    const wobble=Math.sin(t*0.5+seed)*spread;
+    const mx=mox+dx*travel+px*wobble, my=moy+dy*travel+py*wobble;
     const a=(0.3+0.3*Math.sin(t*1.4+seed))*vis;
     if(a<=0.04 || my>h*0.85) continue;
     ctx.fillStyle="rgba(255,250,225,"+a+")";
@@ -2733,6 +2750,9 @@ let last=performance.now(), meterAcc=0;
 function loop(now){
   const dt=Math.min(0.05,(now-last)/1000); last=now;
   const t=now/1000;
+  const ff = atWorkNow();
+  WORK_FF = ff ? WORK_CLOCK_FF : 1;
+  NEED_FF = ff ? WORK_NEED_FF : 1;
   tickStats(dt);
   meterAcc+=dt;
   if(meterAcc>0.5){ meterAcc=0; renderMeters(); }
@@ -2740,7 +2760,8 @@ function loop(now){
     if(SLEEP.pending && !SLEEP.active && MODE==="home" && !R.active && !PK.active && !OUTING.active){
       SLEEP.pending=false; triggerBedtime();
     }
-    if(!R.active && !PK.active){ camBehavior(dt); pupTick(dt); }
+    // at work the dogcam runs on fast-forward, so BONES visibly races through his routine
+    if(!R.active && !PK.active){ camBehavior(dt*WORK_FF); pupTick(dt*WORK_FF); }
     if(MODE==="park" && PK.active){ parkUpdate(dt); parkDraw(t); }
     else drawCam(t);
     if(OUTING.active){

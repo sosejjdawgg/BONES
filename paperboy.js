@@ -8,8 +8,11 @@
 const PB_ROUTE_LEN=12, PB_HOUSE_GAP=250;
 const PB_SPEED0=95, PB_SPEED_MAX=155, PB_SPEED_RAMP=0.7;
 const PB_TOL={doormat:11, house:27, window:50};
-const PB_CHARGE_TIME=3.0, PB_TAP_MAX=0.22;
+const PB_CHARGE_TIME=3.0, PB_TAP_MAX=0.22, PB_SWIPE_MIN=26;
 const PB_HOUSE_VALUE=5, PB_PERFECT_BONUS=2, PB_DESTRUCTION_PENALTY=3, PB_MISS_PENALTY=1;
+// SKILLSHOT: a fully-charged throw that lands the doormat. Pays a bonus on top of the normal
+// perfect bonus and delights the customer, who often comes out and tips on top of that.
+const PB_SKILLSHOT_BONUS=3, PB_TIP_CHANCE=0.55, PB_TIP_MIN=1, PB_TIP_MAX=4;
 
 // --- isometric world layout (x = along the road, y = lateral offset, z = up) ---
 const PB_S=0.42, PB_IX=0.866, PB_IY=0.5;         // projection scale + iso basis
@@ -25,8 +28,8 @@ const PB={
   dist:0, speed:0, houses:[], nextIdx:0,
   pressing:false, pressSide:null, pressT:0,
   charging:null, fx:[], shake:0,
-  camX:0, camY:0,
-  stats:{perfect:0, house:0, destruction:0, miss:0}
+  camX:0, camY:0, swipe:null,
+  stats:{perfect:0, house:0, destruction:0, miss:0, skillshot:0, tips:0}
 };
 
 function pbNewRoute(){
@@ -34,13 +37,13 @@ function pbNewRoute(){
   const doorStart=20+Math.floor(Math.random()*70);
   let side=Math.random()<0.5?"L":"R";
   for(let i=0;i<PB_ROUTE_LEN;i++){
-    houses.push({doorNum:doorStart+i, side, worldDist:PB_HOUSE_GAP*(i+1), thrown:false, zone:null, angryT:0});
+    houses.push({doorNum:doorStart+i, side, worldDist:PB_HOUSE_GAP*(i+1), thrown:false, zone:null, angryT:0, happyT:0, tip:0});
     side = side==="L" ? "R" : "L";
   }
   Object.assign(PB,{
     houses, nextIdx:0, dist:0, speed:PB_SPEED0,
-    pressing:false, pressSide:null, pressT:0, charging:null, fx:[], shake:0,
-    stats:{perfect:0, house:0, destruction:0, miss:0}
+    pressing:false, pressSide:null, pressT:0, charging:null, fx:[], shake:0, swipe:null,
+    stats:{perfect:0, house:0, destruction:0, miss:0, skillshot:0, tips:0}
   });
 }
 function enterPaperboy(){
@@ -49,7 +52,7 @@ function enterPaperboy(){
     showScreen("paperboy");
     pbNewRoute();
     PB.active=true; PB.run=true;
-    toast("THROW WHEN THE VAN CROSSES THE PATH — HOLD FOR A POWER THROW",1);
+    toast("SWIPE OR TAP TO THROW AS THE VAN CROSSES THE PATH — HOLD TO CHARGE A SKILLSHOT",1);
     beep(500,.06); setTimeout(()=>beep(700,.07),110);
   });
 }
@@ -64,10 +67,19 @@ function pbPressEnd(side){
   if(PB.charging){
     PB.charging=null;
     beep(200,.08,"sawtooth");
-    toast("POWER THROW ABORTED",1);
+    toast("SKILLSHOT ABORTED",1);
   } else {
     pbThrow(side,false);
   }
+}
+// Swipe input decides its direction at the flick, not at the press — so a held charge parks at
+// full power and waits for the swipe to tell it which way to launch. A swipe always throws:
+// fully charged it's a SKILLSHOT, otherwise it's an ordinary throw.
+function pbLaunch(side){
+  if(!PB.run) return;
+  const power = !!(PB.charging && PB.charging.t>=PB_CHARGE_TIME);
+  PB.charging=null; PB.pressing=false; PB.pressSide=null;
+  pbThrow(side,power);
 }
 function pbSpawnParcelFX(house,kind){
   PB.fx.push({t:"parcel", house, ox:PB.dist, p:0, dur:0.34, kind});
@@ -95,7 +107,17 @@ function pbApplyResult(h,zone,power){
   if(zone==="doormat"){
     PB.stats.perfect++;
     pbSpawnParcelFX(h,"doormat");
-    beep(880,.07); setTimeout(()=>beep(1180,.09),80);
+    if(power){
+      // SKILLSHOT — bonus pay, a delighted customer, and often a tip on the doorstep
+      PB.stats.skillshot++;
+      h.happyT=3.5;
+      if(Math.random()<PB_TIP_CHANCE){
+        h.tip=PB_TIP_MIN+Math.floor(Math.random()*(PB_TIP_MAX-PB_TIP_MIN+1));
+        PB.stats.tips+=h.tip;
+        toast("SKILLSHOT! +$"+h.tip+" TIP",1);
+      } else toast("SKILLSHOT!",1);
+      beep(980,.07); setTimeout(()=>beep(1320,.09),80); setTimeout(()=>beep(1660,.11),160);
+    } else { beep(880,.07); setTimeout(()=>beep(1180,.09),80); }
   } else if(zone==="house"){
     PB.stats.house++;
     pbSpawnParcelFX(h,"house");
@@ -136,7 +158,7 @@ function pbFinish(){
   PB.run=false; PB.active=false;
   const s=PB.stats, total=PB.houses.length;
   const delivered=s.perfect+s.house;
-  const gross=delivered*PB_HOUSE_VALUE + s.perfect*PB_PERFECT_BONUS;
+  const gross=delivered*PB_HOUSE_VALUE + s.perfect*PB_PERFECT_BONUS + s.skillshot*PB_SKILLSHOT_BONUS + s.tips;
   const deduction=s.destruction*PB_DESTRUCTION_PENALTY + s.miss*PB_MISS_PENALTY;
   const net=Math.max(0,gross-deduction);
   S.money+=net; S.earned+=net;
@@ -157,6 +179,7 @@ function pbFinish(){
   $("#resScore").textContent="$"+net;
   $("#resLines").innerHTML=
     "DELIVERED "+delivered+"/"+total+" ("+s.perfect+" PERFECT)<br>"+
+    s.skillshot+(s.skillshot===1?" SKILLSHOT":" SKILLSHOTS")+(s.tips?" — $"+s.tips+" IN TIPS":"")+"<br>"+
     s.destruction+" DESTROYED, "+s.miss+" MISSED<br>"+
     "GROSS $"+gross+" − $"+deduction+" DEDUCTIONS = <b>$"+net+"</b>";
   $("#result").classList.add("show");
@@ -170,7 +193,10 @@ function updatePaperboy(dt){
     const f=PB.fx[i];
     if(f.t==="parcel"){ f.p=Math.min(1,f.p+dt/f.dur); if(f.p>=1) PB.fx.splice(i,1); }
   }
-  for(const hh of PB.houses){ if(hh.angryT>0) hh.angryT=Math.max(0,hh.angryT-dt); }
+  for(const hh of PB.houses){
+    if(hh.angryT>0) hh.angryT=Math.max(0,hh.angryT-dt);
+    if(hh.happyT>0) hh.happyT=Math.max(0,hh.happyT-dt);
+  }
 
   if(PB.pressing && !PB.charging){
     PB.pressT+=dt;
@@ -180,12 +206,16 @@ function updatePaperboy(dt){
     }
   }
   if(PB.charging){
-    PB.charging.t+=dt;
+    PB.charging.t=Math.min(PB_CHARGE_TIME,PB.charging.t+dt);
     PB.shake=0.5;
     if(PB.charging.t>=PB_CHARGE_TIME){
       const side=PB.charging.side;
-      PB.charging=null; PB.pressing=false;
-      pbThrow(side,true);
+      // a button charge knows its direction and fires the instant it maxes out; a swipe charge
+      // doesn't yet, so it parks at full power waiting for the flick to point it somewhere
+      if(side){
+        PB.charging=null; PB.pressing=false;
+        pbThrow(side,true);
+      } else if(!PB.charging.rang){ PB.charging.rang=true; beep(1200,.09); }
     }
     return;   // van stays fully stopped while charging — nothing scrolls
   }
@@ -283,9 +313,26 @@ function pbDrawHouse(ctx,h,t){
   // big door number across the wide down-left face
   const c=pbP((x0+x1)/2,yhi,H*0.52);
   pbFaceText(ctx,c[0],c[1],PB_IX,PB_IY,""+h.doorNum,17, h.zone==="miss"?"#f22":"#fff");
+  // delighted customer after a SKILLSHOT — comes out, waves, and shows the tip if they left one
+  if(h.happyT>0){
+    const p=pbP(h.worldDist, s*(PB_HOUSE_Y0-48), 0);
+    const wave=Math.sin(t*9)*4;
+    ctx.save(); ctx.translate(p[0],p[1]);
+    ctx.fillStyle="#fff";
+    ctx.beginPath(); ctx.arc(0,-24,5,0,7); ctx.fill();
+    ctx.fillRect(-4,-19,8,13);
+    ctx.save(); ctx.translate(6,-20); ctx.rotate(-0.9+wave*0.06);
+    ctx.fillRect(0,-2,9,4);
+    ctx.restore();
+    if(h.tip){
+      ctx.fillStyle="#ffd94a"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
+      ctx.fillText("+$"+h.tip, 0, -34); ctx.textAlign="left";
+    }
+    ctx.restore();
+  }
   // furious occupant out on the path, shaking a fist as you drive off
   if(h.angryT>0){
-    const p=pbP(h.worldDist, s*(PB_HOUSE_Y0-26), 0);
+    const p=pbP(h.worldDist, s*(PB_HOUSE_Y0-48), 0);
     const wig=Math.sin(t*15)*3;
     ctx.save(); ctx.translate(p[0],p[1]);
     ctx.fillStyle="#f22";
@@ -347,13 +394,18 @@ function pbDrawHUD(ctx,w,h){
   ctx.fillText(PB.nextIdx+"/"+PB.houses.length, w-12, 22);
   ctx.textAlign="left";
   if(PB.charging){
-    const p=clamp(PB.charging.t/PB_CHARGE_TIME,0,1);
+    const p=clamp(PB.charging.t/PB_CHARGE_TIME,0,1), full=p>=1;
     const bw=w*0.6, bx=w/2-bw/2, by=h*0.80;
-    ctx.fillStyle="rgba(0,0,0,.7)"; ctx.fillRect(bx-5,by-18,bw+10,34);
-    ctx.fillStyle="#f22"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText("POWER THROW", w/2, by-5);
-    ctx.strokeStyle="#f22"; ctx.lineWidth=2; ctx.strokeRect(bx,by,bw,12);
-    ctx.fillStyle="#f22"; ctx.fillRect(bx,by,bw*p,12);
+    const col = full ? "#ffd94a" : "#f22";
+    ctx.fillStyle="rgba(0,0,0,.7)"; ctx.fillRect(bx-5,by-18,bw+10,48);
+    ctx.fillStyle=col; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText("SKILLSHOT", w/2, by-5);
+    ctx.strokeStyle=col; ctx.lineWidth=2; ctx.strokeRect(bx,by,bw,12);
+    ctx.fillStyle=col; ctx.fillRect(bx,by,bw*p,12);
+    if(full && !PB.charging.side && Math.floor(performance.now()/220)%2){
+      ctx.fillStyle="#ffd94a"; ctx.font="7px 'Press Start 2P',monospace";
+      ctx.fillText("SWIPE TO LAUNCH", w/2, by+26);
+    }
     ctx.textAlign="left";
   }
 }
@@ -392,6 +444,36 @@ function drawPaperboy(t){
   pbDrawHUD(ctx,w,h);
 }
 (function(){
+  // Swipe delivery straight on the route view: flick left or right to throw that way. Press and
+  // hold still first to wind up a SKILLSHOT, then flick to launch it.
+  const cv=$("#paperboycv");
+  cv.addEventListener("pointerdown",e=>{
+    if(!PB.run) return;
+    e.preventDefault();
+    PB.swipe={x:e.clientX, y:e.clientY, fired:false};
+    pbPressStart(null);
+    try{cv.setPointerCapture(e.pointerId);}catch(_){}
+  });
+  cv.addEventListener("pointermove",e=>{
+    if(!PB.run || !PB.swipe || PB.swipe.fired) return;
+    const dx=e.clientX-PB.swipe.x;
+    if(Math.abs(dx)>=PB_SWIPE_MIN){
+      PB.swipe.fired=true;
+      pbLaunch(dx<0 ? "L" : "R");
+    }
+  });
+  const swEnd=()=>{
+    if(!PB.swipe) return;
+    const fired=PB.swipe.fired;
+    PB.swipe=null;
+    // lifted without a flick: cancel the wind-up rather than burning a parcel
+    if(!fired && PB.pressSide===null){
+      PB.pressing=false;
+      if(PB.charging){ PB.charging=null; beep(200,.08,"sawtooth"); toast("SKILLSHOT ABORTED",1); }
+    }
+  };
+  cv.addEventListener("pointerup",swEnd);
+  cv.addEventListener("pointercancel",swEnd);
   const bl=$("#bThrowL"), br=$("#bThrowR");
   bl.addEventListener("pointerdown",e=>{ e.preventDefault(); pbPressStart("L"); });
   bl.addEventListener("pointerup",()=>pbPressEnd("L"));
