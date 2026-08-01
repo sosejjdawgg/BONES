@@ -380,7 +380,7 @@ const TODO_META=[
   ["j_wave3","jWave3",'SURVIVE UNTIL WAVE 3<br><span class="tiny">IN THE DOGPARK \u2014 40 XP</span>',"+40 XP",2],
   ["j_collar","jCollar",'BUY BONES A NEW COLLAR<br><span class="tiny">ANY CHARM \u2014 25 XP</span>',"+25 XP",2],
   ["j_trick","jTrick",'TEACH BONES A TRICK<br><span class="tiny">TAP HIM WHILE HE BEGS \u2014 25 XP</span>',"+25 XP",2],
-  ["p_feed","pFeed",'FEED THE PUP A SNACK<br><span class="tiny">8 PUP XP</span>',"+8 PUP XP",3],
+  ["p_feed","pFeed",'GIVE THE PUP A BONE TREAT<br><span class="tiny">8 PUP XP</span>',"+8 PUP XP",3],
   ["p_play","pPlay",'PLAY FETCH WITH THE PUP<br><span class="tiny">10 PUP XP</span>',"+10 PUP XP",3],
   ["p_pet","pPet",'PET THE PUP<br><span class="tiny">6 PUP XP</span>',"+6 PUP XP",3]
 ];
@@ -2728,7 +2728,7 @@ function renderNourish(){
     {req:0, html:'<div class="prow"><span class="nm">'+icn("food")+' FOOD BOWL — '+Math.round(FBOWL.level*100)+'%<br><span class="tiny">KIBBLE x'+S.kibble+(foodFull?" — BOWL FULL":" — 3 POURS FILL IT")+'</span></span><button data-nsh="food" '+(foodFull||S.kibble<=0?"disabled":"")+'>POUR</button></div>'},
     {req:0, html:'<div class="prow"><span class="nm">'+icn("snack")+' BONE TREATS x'+S.snacks+'<br><span class="tiny">TOSS HIM ONE \u2014 HE WILL COME AND EAT IT</span></span><button data-nsh="snack" '+(S.snacks<=0?"disabled":"")+'>GIVE BONE</button></div>'},
     {req:9, html:'<div class="prow'+(S.money<2?" locked":"")+'"><span class="nm">'+icn("kibble")+' RESTOCK KIBBLE<br><span class="tiny">BUY A BAG — $2</span></span><button data-nsh="buykibble" '+(S.money<2?"disabled":"")+'>BUY $2</button></div>'},
-    {req:9, html:'<div class="prow'+(S.money<3?" locked":"")+'"><span class="nm">'+icn("snack")+' RESTOCK SNACKS<br><span class="tiny">BUY A BOX — $3</span></span><button data-nsh="buysnack" '+(S.money<3?"disabled":"")+'>BUY $3</button></div>'}
+    {req:9, html:'<div class="prow'+(S.money<3?" locked":"")+'"><span class="nm">'+icn("snack")+' RESTOCK BONE TREATS<br><span class="tiny">BUY A BOX — $3</span></span><button data-nsh="buysnack" '+(S.money<3?"disabled":"")+'>BUY $3</button></div>'}
   ];
   $("#nourishList").innerHTML = unlockSort(rows);
 }
@@ -2783,7 +2783,7 @@ $("#devEvo").onclick=()=>{
   devSync(); renderMeters(); renderShop();
   toast("INSTANT-EVOLVED \u2014 "+stageName()+" (DEV)");
 };
-$("#devStock").onclick=()=>{ S.kibble+=10; S.snacks+=10; toast("+10 KIBBLE +10 SNACKS (DEV)"); renderMeters(); };
+$("#devStock").onclick=()=>{ S.kibble+=10; S.snacks+=10; toast("+10 KIBBLE +10 BONE TREATS (DEV)"); renderMeters(); };
 $("#devSick").onclick=()=>{ S.sick=!S.sick; toast(S.sick?"BONES IS SICK (DEV)":"CURED (DEV)"); renderMeters(); };
 $("#devPoo").onclick=()=>{ if(POOS.length<3){ const cv=$("#dogcv"), br=bedRect(cv.clientWidth,cv.clientHeight); POOS.push({x:(br.bx+Math.random()*br.bw2)/cv.clientWidth}); toast("DROPPED ONE (DEV)"); } };
 $("#devReset").onclick=()=>{ S.dailyUsed=false; toast("DAY RESET (DEV)"); };

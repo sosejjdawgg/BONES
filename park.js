@@ -63,7 +63,7 @@ function drawLock(ctx,x,y,s,color){
 const BONES_EXCHANGE=[
   {label:"XP",    sub:"10 BONES → 2 XP",    cost:10, f:()=>addXP(2)},
   {label:"MONEY", sub:"10 BONES → $5",      cost:10, f:()=>{S.money+=5;}},
-  {label:"SNACK", sub:"15 BONES → 1 SNACK", cost:15, f:()=>{S.snacks+=1;}}
+  {label:"TREAT", sub:"15 BONES → 1 BONE TREAT", cost:15, f:()=>{S.snacks+=1;}}
 ];
 const SPARKS=[]; // celebratory burst when a shop purchase lands
 function pkFanfare(label,big,rawText){
