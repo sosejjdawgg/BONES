@@ -83,7 +83,6 @@ function renderMeters(){
   const na=$("#needAlert");
   na.classList.toggle("hidden", minv>=80);
   na.classList.toggle("crit", minv<40);
-  $("#snackCt").textContent="x"+S.snacks;
   const neg=S.money<0, mstr=(neg?"-$":"$")+Math.abs(S.money);
   for(const id of ["money1","money2","money3"]){ const el=$("#"+id); if(el){ el.textContent=mstr; el.style.color=neg?"#f22":"#fff"; } }
   $("#clock").textContent = "DAY "+CLK.day+" "+String(Math.floor(CLK.h)).padStart(2,"0")+":00";
@@ -394,8 +393,8 @@ function startersDone(){ return TODO_META.filter(m=>!m[4]).every(m=>S[m[1]]); }
 function renderTodo(){
   const bar=$("#todoBar"), list=$("#todoList");
   const jOpen=startersDone();
-  const n=TODO_META.reduce((a,m)=>a+((!S[m[1]] && (m[4]!==2||jOpen) && (m[4]!==3||S.pup.owned) && !(m[0]==="d_ball"&&!S.ballOwned) && !(m[0]==="lvl5"&&!S.todoPark))?1:0),0);
-  bar.textContent = TODO_NEW.length ? "\u2605 TO-DO "+TODO_NEW.length+" READY!" : (n ? "\u25B8 TO-DO "+n+" LEFT" : "\u2713 TO-DO");
+  // fixed label \u2014 the blink is the signal now, not a running count
+  bar.textContent = "\u25B8 TO-DO LIST";
   bar.classList.toggle("pulse", TODO_NEW.length>0);
   let html="";
   for(const k of TODO_NEW){
@@ -1741,17 +1740,20 @@ function pctIcon(pct){
 function openShopPanel(){ renderShop(); $("#shopPanel").classList.add("show"); }
 function renderShopSup(){
   const el=$("#shopSup"); if(!el) return;
-  el.innerHTML =
-    '<div class="prow"><span class="nm">'+icn("kibble")+' KIBBLE x'+S.kibble+'<br><span class="tiny">1 POUR \u2014 3 FILL A BOWL</span></span><button data-sup="kibble" '+(S.money<2?"disabled":"")+'>BUY $2</button></div>'+
-    '<div class="prow"><span class="nm">'+icn("snack")+' SNACKS x'+S.snacks+'<br><span class="tiny">+ENERGY +MOOD, FAST</span></span><button data-sup="snack" '+(S.money<3?"disabled":"")+'>BUY $3</button></div>'+
-    (S.bedTier===0
+  // same low-lock-first ordering as GO OUT
+  const rows=[
+    {req:0, html:'<div class="prow"><span class="nm">'+icn("kibble")+' KIBBLE x'+S.kibble+'<br><span class="tiny">1 POUR \u2014 3 FILL A BOWL</span></span><button data-sup="kibble" '+(S.money<2?"disabled":"")+'>BUY $2</button></div>'},
+    {req:0, html:'<div class="prow"><span class="nm">'+icn("snack")+' SNACKS x'+S.snacks+'<br><span class="tiny">+ENERGY +MOOD, FAST</span></span><button data-sup="snack" '+(S.money<3?"disabled":"")+'>BUY $3</button></div>'},
+    {req:0, html:'<div class="prow"><span class="nm">'+icn("shampoo")+' DOG SHAMPOO '+Math.round(S.shampooPct)+'%<br><span class="tiny">TOPS UP FOR BATHS</span></span><button data-sup="shampoo" '+(S.money<5||S.shampooPct>=100?"disabled":"")+'>BUY $5</button></div>'},
+    {req:1, html:(S.bedTier===0
       ? '<div class="prow"><span class="nm">'+icn("bed")+' DOG BED<br><span class="tiny">PERFECT SLEEP \u2014 ONE-TIME</span></span><button data-sup="bed" '+(S.money<25?"disabled":"")+'>BUY $25</button></div>'
       : !bedAdequate()
         ? '<div class="prow" style="border-color:#f22"><span class="nm" style="color:#f22">'+icn("bed")+' BIGGER BED<br><span class="tiny">HE\'S OUTGROWN HIS BED</span></span><button data-sup="biggerbed" '+(S.money<45?"disabled":"")+'>BUY $45</button></div>'
-        : "")+
-    (S.lvl<2||S.ballOwned?"":'<div class="prow"><span class="nm">'+icn("ball")+' RUBBER BALL<br><span class="tiny">FETCH, TRICK SHOTS \u2014 ONE-TIME</span></span><button data-sup="ball" '+(S.money<5?"disabled":"")+'>BUY $5</button></div>')+
-    '<div class="prow"><span class="nm">'+icn("shampoo")+' DOG SHAMPOO '+Math.round(S.shampooPct)+'%<br><span class="tiny">TOPS UP FOR BATHS</span></span><button data-sup="shampoo" '+(S.money<5||S.shampooPct>=100?"disabled":"")+'>BUY $5</button></div>'+
-    (S.hoopOwned?"":'<div class="prow"><span class="nm">'+icn("hoop")+' BASKETBALL HOOP<br><span class="tiny">TRICK SHOTS BY THE WINDOW \u2014 ONE-TIME</span></span><button data-sup="hoop" '+(S.money<40?"disabled":"")+'>BUY $40</button></div>');
+        : "")},
+    {req:2, html:(S.ballOwned?"":'<div class="prow'+(S.lvl<2?" locked":"")+'"><span class="nm">'+icn("ball")+' RUBBER BALL<br><span class="tiny">'+(S.lvl<2?"UNLOCKS LV.2":"FETCH, TRICK SHOTS \u2014 ONE-TIME")+'</span></span><button data-sup="ball" '+(S.lvl<2||S.money<5?"disabled":"")+'>BUY $5</button></div>')},
+    {req:3, html:(S.hoopOwned?"":'<div class="prow"><span class="nm">'+icn("hoop")+' BASKETBALL HOOP<br><span class="tiny">TRICK SHOTS BY THE WINDOW \u2014 ONE-TIME</span></span><button data-sup="hoop" '+(S.money<40?"disabled":"")+'>BUY $40</button></div>')}
+  ];
+  el.innerHTML = unlockSort(rows);
 }
 function renderShop(){
   renderShopSup();
@@ -2318,18 +2320,21 @@ $("#suppliesList").addEventListener("click",e=>{
   if(k==="bedbuy"||k==="spongebuy") openShopPanel();
   beep(520,.05);
 });
+// every list of gated activities sorts the same way: whatever unlocks earliest sits at the
+// top, the deepest lock sits at the bottom, so the list reads as a progression ladder
+function unlockSort(rows){ return rows.sort((a,b)=>a.req-b.req).map(r=>r.html).join(""); }
 function renderGoOut(){
-  const rows=[];
-  rows.push('<div class="prow"><span class="nm">&#9642; PAPERBOY ROUTE<br><span class="tiny">DELIVER PARCELS FOR CASH</span></span><button data-go="paperboy">GO</button></div>');
-  const workL=S.earned<5000;
-  rows.push('<div class="prow'+(workL?" locked":"")+'"><span class="nm">&#9830; STAMPING PLANT<br><span class="tiny">'+(workL?"UNLOCKS AT $5000 EARNED":"EARN MONEY")+'</span></span><button data-go="work" '+(workL?"disabled":"")+'>GO</button></div>');
-  const compL=S.lvl<15, beachL=S.lvl<9, litL=S.lvl<18;
-  rows.push('<div class="prow'+(compL?" locked":"")+'"><span class="nm">&#9733; DOG COMPETITION<br><span class="tiny">'+(compL?"UNLOCKS LV.15":"PRIZE MONEY \u2014 "+(3-S.compsToday)+"/3 TODAY")+'</span></span><button data-go="comp" '+(compL?"disabled":"")+'>ENTER</button></div>');
-  const agiL=S.lvl<8;
-  rows.push('<div class="prow'+(agiL?" locked":"")+'"><span class="nm">&#9650; AGILITY TRAINING<br><span class="tiny">'+(agiL?"UNLOCKS LV.8":"-15 ENERGY \u2014 +12 XP")+'</span></span><button data-go="agility" '+(agiL?"disabled":"")+'>TRAIN</button></div>');
-  rows.push('<div class="prow'+(beachL?" locked":"")+'"><span class="nm">&#9679; BEACH DAY<br><span class="tiny">'+(beachL?"UNLOCKS LV.9":(S.beach?"OWNED \u2014 BIG FUN":"UNLOCK $25"))+'</span></span><button data-go="beach" '+(beachL||OUTING.active?"disabled":"")+'>'+(S.beach?"GO":"BUY")+'</button></div>');
-  rows.push('<div class="prow'+(litL?" locked":"")+'"><span class="nm">&#9829; VISIT THE BREEDER<br><span class="tiny">'+(litL?"UNLOCKS LV.18":(S.litter?"A PUP AWAITS":"ONE LITTER, ONE SUCCESSOR"))+'</span></span><button data-go="litter" '+(litL?"disabled":"")+'>GO</button></div>');
-  $("#gooutList").innerHTML = rows.join("");
+  const workL=S.earned<5000, compL=S.lvl<15, beachL=S.lvl<9, litL=S.lvl<18, agiL=S.lvl<8;
+  const rows=[
+    {req:0, html:'<div class="prow"><span class="nm">&#9642; PAPERBOY ROUTE<br><span class="tiny">DELIVER PARCELS FOR CASH</span></span><button data-go="paperboy">GO</button></div>'},
+    {req:8, html:'<div class="prow'+(agiL?" locked":"")+'"><span class="nm">&#9650; AGILITY TRAINING<br><span class="tiny">'+(agiL?"UNLOCKS LV.8":"-15 ENERGY \u2014 +12 XP")+'</span></span><button data-go="agility" '+(agiL?"disabled":"")+'>TRAIN</button></div>'},
+    {req:9, html:'<div class="prow'+(beachL?" locked":"")+'"><span class="nm">&#9679; BEACH DAY<br><span class="tiny">'+(beachL?"UNLOCKS LV.9":(S.beach?"OWNED \u2014 BIG FUN":"UNLOCK $25"))+'</span></span><button data-go="beach" '+(beachL||OUTING.active?"disabled":"")+'>'+(S.beach?"GO":"BUY")+'</button></div>'},
+    {req:15, html:'<div class="prow'+(compL?" locked":"")+'"><span class="nm">&#9733; DOG COMPETITION<br><span class="tiny">'+(compL?"UNLOCKS LV.15":"PRIZE MONEY \u2014 "+(3-S.compsToday)+"/3 TODAY")+'</span></span><button data-go="comp" '+(compL?"disabled":"")+'>ENTER</button></div>'},
+    {req:18, html:'<div class="prow'+(litL?" locked":"")+'"><span class="nm">&#9829; VISIT THE BREEDER<br><span class="tiny">'+(litL?"UNLOCKS LV.18":(S.litter?"A PUP AWAITS":"ONE LITTER, ONE SUCCESSOR"))+'</span></span><button data-go="litter" '+(litL?"disabled":"")+'>GO</button></div>'},
+    // money-gated rather than level-gated, and $5000 is a long grind \u2014 so it anchors the bottom
+    {req:99, html:'<div class="prow'+(workL?" locked":"")+'"><span class="nm">&#9830; STAMPING PLANT<br><span class="tiny">'+(workL?"UNLOCKS AT $5000 EARNED":"EARN MONEY")+'</span></span><button data-go="work" '+(workL?"disabled":"")+'>GO</button></div>'}
+  ];
+  $("#gooutList").innerHTML = unlockSort(rows);
 }
 $("#gooutList").addEventListener("click",e=>{
   const t=e.target.closest("button"); if(!t||t.disabled) return;
@@ -2526,7 +2531,7 @@ $("#bCall").onclick=()=>{
   }
   CAM.needCheck=true; callBones();
 };
-$("#bSnacks").onclick=()=>{
+function feedSnack(){
   if(S.pup.owned && S.sel==="pup"){
     if(S.snacks<=0){ toast("NO SNACKS \u2014 RESTOCK IN THE SHOP",1); return openShopPanel(); }
     S.snacks--;
@@ -2550,7 +2555,34 @@ $("#bSnacks").onclick=()=>{
     CAM.state="begwait"; CAM.t=0; CAM.until=4; CAM.fi=0; CAM.dir=-1;
     showPortrait("treat",4200);
   }
-};
+}
+/* ---------- NOURISH BONES: everything that feeds hunger / thirst / energy in one place ---------- */
+function openNourish(){ renderNourish(); $("#nourish").classList.add("show"); beep(500,.05); }
+function renderNourish(){
+  const mrow=(lb,k)=>'<div class="mrow"><span class="lb">'+lb+'</span><div class="bar'+(S[k]<25?" crit":"")+'"><i style="width:'+S[k]+'%"></i></div></div>';
+  $("#nourishMeters").innerHTML = mrow("HUNGER","hunger")+mrow("THIRST","thirst")+mrow("ENERGY","energy");
+  const waterFull=BOWL.level>0.97, foodFull=FBOWL.level>0.97;
+  const rows=[
+    {req:0, html:'<div class="prow"><span class="nm">'+icn("water")+' WATER BOWL — '+Math.round(BOWL.level*100)+'%<br><span class="tiny">'+(waterFull?"FULL — HE\'LL DRINK WHEN THIRSTY":"FREE POUR — FILLS THIRST")+'</span></span><button data-nsh="water" '+(waterFull?"disabled":"")+'>POUR</button></div>'},
+    {req:0, html:'<div class="prow"><span class="nm">'+icn("food")+' FOOD BOWL — '+Math.round(FBOWL.level*100)+'%<br><span class="tiny">KIBBLE x'+S.kibble+(foodFull?" — BOWL FULL":" — 3 POURS FILL IT")+'</span></span><button data-nsh="food" '+(foodFull||S.kibble<=0?"disabled":"")+'>POUR</button></div>'},
+    {req:0, html:'<div class="prow"><span class="nm">'+icn("snack")+' SNACKS x'+S.snacks+'<br><span class="tiny">+HUNGER +ENERGY +MOOD, INSTANT</span></span><button data-nsh="snack" '+(S.snacks<=0?"disabled":"")+'>FEED</button></div>'},
+    {req:9, html:'<div class="prow'+(S.money<2?" locked":"")+'"><span class="nm">'+icn("kibble")+' RESTOCK KIBBLE<br><span class="tiny">BUY A BAG — $2</span></span><button data-nsh="buykibble" '+(S.money<2?"disabled":"")+'>BUY $2</button></div>'},
+    {req:9, html:'<div class="prow'+(S.money<3?" locked":"")+'"><span class="nm">'+icn("snack")+' RESTOCK SNACKS<br><span class="tiny">BUY A BOX — $3</span></span><button data-nsh="buysnack" '+(S.money<3?"disabled":"")+'>BUY $3</button></div>'}
+  ];
+  $("#nourishList").innerHTML = unlockSort(rows);
+}
+$("#bSnacks").onclick=openNourish;
+$("#nourishClose").onclick=()=>$("#nourish").classList.remove("show");
+$("#nourishList").addEventListener("click",e=>{
+  const t=e.target.closest("button"); if(!t||t.disabled) return;
+  const k=t.dataset.nsh;
+  if(k==="water") tapBowl("water");
+  if(k==="food") tapBowl("food");
+  if(k==="snack"){ $("#nourish").classList.remove("show"); feedSnack(); return; }
+  if(k==="buykibble" && S.money>=2){ S.money-=2; S.kibble++; beep(600,.05); }
+  if(k==="buysnack" && S.money>=3){ S.money-=3; S.snacks++; beep(600,.05); }
+  renderMeters(); renderNourish(); renderShop();
+});
 let PIN="";
 function pinRender(){ $("#pinDots").textContent=[0,1,2,3].map(i=>i<PIN.length?"\u25CF":"\u2013").join(" "); }
 // shared by #devToggle (Home footer) and #pkDevToggle (a small always-there corner tap inside

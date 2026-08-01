@@ -102,7 +102,7 @@ button.red:active{background:#f22;color:#000}
 #tdBanner{border:3px solid #f22;color:#fff;font-size:10px;text-align:center;padding:12px;animation:tdpop .3s ease}
 @keyframes tdpop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
 .pclose{position:absolute;top:8px;left:8px;font-size:6px;padding:4px 6px;margin:0}
-#todoPanel,#supplies,#menuPanel,#careGuidePanel,#settingsPanel,#shopPanel{justify-content:flex-start;padding-top:46px}
+#todoPanel,#supplies,#menuPanel,#careGuidePanel,#settingsPanel,#shopPanel,#nourish{justify-content:flex-start;padding-top:46px}
 .overpanel .prow{padding:13px 11px;line-height:2;border-width:2px}
 .overpanel .prow .nm{font-size:8px;letter-spacing:1px}
 .shopicon{width:22px;height:22px;vertical-align:middle;margin-right:2px;image-rendering:pixelated;position:relative;top:-1px}
@@ -124,8 +124,8 @@ button.red:active{background:#f22;color:#000}
 #bCall:active{background:#fff}
 #bCall:active svg{fill:#000}
 #bWalk{grid-column:1;grid-row:1}
-#bSnacks{grid-column:3;grid-row:1}
-#bGoOut{grid-column:1;grid-row:2}
+#bGoOut{grid-column:3;grid-row:1}
+#bSnacks{grid-column:1;grid-row:2}
 #bFetch{grid-column:3;grid-row:2}
 .prow{display:flex;justify-content:space-between;align-items:center;border:3px solid #fff;padding:8px;font-size:8px;gap:6px}
 .prow.locked{opacity:.4}
@@ -254,7 +254,7 @@ body.reduce-motion *{animation:none!important}
           <div id="mainGrid">
             <button id="bWalk" class="mg">&#9650;<br>GO TO<br>THE PARK</button>
             <button id="bCall" class="paw"><svg viewBox="0 0 24 24" width="30" height="30" fill="#fff"><circle cx="5" cy="9" r="2.4"/><circle cx="9.5" cy="5.6" r="2.4"/><circle cx="14.5" cy="5.6" r="2.4"/><circle cx="19" cy="9" r="2.4"/><ellipse cx="12" cy="15.4" rx="5.4" ry="4.4"/></svg><br>CALL<br>BONES</button>
-            <button id="bSnacks" class="mg">&#9670;<br>FEED<br>SNACKS<br><span class="tiny" id="snackCt">x2</span></button>
+            <button id="bSnacks" class="mg"><svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><circle cx="5" cy="8.2" r="3"/><circle cx="5" cy="13.4" r="3"/><circle cx="19" cy="8.2" r="3"/><circle cx="19" cy="13.4" r="3"/><rect x="5" y="8.6" width="14" height="4.4"/></svg><br>NOURISH<br>BONES</button>
             <button id="bGoOut" class="mg">&#9654;<br>GO<br>OUT</button>
             <button id="bFetch" class="mg">&#9679;<br>PLAY<br>FETCH</button>
           </div>
@@ -276,7 +276,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.62a</span>
+          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.63a</span>
         </div>
       </div>
 
@@ -321,6 +321,14 @@ body.reduce-motion *{animation:none!important}
         <button class="tiny pclose" id="supClose">&#10005; CLOSE</button>
         <h2>SUPPLIES LIST</h2>
         <div id="suppliesList" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:94%;max-height:58vh;overflow-y:auto"></div>
+      </div>
+
+      <!-- NOURISH -->
+      <div id="nourish" class="overpanel">
+        <button class="tiny pclose" id="nourishClose">&#10005; CLOSE</button>
+        <h2>NOURISH BONES</h2>
+        <div id="nourishMeters" style="width:86%;display:grid;gap:3px"></div>
+        <div id="nourishList" style="display:flex;flex-direction:column;gap:8px;width:86%;max-height:52%;overflow-y:auto"></div>
       </div>
 
       <!-- GO OUT -->
