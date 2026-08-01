@@ -207,10 +207,10 @@ function pkBuildBG(w,h){
 }
 const ENEMYIMG={};
 for(const k in ENEMYFRAMES) ENEMYIMG[k] = ENEMYFRAMES[k].map(u=>{ const i=new Image(); i.src=u; return i; });
-function startPark(){
+function startPark(plus){
   Object.assign(PK,{
     active:true,t:0,wave:1,waveT:0,spawnT:1,
-    waveQuota:pkWaveQuota(1), waveSpawned:0, flockDone:false,
+    waveQuota:pkWaveQuota(1), waveSpawned:0,
     goldenDone:false, goldenAt:3+Math.random()*8,
     convertOpen:false, barkedTypes:{}, missionBarkAll:false, missionSurviveW1:false,
     maxhp:Math.round(50+50*S.mood/100),
@@ -222,17 +222,18 @@ function startPark(){
     chain:0, chainT:0, inv:0, fx:[],
     x:0,y:0,vx:0,vy:0, joy:null,
     en:[], fr:[], gate:{}, started:false, shop:null, biscuits:[], drops:[], pendingBury:0, nuts:[],
-    powerups:[], starT:0, zoom:1, stalkCatT:0
+    powerups:[], starT:0, zoom:1,
+    plusMode:!!plus, mixTypes:null, mixLabel:null, swoopT:0
   });
   PK.hp=PK.maxhp;
   PK.acts=[{k:"hoop",x:.15,y:.125,cd:0},{k:"tunnel",x:.35,y:.36,cd:0},{k:"ramp",x:.11,y:.39,cd:0},{k:"tunnel",x:.62,y:.70,cd:0},{k:"hoop",x:.85,y:.20,cd:0}];
-  PK.waveBanner={text:"WAVE 1", life:2.2, max:2.2};
+  PK.waveBanner={text:"WAVE 1 — CLEAR THE BIRDS", life:2.2, max:2.2};
   SPARKS.length=0;
   S.outTimer=0;
   tickTodo("d_park");
   hidePortrait(); closeStatus();
   showScreen("park");
-  $("#camstate").textContent="DOGPARK";
+  $("#camstate").textContent = plus ? "DOGPARK+" : "DOGPARK";
   toast("SURVIVE. COLLECT BONES, BANK XP AT THE RED EXIT.");
   beep(660,.08); setTimeout(()=>beep(880,.08),120);
 }
@@ -259,32 +260,6 @@ function pkSpawn(w,h){
     sp:(type==="sq"?70:type==="bird"?85:45)*(1+wv*0.05),
     ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
 }
-function pkSpawnType(type, ang){
-  const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
-  const WW=PK.WW||w*2, WH=PK.WH||h*2;
-  if(Math.random()<0.04){
-    const side=Math.random()<0.5?-1:1;
-    PK.fr.push({x:(PK.x+side*w*0.65+WW)%WW, y:(PK.y+(Math.random()-0.5)*h*0.8+WH)%WH, vx:-side*42, life:16});
-    return;
-  }
-  const a2 = ang===undefined ? Math.random()*6.283 : ang;
-  const R=Math.max(w,h)*0.62, wv=PK.wave;
-  // wave 1 is the tutorial wave: its cats ("STRAYS") are smaller and drop in one hit
-  const small = type==="cat" && wv===1;
-  const hp0 = small ? 1 : (type==="cat"?2:1);
-  PK.en.push({t:type, x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
-    hp:hp0, hpMax:hp0, small,
-    sp:(type==="sq"?70:type==="bird"?85:45)*(1+wv*0.05),
-    ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
-}
-function pkSpawnAlpha(){
-  const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
-  const WW=PK.WW, WH=PK.WH, a2=Math.random()*6.283, R=Math.max(w,h)*0.62;
-  PK.en.push({t:"cat", alpha:true, x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
-    hp:4, hpMax:4, sp:52, ph:0, kx:0, ky:0, dir:1, fi:0, ft:0});
-  toast("\u2620 THE ALPHA CAT IS HERE.",1);
-  beep(120,.35,"sawtooth",.05);
-}
 // a golden bird carrying a gold bone — one per stage, optional, never counts toward the wave
 // quota. flies a fast, straight line across the world; catch it (like the friend NPC) for a
 // big bones payout, or miss it and it just disappears.
@@ -297,168 +272,184 @@ function pkSpawnGoldenBird(){
   toast("A GOLDEN BIRD FLIES BY — CATCH IT!",1);
   beep(900,.05); setTimeout(()=>beep(1200,.06),70);
 }
-// a flock of 10-20 birds flies straight in on a shared bearing, from any direction. they
-// don't home in like a lone dive-bomber \u2014 they hold their trajectory and, if they'd fly
-// clean off the engagement area, rubber-band their heading back toward the fray instead of
-// leaving. they keep looping through until every last one is knocked down.
+// WAVE 2 \u2014 BIRD BACKUP: long formations of birds fly in diagonally from either side (NE/NW/
+// SW/SE bearings only), holding a staggered wedge. 1-hit kill like every other bird. If it'd
+// fly clean off the engagement area, it rubber-bands its heading back toward the fray instead
+// of leaving, so the flock keeps looping through until every last one is knocked down.
 function pkSpawnFlock(){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
-  const n=10+Math.floor(Math.random()*11);
-  const ang=Math.random()*6.283, perp=ang+Math.PI/2;
-  const R=Math.max(w,h)*0.8;
+  const n=(12+Math.floor(Math.random()*9))*pkPlusMult();
+  const diagonals=[Math.PI*0.25, Math.PI*0.75, Math.PI*1.25, Math.PI*1.75];
+  const ang=diagonals[Math.floor(Math.random()*4)], perp=ang+Math.PI/2;
+  const R=Math.max(w,h)*0.85;
   const cx=PK.x-Math.cos(ang)*R, cy=PK.y-Math.sin(ang)*R;   // upstream of the flight path
-  const sp=80+Math.random()*25;
+  const sp=90+Math.random()*20;
   for(let i=0;i<n;i++){
-    const off=(i-(n-1)/2)*16+(Math.random()-0.5)*10;         // staggered wedge formation
+    const off=(i-(n-1)/2)*15+(Math.random()-0.5)*8;         // staggered wedge formation
     const sxo=cx+Math.cos(perp)*off, syo=cy+Math.sin(perp)*off;
     PK.en.push({t:"bird", flock:true, x:(sxo+WW)%WW, y:(syo+WH)%WH,
-      hp:2, hpMax:2, sp, vx:Math.cos(ang)*sp, vy:Math.sin(ang)*sp,   // survives one hit -> circles and dive-attacks instead of just flying past
+      hp:1, hpMax:1, sp, vx:Math.cos(ang)*sp, vy:Math.sin(ang)*sp,
       ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
   }
   PK.waveSpawned += n;
-  toast(n+" BIRDS INBOUND!",1);
+  if(Math.random()<STALK_CHANCE) pkSpawnStalkCat(PK.x+(Math.random()-0.5)*80, PK.y+(Math.random()-0.5)*80, 1+Math.floor(Math.random()*2));
+  toast(n+" BIRDS INBOUND \u2014 BACKUP ARRIVES!",1);
   beep(520,.09,"square",.05); setTimeout(()=>beep(680,.09,"square",.05),90);
+  return n;
 }
-const LASER_SQUAD_SIZE=4;
-const LASER_CHARGE_TIME=1.6, LASER_FIRE_VIS=0.45, LASER_WIDTH=13, LASER_COOLDOWN=2.4, LASER_RECOIL=70;
+const LASER_WIDTH=13;
 function pkLaserRange(){ return Math.min(PK.WW,PK.WH)*0.42; }   // stays under half the world so the
                                                                  // wrap-aware hit-test never disagrees with the straight beam drawn on screen
-// wave 8 boss stage: a small squad of squirrels that root in place, charge a red eye-glow,
-// then burst a long linear laser out along whichever way they're facing
-function pkSpawnLaserSquad(){
-  const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
-  const WW=PK.WW, WH=PK.WH;
-  for(let i=0;i<LASER_SQUAD_SIZE;i++){
-    const ang=(i/LASER_SQUAD_SIZE)*6.283+Math.random()*0.4, R=Math.max(w,h)*0.6;
-    PK.en.push({t:"sq", laser:true, x:(PK.x+Math.cos(ang)*R+WW)%WW, y:(PK.y+Math.sin(ang)*R+WH)%WH,
-      hp:3, hpMax:3, sp:58, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
-      laserState:"seek", chargeT:0, aimAng:0, fireT:0, cd:1.2+Math.random()*1.2});
-  }
-  toast("⚠ LASER SQUIRRELS — WATCH THE RED EYES",1);
-  beep(140,.3,"sawtooth",.05); setTimeout(()=>beep(180,.3,"sawtooth",.05),120);
-}
-// wave-redesign tuning
+function pkPlusMult(){ return PK.plusMode ? 2 : 1; }   // DOGPARK+: same wave structure, double enemies on screen at once
+// ===== WAVE REDESIGN v2 =====
 const STANDING_SPOOK_R=58, SPOOK_SPEED=100, SPOOK_LIFE=3.2;   // wave 1: how close before a roost startles, and how it scatters
-const SENTRY_WAKE_R=90;                                       // wave 2: how close before a dozing squirrel wakes up angry
-const JUMP_ATK_SPEED=210, JUMP_ATK_TIME=0.3, NUT_SPEED=145;   // wave 3: melee lunge vs. thrown nut
-const FORM_RADIUS=95, FORM_TOL=18, FORM_CHARGE=LASER_CHARGE_TIME*1.15, FORM_KNOCK=54; // wave 4: box-in formation
-const ZOMBIE_BURST_SPEED=190, ZOMBIE_BURST_CD=5;              // wave 5: slow shuffle -> sudden lunge
-const STALK_CAT_CAP=2, STALK_AGGRO_R=65, STALK_WANDER_R=40, STALK_LEAP_SPEED=185, STALK_LEAP_TIME=0.3, STALK_CHASE_SPD=62;   // wave 1: cats stalking near the roosts
-// WAVE 1 — STRAYS: small roosts of birds standing perfectly still until BONES gets close,
-// at which point the whole roost startles and scatters. still just as hittable mid-scatter.
+const STALK_CHANCE=0.20;                                      // waves 1-2: chance a bird-flock spawn also drops stalking cats
+const STALK_CAT_SOFTCAP=6, STALK_AGGRO_R=65, STALK_ORBIT_R=48, STALK_ORBIT_SPEED=0.9, STALK_LEAP_SPEED=185, STALK_LEAP_TIME=0.3, STALK_CHASE_SPD=62;
+const NUT_SPEED=145;                                          // wave 4/mix: thrown-nut projectile speed
+const RANGER_PLANT_R=200, RANGER_APPROACH_SPD=55, RANGER_WINDUP=0.55, RANGER_THROW_CD=1.5;   // wave 4: nut-throwing squirrels
+const MADSQ_CHARGE=1.4, MADSQ_SWEEP_TIME=3.0, MADSQ_SWEEP_ARC=0.9, MADSQ_SWEEP_RATE=2.4;      // wave 5: rotating-beam squirrels
+const ALPHA_LEAP_R=170, ALPHA_LEAP_SPEED=280, ALPHA_LEAP_TIME=0.45, ALPHA_LEAP_CD=4, ALPHA_LEAP_DMG=20, ALPHA_APPROACH_SPD=50; // wave 6
+// WAVE 1 — CLEAR THE BIRDS: loose flocks of 3-7 birds clustered together, standing until
+// BONES gets close, then the whole flock startles and scatters (still hittable mid-scatter,
+// and settles back into a roost instead of despawning if it gets away clean). 1-hit kill.
 function pkSpawnBirdGroup(){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
   const ang=Math.random()*6.283, R=Math.max(w,h)*0.62;
   const cx=(PK.x+Math.cos(ang)*R+WW)%WW, cy=(PK.y+Math.sin(ang)*R+WH)%WH;
-  const n=3+Math.floor(Math.random()*2);
+  const n=(3+Math.floor(Math.random()*5))*pkPlusMult();   // 3-7 birds
   for(let i=0;i<n;i++){
-    const ox=(Math.random()-0.5)*40, oy=(Math.random()-0.5)*30;
+    const ox=(Math.random()-0.5)*46, oy=(Math.random()-0.5)*34;
     PK.en.push({t:"bird", standing:true, x:(cx+ox+WW)%WW, y:(cy+oy+WH)%WH,
-      hp:1, hpMax:1, small:true, sp:0, ph:Math.random()*6, kx:0, ky:0, dir:Math.random()<0.5?-1:1, fi:0, ft:0});
+      hp:1, hpMax:1, sp:0, ph:Math.random()*6, kx:0, ky:0, dir:Math.random()<0.5?-1:1, fi:0, ft:0});
   }
+  if(Math.random()<STALK_CHANCE) pkSpawnStalkCat(cx,cy, 1+Math.floor(Math.random()*2));
   return n;
 }
-// WAVE 1 — a small cat stalking around a bird roost. Doesn't count toward the wave quota and
-// doesn't block the wave clearing — it's a persistent side hazard, capped at STALK_CAT_CAP
-// alive at once. Leave it alone and it just prowls; get too close and it aggroes, leaping in
-// then chasing him down for good (no settling back down once it's on the hunt).
-function pkSpawnStalkCat(){
-  const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
-  const WW=PK.WW||w*2, WH=PK.WH||h*2;
-  const birds=PK.en.filter(e=>e.t==="bird" && !e.fleeing);
-  let ax,ay;
-  if(birds.length){
-    const b=birds[Math.floor(Math.random()*birds.length)];
-    ax=b.x; ay=b.y;
-  } else {
-    const ang=Math.random()*6.283, R=Math.max(w,h)*0.55;
-    ax=(PK.x+Math.cos(ang)*R+WW)%WW; ay=(PK.y+Math.sin(ang)*R+WH)%WH;
-  }
-  const ox=(Math.random()-0.5)*50, oy=(Math.random()-0.5)*36;
-  PK.en.push({t:"cat", stalk:true, small:true, x:(ax+ox+WW)%WW, y:(ay+oy+WH)%WH,
-    hp:1, hpMax:1, sp:0, ph:Math.random()*6, kx:0, ky:0, dir:Math.random()<0.5?-1:1, fi:0, ft:0,
-    anchorX:(ax+ox+WW)%WW, anchorY:(ay+oy+WH)%WH, wanderAng:Math.random()*6.283, wanderT:0});
-}
-// WAVE 2 — dozing sentries scattered across the whole park; leave them be and they leave you
-// be, but get within range and they wake up and give chase like any other squirrel.
-function pkSpawnSentrySquirrels(n){
+// WAVES 1-2 — a cat (or two) stalking/circling around a bird flock. Doesn't count toward the
+// wave quota and doesn't block the wave clearing — a persistent side hazard. Leave it be and
+// it just circles; get close and it aggroes for good, leaping in then chasing him down (no
+// settling back once it's on the hunt). 2-hit kill.
+function pkSpawnStalkCat(ax, ay, count){
+  const alive=PK.en.filter(e=>e.t==="cat" && (e.stalk||e.stalkAggro) && !e.fleeing).length;
+  if(alive>=STALK_CAT_SOFTCAP) return;
   const WW=PK.WW, WH=PK.WH;
+  const n=Math.min(count, STALK_CAT_SOFTCAP-alive);
   for(let i=0;i<n;i++){
-    PK.en.push({t:"sq", sentry:true, x:Math.random()*WW, y:Math.random()*WH,
-      hp:1, hpMax:1, sp:70, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
+    PK.en.push({t:"cat", stalk:true, x:(ax+WW)%WW, y:(ay+WH)%WH,
+      hp:2, hpMax:2, sp:0, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
+      anchorX:(ax+WW)%WW, anchorY:(ay+WH)%WH, orbitAng:Math.random()*6.283});
   }
 }
-// WAVE 3 — SQUIRREL AMBUSH: bursts of 5-7 squirrels. Up close they lunge in a fast jump-attack;
-// kept at range they wind up and lob a nut instead. Both are telegraphed before they land.
-function pkSpawnAmbushSquad(){
+// WAVE 3 — CAT BACKUP: squads of 2-4 cats charging in directly. 2-hit kill.
+function pkSpawnCatSquad(){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
-  const n=5+Math.floor(Math.random()*3);
+  const n=(2+Math.floor(Math.random()*3))*pkPlusMult();
+  const ang=Math.random()*6.283, R=Math.max(w,h)*0.62;
+  for(let i=0;i<n;i++){
+    const a2=ang+(Math.random()-0.5)*0.8;
+    PK.en.push({t:"cat", x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
+      hp:2, hpMax:2, sp:48, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
+  }
+  PK.waveSpawned+=n;
+  return n;
+}
+// WAVE 3 — a lone decorative bird sweeping straight across, left to right. Pure flavor: it
+// doesn't attack, doesn't count toward the quota, and just times out if it's never caught.
+function pkSpawnSwoopBird(){
+  const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
+  const WW=PK.WW||w*2, WH=PK.WH||h*2;
+  const y=(PK.y+(Math.random()-0.5)*h*0.5+WH)%WH, sp=140+Math.random()*30;
+  PK.en.push({t:"bird", swoop:true, x:(PK.x-w*0.7+WW)%WW, y,
+    hp:1, hpMax:1, sp, vx:sp, vy:0, ph:0, kx:0, ky:0, dir:1, fi:0, ft:0, life:9});
+}
+// WAVE 4 — NUT THROWERS: weak, ranged squirrels. They approach to a comfortable distance,
+// plant themselves, wind up (satisfyingly telegraphed), then lob a nut — 1.5s between throws.
+// 1 HP: a single bark takes one down before it can even finish a throw.
+function pkSpawnRangerSquad(){
+  const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
+  const WW=PK.WW||w*2, WH=PK.WH||h*2;
+  const n=(2+Math.floor(Math.random()*2))*pkPlusMult();
   const ang=Math.random()*6.283, R=Math.max(w,h)*0.65;
   for(let i=0;i<n;i++){
     const a2=ang+(Math.random()-0.5)*0.9;
-    PK.en.push({t:"sq", ambush:true, x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
-      hp:1, hpMax:1, sp:50, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
-      atkState:"idle", atkCd:1+Math.random()*1.5});
+    PK.en.push({t:"sq", ranger:true, x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
+      hp:1, hpMax:1, sp:RANGER_APPROACH_SPD, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
+      atkState:"approach", atkCd:0.6+Math.random()*0.8});
   }
   PK.waveSpawned+=n;
-  toast(n+" SQUIRRELS AMBUSH!",1);
-  beep(200,.1,"sawtooth"); setTimeout(()=>beep(260,.1,"sawtooth"),100);
   return n;
 }
-// WAVE 4 — big, slow, laser-eyed squirrels that spread out to fixed compass points around
-// BONES (boxing him in) before charging a beam that blasts him straight backwards on a hit.
-function pkSpawnFormationSquad(){
-  const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
-  const WW=PK.WW, WH=PK.WH;
-  const n=3+Math.floor(Math.random()*2);
-  for(let i=0;i<n;i++){
-    const slotAng=(i/n)*6.283+Math.random()*0.3, spawnAng=Math.random()*6.283, R=Math.max(w,h)*0.62;
-    PK.en.push({t:"sq", formation:true, big:true, x:(PK.x+Math.cos(spawnAng)*R+WW)%WW, y:(PK.y+Math.sin(spawnAng)*R+WH)%WH,
-      hp:3, hpMax:3, sp:36, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
-      formAng:slotAng, laserState:"seek", chargeT:0, aimAng:0, fireT:0, cd:0.6+Math.random()*0.6});
-  }
-  PK.waveSpawned+=n;
-  toast(n+" SQUIRRELS FORM UP — WATCH THE EYES",1);
-  beep(140,.3,"sawtooth",.05); setTimeout(()=>beep(180,.3,"sawtooth",.05),120);
-  return n;
-}
-// WAVE 5 — swarms of cats shuffling in slow like the undead, then bursting into a fast lunge
-// attack every 5s once they're close enough — the only warning is the sudden speed change.
-function pkSpawnZombieCats(n){
+// WAVE 5 — MAD SQUIRRELS: you made them mad. Same weak 1 HP, but their eyes glow red and they
+// root in place to sweep a rotating beam — a boss-style swooping attack — for a full 3 seconds,
+// then overheat and self-destruct in a satisfying pop, whether or not they ever hit BONES.
+function pkSpawnMadSquad(){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
+  const n=(2+Math.floor(Math.random()*2))*pkPlusMult();
+  const ang=Math.random()*6.283, R=Math.max(w,h)*0.62;
   for(let i=0;i<n;i++){
-    const ang=Math.random()*6.283, R=Math.max(w,h)*0.62;
-    PK.en.push({t:"cat", zombie:true, x:(PK.x+Math.cos(ang)*R+WW)%WW, y:(PK.y+Math.sin(ang)*R+WH)%WH,
-      hp:2, hpMax:2, sp:30, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0, burstCd:2+Math.random()*3});
+    const a2=ang+(Math.random()-0.5)*0.9;
+    PK.en.push({t:"sq", madsq:true, x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
+      hp:1, hpMax:1, sp:44, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
+      laserState:"seek", chargeT:0, aimAng:0, sweepT:0, cd:0.6+Math.random()*0.8});
   }
   PK.waveSpawned+=n;
   return n;
 }
-// how many enemies a wave spawns before it's cleared \u2014 just measured as a kill quota instead
-// of a fixed clock. doubled from wave 10 on. Waves 1-5 have bespoke enemy compositions now
-// (roosts / sentries+flock / ambush squads / formation squads / zombie swarms) so their
-// targets are hand-set to roughly match the intended fight length rather than derived from
-// a uniform spawn interval.
-function pkWaveBaseQuota(wv){
-  if(wv===8) return LASER_SQUAD_SIZE;   // boss stage: exactly the laser squad, no filler trash
-  if(wv===1) return 12;   // ~3-4 roosts of 3-4 birds each
-  if(wv===2) return 5;    // dozing sentries \u2014 the once-per-wave flock adds its own 10-20 on top
-  if(wv===3) return 18;   // ~3 ambush bursts of 5-7
-  if(wv===4) return 8;    // ~2 formation squads of 3-4
-  if(wv===5) return 21;   // ~6 zombie-cat swarms of 3-4
-  const interval=Math.max(0.35,1.4-wv*0.09);
-  return Math.round(20/interval);
+// WAVE 6 — THE ALPHAS: exactly 2 giant alpha cats (5-hit kill, gigantic leap attack) plus a
+// trickle of 20 regular cats. Alphas are fixed boss units — not scaled by DOGPARK+.
+function pkSpawnAlphaSquad(){
+  const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
+  const WW=PK.WW, WH=PK.WH;
+  for(let i=0;i<2;i++){
+    const ang=(i/2)*6.283+Math.random()*0.5, R=Math.max(w,h)*0.6;
+    PK.en.push({t:"cat", alpha:true, big:true, x:(PK.x+Math.cos(ang)*R+WW)%WW, y:(PK.y+Math.sin(ang)*R+WH)%WH,
+      hp:5, hpMax:5, sp:ALPHA_APPROACH_SPD, ph:0, kx:0, ky:0, dir:1, fi:0, ft:0, leapCd:1.5+Math.random()});
+  }
+  toast("☠ THE ALPHAS HAVE ARRIVED",1);
+  beep(120,.35,"sawtooth",.05);
 }
-const WAVE_LEN_MULT=1.3;   // every wave runs 30% longer than its base target
+// WAVES 7-10(+) — a random mix of two previously-seen enemy types, trickling in as small
+// squads of 1-3. Clearing wave 10 unlocks DOGPARK+.
+const MIX_POOL=["bird","cat","ranger","madsq"];
+const MIX_NAME={bird:"BIRDS", cat:"CATS", ranger:"SQUIRRELS", madsq:"MAD SQUIRRELS"};
+function pkPickMixTypes(){
+  const pool=MIX_POOL.slice();
+  const a=pool.splice(Math.floor(Math.random()*pool.length),1)[0];
+  const b=pool.splice(Math.floor(Math.random()*pool.length),1)[0];
+  return [a,b];
+}
+function pkSpawnMixBurst(types){
+  const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
+  const WW=PK.WW||w*2, WH=PK.WH||h*2;
+  const n=(1+Math.floor(Math.random()*3))*pkPlusMult();
+  const ang=Math.random()*6.283, R=Math.max(w,h)*0.62;
+  for(let i=0;i<n;i++){
+    const type=types[Math.floor(Math.random()*types.length)];
+    const a2=ang+(Math.random()-0.5)*0.9;
+    const x=(PK.x+Math.cos(a2)*R+WW)%WW, y=(PK.y+Math.sin(a2)*R+WH)%WH;
+    if(type==="bird") PK.en.push({t:"bird", x,y, hp:1,hpMax:1, sp:85, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0});
+    else if(type==="cat") PK.en.push({t:"cat", x,y, hp:2,hpMax:2, sp:48, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0});
+    else if(type==="ranger") PK.en.push({t:"sq", ranger:true, x,y, hp:1,hpMax:1, sp:RANGER_APPROACH_SPD, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0, atkState:"approach", atkCd:0.6+Math.random()*0.8});
+    else if(type==="madsq") PK.en.push({t:"sq", madsq:true, x,y, hp:1,hpMax:1, sp:44, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0, laserState:"seek", chargeT:0, aimAng:0, sweepT:0, cd:0.6+Math.random()*0.8});
+  }
+  PK.waveSpawned+=n;
+  return n;
+}
+// how many enemies a wave needs cleared \u2014 hand-set to match the redesigned wave-by-wave
+// spec. waves beyond 10 keep extending the mix pattern with a gently rising quota.
 function pkWaveQuota(wv){
-  const base=pkWaveBaseQuota(wv);
-  if(wv===8) return base;   // never pad the exact boss-squad count
-  const scaled=Math.round(base*WAVE_LEN_MULT);
-  return wv>=10 ? scaled*2 : scaled;
+  if(wv===1) return 15;
+  if(wv===2) return 20;
+  if(wv===3) return 10;
+  if(wv===4) return 20;
+  if(wv===5) return 25;
+  if(wv===6) return 22;   // 2 alphas + 20 regular cats
+  if(wv>=7 && wv<=10) return 20+(wv-7)*2;   // 20, 22, 24, 26
+  return 26+(wv-10)*2;
 }
 const FLEE_SPEED=115, FLEE_TIME=2.2;   // how fast, and how long, a scared-off enemy scuttles before despawning
 function pkBark(){
@@ -557,7 +548,7 @@ function parkUpdate(dt){
   // a wave only ends once its full quota has spawned AND every last enemy is down (fleeing
   // stragglers don't count \u2014 they're already defeated, just scuttling off in the background;
   // spooked-but-alive roost birds that got away clean also don't block the clear)
-  if(PK.waveSpawned>=PK.waveQuota && !PK.en.some(e=>!e.fleeing && !e.spooked && !e.stalk && !e.stalkAggro)){
+  if(PK.waveSpawned>=PK.waveQuota && !PK.en.some(e=>!e.fleeing && !e.spooked && !e.stalk && !e.stalkAggro && !e.swoop)){
     // survive the very first wave and it's a straight-up XP bonus
     if(PK.wave===1 && !PK.missionSurviveW1){
       PK.missionSurviveW1=true; addXP(10);
@@ -571,50 +562,45 @@ function parkUpdate(dt){
     } else {
       PK.speedBonus={unlocked:false, over:Math.round(PK.waveT-60), charm:null};
     }
+    if(PK.wave===10 && !S.dogParkPlusUnlocked){
+      S.dogParkPlusUnlocked=true;
+      setTimeout(()=>pkFanfare(null,true,"🏆 DOGPARK+ UNLOCKED!"),300);
+    }
     PK.waveT=0; PK.wave++;
     if(PK.wave>=3) tickTodo("j_wave3");
     PK.barkMax=Math.max(1,PK.barkMax-0.12); PK.barkR+=5;
-    PK.waveQuota=pkWaveQuota(PK.wave); PK.waveSpawned=0; PK.flockDone=false;
+    PK.waveQuota=pkWaveQuota(PK.wave); PK.waveSpawned=0;
     PK.goldenDone=false; PK.goldenAt=3+Math.random()*8;
-    const WNAME={2:"THE FLOCK",3:"SQUIRREL AMBUSH",4:"\u26a0 BATTLE FORMATION",5:"ZOMBIE CATS",8:"\u26a0 LASER SQUIRRELS"};
-    const waveLabel="WAVE "+PK.wave+(WNAME[PK.wave]?" \u2014 "+WNAME[PK.wave]:"");
+    const WNAME={1:"CLEAR THE BIRDS",2:"BIRD BACKUP",3:"CAT BACKUP",4:"NUT THROWERS",5:"\u26a0 MAD SQUIRRELS",6:"\u2620 THE ALPHAS"};
+    if(PK.wave===6) pkSpawnAlphaSquad();
+    if(PK.wave>=7){ PK.mixTypes=pkPickMixTypes(); PK.mixLabel=MIX_NAME[PK.mixTypes[0]]+" & "+MIX_NAME[PK.mixTypes[1]]; }
+    const label = PK.wave>=7 ? PK.mixLabel : WNAME[PK.wave];
+    const waveLabel="WAVE "+PK.wave+(label?" \u2014 "+label:"");
     toast(waveLabel);
     PK.waveBanner={text:waveLabel, life:2.2, max:2.2};
     beep(500,.08);
-    if(PK.wave===2){ pkSpawnSentrySquirrels(5); PK.waveSpawned+=5; }
-    if(PK.wave===8){ pkSpawnLaserSquad(); PK.waveSpawned+=LASER_SQUAD_SIZE; }
     pkShopOpen();
-  }
-  // one bird flock per wave (from wave 2 on) \u2014 skipped on the wave 8 boss stage so the
-  // laser squirrels get a clean, focused fight instead of being diluted by a flock
-  if(!PK.flockDone && PK.wave>=2 && PK.wave!==8 && PK.waveT>3){
-    PK.flockDone=true;
-    pkSpawnFlock();
   }
   // one golden bird per stage — optional, never counts toward the wave quota
   if(!PK.goldenDone && PK.waveT>PK.goldenAt){
     PK.goldenDone=true;
     pkSpawnGoldenBird();
   }
-  // WAVE 1 — keep exactly STALK_CAT_CAP stalking cats prowling the roosts at any given time
-  if(PK.wave===1){
-    PK.stalkCatT=(PK.stalkCatT||0)-dt;
-    const liveStalkCats=PK.en.filter(e=>e.t==="cat" && (e.stalk||e.stalkAggro) && !e.fleeing).length;
-    if(liveStalkCats<STALK_CAT_CAP && PK.stalkCatT<=0){
-      pkSpawnStalkCat();
-      PK.stalkCatT=1+Math.random()*1.2;
-    }
+  // WAVE 3 — the odd decorative bird swooping left to right
+  if(PK.wave===3){
+    PK.swoopT=(PK.swoopT||0)-dt;
+    if(PK.swoopT<=0){ pkSpawnSwoopBird(); PK.swoopT=5+Math.random()*4; }
   }
   PK.spawnT-=dt;
   if(PK.spawnT<=0 && PK.waveSpawned<PK.waveQuota){
     const wv=PK.wave;
-    if(wv===1){ PK.spawnT=6.3; PK.waveSpawned+=pkSpawnBirdGroup(); }                      // STRAYS: roosts of birds, standing until disturbed
-    else if(wv===2){ PK.spawnT=99; }                                                      // THE FLOCK: sentries + the once-per-wave flock cover it, no ongoing trickle
-    else if(wv===3){ PK.spawnT=6; PK.waveSpawned+=pkSpawnAmbushSquad(); }                 // SQUIRREL AMBUSH: bursts of 5-7
-    else if(wv===4){ PK.spawnT=8; PK.waveSpawned+=pkSpawnFormationSquad(); }              // BATTLE FORMATION: slow squads that box him in
-    else if(wv===5){ PK.spawnT=3.5; PK.waveSpawned+=pkSpawnZombieCats(3+Math.floor(Math.random()*2)); } // ZOMBIE CATS: shuffling swarms
-    else if(wv===8){ PK.spawnT=99; }                                                      // LASER SQUIRRELS: boss squad only, no filler
-    else { PK.spawnT=Math.max(0.35,1.4-wv*0.09); pkSpawn(w,h); PK.waveSpawned++; }
+    if(wv===1){ PK.spawnT=5.5; PK.waveSpawned+=pkSpawnBirdGroup(); }             // CLEAR THE BIRDS: loose roosts, standing until disturbed
+    else if(wv===2){ PK.spawnT=8; PK.waveSpawned+=pkSpawnFlock(); }              // BIRD BACKUP: long diagonal formations
+    else if(wv===3){ PK.spawnT=4; PK.waveSpawned+=pkSpawnCatSquad(); }           // CAT BACKUP: direct cat squads
+    else if(wv===4){ PK.spawnT=4.5; PK.waveSpawned+=pkSpawnRangerSquad(); }      // NUT THROWERS: ranged squirrels
+    else if(wv===5){ PK.spawnT=5; PK.waveSpawned+=pkSpawnMadSquad(); }           // MAD SQUIRRELS: rotating-beam squirrels
+    else if(wv===6){ PK.spawnT=4; PK.waveSpawned+=pkSpawnCatSquad(); }           // THE ALPHAS: regular-cat trickle (alphas spawned once at wave start)
+    else { PK.spawnT=3.5; PK.waveSpawned+=pkSpawnMixBurst(PK.mixTypes||pkPickMixTypes()); }   // mixed threats, waves 7+
   }
   let mx=0,my=0;
   if(PK.joy){ mx=PK.joy.dx; my=PK.joy.dy; }
@@ -633,6 +619,7 @@ function parkUpdate(dt){
     e.kx*=0.88; e.ky*=0.88;
     if(e.fleeing){
       e.shockT=Math.max(0,e.shockT-dt);
+      if(e.explodeT!==undefined) e.explodeT=Math.max(0,e.explodeT-dt);
       if(e.shockT<=0){
         e.x=(e.x+e.fleeVx*dt+WW)%WW; e.y=(e.y+e.fleeVy*dt+WH)%WH;
         e.dir = e.fleeVx<0 ? -1 : 1;
@@ -665,8 +652,8 @@ function parkUpdate(dt){
       if(e.spookT>SPOOK_LIFE){ e.spooked=false; e.standing=true; e.spookVx=0; e.spookVy=0; }
       continue;
     }
-    // WAVE 1 — a stalking cat prowling near a roost: wanders a small patch until BONES gets
-    // close, then aggroes for good (leaps in, then keeps chasing — no calming back down)
+    // WAVES 1-2 — a stalking cat circling a bird flock until BONES gets close, then aggroes
+    // for good (leaps in, then keeps chasing — no calming back down)
     if(e.stalk){
       const dxw0=wd(PK.x-e.x,WW), dyw0=wd(PK.y-e.y,WH), d0=Math.hypot(dxw0,dyw0)||1;
       if(d0<STALK_AGGRO_R){
@@ -674,12 +661,10 @@ function parkUpdate(dt){
         e.lvx=dxw0/d0*STALK_LEAP_SPEED; e.lvy=dyw0/d0*STALK_LEAP_SPEED;
         beep(160,.09,"square",.05);
       } else {
-        e.wanderT-=dt;
-        if(e.wanderT<=0){ e.wanderAng=Math.random()*6.283; e.wanderT=0.7+Math.random()*0.9; }
-        const adx=wd(e.anchorX-e.x,WW), ady=wd(e.anchorY-e.y,WH), adist=Math.hypot(adx,ady)||1;
-        let mvx,mvy;
-        if(adist>STALK_WANDER_R){ mvx=adx/adist*22; mvy=ady/adist*22; }
-        else { mvx=Math.cos(e.wanderAng)*16; mvy=Math.sin(e.wanderAng)*16; }
+        e.orbitAng+=STALK_ORBIT_SPEED*dt;
+        const tx=e.anchorX+Math.cos(e.orbitAng)*STALK_ORBIT_R, ty=e.anchorY+Math.sin(e.orbitAng)*STALK_ORBIT_R*0.6;
+        const tdx=wd(tx-e.x,WW), tdy=wd(ty-e.y,WH), tdd=Math.hypot(tdx,tdy)||1;
+        const mvx=tdx/tdd*30, mvy=tdy/tdd*30;
         e.dir = mvx<0 ? -1 : 1;
         e.x=(e.x+mvx*dt+WW)%WW; e.y=(e.y+mvy*dt+WH)%WH;
         e.ft+=dt; if(e.ft>0.2){ e.ft=0; e.fi++; }
@@ -706,151 +691,115 @@ function parkUpdate(dt){
     }
     // WAVE 2 — a dozing sentry squirrel: stays put until BONES wanders close, then wakes
     // up and joins the normal chase-and-bite behaviour below
-    if(e.sentry){
-      const dxw0=wd(PK.x-e.x,WW), dyw0=wd(PK.y-e.y,WH);
-      if(Math.hypot(dxw0,dyw0)<SENTRY_WAKE_R){ e.sentry=false; beep(300,.05,"square",.03); }
-      else { e.ft+=dt; if(e.ft>0.2){ e.ft=0; e.fi++; } continue; }
+    // WAVE 3 — decorative swoop bird: straight line, no attack, times out on its own
+    if(e.swoop){
+      e.x=(e.x+e.vx*dt+WW)%WW;
+      e.life-=dt;
+      e.ft+=dt; if(e.ft>0.12){ e.ft=0; e.fi++; }
+      if(e.life<=0){ PK.en.splice(i,1); }
+      continue;
     }
-    // WAVE 3 — ambush squirrel: slow approach, then either a fast melee jump-attack up
-    // close or a thrown nut at range, each telegraphed with a short wind-up
-    if(e.ambush){
+    // WAVE 4 — NUT THROWERS: approach to a comfortable range, plant, wind up, then lob a nut
+    if(e.ranger){
       const dxw=wd(PK.x-e.x,WW), dyw=wd(PK.y-e.y,WH), d=Math.hypot(dxw,dyw)||1;
-      if(e.atkState==="windup"){
+      if(e.atkState==="approach"){
+        if(d>RANGER_PLANT_R){
+          const sx=dxw/d*e.sp, sy=dyw/d*e.sp;
+          e.dir = sx<0 ? -1 : 1;
+          e.x=(e.x+(sx+e.kx)*dt+WW)%WW; e.y=(e.y+(sy+e.ky)*dt+WH)%WH;
+        } else {
+          e.dir = dxw<0 ? -1 : 1;
+          e.atkCd-=dt;
+          if(e.atkCd<=0){ e.atkState="windup"; e.windT=RANGER_WINDUP; }
+        }
+      } else if(e.atkState==="windup"){
+        e.dir = dxw<0 ? -1 : 1;
         e.windT-=dt;
         if(e.windT<=0){
-          if(e.atkKind==="jump"){ e.atkState="jump"; e.actT=JUMP_ATK_TIME; e.jvx=dxw/d*JUMP_ATK_SPEED; e.jvy=dyw/d*JUMP_ATK_SPEED; }
-          else {
-            PK.nuts.push({x:e.x,y:e.y,vx:dxw/d*NUT_SPEED,vy:dyw/d*NUT_SPEED,life:2.4});
-            e.atkState="idle"; e.atkCd=1.8+Math.random()*1.2;
-            beep(520,.06,"square",.03);
-          }
+          PK.nuts.push({x:e.x,y:e.y,vx:dxw/d*NUT_SPEED,vy:dyw/d*NUT_SPEED,life:2.6});
+          e.atkState="approach"; e.atkCd=RANGER_THROW_CD;
+          beep(520,.06,"square",.03);
         }
-      } else if(e.atkState==="jump"){
-        e.actT-=dt;
-        e.x=(e.x+e.jvx*dt+WW)%WW; e.y=(e.y+e.jvy*dt+WH)%WH;
-        e.dir = e.jvx<0 ? -1 : 1;
-        if(e.actT<=0){ e.atkState="idle"; e.atkCd=1.8+Math.random()*1.2; }
-      } else {
-        const sx=dxw/d*e.sp, sy=dyw/d*e.sp;
-        e.dir = sx<0 ? -1 : 1;
-        e.x=(e.x+(sx+e.kx)*dt+WW)%WW; e.y=(e.y+(sy+e.ky)*dt+WH)%WH;
-        e.atkCd-=dt;
-        if(e.atkCd<=0){ e.atkKind = d<55 ? "jump" : "nut"; e.atkState="windup"; e.windT=0.4; }
       }
       e.ft+=dt; if(e.ft>0.12){ e.ft=0; e.fi++; }
       if(d<14 && PK.inv<=0 && !pkInvuln()){
-        PK.hp-=8; PK.inv=0.6; e.kx=-dxw/d*220; e.ky=-dyw/d*220;
+        PK.hp-=6; PK.inv=0.6; e.kx=-dxw/d*200; e.ky=-dyw/d*200;
         beep(110,.12,"sawtooth"); if(PK.hp<=0) return pkDeath();
       }
       continue;
     }
-    // WAVE 4 — a big laser-eyed squirrel that moves (slowly!) to its assigned compass slot
-    // around BONES, boxing him in with its squadmates, then charges and fires — a hit
-    // blasts him straight backwards instead of just chipping his HP
-    if(e.formation){
+    // WAVE 5 — MAD SQUIRRELS: seek, root and charge a red glow, then sweep a rotating beam
+    // for a full 3s (glowing red the whole time), then self-destruct in a satisfying pop —
+    // whether or not it ever landed a hit
+    if(e.madsq){
       const dxw=wd(PK.x-e.x,WW), dyw=wd(PK.y-e.y,WH), d=Math.hypot(dxw,dyw)||1;
       if(e.laserState==="seek"){
-        const tx=PK.x+Math.cos(e.formAng)*FORM_RADIUS, ty=PK.y+Math.sin(e.formAng)*FORM_RADIUS;
-        const tdx=wd(tx-e.x,WW), tdy=wd(ty-e.y,WH), tdd=Math.hypot(tdx,tdy)||1;
-        const inSlot = tdd<FORM_TOL;
-        if(!inSlot){
-          const sx=tdx/tdd*e.sp, sy=tdy/tdd*e.sp;
-          e.dir = sx<0 ? -1 : 1;
-          e.x=(e.x+(sx+e.kx)*dt+WW)%WW; e.y=(e.y+(sy+e.ky)*dt+WH)%WH;
-        } else { e.dir = dxw<0 ? -1 : 1; }
+        const sx=dxw/d*e.sp, sy=dyw/d*e.sp;
+        e.dir = sx<0 ? -1 : 1;
+        e.x=(e.x+(sx+e.kx)*dt+WW)%WW; e.y=(e.y+(sy+e.ky)*dt+WH)%WH;
         e.cd-=dt;
-        if(inSlot && e.cd<=0 && d<pkLaserRange()*0.9){ e.laserState="charge"; e.chargeT=0; e.aimAng=Math.atan2(dyw,dxw); }
-        if(d<16 && PK.inv<=0 && !pkInvuln()){
-          PK.hp-=10; PK.inv=0.6; e.kx=-dxw/d*200; e.ky=-dyw/d*200;
+        if(e.cd<=0 && d<pkLaserRange()*0.8){ e.laserState="charge"; e.chargeT=0; e.aimAng=Math.atan2(dyw,dxw); }
+        if(d<14 && PK.inv<=0 && !pkInvuln()){
+          PK.hp-=8; PK.inv=0.6; e.kx=-dxw/d*220; e.ky=-dyw/d*220;
           beep(110,.12,"sawtooth"); if(PK.hp<=0) return pkDeath();
         }
       } else if(e.laserState==="charge"){
         e.chargeT+=dt;
-        if(e.chargeT>=FORM_CHARGE){
-          const ux=Math.cos(e.aimAng), uy=Math.sin(e.aimAng);
-          const along=dxw*ux+dyw*uy, perp=Math.abs(dxw*uy-dyw*ux);
-          if(along>0 && along<pkLaserRange() && perp<LASER_WIDTH*1.3 && PK.inv<=0 && !pkInvuln()){
-            PK.hp-=22; PK.inv=0.6;
-            PK.x=(PK.x+ux*FORM_KNOCK+WW)%WW; PK.y=(PK.y+uy*FORM_KNOCK+WH)%WH;
-            PK.vx=ux*40; PK.vy=uy*40;
-            beep(160,.28,"sawtooth"); if(PK.hp<=0) return pkDeath();
-          }
-          e.laserState="fire"; e.fireT=0;
-          e.kx=-ux*LASER_RECOIL; e.ky=-uy*LASER_RECOIL;
+        if(e.chargeT>=MADSQ_CHARGE){ e.laserState="sweep"; e.sweepT=0; e.aimAng=Math.atan2(dyw,dxw); }
+      } else if(e.laserState==="sweep"){
+        e.sweepT+=dt;
+        e.aimAng = Math.atan2(dyw,dxw) + Math.sin(e.sweepT*MADSQ_SWEEP_RATE)*MADSQ_SWEEP_ARC;
+        e.dir = Math.cos(e.aimAng)<0 ? -1 : 1;
+        const ux=Math.cos(e.aimAng), uy=Math.sin(e.aimAng);
+        const along=dxw*ux+dyw*uy, perp=Math.abs(dxw*uy-dyw*ux);
+        if(along>0 && along<pkLaserRange() && perp<LASER_WIDTH && PK.inv<=0 && !pkInvuln()){
+          PK.hp-=12; PK.inv=0.5;
+          beep(150,.15,"sawtooth"); if(PK.hp<=0) return pkDeath();
         }
-      } else if(e.laserState==="fire"){
-        e.fireT+=dt;
-        e.x=(e.x+e.kx*dt+WW)%WW; e.y=(e.y+e.ky*dt+WH)%WH;
-        if(e.fireT>=LASER_FIRE_VIS){ e.laserState="seek"; e.cd=LASER_COOLDOWN*0.9+Math.random()*0.8; }
+        if(e.sweepT>=MADSQ_SWEEP_TIME){
+          PK.drops.push({x:e.x, y:e.y, v:1, life:25});
+          if(Math.random()<STAR_DROP_CHANCE) PK.powerups.push({type:"star", x:e.x, y:e.y-10, life:18});
+          if(Math.random()<MAGNET_DROP_CHANCE) PK.powerups.push({type:"magnet", x:e.x, y:e.y+10, life:18});
+          PK.kills++;
+          e.fleeing=true; e.shockT=0; e.fleeT=0; e.fleeVx=0; e.fleeVy=0;
+          e.madsqExplode=true; e.explodeT=0.5;
+          beep(90,.3,"sawtooth",.08);
+          continue;
+        }
       }
       e.ft+=dt; if(e.ft>0.12){ e.ft=0; e.fi++; }
       continue;
     }
-    // WAVE 5 — a zombie cat: slow shuffling hunt, then every ~5s (once close enough) a
-    // sudden speed burst into a lunge attack — the speed change itself is the only warning
-    if(e.zombie){
+    // WAVE 6 — THE ALPHAS: slow approach, then a gigantic, heavily telegraphed leap once
+    // close enough, dealing a big hit, on a long cooldown
+    if(e.alpha){
       const dxw=wd(PK.x-e.x,WW), dyw=wd(PK.y-e.y,WH), d=Math.hypot(dxw,dyw)||1;
-      if(e.burstState==="lunge"){
-        e.actT-=dt;
+      if(e.leapState==="windup"){
+        e.dir = dxw<0 ? -1 : 1;
+        e.leapWindT-=dt;
+        if(e.leapWindT<=0){
+          e.leapState="leap"; e.leapActT=ALPHA_LEAP_TIME;
+          e.lvx=Math.cos(e.leapAng)*ALPHA_LEAP_SPEED; e.lvy=Math.sin(e.leapAng)*ALPHA_LEAP_SPEED;
+        }
+      } else if(e.leapState==="leap"){
+        e.leapActT-=dt;
         e.x=(e.x+e.lvx*dt+WW)%WW; e.y=(e.y+e.lvy*dt+WH)%WH;
         e.dir = e.lvx<0 ? -1 : 1;
-        if(e.actT<=0){ e.burstState=null; e.burstCd=ZOMBIE_BURST_CD; }
-        if(d<16 && PK.inv<=0 && !pkInvuln()){
-          PK.hp-=16; PK.inv=0.6; e.kx=-dxw/d*220; e.ky=-dyw/d*220;
-          beep(130,.16,"sawtooth"); e.burstState=null; e.burstCd=ZOMBIE_BURST_CD;
-          if(PK.hp<=0) return pkDeath();
+        if(e.leapActT<=0){ e.leapState=null; e.leapCd=ALPHA_LEAP_CD; }
+        if(d<20 && PK.inv<=0 && !pkInvuln()){
+          PK.hp-=ALPHA_LEAP_DMG; PK.inv=0.7; e.kx=-dxw/d*260; e.ky=-dyw/d*260;
+          beep(140,.3,"sawtooth"); if(PK.hp<=0) return pkDeath();
         }
       } else {
         const sx=dxw/d*e.sp, sy=dyw/d*e.sp;
         e.dir = sx<0 ? -1 : 1;
         e.x=(e.x+(sx+e.kx)*dt+WW)%WW; e.y=(e.y+(sy+e.ky)*dt+WH)%WH;
-        e.burstCd-=dt;
-        if(e.burstCd<=0 && d<140){ e.burstState="lunge"; e.actT=0.5; e.lvx=dxw/d*ZOMBIE_BURST_SPEED; e.lvy=dyw/d*ZOMBIE_BURST_SPEED; beep(180,.1,"sawtooth"); }
-        if(d<14 && PK.inv<=0 && !pkInvuln()){
-          PK.hp-=6; PK.inv=0.6; e.kx=-dxw/d*180; e.ky=-dyw/d*180;
-          beep(110,.1,"sawtooth"); if(PK.hp<=0) return pkDeath();
+        e.leapCd-=dt;
+        if(e.leapCd<=0 && d<ALPHA_LEAP_R){ e.leapState="windup"; e.leapWindT=0.6; e.leapAng=Math.atan2(dyw,dxw); }
+        if(d<16 && PK.inv<=0 && !pkInvuln()){
+          PK.hp-=14; PK.inv=0.6; e.kx=-dxw/d*220; e.ky=-dyw/d*220;
+          beep(110,.12,"sawtooth"); if(PK.hp<=0) return pkDeath();
         }
-      }
-      e.ft+=dt; if(e.ft>0.12){ e.ft=0; e.fi++; }
-      continue;
-    }
-    if(e.laser){
-      const dxw=wd(PK.x-e.x,WW), dyw=wd(PK.y-e.y,WH);
-      const d=Math.hypot(dxw,dyw)||1;
-      if(e.laserState==="seek"){
-        // ordinary squirrel chase until it's in range and its cooldown clears
-        const sx=dxw/d*e.sp, sy=dyw/d*e.sp;
-        e.dir = sx<0 ? -1 : 1;
-        e.x=(e.x+(sx+e.kx)*dt+WW)%WW;
-        e.y=(e.y+(sy+e.ky)*dt+WH)%WH;
-        e.cd-=dt;
-        if(e.cd<=0 && d<pkLaserRange()*0.85){
-          e.laserState="charge"; e.chargeT=0; e.aimAng=Math.atan2(dyw,dxw);
-        }
-        if(d<14 && PK.inv<=0 && !pkInvuln()){
-          PK.hp-=8; PK.inv=0.6;
-          e.kx=-dxw/d*220; e.ky=-dyw/d*220;
-          beep(110,.12,"sawtooth");
-          if(PK.hp<=0) return pkDeath();
-        }
-      } else if(e.laserState==="charge"){
-        // rooted in place, red eye-glow grows — telegraphed, dodgeable
-        e.chargeT+=dt;
-        if(e.chargeT>=LASER_CHARGE_TIME){
-          const ux=Math.cos(e.aimAng), uy=Math.sin(e.aimAng);
-          const along=dxw*ux+dyw*uy, perp=Math.abs(dxw*uy-dyw*ux);
-          if(along>0 && along<pkLaserRange() && perp<LASER_WIDTH && PK.inv<=0 && !pkInvuln()){
-            PK.hp-=20; PK.inv=0.6;
-            beep(160,.25,"sawtooth");
-            if(PK.hp<=0) return pkDeath();
-          }
-          e.laserState="fire"; e.fireT=0;
-          e.kx=-ux*LASER_RECOIL; e.ky=-uy*LASER_RECOIL;   // small recoil jolt to sell the beam's power
-        }
-      } else if(e.laserState==="fire"){
-        e.fireT+=dt;
-        e.x=(e.x+e.kx*dt+WW)%WW; e.y=(e.y+e.ky*dt+WH)%WH;   // rides out the recoil, decaying via the shared kx/ky damping above
-        if(e.fireT>=LASER_FIRE_VIS){ e.laserState="seek"; e.cd=LASER_COOLDOWN+Math.random()*0.8; }
       }
       e.ft+=dt; if(e.ft>0.12){ e.ft=0; e.fi++; }
       continue;
@@ -887,7 +836,7 @@ function parkUpdate(dt){
     e.x=(e.x+(sx+e.kx)*dt+WW)%WW;
     e.y=(e.y+(sy+e.ky)*dt+WH)%WH;
     if(d<14 && PK.inv<=0 && !pkInvuln()){
-      PK.hp-=(e.alpha?14:8); PK.inv=0.6;
+      PK.hp-=8; PK.inv=0.6;
       e.kx=-dxw/d*220; e.ky=-dyw/d*220;
       beep(110,.12,"sawtooth");
       if(PK.hp<=0) return pkDeath();
@@ -1018,21 +967,28 @@ function drawEnemyVector(ctx,e,ex,ey){
 function drawLaserFX(ctx,e,sx,sy){
   const eyeX=sx+(e.dir<0?-4:4), eyeY=sy-11;
   if(e.laserState==="charge"){
-    const p=clamp(e.chargeT/LASER_CHARGE_TIME,0,1);
+    const p=clamp(e.chargeT/MADSQ_CHARGE,0,1);
     ctx.fillStyle="#f22"; ctx.globalAlpha=0.5+0.5*p;
     ctx.beginPath(); ctx.arc(eyeX,eyeY,1+p*4,0,7); ctx.fill();
     ctx.globalAlpha=1;
-  } else if(e.laserState==="fire"){
-    const ang=e.aimAng, range=pkLaserRange(), fade=1-clamp(e.fireT/LASER_FIRE_VIS,0,1);
-    ctx.save(); ctx.globalAlpha=fade;
+  } else if(e.laserState==="sweep"){
+    const ang=e.aimAng, range=pkLaserRange();
     ctx.strokeStyle="#f22"; ctx.lineWidth=7;
     ctx.beginPath(); ctx.moveTo(eyeX,eyeY); ctx.lineTo(eyeX+Math.cos(ang)*range, eyeY+Math.sin(ang)*range); ctx.stroke();
     ctx.strokeStyle="#fff"; ctx.lineWidth=2;
     ctx.beginPath(); ctx.moveTo(eyeX,eyeY); ctx.lineTo(eyeX+Math.cos(ang)*range, eyeY+Math.sin(ang)*range); ctx.stroke();
     ctx.fillStyle="#fff";
-    ctx.beginPath(); ctx.arc(eyeX,eyeY,2+3*fade,0,7); ctx.fill();
-    ctx.restore();
+    ctx.beginPath(); ctx.arc(eyeX,eyeY,3,0,7); ctx.fill();
   }
+}
+function drawMadsqExplosion(ctx,sx,sy,explodeT){
+  const p=1-clamp(explodeT/0.5,0,1), r=6+p*22;
+  ctx.save(); ctx.globalAlpha=1-p;
+  ctx.fillStyle="#ffb347";
+  ctx.beginPath(); ctx.arc(sx,sy-8,r*0.6,0,7); ctx.fill();
+  ctx.strokeStyle="#f22"; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.arc(sx,sy-8,r,0,7); ctx.stroke();
+  ctx.restore();
 }
 function drawEnemyHP(ctx,e,sx,sy,eh){
   // only surfaces once an enemy has taken a hit — untouched enemies stay clean/uncluttered
@@ -1047,21 +1003,19 @@ function drawEnemyHP(ctx,e,sx,sy,eh){
 function drawEnemy(ctx,e,sx,sy){
   ctx.fillStyle="rgba(0,0,0,.25)";
   ctx.beginPath(); ctx.ellipse(sx, sy+2, 9, 3, 0, 0, 7); ctx.fill();
-  if(e.laser || e.formation) drawLaserFX(ctx,e,sx,sy);
-  if((e.fleeing && e.shockT>0 || (e.spooked && e.spookT<0.3) || (e.stalkAggro && e.leapT>0)) && Math.floor(performance.now()/90)%2){
+  if(e.madsq && !e.fleeing) drawLaserFX(ctx,e,sx,sy);
+  if((e.fleeing && e.shockT>0 && !e.madsqExplode || (e.spooked && e.spookT<0.3) || (e.stalkAggro && e.leapT>0)) && Math.floor(performance.now()/90)%2){
     ctx.fillStyle="#fff"; ctx.font="bold 13px 'Press Start 2P',monospace"; ctx.textAlign="center";
     ctx.fillText("!", sx, sy-24); ctx.textAlign="left";
   }
-  if(e.sentry){
-    ctx.fillStyle="#aaa"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText("z", sx+9, sy-20-2*Math.sin(performance.now()/300)); ctx.textAlign="left";
-  }
-  if((e.atkState==="windup" || e.burstState==="lunge") && Math.floor(performance.now()/80)%2){
+  if((e.atkState==="windup" || e.leapState==="windup") && Math.floor(performance.now()/80)%2){
     ctx.fillStyle="#f22"; ctx.beginPath(); ctx.arc(sx, sy-26, 2.4, 0, 7); ctx.fill();
   }
+  // mad squirrels glow red the whole time they're charging or sweeping their beam
+  const madGlow = e.madsq && (e.laserState==="charge" || e.laserState==="sweep");
   const frames = ENEMYIMG[e.t];
   const img = frames && frames[e.fi % frames.length];
-  if(!img || !img.complete || !img.naturalWidth){ drawEnemyVector(ctx,e,sx,sy); return; }
+  if(!img || !img.complete || !img.naturalWidth){ drawEnemyVector(ctx,e,sx,sy); if(e.madsqExplode) drawMadsqExplosion(ctx,sx,sy,e.explodeT); return; }
   let eh = e.alpha?32 : e.t==="cat"?(e.small?22*0.7:22):e.t==="bird"?18:16;
   if(e.big) eh*=1.9;
   const ew = eh*img.naturalWidth/img.naturalHeight;
@@ -1071,11 +1025,18 @@ function drawEnemy(ctx,e,sx,sy){
     ctx.beginPath(); ctx.ellipse(sx, sy-eh*0.45, ew*0.62, eh*0.6, 0, 0, 7); ctx.stroke();
     ctx.globalAlpha=1;
   }
+  if(madGlow){
+    ctx.save(); ctx.globalAlpha=0.4+0.3*Math.sin(performance.now()/70); ctx.fillStyle="#f22";
+    ctx.beginPath(); ctx.ellipse(sx, sy-eh*0.5, ew*0.65, eh*0.65, 0, 0, 7); ctx.fill();
+    ctx.restore();
+  }
   ctx.save(); ctx.imageSmoothingEnabled=false;
+  if(madGlow) ctx.filter="sepia(1) saturate(8) hue-rotate(-50deg) brightness(1.1)";
   if(e.dir<0){ ctx.translate(sx*2,0); ctx.scale(-1,1); }
   ctx.drawImage(img, sx-ew/2, sy-eh, ew, eh);
   ctx.restore();
   drawEnemyHP(ctx,e,sx,sy,eh);
+  if(e.madsqExplode) drawMadsqExplosion(ctx,sx,sy,e.explodeT);
 }
 function parkDraw(t){
   if(!PK.active) return;

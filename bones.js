@@ -41,7 +41,7 @@ const S = {
   hoopOwned:false, ballOwned:false, shampooOwned:false, shampooPct:0, firstWater:false, firstFood:false, bedHinted:false,
   bedTier:0, todoWork:false, todoLvl5:false, todoBed:false, todoPark:false, todoBall:false, todoBowls:false, twW:false, twF:false, todoHide:false, outTimer:0,
   lvl:1, xp:0, gen:1, senior:false, seniorDays:0, lifePathChosen:false, litter:false, memorialSrc:null, pendingStage:[],
-  lastSaveAt:null, lastSaveDay:0, lastSaveH:0
+  lastSaveAt:null, lastSaveDay:0, lastSaveH:0, dogParkPlusUnlocked:false
 };
 const SETTINGS = { sound:true, reduceMotion:false };
 const CHARMS = [
@@ -2258,8 +2258,15 @@ $("#rWalk").onclick=()=>{ if(S.money<5) return toast("NO MONEY",1);
 $("#bWalk").onclick=()=>{
   if(S.lvl<5) return toast("THE DOGPARK UNLOCKS AT LV.5",1);
   if(S.sick) return toast("BONES IS TOO SICK FOR THE PARK",1);
+  if(S.dogParkPlusUnlocked){
+    openChoice("CHOOSE YOUR PARK",
+      "DOGPARK+ REPEATS THE SAME 10 WAVES WITH DOUBLE THE ENEMIES ON SCREEN AT ONCE.",
+      "DOGPARK", ()=>{ toast("SURVIVE THE WAVES, BANK BIG XP. IF BONES GETS CAUGHT, YOU LOSE IT ALL \u2620\ufe0f",1); startPark(false); },
+      "DOGPARK+", ()=>{ toast("DOGPARK+ \u2014 DOUBLE THE ENEMIES, SAME WAVES.",1); startPark(true); });
+    return;
+  }
   toast("SURVIVE THE WAVES, BANK BIG XP. IF BONES GETS CAUGHT, YOU LOSE IT ALL \u2620\ufe0f",1);
-  startPark();
+  startPark(false);
 };
 function openSupplies(){ renderSupplies(); $("#supplies").classList.add("show"); }
 function renderSupplies(){
