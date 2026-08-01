@@ -442,7 +442,7 @@ function pkSpawnMixBurst(types){
 // how many enemies a wave needs cleared \u2014 hand-set to match the redesigned wave-by-wave
 // spec. waves beyond 10 keep extending the mix pattern with a gently rising quota.
 function pkWaveQuota(wv){
-  if(wv===1) return 15;
+  if(wv===1) return 5;
   if(wv===2) return 20;
   if(wv===3) return 10;
   if(wv===4) return 20;
@@ -579,6 +579,7 @@ function parkUpdate(dt){
     toast(waveLabel);
     PK.waveBanner={text:waveLabel, life:2.2, max:2.2};
     beep(500,.08);
+    if(PK.wave===4) setTimeout(()=>toast("WATCH OUT, NUTS INCOMING",1),2300);
     pkShopOpen();
   }
   // one golden bird per stage — optional, never counts toward the wave quota
@@ -857,7 +858,7 @@ function parkUpdate(dt){
     }
     if(f.life<=0) PK.fr.splice(i,1);
   }
-  // WAVE 3: thrown nuts — simple straight-line projectiles from ambush squirrels
+  // thrown nuts — simple straight-line projectiles from ranger/mad squirrels
   for(let i=PK.nuts.length-1;i>=0;i--){
     const n=PK.nuts[i];
     n.x=(n.x+n.vx*dt+WW)%WW; n.y=(n.y+n.vy*dt+WH)%WH; n.life-=dt;
@@ -1123,10 +1124,17 @@ function parkDraw(t){
   }
   for(const n of PK.nuts){
     const [nx2,ny2]=SC(n.x,n.y);
-    if(nx2<-20||nx2>w+20||ny2<-20||ny2>h+20) continue;
-    ctx.fillStyle="rgba(0,0,0,.25)"; ctx.beginPath(); ctx.ellipse(nx2,ny2+4,3,1.5,0,0,7); ctx.fill();
-    ctx.fillStyle="#8a5a2b"; ctx.beginPath(); ctx.arc(nx2,ny2,4,0,7); ctx.fill();
-    ctx.fillStyle="#5a3a1b"; ctx.fillRect(nx2-1,ny2-6,2,3);
+    if(nx2<-24||nx2>w+24||ny2<-24||ny2>h+24) continue;
+    const ang=Math.atan2(n.vy,n.vx);
+    // faint motion trail so a thrown nut reads clearly against the grass
+    ctx.strokeStyle="rgba(255,220,150,.35)"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(nx2,ny2); ctx.lineTo(nx2-Math.cos(ang)*14, ny2-Math.sin(ang)*14); ctx.stroke();
+    ctx.fillStyle="rgba(0,0,0,.3)"; ctx.beginPath(); ctx.ellipse(nx2,ny2+5,4,2,0,0,7); ctx.fill();
+    ctx.save(); ctx.translate(nx2,ny2); ctx.rotate(ang+performance.now()/90);
+    ctx.strokeStyle="#2a1808"; ctx.lineWidth=1.5;
+    ctx.fillStyle="#d99a4a"; ctx.beginPath(); ctx.ellipse(0,0,6,5.5,0,0,7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle="#7a4a1f"; ctx.beginPath(); ctx.ellipse(-2.5,-2.5,3.6,3.2,0,0,7); ctx.fill(); ctx.stroke();
+    ctx.restore();
   }
   for(const e of PK.en){
     const [ex2,ey2]=SC(e.x,e.y);
