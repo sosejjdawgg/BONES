@@ -69,7 +69,7 @@ function buildMeters(){
   $("#meters").innerHTML = METERS.map(([lb,k])=>
     `<div class="mrow"><span class="lb">${lb}</span><div class="bar" id="bar_${k}"><i></i></div></div>`).join("");
 }
-$("#money1").style.cursor="pointer"; $("#money2").style.cursor="pointer";
+$("#money1").style.cursor="pointer"; $("#money2").style.cursor="pointer"; $("#money3").style.cursor="pointer";
 function renderMeters(){
   for(const [,k] of METERS){
     const el=$("#bar_"+k), v=S[k];
@@ -85,7 +85,7 @@ function renderMeters(){
   na.classList.toggle("crit", minv<40);
   $("#snackCt").textContent="x"+S.snacks;
   const neg=S.money<0, mstr=(neg?"-$":"$")+Math.abs(S.money);
-  for(const id of ["money1","money2"]){ const el=$("#"+id); el.textContent=mstr; el.style.color=neg?"#f22":"#fff"; }
+  for(const id of ["money1","money2","money3"]){ const el=$("#"+id); if(el){ el.textContent=mstr; el.style.color=neg?"#f22":"#fff"; } }
   $("#clock").textContent = "DAY "+CLK.day+" "+String(Math.floor(CLK.h)).padStart(2,"0")+":00";
   $("#bests").textContent = "STREAK "+S.streak+"d";
 }
@@ -594,15 +594,17 @@ $("#portrait").addEventListener("pointerdown",hidePortrait);
 
 
 /* money counter shortcut */
-function openMoneyPick(){ $("#mpWork").style.display = MODE==="work" ? "none" : ""; $("#moneyPick").classList.add("show"); beep(500,.05); }
+function openMoneyPick(){ $("#mpWork").style.display = (MODE==="work"||MODE==="paperboy") ? "none" : ""; $("#moneyPick").classList.add("show"); beep(500,.05); }
 $("#money1").onclick=openMoneyPick;
 $("#money2").onclick=openMoneyPick;
+$("#money3").onclick=openMoneyPick;
 $("#mpCancel").onclick=()=>$("#moneyPick").classList.remove("show");
-$("#mpWork").onclick=()=>{ $("#moneyPick").classList.remove("show"); enterWork(); };
+$("#mpWork").onclick=()=>{ $("#moneyPick").classList.remove("show"); enterPaperboy(); };
 $("#mpShop").onclick=()=>{
   $("#moneyPick").classList.remove("show");
   const openShop=()=>{ renderShop(); $("#shopPanel").classList.add("show"); };
   if(MODE==="work"){ W.run=false; transition("DRIVING HOME",()=>{ showScreen("home"); renderMeters(); openShop(); }); }
+  else if(MODE==="paperboy"){ PB.run=false; PB.active=false; transition("DRIVING HOME",()=>{ showScreen("home"); renderMeters(); openShop(); }); }
   else openShop();
 };
 
@@ -1758,7 +1760,7 @@ function renderShop(){
 /* ---------- mode switching ---------- */
 let MODE="home";
 function showScreen(id){
-  for(const s of ["home","work","run","park"]) $("#"+s).classList.toggle("hidden", s!==id);
+  for(const s of ["home","work","run","park","paperboy"]) $("#"+s).classList.toggle("hidden", s!==id);
   MODE=id;
   $("#rSnack").classList.toggle("hidden", id!=="work");
   $("#rWalk").classList.toggle("hidden", id!=="work");
@@ -1812,7 +1814,7 @@ function skipToMorning(){
   toast("MORNING — 06:00. BONES IS UP.");
   beep(660,.1); setTimeout(()=>beep(880,.1),120);
 }
-$("#bBedWork").onclick=()=>{ closeBedtime(); enterWork(); };
+$("#bBedWork").onclick=()=>{ closeBedtime(); enterPaperboy(); };
 $("#bBedSkip").onclick=()=>{ closeBedtime(); skipToMorning(); };
 function drawSym(ctx,sym,cx,cy,r,col){
   ctx.strokeStyle=col; ctx.fillStyle=col; ctx.lineWidth=3;
@@ -2318,7 +2320,9 @@ $("#suppliesList").addEventListener("click",e=>{
 });
 function renderGoOut(){
   const rows=[];
-  rows.push('<div class="prow"><span class="nm">&#9830; STAMPING PLANT<br><span class="tiny">EARN MONEY</span></span><button data-go="work">GO</button></div>');
+  rows.push('<div class="prow"><span class="nm">&#9642; PAPERBOY ROUTE<br><span class="tiny">DELIVER PARCELS FOR CASH</span></span><button data-go="paperboy">GO</button></div>');
+  const workL=S.earned<5000;
+  rows.push('<div class="prow'+(workL?" locked":"")+'"><span class="nm">&#9830; STAMPING PLANT<br><span class="tiny">'+(workL?"UNLOCKS AT $5000 EARNED":"EARN MONEY")+'</span></span><button data-go="work" '+(workL?"disabled":"")+'>GO</button></div>');
   const compL=S.lvl<15, beachL=S.lvl<9, litL=S.lvl<18;
   rows.push('<div class="prow'+(compL?" locked":"")+'"><span class="nm">&#9733; DOG COMPETITION<br><span class="tiny">'+(compL?"UNLOCKS LV.15":"PRIZE MONEY \u2014 "+(3-S.compsToday)+"/3 TODAY")+'</span></span><button data-go="comp" '+(compL?"disabled":"")+'>ENTER</button></div>');
   const agiL=S.lvl<8;
@@ -2332,6 +2336,7 @@ $("#gooutList").addEventListener("click",e=>{
   const g=t.dataset.go;
   $("#goout").classList.remove("show");
   if(g==="work") enterWork();
+  if(g==="paperboy") enterPaperboy();
   if(g==="comp") openPre("comp");
   if(g==="agility"){
     if(S.energy<20) return toast("BONES IS TOO TIRED TO TRAIN",1);
@@ -2739,6 +2744,7 @@ function loop(now){
     }
     if(MODE==="work"){ updateWork(dt); drawWork(t); }
     if(MODE==="run"){ updateRun(dt); if(R.active||MODE==="run") drawRun(t); }
+    if(MODE==="paperboy"){ updatePaperboy(dt); drawPaperboy(t); }
   }
   requestAnimationFrame(loop);
 }

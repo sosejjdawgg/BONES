@@ -182,7 +182,7 @@ button.red:active{background:#f22;color:#000}
 #pkDevGod.active{border-color:#f22;color:#f22}
 
 /* WORK / RUN */
-#workcv,#runcv,#parkcv{flex:1;width:100%;display:block;touch-action:none;image-rendering:pixelated}
+#workcv,#runcv,#parkcv,#paperboycv{flex:1;width:100%;display:block;touch-action:none;image-rendering:pixelated}
 .ctrlrow{display:flex;gap:6px;padding:8px;border-top:3px solid #fff}
 .ctrlrow button{flex:1;font-size:10px;padding:14px 4px}
 
@@ -276,7 +276,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.54a</span>
+          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.58a</span>
         </div>
       </div>
 
@@ -287,6 +287,16 @@ body.reduce-motion *{animation:none!important}
         <div class="ctrlrow">
           <button id="bStamp">&#9660; STAMP (SWIPE DOWN)</button>
           <button id="bHome1" style="flex:.5">CLOCK OUT</button>
+        </div>
+      </div>
+
+      <!-- PAPERBOY -->
+      <div id="paperboy" class="screen hidden">
+        <div id="hud"><span>PAPERBOY ROUTE</span><span class="money" id="money3">$0</span></div>
+        <canvas id="paperboycv"></canvas>
+        <div class="ctrlrow">
+          <button id="bThrowL">◀ THROW</button>
+          <button id="bThrowR">THROW ▶</button>
         </div>
       </div>
 
@@ -409,7 +419,7 @@ body.reduce-motion *{animation:none!important}
       <div id="moneyPick" class="overpanel">
         <h2>$ SPEND OR EARN?</h2>
         <button id="mpShop" style="font-size:11px;padding:14px 24px">GO TO SHOP</button>
-        <button id="mpWork" style="font-size:11px;padding:14px 24px">GO TO WORK</button>
+        <button id="mpWork" style="font-size:11px;padding:14px 24px">PAPERBOY ROUTE</button>
         <button id="mpCancel" class="tiny">CANCEL</button>
       </div>
 
