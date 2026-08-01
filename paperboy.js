@@ -1,21 +1,31 @@
 /* ===== PAPERBOY ROUTE — van delivery work minigame ===== */
-// The primary money-earning job. Continuous diagonal-scroll route: houses appear on
-// alternating sides in strict door-number sequence, and the player throws the current
-// next parcel left or right — a quick tap for a normal throw, or a held-down 3-second
-// charge for an all-or-nothing power throw. Accuracy is purely a timing skill (how close
-// the house is to the fixed throw-line the instant the parcel leaves the hand).
+// The primary money-earning job. An isometric delivery route: the van drives down the road
+// while houses sit back from it, each joined to the road by its own long thin path. Parcels
+// are thrown left or right in strict door-number order — a quick tap for a normal throw, or
+// a held 3-second charge for an all-or-nothing power throw. Accuracy is a pure timing skill:
+// the path IS the aiming guide, and it's drawn exactly as wide as the doormat tolerance, so
+// "throw while the van is over the path" is literally the rule for a perfect delivery.
 const PB_ROUTE_LEN=12, PB_HOUSE_GAP=250;
 const PB_SPEED0=95, PB_SPEED_MAX=155, PB_SPEED_RAMP=0.7;
 const PB_TOL={doormat:11, house:27, window:50};
 const PB_CHARGE_TIME=3.0, PB_TAP_MAX=0.22;
 const PB_HOUSE_VALUE=5, PB_PERFECT_BONUS=2, PB_DESTRUCTION_PENALTY=3, PB_MISS_PENALTY=1;
-const PB_LANE=90;
+
+// --- isometric world layout (x = along the road, y = lateral offset, z = up) ---
+const PB_S=0.42, PB_IX=0.866, PB_IY=0.5;         // projection scale + iso basis
+const PB_ROAD_HALF=19;                            // road half-width — kept narrow so it reads as a lane
+const PB_PATH_LEN=118;                            // long thin garden path, road edge -> front door
+const PB_PATH_W=PB_TOL.doormat*2;                 // path is exactly the doormat window wide
+const PB_HOUSE_Y0=PB_ROAD_HALF+PB_PATH_LEN;       // house front edge, set well back from the road
+const PB_HOUSE_DEPTH=64, PB_HOUSE_W=94;
+const PB_WALL_H=60, PB_ROOF_H=32;
 
 const PB={
   active:false, run:false,
   dist:0, speed:0, houses:[], nextIdx:0,
   pressing:false, pressSide:null, pressT:0,
   charging:null, fx:[], shake:0,
+  camX:0, camY:0,
   stats:{perfect:0, house:0, destruction:0, miss:0}
 };
 
@@ -39,10 +49,11 @@ function enterPaperboy(){
     showScreen("paperboy");
     pbNewRoute();
     PB.active=true; PB.run=true;
-    toast("DELIVER "+PB_ROUTE_LEN+" PARCELS IN ORDER — TAP TO THROW, HOLD FOR A POWER THROW",1);
+    toast("THROW WHEN THE VAN CROSSES THE PATH — HOLD FOR A POWER THROW",1);
     beep(500,.06); setTimeout(()=>beep(700,.07),110);
   });
 }
+function pbSideY(side){ return side==="L" ? 1 : -1; }   // L = down-left of road, R = up-right
 function pbPressStart(side){
   if(!PB.run || PB.pressing) return;
   PB.pressing=true; PB.pressSide=side; PB.pressT=0;
@@ -59,7 +70,7 @@ function pbPressEnd(side){
   }
 }
 function pbSpawnParcelFX(house,kind){
-  PB.fx.push({t:"parcel", house, p:0, dur:0.3, kind});
+  PB.fx.push({t:"parcel", house, ox:PB.dist, p:0, dur:0.34, kind});
 }
 function pbThrow(side,power){
   const h=PB.houses[PB.nextIdx];
@@ -189,100 +200,158 @@ function updatePaperboy(dt){
   }
   if(PB.nextIdx>=PB.houses.length) pbFinish();
 }
-function pbDrawHouse(ctx,hh,lx,ly,t){
-  ctx.save();
-  ctx.translate(lx,ly);
-  ctx.fillStyle="rgba(0,0,0,.3)";
-  ctx.beginPath(); ctx.ellipse(0,34,30,8,0,0,7); ctx.fill();
-  ctx.fillStyle="#050505"; ctx.strokeStyle = hh.angryT>0 ? "#f22" : "#eee"; ctx.lineWidth=3;
-  ctx.fillRect(-30,-26,60,52); ctx.strokeRect(-30,-26,60,52);
-  ctx.beginPath(); ctx.moveTo(-36,-26); ctx.lineTo(0,-50); ctx.lineTo(36,-26); ctx.closePath();
-  ctx.fillStyle="#050505"; ctx.fill(); ctx.stroke();
-  ctx.strokeStyle="#ccc"; ctx.lineWidth=2;
-  ctx.strokeRect(-9,2,18,24);
-  ctx.fillStyle = hh.zone==="doormat" ? "#fff" : "#ccc";
-  ctx.fillRect(-13,24,26,6);
-  const winBroken = hh.zone==="window" || hh.zone==="destruction" || hh.zone==="power-destruction";
-  ctx.fillStyle = winBroken ? "#111" : "#9cf";
-  ctx.fillRect(-24,-16,14,14);
-  ctx.strokeStyle="#333"; ctx.lineWidth=1; ctx.strokeRect(-24,-16,14,14);
-  if(winBroken){
-    ctx.strokeStyle="#f22"; ctx.lineWidth=1;
-    ctx.beginPath(); ctx.moveTo(-24,-16); ctx.lineTo(-10,-2); ctx.moveTo(-10,-16); ctx.lineTo(-24,-2); ctx.stroke();
-  }
-  ctx.fillStyle="#000"; ctx.fillRect(-17,-25,34,11);
-  ctx.strokeStyle="#fff"; ctx.lineWidth=1; ctx.strokeRect(-17,-25,34,11);
-  ctx.fillStyle = hh.zone==="miss" ? "#f22" : "#fff";
-  ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
-  ctx.fillText(""+hh.doorNum, 0, -17);
-  ctx.textAlign="left";
-  if(hh.zone==="doormat"){
-    ctx.fillStyle="#fff"; ctx.fillRect(-6,20,12,6);
-    ctx.fillStyle="#f22"; ctx.fillRect(-6,20,12,2);
-  } else if(hh.zone==="house"){
-    ctx.save(); ctx.translate(9,12); ctx.rotate(0.4);
-    ctx.fillStyle="#ccc"; ctx.fillRect(-6,-4,12,8); ctx.fillStyle="#f22"; ctx.fillRect(-6,-4,12,2);
-    ctx.restore();
-  }
-  if(hh.angryT>0){
-    const wig=Math.sin(t*14)*4;
-    ctx.save(); ctx.translate(0,-9);
-    ctx.fillStyle="#f22";
-    ctx.beginPath(); ctx.arc(0,-4,5,0,7); ctx.fill();
-    ctx.fillRect(-4,0,8,10);
-    ctx.save(); ctx.translate(6+wig,2); ctx.rotate(-0.6+Math.sin(t*14)*0.3);
-    ctx.fillRect(0,-2,8,5);
-    ctx.restore();
-    ctx.restore();
-  }
-  ctx.restore();
+
+/* ---------- isometric drawing ---------- */
+// world (x along road, y lateral, z up) -> screen. The camera is locked to the van, so the
+// world slides under a fixed viewpoint.
+function pbP(x,y,z){
+  const rx=x-PB.dist;
+  return [ PB.camX + (rx-y)*PB_IX*PB_S,
+           PB.camY + (rx+y)*PB_IY*PB_S - (z||0)*PB_S ];
 }
-function pbDrawParcelFX(ctx,f){
-  const ly=PB.dist-f.house.worldDist;
-  const lx=f.house.side==="L" ? -PB_LANE : PB_LANE;
-  const p=f.p;
-  const px=lx*p, py=ly*p - Math.sin(p*Math.PI)*30;
-  ctx.save(); ctx.translate(px,py); ctx.rotate(p*8);
-  ctx.fillStyle="#eee"; ctx.fillRect(-5,-4,10,8);
-  ctx.fillStyle="#f22"; ctx.fillRect(-5,-4,10,2);
+function pbQuad(ctx,pts,fill,stroke,lw){
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0],pts[0][1]);
+  for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i][0],pts[i][1]);
+  ctx.closePath();
+  if(fill){ ctx.fillStyle=fill; ctx.fill(); }
+  if(stroke){ ctx.strokeStyle=stroke; ctx.lineWidth=lw||2; ctx.stroke(); }
+}
+// paints text flat onto a vertical iso wall: local +x runs along the wall, +y stays screen-down
+function pbFaceText(ctx,ox,oy,ux,uy,txt,size,col){
+  ctx.save();
+  ctx.transform(ux,uy,0,1,ox,oy);
+  ctx.fillStyle=col;
+  ctx.font=size+"px 'Press Start 2P',monospace";
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillText(txt,0,0);
   ctx.restore();
+  ctx.textAlign="left"; ctx.textBaseline="alphabetic";
+}
+function pbDrawRoad(ctx){
+  const x0=PB.dist-500, x1=PB.dist+1100, R=PB_ROAD_HALF;
+  pbQuad(ctx,[pbP(x0,-R,0),pbP(x1,-R,0),pbP(x1,R,0),pbP(x0,R,0)],"#141414",null);
+  ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.globalAlpha=.85;
+  let a=pbP(x0,-R,0), b=pbP(x1,-R,0);
+  ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke();
+  a=pbP(x0,R,0); b=pbP(x1,R,0);
+  ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke();
+  ctx.globalAlpha=1;
+  const step=78, s0=Math.floor(x0/step)*step;
+  for(let x=s0;x<x1;x+=step){
+    pbQuad(ctx,[pbP(x,-3,0),pbP(x+30,-3,0),pbP(x+30,3,0),pbP(x,3,0)],"#fff",null);
+  }
+}
+function pbDrawGround(ctx,h,isNext){
+  const s=pbSideY(h.side);
+  const aim = isNext && Math.abs(h.worldDist-PB.dist)<PB_TOL.doormat;
+  const px0=h.worldDist-PB_PATH_W/2, px1=h.worldDist+PB_PATH_W/2;
+  // the long thin path — the aiming guide. It is exactly as wide as the perfect window.
+  pbQuad(ctx,[pbP(px0,s*PB_ROAD_HALF,0),pbP(px1,s*PB_ROAD_HALF,0),
+              pbP(px1,s*PB_HOUSE_Y0,0),pbP(px0,s*PB_HOUSE_Y0,0)],
+    aim?"#7a7a7a":"#343434", aim?"#f22":"#8f8f8f", aim?3:1.5);
+  // doormat at the top of the path, right at the front door
+  pbQuad(ctx,[pbP(h.worldDist-11,s*(PB_HOUSE_Y0-15),0),pbP(h.worldDist+11,s*(PB_HOUSE_Y0-15),0),
+              pbP(h.worldDist+11,s*PB_HOUSE_Y0,0),pbP(h.worldDist-11,s*PB_HOUSE_Y0,0)],
+    h.zone==="doormat"?"#fff":"#8a8a8a","#fff",1.5);
+}
+function pbDrawHouse(ctx,h,t){
+  const s=pbSideY(h.side);
+  const x0=h.worldDist-PB_HOUSE_W/2, x1=h.worldDist+PB_HOUSE_W/2;
+  const yf=s*PB_HOUSE_Y0, yb=s*(PB_HOUSE_Y0+PB_HOUSE_DEPTH);
+  const ylo=Math.min(yf,yb), yhi=Math.max(yf,yb), ymid=(ylo+yhi)/2;
+  const H=PB_WALL_H, RH=PB_ROOF_H;
+  const wrecked = h.zone==="window"||h.zone==="destruction"||h.zone==="power-destruction";
+  const line = wrecked ? "#f22" : "#fff";
+  // walls: the two camera-facing faces
+  pbQuad(ctx,[pbP(x0,yhi,0),pbP(x1,yhi,0),pbP(x1,yhi,H),pbP(x0,yhi,H)],"#000",line,2);
+  pbQuad(ctx,[pbP(x1,ylo,0),pbP(x1,yhi,0),pbP(x1,yhi,H),pbP(x1,ylo,H)],"#050505",line,2);
+  // pitched roof — both slopes read from this angle, meeting at the ridge
+  pbQuad(ctx,[pbP(x0,ylo,H),pbP(x1,ylo,H),pbP(x1,ymid,H+RH),pbP(x0,ymid,H+RH)],"#0a0a0a",line,2);
+  pbQuad(ctx,[pbP(x0,yhi,H),pbP(x1,yhi,H),pbP(x1,ymid,H+RH),pbP(x0,ymid,H+RH)],"#000",line,2);
+  pbQuad(ctx,[pbP(x1,ylo,H),pbP(x1,ymid,H+RH),pbP(x1,yhi,H)],"#050505",line,2);
+  // window on the down-right face, so the shatter always reads no matter which side of the road
+  const wy0=ymid-15, wy1=ymid+15, wz0=H*0.34, wz1=H*0.70;
+  pbQuad(ctx,[pbP(x1,wy0,wz0),pbP(x1,wy1,wz0),pbP(x1,wy1,wz1),pbP(x1,wy0,wz1)],
+    wrecked?"#1a0000":"#9cf", wrecked?"#f22":"#ccc",1.5);
+  if(wrecked){
+    const g0=pbP(x1,wy0,wz0), g1=pbP(x1,wy1,wz1), g2=pbP(x1,wy1,wz0), g3=pbP(x1,wy0,wz1);
+    ctx.strokeStyle="#f22"; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(g0[0],g0[1]); ctx.lineTo(g1[0],g1[1]);
+    ctx.moveTo(g2[0],g2[1]); ctx.lineTo(g3[0],g3[1]); ctx.stroke();
+  }
+  // big door number across the wide down-left face
+  const c=pbP((x0+x1)/2,yhi,H*0.52);
+  pbFaceText(ctx,c[0],c[1],PB_IX,PB_IY,""+h.doorNum,17, h.zone==="miss"?"#f22":"#fff");
+  // furious occupant out on the path, shaking a fist as you drive off
+  if(h.angryT>0){
+    const p=pbP(h.worldDist, s*(PB_HOUSE_Y0-26), 0);
+    const wig=Math.sin(t*15)*3;
+    ctx.save(); ctx.translate(p[0],p[1]);
+    ctx.fillStyle="#f22";
+    ctx.beginPath(); ctx.arc(0,-24,5,0,7); ctx.fill();
+    ctx.fillRect(-4,-19,8,13);
+    ctx.save(); ctx.translate(6,-17+wig); ctx.rotate(-0.5+Math.sin(t*15)*0.35);
+    ctx.fillRect(0,-2,9,5);
+    ctx.restore(); ctx.restore();
+  }
 }
 function pbDrawVan(ctx,t){
   const glow = PB.charging ? clamp(PB.charging.t/PB_CHARGE_TIME,0,1) : 0;
+  const L=42, Wd=26, Hh=34;
+  const x0=PB.dist-L/2, x1=PB.dist+L/2, y0=-Wd/2, y1=Wd/2;
   if(glow>0){
-    ctx.save(); ctx.globalAlpha=0.3+0.5*glow;
+    const g=pbP(PB.dist,0,Hh*0.5);
+    ctx.save(); ctx.globalAlpha=0.25+0.55*glow;
     ctx.strokeStyle = Math.floor(t*14)%2 ? "#f22" : "#fff"; ctx.lineWidth=3+glow*4;
-    ctx.beginPath(); ctx.arc(0,0,26+glow*14,0,7); ctx.stroke();
+    ctx.beginPath(); ctx.arc(g[0],g[1],24+glow*18,0,7); ctx.stroke();
     ctx.restore();
   }
-  ctx.save();
-  ctx.fillStyle="#000"; ctx.strokeStyle="#fff"; ctx.lineWidth=3;
-  ctx.fillRect(-16,-14,32,28); ctx.strokeRect(-16,-14,32,28);
-  ctx.fillStyle="#9cf"; ctx.fillRect(-11,-9,22,9);
-  ctx.fillStyle="#fff"; ctx.fillRect(-16,10,8,4); ctx.fillRect(8,10,8,4);
+  const line = glow>0 ? "#f22" : "#fff";
+  pbQuad(ctx,[pbP(x0,y1,0),pbP(x1,y1,0),pbP(x1,y1,Hh),pbP(x0,y1,Hh)],"#000",line,2);
+  pbQuad(ctx,[pbP(x1,y0,0),pbP(x1,y1,0),pbP(x1,y1,Hh),pbP(x1,y0,Hh)],"#050505",line,2);
+  pbQuad(ctx,[pbP(x0,y0,Hh),pbP(x1,y0,Hh),pbP(x1,y1,Hh),pbP(x0,y1,Hh)],"#111",line,2);
+  // windscreen on the leading face
+  pbQuad(ctx,[pbP(x1,y0+4,Hh*0.42),pbP(x1,y1-4,Hh*0.42),pbP(x1,y1-4,Hh*0.82),pbP(x1,y0+4,Hh*0.82)],"#9cf","#ccc",1.5);
   if(glow>0){
+    ctx.strokeStyle="rgba(255,255,255,"+(0.5*glow)+")"; ctx.lineWidth=2;
     for(let i=0;i<3;i++){
-      ctx.strokeStyle="rgba(255,255,255,"+(0.4*glow)+")"; ctx.lineWidth=2;
-      ctx.beginPath(); ctx.moveTo(-20-i*4,-6+i*6); ctx.lineTo(-30-i*4,-6+i*6); ctx.stroke();
+      const a=pbP(x0-8-i*12, y0+i*7, Hh*0.5), b=pbP(x0-26-i*12, y0+i*7, Hh*0.5);
+      ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke();
     }
   }
+}
+function pbDrawParcelFX(ctx,f){
+  const h=f.house, s=pbSideY(h.side), p=f.p;
+  const x=f.ox+(h.worldDist-f.ox)*p;
+  const y=s*PB_HOUSE_Y0*p;
+  const z=Math.sin(p*Math.PI)*46;
+  const q=pbP(x,y,z);
+  ctx.save(); ctx.translate(q[0],q[1]); ctx.rotate(p*9);
+  ctx.fillStyle="#eee"; ctx.fillRect(-5,-4,10,8);
+  ctx.fillStyle="#f22"; ctx.fillRect(-5,-4,10,2);
+  ctx.strokeStyle="#000"; ctx.lineWidth=1; ctx.strokeRect(-5,-4,10,8);
   ctx.restore();
 }
 function pbDrawHUD(ctx,w,h){
-  ctx.fillStyle="rgba(0,0,0,.4)"; ctx.fillRect(0,0,w,34);
-  ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(0,34); ctx.lineTo(w,34); ctx.stroke();
   const nextH=PB.houses[PB.nextIdx];
-  ctx.font="8px 'Press Start 2P',monospace"; ctx.fillStyle="#fff"; ctx.textAlign="left";
-  ctx.fillText(nextH ? "NEXT: #"+nextH.doorNum+" ("+(nextH.side==="L"?"LEFT":"RIGHT")+")" : "ROUTE DONE", 10, 21);
-  ctx.textAlign="right";
-  ctx.fillText(PB.nextIdx+"/"+PB.houses.length, w-10, 21);
+  ctx.fillStyle="rgba(0,0,0,.72)"; ctx.fillRect(0,0,96,84);
+  ctx.fillStyle="#fff"; ctx.font="9px 'Press Start 2P',monospace"; ctx.textAlign="left";
+  ctx.fillText("NEXT", 12, 22);
+  ctx.font="26px 'Press Start 2P',monospace";
+  ctx.fillText(nextH ? ""+nextH.doorNum : "--", 12, 50);
+  ctx.fillStyle="#f22"; ctx.fillRect(12,58,58,4);
+  ctx.font="7px 'Press Start 2P',monospace"; ctx.fillStyle="#8a8a8a";
+  ctx.fillText(nextH ? (nextH.side==="L"?"◀ LEFT":"RIGHT ▶") : "", 12, 74);
+  ctx.textAlign="right"; ctx.fillStyle="#fff"; ctx.font="8px 'Press Start 2P',monospace";
+  ctx.fillText(PB.nextIdx+"/"+PB.houses.length, w-12, 22);
   ctx.textAlign="left";
   if(PB.charging){
     const p=clamp(PB.charging.t/PB_CHARGE_TIME,0,1);
-    const bw=w*0.6, bx=w/2-bw/2, by=h*0.42;
-    ctx.fillStyle="rgba(0,0,0,.65)"; ctx.fillRect(bx-4,by-16,bw+8,32);
+    const bw=w*0.6, bx=w/2-bw/2, by=h*0.80;
+    ctx.fillStyle="rgba(0,0,0,.7)"; ctx.fillRect(bx-5,by-18,bw+10,34);
     ctx.fillStyle="#f22"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText("POWER THROW", w/2, by-4);
+    ctx.fillText("POWER THROW", w/2, by-5);
     ctx.strokeStyle="#f22"; ctx.lineWidth=2; ctx.strokeRect(bx,by,bw,12);
     ctx.fillStyle="#f22"; ctx.fillRect(bx,by,bw*p,12);
     ctx.textAlign="left";
@@ -291,29 +360,35 @@ function pbDrawHUD(ctx,w,h){
 function drawPaperboy(t){
   const [ctx,w,h]=fit($("#paperboycv"));
   ctx.fillStyle="#000"; ctx.fillRect(0,0,w,h);
-  const cx=w*0.40, cy=h*0.36;
-  const shakeX=(Math.random()-0.5)*PB.shake*6, shakeY=(Math.random()-0.5)*PB.shake*6;
-  ctx.save();
-  ctx.translate(cx+shakeX, cy+shakeY);
-  ctx.rotate(0.15);
-  ctx.fillStyle="#111";
-  ctx.fillRect(-140,-h*1.4,280,h*2.8);
-  ctx.strokeStyle="#2a2a2a"; ctx.lineWidth=3; ctx.setLineDash([16,14]);
-  ctx.lineDashOffset=-PB.dist%30;
-  ctx.beginPath(); ctx.moveTo(0,-h*1.4); ctx.lineTo(0,h*1.4); ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.strokeStyle = PB.charging ? "#f22" : "#fff"; ctx.lineWidth=2; ctx.globalAlpha=0.45;
-  ctx.beginPath(); ctx.moveTo(-140,0); ctx.lineTo(140,0); ctx.stroke();
-  ctx.globalAlpha=1;
-  for(const hh of PB.houses){
-    const ly=PB.dist-hh.worldDist;
-    if(ly<-420||ly>260) continue;
-    const lx = hh.side==="L" ? -PB_LANE : PB_LANE;
-    pbDrawHouse(ctx,hh,lx,ly,t);
+  PB.camX = w*0.36 + (Math.random()-0.5)*PB.shake*7;
+  PB.camY = h*0.26 + (Math.random()-0.5)*PB.shake*7;
+  pbDrawRoad(ctx);
+  // ground layer first, so every path/doormat sits under every building
+  for(let i=0;i<PB.houses.length;i++){
+    const hh=PB.houses[i];
+    if(Math.abs(hh.worldDist-PB.dist)>900) continue;
+    pbDrawGround(ctx,hh,i===PB.nextIdx);
   }
+  // the throw line: shows exactly where a parcel leaves the van, so lining it up with a
+  // path is the whole aiming read
+  {
+    const a=pbP(PB.dist,-PB_HOUSE_Y0,0), b=pbP(PB.dist,PB_HOUSE_Y0,0);
+    ctx.strokeStyle = PB.charging ? "#f22" : "#fff"; ctx.globalAlpha=.35; ctx.lineWidth=2;
+    ctx.setLineDash([6,6]);
+    ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha=1;
+  }
+  // painter's order: farther from the camera (smaller x+y) draws first
+  const drawables=[];
+  for(const hh of PB.houses){
+    if(Math.abs(hh.worldDist-PB.dist)>900) continue;
+    const yhi=Math.max(pbSideY(hh.side)*PB_HOUSE_Y0, pbSideY(hh.side)*(PB_HOUSE_Y0+PB_HOUSE_DEPTH));
+    drawables.push({d:hh.worldDist+yhi, f:()=>pbDrawHouse(ctx,hh,t)});
+  }
+  drawables.push({d:PB.dist+10, f:()=>pbDrawVan(ctx,t)});
+  drawables.sort((a,b)=>a.d-b.d);
+  for(const dd of drawables) dd.f();
   for(const f of PB.fx){ if(f.t==="parcel") pbDrawParcelFX(ctx,f); }
-  pbDrawVan(ctx,t);
-  ctx.restore();
   pbDrawHUD(ctx,w,h);
 }
 (function(){
