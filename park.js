@@ -222,7 +222,8 @@ function startPark(plus){
     chain:0, chainT:0, inv:0, fx:[],
     x:0,y:0,vx:0,vy:0, joy:null,
     en:[], fr:[], gate:{}, started:false, shop:null, biscuits:[], drops:[], pendingBury:0, nuts:[],
-    powerups:[], starT:0, zoom:1,
+    powerups:[], starT:0, zoom:1, sniffLvl:0,
+    trees:[], scorch:[], embers:[],
     plusMode:!!plus, mixTypes:null, mixLabel:null, swoopT:0
   });
   PK.hp=PK.maxhp;
@@ -302,13 +303,95 @@ const LASER_WIDTH=13;
 function pkLaserRange(){ return Math.min(PK.WW,PK.WH)*0.42; }   // stays under half the world so the
                                                                  // wrap-aware hit-test never disagrees with the straight beam drawn on screen
 function pkPlusMult(){ return PK.plusMode ? 2 : 1; }   // DOGPARK+: same wave structure, double enemies on screen at once
+/* ---------- trees: cover, collision, kindling, and squirrel nests ---------- */
+// the BBBSSHHHZZZHHH — layered saw tones plus a noise-ish crackle tail
+function pkBlastSfx(){
+  beep(70,.55,"sawtooth",.10);
+  beep(105,.5,"square",.05);
+  for(let i=0;i<7;i++) setTimeout(()=>beep(600+Math.random()*1400,.05,"square",.022), i*55);
+  setTimeout(()=>beep(52,.45,"sawtooth",.08),120);
+}
+function pkBuildTrees(){
+  PK.trees=[];
+  const n=Math.round(6*(PK.worldMult/2)*(PK.worldMult/2));
+  for(let i=0;i<n;i++){
+    PK.trees.push({
+      x:Math.random()*PK.WW, y:Math.random()*PK.WH,
+      state:"ok", fireT:0, spawned:0, spawnT:0, sway:Math.random()*6.283
+    });
+  }
+}
+function pkIgniteTree(tr){
+  if(!tr || tr.state!=="ok") return;
+  tr.state="fire"; tr.fireT=0; tr.spawnT=0.25;
+  toast("THE TREE'S ALIGHT — THEY'RE POURING OUT!",1);
+  beep(90,.45,"sawtooth",.09); setTimeout(()=>beep(140,.35,"sawtooth",.07),110);
+}
+// first non-ash tree a beam runs into: it soaks the shot (cover) and catches light
+function pkBeamBlocker(ox,oy,ang,range){
+  const ux=Math.cos(ang), uy=Math.sin(ang);
+  let best=null, bestD=range;
+  for(const tr of PK.trees){
+    if(tr.state==="ash") continue;
+    const dx=wd(tr.x-ox,PK.WW), dy=wd(tr.y-oy,PK.WH);
+    const along=dx*ux+dy*uy;
+    if(along<=0 || along>=bestD) continue;
+    if(Math.abs(dx*uy-dy*ux)>TREE_R) continue;
+    best=tr; bestD=along;
+  }
+  return {tree:best, dist:bestD};
+}
+// keeps BONES out of a trunk — slides him around it rather than stopping him dead
+function pkTreeCollide(px,py){
+  for(const tr of PK.trees){
+    if(tr.state==="ash") continue;
+    const dx=wd(px-tr.x,PK.WW), dy=wd(py-tr.y,PK.WH);
+    const d=Math.hypot(dx,dy), r=TREE_R*0.72;
+    if(d<r && d>0.001){
+      px=(tr.x+dx/d*r+PK.WW)%PK.WW;
+      py=(tr.y+dy/d*r+PK.WH)%PK.WH;
+    }
+  }
+  return [px,py];
+}
+function pkTickTrees(dt){
+  for(const tr of PK.trees){
+    tr.sway+=dt*(tr.state==="fire"?5:1.1);
+    if(tr.state!=="fire") continue;
+    tr.fireT+=dt;
+    tr.spawnT-=dt;
+    if(tr.spawnT<=0 && tr.spawned<TREE_SPAWN_MAX){   // a burning nest keeps disgorging squirrels
+      tr.spawnT=TREE_SPAWN_EVERY;
+      tr.spawned++;
+      const a=Math.random()*6.283;
+      PK.en.push({t:"sq", madsq:true, fromTree:true,
+        x:(tr.x+Math.cos(a)*TREE_R+PK.WW)%PK.WW, y:(tr.y+Math.sin(a)*TREE_R+PK.WH)%PK.WH,
+        hp:1, hpMax:1, sp:44, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
+        laserState:"seek", chargeT:0, aimAng:0, sweepT:0, cd:0.8+Math.random()*1.2});
+      beep(320+Math.random()*160,.04,"square",.02);
+    }
+    if(tr.fireT>=TREE_BURN_TIME){
+      tr.state="ash";
+      PK.scorch.push({x:tr.x, y:tr.y, r:TREE_R*1.6});
+      beep(70,.5,"sawtooth",.05);
+    }
+  }
+}
 // ===== WAVE REDESIGN v2 =====
 const STANDING_SPOOK_R=58, SPOOK_SPEED=100, SPOOK_LIFE=3.2;   // wave 1: how close before a roost startles, and how it scatters
 const STALK_CHANCE=0.20;                                      // waves 1-2: chance a bird-flock spawn also drops stalking cats
 const STALK_CAT_SOFTCAP=6, STALK_AGGRO_R=65, STALK_ORBIT_R=48, STALK_ORBIT_SPEED=0.9, STALK_LEAP_SPEED=185, STALK_LEAP_TIME=0.3, STALK_CHASE_SPD=62;
 const NUT_SPEED=145;                                          // wave 4/mix: thrown-nut projectile speed
 const RANGER_PLANT_R=200, RANGER_APPROACH_SPD=55, RANGER_WINDUP=0.55, RANGER_THROW_CD=1.5;   // wave 4: nut-throwing squirrels
-const MADSQ_CHARGE=1.4, MADSQ_SWEEP_TIME=3.0, MADSQ_SWEEP_ARC=0.9, MADSQ_SWEEP_RATE=2.4;      // wave 5: rotating-beam squirrels
+// wave 5: rotating-beam squirrels. The sweep is deliberately slow — this beam is meant to be
+// read and outrun, not twitch-dodged — and only a couple ever fire at once.
+const MADSQ_CHARGE=1.5, MADSQ_SWEEP_TIME=3.0, MADSQ_SWEEP_ARC=0.9, MADSQ_SWEEP_RATE=0.95;
+const MADSQ_WIDTH=18, MADSQ_DMG=14, MADSQ_KNOCK=150, MADSQ_FF_DMG=1;
+function pkMadsqCap(){ return PK.worldMult>2 ? 4 : 2; }   // doubles once the park has been expanded
+// bone pickup: a small sniff radius that hoovers up nearby drops, upgradeable in the shop
+const PICKUP_BASE=16, SNIFF_BASE=34, SNIFF_STEP=26, SNIFF_PULL=190, SNIFF_LVL_CAP=3;
+// trees: cover from beams, solid to walk through, flammable, and full of squirrels
+const TREE_R=15, TREE_BURN_TIME=10, TREE_SPAWN_MAX=15, TREE_SPAWN_EVERY=0.65;
 const ALPHA_LEAP_R=170, ALPHA_LEAP_SPEED=280, ALPHA_LEAP_TIME=0.45, ALPHA_LEAP_CD=4, ALPHA_LEAP_DMG=20, ALPHA_APPROACH_SPD=50; // wave 6
 // WAVE 1 — CLEAR THE BIRDS: loose flocks of 3-7 birds clustered together, standing until
 // BONES gets close, then the whole flock startles and scatters (still hittable mid-scatter,
@@ -497,6 +580,7 @@ function pkExpandPark(){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   PK.WW=w*PK.worldMult; PK.WH=h*PK.worldMult;
   pkBuildBG(PK.WW,PK.WH);
+  pkBuildTrees();
 }
 function pkShopOpen(){
   const statAll=[
@@ -505,11 +589,12 @@ function pkShopOpen(){
     {n:"MIGHTY KNOCKBACK", fx:"+70 KNOCKBACK",    c:10, f:()=>PK.knock+=70},
     {n:"SNACK",         fx:"HEAL 30 HP",          c:8,  f:()=>PK.hp=Math.min(PK.maxhp,PK.hp+30)},
     {n:"ZOOMIES",       fx:"+10% SPEED",          c:12, f:()=>PK.spd*=1.1},
-    {n:"TOUGH COAT",    fx:"+15 MAX HP",          c:15, f:()=>{PK.maxhp+=15;PK.hp+=15;}}
+    {n:"TOUGH COAT",    fx:"+15 MAX HP",          c:15, f:()=>{PK.maxhp+=15;PK.hp+=15;}},
+    {n:"KEEN NOSE",     fx:"WIDER BONE PICKUP",   c:11, capKey:"sniffLvl", capMax:SNIFF_LVL_CAP, f:()=>{PK.sniffLvl=(PK.sniffLvl||0)+1;}}
   ];
-  // BIGGER BARK / FASTER BARK stop appearing once leveled to the cap
-  const pool=statAll.filter(o=>!o.capKey || PK[o.capKey]<BARK_LVL_CAP)
-    .map(o=>o.capKey ? {...o, fx:o.fx+" (LV "+(PK[o.capKey]+1)+"/"+BARK_LVL_CAP+")"} : o);
+  // capped upgrades stop appearing once they're maxed out
+  const pool=statAll.filter(o=>!o.capKey || PK[o.capKey]<(o.capMax||BARK_LVL_CAP))
+    .map(o=>o.capKey ? {...o, fx:o.fx+" (LV "+((PK[o.capKey]||0)+1)+"/"+(o.capMax||BARK_LVL_CAP)+")"} : o);
   // rare chance of a big relic offer alongside the usual upgrades \u2014 never the one already equipped
   const candidates=PK_CHARMS.filter(c=>c.id!==PK.relic);
   if(candidates.length && Math.random()<0.4){
@@ -536,6 +621,8 @@ function parkUpdate(dt){
   if(PK.waveBanner){ PK.waveBanner.life-=dt; if(PK.waveBanner.life<=0) PK.waveBanner=null; }
   if(PK.shopFlash){ PK.shopFlash.life-=dt; if(PK.shopFlash.life<=0) PK.shopFlash=null; }
   for(let i=SPARKS.length-1;i>=0;i--){ const s=SPARKS[i]; s.x+=s.vx*dt; s.y+=s.vy*dt; s.vy+=140*dt; s.life-=dt; if(s.life<=0) SPARKS.splice(i,1); }
+  for(let i=PK.embers.length-1;i>=0;i--){ const em=PK.embers[i]; em.x+=em.vx*dt; em.y+=em.vy*dt; em.vy+=90*dt; em.life-=dt; if(em.life<=0) PK.embers.splice(i,1); }
+  if(PK.scorch.length>90) PK.scorch.splice(0, PK.scorch.length-90);
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   if(!PK.started){
     PK.started=true;
@@ -543,12 +630,15 @@ function parkUpdate(dt){
     PK.gate={x:PK.WW*0.72, y:PK.WH*0.5};
     PK.x=PK.WW*0.25; PK.y=PK.WH*0.5;
     pkBuildBG(PK.WW,PK.WH);
+    pkBuildTrees();
   }
   const WW=PK.WW, WH=PK.WH;
   // a wave only ends once its full quota has spawned AND every last enemy is down (fleeing
   // stragglers don't count \u2014 they're already defeated, just scuttling off in the background;
   // spooked-but-alive roost birds that got away clean also don't block the clear)
-  if(PK.waveSpawned>=PK.waveQuota && !PK.en.some(e=>!e.fleeing && !e.spooked && !e.stalk && !e.stalkAggro && !e.swoop)){
+  // a startled bird is still very much alive — it only settles back down — so it has to block
+  // the clear like anything else. Only downed enemies and ambient extras are ignored here.
+  if(PK.waveSpawned>=PK.waveQuota && !PK.en.some(e=>!e.fleeing && !e.stalk && !e.stalkAggro && !e.swoop)){
     // survive the very first wave and it's a straight-up XP bonus
     if(PK.wave===1 && !PK.missionSurviveW1){
       PK.missionSurviveW1=true; addXP(10);
@@ -609,6 +699,8 @@ function parkUpdate(dt){
   else { PK.vx*=0.8; PK.vy*=0.8; }
   PK.x=(PK.x+PK.vx*dt+WW)%WW;
   PK.y=(PK.y+PK.vy*dt+WH)%WH;
+  [PK.x,PK.y]=pkTreeCollide(PK.x,PK.y);
+  pkTickTrees(dt);
   PK.barkCd-=dt;
   if((PK.barkCd<=0||PK.starT>0) && PK.en.some(e=>!e.fleeing && Math.hypot(wd(e.x-PK.x,WW),wd(e.y-PK.y,WH))<PK.barkR)) pkBark();
   if(PK.starT>0 && Math.random()<0.55){
@@ -739,23 +831,63 @@ function parkUpdate(dt){
         e.dir = sx<0 ? -1 : 1;
         e.x=(e.x+(sx+e.kx)*dt+WW)%WW; e.y=(e.y+(sy+e.ky)*dt+WH)%WH;
         e.cd-=dt;
-        if(e.cd<=0 && d<pkLaserRange()*0.8){ e.laserState="charge"; e.chargeT=0; e.aimAng=Math.atan2(dyw,dxw); }
+        const firing=PK.en.reduce((a,o)=>a+((o.madsq&&!o.fleeing&&(o.laserState==="charge"||o.laserState==="sweep"))?1:0),0);
+        if(e.cd<=0 && d<pkLaserRange()*0.8 && firing<pkMadsqCap()){
+          e.laserState="charge"; e.chargeT=0; e.aimAng=Math.atan2(dyw,dxw);
+        }
         if(d<14 && PK.inv<=0 && !pkInvuln()){
           PK.hp-=8; PK.inv=0.6; e.kx=-dxw/d*220; e.ky=-dyw/d*220;
           beep(110,.12,"sawtooth"); if(PK.hp<=0) return pkDeath();
         }
       } else if(e.laserState==="charge"){
         e.chargeT+=dt;
-        if(e.chargeT>=MADSQ_CHARGE){ e.laserState="sweep"; e.sweepT=0; e.aimAng=Math.atan2(dyw,dxw); }
+        if(e.chargeT>=MADSQ_CHARGE){
+          e.laserState="sweep"; e.sweepT=0; e.aimAng=Math.atan2(dyw,dxw);
+          pkBlastSfx();
+        }
       } else if(e.laserState==="sweep"){
         e.sweepT+=dt;
         e.aimAng = Math.atan2(dyw,dxw) + Math.sin(e.sweepT*MADSQ_SWEEP_RATE)*MADSQ_SWEEP_ARC;
         e.dir = Math.cos(e.aimAng)<0 ? -1 : 1;
         const ux=Math.cos(e.aimAng), uy=Math.sin(e.aimAng);
+        // a tree in the way eats the whole beam and goes up in flames — that's real cover
+        const blk=pkBeamBlocker(e.x,e.y,e.aimAng,pkLaserRange());
+        e.beamLen=blk.dist;
+        if(blk.tree){
+          pkIgniteTree(blk.tree);
+          if(Math.random()<0.25) PK.embers.push({x:e.x+ux*blk.dist, y:e.y+uy*blk.dist, vx:(Math.random()-0.5)*40, vy:-30-Math.random()*50, life:0.6});
+        }
         const along=dxw*ux+dyw*uy, perp=Math.abs(dxw*uy-dyw*ux);
-        if(along>0 && along<pkLaserRange() && perp<LASER_WIDTH && PK.inv<=0 && !pkInvuln()){
-          PK.hp-=12; PK.inv=0.5;
-          beep(150,.15,"sawtooth"); if(PK.hp<=0) return pkDeath();
+        if(along>0 && along<blk.dist && perp<MADSQ_WIDTH && PK.inv<=0 && !pkInvuln()){
+          PK.hp-=MADSQ_DMG; PK.inv=0.55;
+          PK.x=(PK.x+ux*MADSQ_KNOCK*dt*6+WW)%WW; PK.y=(PK.y+uy*MADSQ_KNOCK*dt*6+WH)%WH;
+          PK.vx=ux*90; PK.vy=uy*90;
+          PK.shake=0.5;
+          PK.scorch.push({x:PK.x, y:PK.y, r:16+Math.random()*8});
+          beep(140,.2,"sawtooth",.07); if(PK.hp<=0) return pkDeath();
+        }
+        // the beams are indiscriminate: anything else caught in one gets blasted too
+        for(const o of PK.en){
+          if(o===e || o.fleeing) continue;
+          const odx=wd(o.x-e.x,WW), ody=wd(o.y-e.y,WH);
+          const oa=odx*ux+ody*uy, op=Math.abs(odx*uy-ody*ux);
+          if(oa>10 && oa<blk.dist && op<MADSQ_WIDTH){
+            o.burnT=(o.burnT||0)+dt;
+            if(o.burnT>0.28){
+              o.burnT=0;
+              o.hp-=MADSQ_FF_DMG;
+              o.kx=ux*MADSQ_KNOCK*1.6; o.ky=uy*MADSQ_KNOCK*1.6;
+              PK.embers.push({x:o.x, y:o.y, vx:(Math.random()-0.5)*60, vy:-40-Math.random()*40, life:0.5});
+              if(o.hp<=0){
+                PK.drops.push({x:o.x, y:o.y, v:1, life:25});
+                PK.kills++;
+                o.fleeing=true; o.shockT=0.3; o.fleeT=0;
+                o.fleeVx=ux*FLEE_SPEED; o.fleeVy=uy*FLEE_SPEED;
+                PK.scorch.push({x:o.x, y:o.y, r:12+Math.random()*6});
+                beep(120,.16,"sawtooth",.05);
+              }
+            }
+          }
         }
         if(e.sweepT>=MADSQ_SWEEP_TIME){
           PK.drops.push({x:e.x, y:e.y, v:1, life:25});
@@ -894,7 +1026,15 @@ function parkUpdate(dt){
       dr.x=(dr.x+mdx/mdd*MAGNET_HOMING_SPEED*dt+WW)%WW;
       dr.y=(dr.y+mdy/mdd*MAGNET_HOMING_SPEED*dt+WH)%WH;
     }
-    if(Math.hypot(wd(dr.x-PK.x,WW),wd(dr.y-PK.y,WH))<16){
+    const sniffR=SNIFF_BASE+SNIFF_STEP*(PK.sniffLvl||0);
+    const pickR=PICKUP_BASE+SNIFF_STEP*0.35*(PK.sniffLvl||0);
+    const sdx=wd(PK.x-dr.x,WW), sdy=wd(PK.y-dr.y,WH), sdd=Math.hypot(sdx,sdy)||1;
+    if(!dr.magnet && sdd<sniffR){       // in sniffing range: the bone rolls his way
+      const pull=SNIFF_PULL*(1-sdd/sniffR)*dt;
+      dr.x=(dr.x+sdx/sdd*pull+WW)%WW;
+      dr.y=(dr.y+sdy/sdd*pull+WH)%WH;
+    }
+    if(Math.hypot(wd(dr.x-PK.x,WW),wd(dr.y-PK.y,WH))<pickR){
       pkGain(dr.v, dr.x, dr.y);            // chain ticks per pickup — route efficiency pays
       beep(dr.gold?900:640,.06);
       PK.drops.splice(i,1);
@@ -969,18 +1109,139 @@ function drawLaserFX(ctx,e,sx,sy){
   const eyeX=sx+(e.dir<0?-4:4), eyeY=sy-11;
   if(e.laserState==="charge"){
     const p=clamp(e.chargeT/MADSQ_CHARGE,0,1);
-    ctx.fillStyle="#f22"; ctx.globalAlpha=0.5+0.5*p;
-    ctx.beginPath(); ctx.arc(eyeX,eyeY,1+p*4,0,7); ctx.fill();
-    ctx.globalAlpha=1;
+    // the wind-up: eye blows up white-hot and drags motes inward
+    ctx.save();
+    ctx.globalAlpha=0.25+0.45*p; ctx.fillStyle="#f22";
+    ctx.beginPath(); ctx.arc(eyeX,eyeY,4+p*16,0,7); ctx.fill();
+    ctx.globalAlpha=1; ctx.fillStyle=p>0.7?"#fff":"#ffb347";
+    ctx.beginPath(); ctx.arc(eyeX,eyeY,1.5+p*5,0,7); ctx.fill();
+    ctx.strokeStyle="rgba(255,120,60,"+(0.4+0.5*p)+")"; ctx.lineWidth=1.5;
+    for(let i=0;i<5;i++){
+      const a=e.aimAng+(i-2)*0.5, r0=(1-p)*34+12;
+      ctx.beginPath();
+      ctx.moveTo(eyeX+Math.cos(a)*r0, eyeY+Math.sin(a)*r0);
+      ctx.lineTo(eyeX+Math.cos(a)*(r0+7), eyeY+Math.sin(a)*(r0+7));
+      ctx.stroke();
+    }
+    ctx.restore();
   } else if(e.laserState==="sweep"){
-    const ang=e.aimAng, range=pkLaserRange();
-    ctx.strokeStyle="#f22"; ctx.lineWidth=7;
-    ctx.beginPath(); ctx.moveTo(eyeX,eyeY); ctx.lineTo(eyeX+Math.cos(ang)*range, eyeY+Math.sin(ang)*range); ctx.stroke();
-    ctx.strokeStyle="#fff"; ctx.lineWidth=2;
-    ctx.beginPath(); ctx.moveTo(eyeX,eyeY); ctx.lineTo(eyeX+Math.cos(ang)*range, eyeY+Math.sin(ang)*range); ctx.stroke();
-    ctx.fillStyle="#fff";
-    ctx.beginPath(); ctx.arc(eyeX,eyeY,3,0,7); ctx.fill();
+    const ang=e.aimAng, range=e.beamLen||pkLaserRange();
+    const ux=Math.cos(ang), uy=Math.sin(ang), px=-uy, py=ux;
+    const ex=eyeX+ux*range, ey=eyeY+uy*range;
+    const t=performance.now()/1000;
+    const pulse=0.85+0.15*Math.sin(t*40);
+    ctx.save(); ctx.lineCap="round";
+    // outer bloom -> hot orange -> white core: a fat, overexposed anime beam
+    ctx.globalAlpha=0.30; ctx.strokeStyle="#ff5a1e"; ctx.lineWidth=MADSQ_WIDTH*2.6*pulse;
+    ctx.beginPath(); ctx.moveTo(eyeX,eyeY); ctx.lineTo(ex,ey); ctx.stroke();
+    ctx.globalAlpha=0.65; ctx.strokeStyle="#ff9d2e"; ctx.lineWidth=MADSQ_WIDTH*1.5*pulse;
+    ctx.beginPath(); ctx.moveTo(eyeX,eyeY); ctx.lineTo(ex,ey); ctx.stroke();
+    ctx.globalAlpha=1; ctx.strokeStyle="#fff7e0"; ctx.lineWidth=MADSQ_WIDTH*0.62*pulse;
+    ctx.beginPath(); ctx.moveTo(eyeX,eyeY); ctx.lineTo(ex,ey); ctx.stroke();
+    ctx.strokeStyle="#fff"; ctx.lineWidth=MADSQ_WIDTH*0.22;
+    ctx.beginPath(); ctx.moveTo(eyeX,eyeY); ctx.lineTo(ex,ey); ctx.stroke();
+    // arcing crackle spitting off the shaft
+    ctx.strokeStyle="rgba(255,240,190,.85)"; ctx.lineWidth=1.6;
+    for(let i=0;i<7;i++){
+      const f=((i*0.19)+(t*1.1)%1)%1, d0=f*range;
+      const off=(Math.sin(t*33+i*2.2))*MADSQ_WIDTH*0.9;
+      ctx.beginPath();
+      ctx.moveTo(eyeX+ux*d0+px*off*0.3, eyeY+uy*d0+py*off*0.3);
+      ctx.lineTo(eyeX+ux*(d0+9)+px*off, eyeY+uy*(d0+9)+py*off);
+      ctx.stroke();
+    }
+    // impact head: shockwave rings and a spray of sparks where it lands
+    const ip=0.6+0.4*Math.sin(t*26);
+    ctx.globalAlpha=0.55; ctx.fillStyle="#ff7a2e";
+    ctx.beginPath(); ctx.arc(ex,ey,MADSQ_WIDTH*1.5*ip,0,7); ctx.fill();
+    ctx.globalAlpha=1; ctx.fillStyle="#fff";
+    ctx.beginPath(); ctx.arc(ex,ey,MADSQ_WIDTH*0.62*ip,0,7); ctx.fill();
+    ctx.strokeStyle="rgba(255,180,90,.8)"; ctx.lineWidth=2.4;
+    ctx.beginPath(); ctx.arc(ex,ey,MADSQ_WIDTH*2.1*ip,0,7); ctx.stroke();
+    for(let i=0;i<6;i++){
+      const a=t*7+i*1.05, r=MADSQ_WIDTH*(1.4+Math.abs(Math.sin(t*12+i))*1.5);
+      ctx.strokeStyle="rgba(255,220,150,.9)"; ctx.lineWidth=1.8;
+      ctx.beginPath();
+      ctx.moveTo(ex+Math.cos(a)*MADSQ_WIDTH*0.5, ey+Math.sin(a)*MADSQ_WIDTH*0.5);
+      ctx.lineTo(ex+Math.cos(a)*r, ey+Math.sin(a)*r);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
+}
+// scorched ground left behind by beams and burnt-out trees
+function pkDrawScorch(ctx,SC,w,h){
+  for(const sc of PK.scorch){
+    const [x,y]=SC(sc.x,sc.y);
+    if(x<-60||x>w+60||y<-60||y>h+60) continue;
+    ctx.save(); ctx.globalAlpha=0.5; ctx.fillStyle="#140f0a";
+    ctx.beginPath(); ctx.ellipse(x,y,sc.r,sc.r*0.55,0,0,7); ctx.fill();
+    ctx.globalAlpha=0.3; ctx.fillStyle="#2b211a";
+    ctx.beginPath(); ctx.ellipse(x,y,sc.r*0.6,sc.r*0.33,0,0,7); ctx.fill();
+    ctx.restore();
+  }
+}
+function pkDrawTree(ctx,tr,x,y,t){
+  const burning=tr.state==="fire", ash=tr.state==="ash";
+  ctx.save();
+  ctx.fillStyle="rgba(0,0,0,.32)";
+  ctx.beginPath(); ctx.ellipse(x,y+4,TREE_R*0.9,TREE_R*0.36,0,0,7); ctx.fill();
+  if(ash){
+    // burnt out: a stump in a heap of ash, no cover left
+    ctx.fillStyle="#3a332c";
+    ctx.beginPath(); ctx.ellipse(x,y,TREE_R*0.95,TREE_R*0.4,0,0,7); ctx.fill();
+    ctx.fillStyle="#575049";
+    ctx.beginPath(); ctx.ellipse(x-2,y-1,TREE_R*0.55,TREE_R*0.22,0,0,7); ctx.fill();
+    ctx.fillStyle="#241d18"; ctx.fillRect(x-3,y-11,6,11);
+    ctx.strokeStyle="#100c09"; ctx.lineWidth=1.4; ctx.strokeRect(x-3,y-11,6,11);
+    if(Math.floor(t*2)%2){   // last wisps of smoke
+      ctx.strokeStyle="rgba(150,150,150,.35)"; ctx.lineWidth=1.4;
+      ctx.beginPath(); ctx.moveTo(x,y-12); ctx.lineTo(x-3,y-22); ctx.stroke();
+    }
+    ctx.restore(); return;
+  }
+  const sway=Math.sin(tr.sway)*(burning?3:1.4);
+  ctx.fillStyle=burning?"#2a1a0e":"#4a3520";
+  ctx.strokeStyle="#0a0806"; ctx.lineWidth=2.5;
+  ctx.fillRect(x-5,y-21,10,21); ctx.strokeRect(x-5,y-21,10,21);
+  const cy=y-31;
+  ctx.fillStyle=burning?"#5a3212":"#37782f";
+  ctx.strokeStyle="#0a1a0c"; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.arc(x+sway,cy,TREE_R,0,7); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(x-TREE_R*0.55+sway,cy+5,TREE_R*0.62,0,7); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(x+TREE_R*0.55+sway,cy+5,TREE_R*0.62,0,7); ctx.fill(); ctx.stroke();
+  if(burning){
+    // roaring flames: layered licks that flicker independently, plus rising heat specks
+    const f=tr.fireT;
+    for(let i=0;i<11;i++){
+      const seed=i*2.31;
+      const ph=(t*3.1+seed)%1;
+      const fx=x+sway+Math.sin(t*7+seed)*TREE_R*0.85;
+      const base=cy+TREE_R*0.5;
+      const fy=base-ph*(TREE_R*2.4);
+      const sz=(1-ph)*(5+((i%3)*2.6));
+      ctx.globalAlpha=0.85*(1-ph);
+      ctx.fillStyle = ph<0.3 ? "#fff3c4" : ph<0.6 ? "#ffae24" : "#f2400f";
+      ctx.beginPath();
+      ctx.moveTo(fx,fy-sz*1.7); ctx.lineTo(fx+sz*0.8,fy); ctx.lineTo(fx,fy+sz*0.5); ctx.lineTo(fx-sz*0.8,fy);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.globalAlpha=0.30; ctx.fillStyle="#ff6a12";
+    ctx.beginPath(); ctx.arc(x+sway,cy,TREE_R*(1.7+0.18*Math.sin(t*11)),0,7); ctx.fill();
+    ctx.globalAlpha=1;
+    for(let i=0;i<5;i++){
+      const seed=i*4.7, ph=(t*1.5+seed)%1;
+      ctx.globalAlpha=0.8*(1-ph);
+      ctx.fillStyle="#ffd06a";
+      ctx.fillRect(x+sway+Math.sin(t*4+seed)*TREE_R, cy-ph*TREE_R*4.2, 2, 2);
+    }
+    ctx.globalAlpha=1;
+    // burn-down gauge so you can see how long the cover has left
+    const p=1-clamp(f/TREE_BURN_TIME,0,1);
+    ctx.fillStyle="rgba(0,0,0,.55)"; ctx.fillRect(x-14,y+7,28,4);
+    ctx.fillStyle="#f2400f"; ctx.fillRect(x-13,y+8,26*p,2);
+  }
+  ctx.restore();
 }
 function drawMadsqExplosion(ctx,sx,sy,explodeT){
   const p=1-clamp(explodeT/0.5,0,1), r=6+p*22;
@@ -1051,6 +1312,7 @@ function parkDraw(t){
     ctx.imageSmoothingEnabled=false;
     for(const ddx of [0,WW]) for(const ddy of [0,WH]) ctx.drawImage(PKBG,-ox+ddx,-oy+ddy);
   } else { ctx.fillStyle="#20261f"; ctx.fillRect(0,0,w,h); }
+  pkDrawScorch(ctx,SC,w,h);
   for(const a of PK.acts){
     const [ax,ay]=SC(a.x*WW,a.y*WH);
     if(ax<-70||ax>w+70||ay<-70||ay>h+70) continue;
@@ -1140,6 +1402,19 @@ function parkDraw(t){
     const [ex2,ey2]=SC(e.x,e.y);
     if(ex2<-40||ex2>w+40||ey2<-40||ey2>h+40) continue;
     drawEnemy(ctx,e,ex2,ey2);
+  }
+  for(const tr of PK.trees){
+    const [tx2,ty2]=SC(tr.x,tr.y);
+    if(tx2<-70||tx2>w+70||ty2<-90||ty2>h+70) continue;
+    pkDrawTree(ctx,tr,tx2,ty2,t);
+  }
+  for(const em of PK.embers){
+    const [ex3,ey3]=SC(em.x,em.y);
+    if(ex3<-20||ex3>w+20||ey3<-20||ey3>h+20) continue;
+    ctx.globalAlpha=Math.max(0,em.life*1.6);
+    ctx.fillStyle=em.life>0.3?"#ffd06a":"#f2400f";
+    ctx.fillRect(ex3-1.5,ey3-1.5,3,3);
+    ctx.globalAlpha=1;
   }
   const frac2=1-clamp(PK.barkCd/PK.barkMax,0,1);
   ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.globalAlpha=0.35;
