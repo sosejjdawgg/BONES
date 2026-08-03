@@ -280,17 +280,55 @@ function triggerDeath(){
   if(PK.active){ PK.active=false; showScreen("home"); }
   if(R.active){ R.active=false; showScreen("home"); }
   OUTING.active=false;
+  clearInterval(_vetInterval); _vetInterval=null;
   const hasSave=S.lastSaveAt!=null;
-  openChoice(
-    "BONES DIDN'T MAKE IT",
-    hasSave
-      ? "HE WENT TO SLEEP WITHOUT FOOD OR WATER<br>AND DIDN'T WAKE UP.<br><br>LOAD YOUR LAST SAVE AND TAKE BETTER<br>CARE OF HIM."
-      : "BONES NEEDED CARE AND DIDN'T GET IT.<br><br>FEED HIM. WATER HIM. HE NEEDS YOU.",
-    hasSave ? "LOAD LAST SAVE" : "CONTINUE",
-    doRewind
-  );
+  const canVet=S.money>=500;
+  if(canVet){
+    let secs=30;
+    const vetMsg=()=>"HE WENT TO SLEEP WITHOUT FOOD OR WATER<br>AND DIDN'T WAKE UP.<br><br>EMERGENCY VET — HURRY! "+secs+"s LEFT.";
+    openChoice(
+      "BONES DIDN'T MAKE IT",
+      vetMsg(),
+      "EMERGENCY VET — $500",
+      ()=>{ clearInterval(_vetInterval); _vetInterval=null; doVet(); },
+      hasSave?"LOAD LAST SAVE":"CONTINUE",
+      ()=>{ clearInterval(_vetInterval); _vetInterval=null; doRewind(); }
+    );
+    _vetInterval=setInterval(()=>{
+      secs--;
+      if(secs<=0){
+        clearInterval(_vetInterval); _vetInterval=null;
+        $("#choice").classList.remove("show");
+        doRewind();
+        return;
+      }
+      $("#chLines").innerHTML=DN(vetMsg());
+    },1000);
+  } else {
+    openChoice(
+      "BONES DIDN'T MAKE IT",
+      hasSave
+        ? "HE WENT TO SLEEP WITHOUT FOOD OR WATER<br>AND DIDN'T WAKE UP.<br><br>LOAD YOUR LAST SAVE AND TAKE BETTER<br>CARE OF HIM."
+        : "BONES NEEDED CARE AND DIDN'T GET IT.<br><br>FEED HIM. WATER HIM. HE NEEDS YOU.",
+      hasSave?"LOAD LAST SAVE":"CONTINUE",
+      doRewind
+    );
+  }
+}
+function doVet(){
+  S.money-=500;
+  S.dead=false; S.neglectNight=false; S.neglectNights=0;
+  S.sick=false; S.sickTimer=0; S.wellTimer=0;
+  S.hunger=clamp(S.hunger+45,0,100); S.thirst=clamp(S.thirst+45,0,100);
+  S.energy=clamp(S.energy+30,0,100); S.mood=clamp(S.mood+25,0,100);
+  if($("#game").classList.contains("hidden")){ $("#start").classList.add("hidden"); $("#game").classList.remove("hidden"); }
+  showScreen("home");
+  renderMeters(); renderShop(); renderTodo();
+  beep(440,.08); setTimeout(()=>beep(554,.08),130); setTimeout(()=>beep(660,.1),260);
+  toast("VET VISIT: $500. BONES IS RECOVERING.",1);
 }
 function doRewind(){
+  clearInterval(_vetInterval); _vetInterval=null;
   const ok=loadGame();
   S.dead=false; S.neglectNight=false; S.neglectNights=0;
   if(!ok){
@@ -480,6 +518,16 @@ function openStatus(){
   beep(560,.06);
 }
 function closeStatus(){ $("#status").classList.remove("show"); }
+function blockAtWork(){
+  CAM.workBlockT = 2.2;
+  beep(90,.18,"sawtooth");
+  openChoice(
+    "YOU ARE AT WORK",
+    "CANNOT DO THAT FROM HERE.<br><br>MAYBE A ROBOT COULD DO THIS FOR YOU SOMEDAY...<br><br><span style='color:#888'>HINT: CHECK THE SHOP — $350</span>",
+    "OK", null
+  );
+}
+let _vetInterval = null;
 $("#dogcv").addEventListener("pointerdown",e=>{
   if(R.active||OUTING.active||PK.active) return; // BONES is out
   if(WASH.active) return;             // scrubbing uses drag, not taps
@@ -495,6 +543,7 @@ $("#dogcv").addEventListener("pointerdown",e=>{
     clearTimeout(portraitT); portraitT=setTimeout(hidePortrait,3200);
     beep(420,.1); return;
   }
+  if(atWorkNow() && !S.owned.robot){ blockAtWork(); return; }
   const spx=SPONGE.held?SPONGE.x:0.135, spy=SPONGE.held?SPONGE.y:0.50;
   if(Math.hypot(fx-spx,fy-spy)<0.06){                       // grab the sponge off the wall
     if(S.shampooPct<=0){
@@ -769,7 +818,7 @@ function lcdSet(arr){
 for(const k in DOGIMG) lcdSet(DOGIMG[k]);
 lcdSet(BEGIMG); lcdSet(SENIORIMG);
 const HEARTIMG = HEARTS.map(u=>{ const i=new Image(); i.src=u; return i; });
-const CAM = { x:0.32, dir:1, state:"idle", t:0, fi:0, ft:0, until:1.5, woof:0, bedTarget:false, cameCalled:false, fetchPhase:0 };
+const CAM = { x:0.32, dir:1, state:"idle", t:0, fi:0, ft:0, until:1.5, woof:0, bedTarget:false, cameCalled:false, fetchPhase:0, workBlockT:0 };
 const BED = { x:0.56 };
 const BOWL = { level:0 };
 const FBOWL = { level:0 };
@@ -1727,6 +1776,14 @@ function drawCam(t){
   const night = nightAmount();
   if(night>0){ ctx.fillStyle="rgba(6,10,28,"+night+")"; ctx.fillRect(0,0,w,h); }
   if(S.sick){ ctx.fillStyle="rgba(90,10,10,"+(0.16+0.05*Math.sin(t*3))+")"; ctx.fillRect(0,0,w,h); }
+  if(CAM.workBlockT > 0){
+    const shk = Math.round(Math.sin(t*38)*5*Math.min(1,CAM.workBlockT));
+    ctx.canvas.style.transform = shk ? "translateX("+shk+"px)" : "";
+    ctx.fillStyle="rgba(200,0,0,"+Math.min(0.45,CAM.workBlockT*0.21)+")";
+    ctx.fillRect(0,0,w,h);
+  } else if(ctx.canvas.style.transform){
+    ctx.canvas.style.transform="";
+  }
   if(EVO.active){
     const et=EVO.t-1.0;
     let fl=0, cap="...WAIT, SOMETHING IS HAPPENING...";
@@ -1964,7 +2021,8 @@ function renderShopSup(){
         ? '<div class="prow" style="border-color:#f22"><span class="nm" style="color:#f22">'+icn("bed")+' BIGGER BED<br><span class="tiny">HE\'S OUTGROWN HIS BED</span></span><button data-sup="biggerbed" '+(S.money<45?"disabled":"")+'>BUY $45</button></div>'
         : "")},
     {req:2, html:(S.ballOwned?"":'<div class="prow'+(S.lvl<2?" locked":"")+'"><span class="nm">'+icn("ball")+' RUBBER BALL<br><span class="tiny">'+(S.lvl<2?"UNLOCKS LV.2":"FETCH, TRICK SHOTS \u2014 ONE-TIME")+'</span></span><button data-sup="ball" '+(S.lvl<2||S.money<5?"disabled":"")+'>BUY $5</button></div>')},
-    {req:3, html:(S.hoopOwned?"":'<div class="prow"><span class="nm">'+icn("hoop")+' BASKETBALL HOOP<br><span class="tiny">TRICK SHOTS BY THE WINDOW \u2014 ONE-TIME</span></span><button data-sup="hoop" '+(S.money<40?"disabled":"")+'>BUY $40</button></div>')}
+    {req:3, html:(S.hoopOwned?"":'<div class="prow"><span class="nm">'+icn("hoop")+' BASKETBALL HOOP<br><span class="tiny">TRICK SHOTS BY THE WINDOW \u2014 ONE-TIME</span></span><button data-sup="hoop" '+(S.money<40?"disabled":"")+'>BUY $40</button></div>')},
+    {req:4, html:(S.owned.robot?"":'<div class="prow"><span class="nm">\ud83e\udd16 NOURISH-BOT<br><span class="tiny">FEEDS &amp; WATERS BONES WHILE AT WORK \u2014 ONE-TIME</span></span><button data-sup="robot" '+(S.money<350?"disabled":"")+'>BUY $350</button></div>')}
   ];
   el.innerHTML = unlockSort(rows);
 }
@@ -2539,6 +2597,7 @@ $("#shopSup").addEventListener("click",e=>{
   if(t.dataset.sup==="hoop"&&S.money>=40&&!S.hoopOwned){ S.money-=40; S.hoopOwned=true; beep(880,.08); setTimeout(()=>beep(1170,.1),100); toast("HOOP MOUNTED BY THE WINDOW. SWISH \u2014 +1 XP A BASKET."); }
   if(t.dataset.sup==="shampoo"&&S.money>=5&&S.shampooPct<100){ S.money-=5; S.shampooOwned=true; S.shampooPct=100; beep(700,.07); setTimeout(()=>beep(950,.09),100); toast("SHAMPOO TOPPED UP \u2014 TIME FOR A BATH!"); }
   if(t.dataset.sup==="snack"&&S.money>=3){ S.money-=3; S.snacks++; beep(600,.05); }
+  if(t.dataset.sup==="robot"&&S.money>=350&&!S.owned.robot){ S.money-=350; S.owned.robot=true; beep(660,.08); setTimeout(()=>beep(880,.08),120); setTimeout(()=>beep(1100,.1),240); toast("NOURISH-BOT INSTALLED! BONES EATS AND DRINKS WHILE YOU WORK."); }
   renderMeters(); renderShop();
 });
 $("#suppliesList").addEventListener("click",e=>{
@@ -2960,6 +3019,7 @@ function loop(now){
     }
     // at work the dogcam runs on fast-forward, so BONES visibly races through his routine
     if(!R.active && !PK.active){ camBehavior(dt*WORK_FF); pupTick(dt*WORK_FF); tickTreats(dt*WORK_FF); }
+    if(CAM.workBlockT > 0) CAM.workBlockT = Math.max(0, CAM.workBlockT - dt);
     if(MODE==="park" && PK.active){ parkUpdate(dt); parkDraw(t); }
     else drawCam(t);
     if(OUTING.active){
