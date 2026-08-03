@@ -556,6 +556,9 @@ $("#dogcv").addEventListener("pointerdown",e=>{
     clearTimeout(portraitT); portraitT=setTimeout(hidePortrait,3200);
     beep(420,.1); return;
   }
+  // righting the bot is allowed even from work — he IS the remote-care mechanism, so leaving
+  // him face-down and untappable during a shift would strand BONES with nobody able to help
+  if(S.owned.robot && ROBOT.state==="down" && fy>0.55 && Math.abs(fx-ROBOT.x)<0.10){ botRight(); return; }
   if(atWorkNow() && !S.owned.robot){ blockAtWork(); return; }
   const spx=SPONGE.held?SPONGE.x:0.135, spy=SPONGE.held?SPONGE.y:0.50;
   if(Math.hypot(fx-spx,fy-spy)<0.06){                       // grab the sponge off the wall
@@ -799,7 +802,8 @@ const TREATIMG  = TREATFRAMES.map(u=>{ const i=new Image(); i.src=u; return i; }
 // 2-3 leaning, 4 hunched right down (the refill pose). All five share a ground line
 // and track anchor, so cycling them never makes him hop.
 const ROBOTIMG  = ROBOTFRAMES.map(u=>{ const i=new Image(); i.src=u; return i; });
-const ROBOT = { x:0.62, dockX:0.62, fi:0, ft:0, state:"dock", battery:100 };
+const ROBOT = { x:0.62, dockX:0.62, tx:0.62, state:"dock", job:null, t:0, downT:0,
+                acting:false, pourFrom:0, battery:100, downKind:null, zoomArm:false };
 for(const k in _ALLFRAMES) DOGIMG[k] = _ALLFRAMES[k].map(u=>{ const i=new Image(); i.src=u; return i; });
 /* GAME & WATCH FILTER — the happy accident, made law.
    Every DOGCAM sprite quantizes to two tones: ink, and the room's own grey.
@@ -949,6 +953,7 @@ function triggerBoneZoomies(){
   if(CAM.state==="zoomies"||R.active||OUTING.active||PK.active||WASH.active) return;
   S.mood=clamp(S.mood+25,0,100); S.fun=clamp(S.fun+20,0,100);
   CAM.state="zoomies"; CAM.zTarget=CAM.x<0.4?0.98:-0.18; CAM.t=0; CAM.until=5.5; CAM.fi=0;
+  ROBOT.zoomArm=true;               // one topple roll per zoomies, not one per frame
   heartsBurst(6); toast("THE ZOOMIES!! HE'S SENDING BONES FLYING!");
   beep(500,.05); setTimeout(()=>beep(750,.05),90); setTimeout(()=>beep(1000,.06),180);
 }
@@ -1574,33 +1579,196 @@ function drawSunray(ctx,w,h,t){
   }
   ctx.restore();
 }
-// the NOURISH-BOT and his charging dock. Drawn with the room fixtures (after BONES) so he
-// can never end up hidden behind him. The sprite's ground line sits on gy like everything else.
+/* ---------- the NOURISH-BOT ---------- */
+// He is deliberately not a replacement for the owner: he fills bowls and tidies up, but he
+// never ticks a to-do, never earns XP and never lifts mood. Being cared for BY someone is
+// still the only thing that counts.
+const BF={IDLE:0,REACH:1,LEAN1:2,LEAN2:3,LEAN3:4,LOW1:5,LOW2:6,LOW3:7,COLLAPSED:8,
+          FLAIL:9,FALLING:10,TIPPED:11,DOCKED:12};
+// where the drawn pixels actually start in each frame, as a fraction of the shared canvas
+// height — the poses vary a lot in height, so the battery pip needs this to sit just above
+// his head whichever one is showing instead of floating off the top of a hunched frame
+const ROBOTTOP=[0.144,0.068,0.061,0.015,0.068,0.068,0,0.098,0.015,0.015,0,0,0];
+const BOT_IDLE_DRAIN=2.0;    // % per game hour just from being switched on — the dock has to matter
+const BOT_CHARGE=100/12;     // % per game hour: a full charge is half a game day
+const BOT_COST={water:10, food:10, poo:15, ball:5};
+const BOT_RESERVE=22;        // he won't leave the dock without enough charge to get home again
+const BOT_SPEED=0.13;        // screen widths per second
+const BOT_GIVEUP=8;          // game hours face-down before he picks himself up (anti-softlock)
+function botBowlX(kind){
+  const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight, u=h/42;
+  const bwlX=w*0.04, bwlW=u*4, fbX=bwlX+bwlW+8;
+  return ((kind==="water"?bwlX:fbX)+bwlW/2)/w;
+}
+function botJob(){
+  if(BOWL.level<0.25) return "water";
+  if(FBOWL.level<0.25 && S.kibble>0) return "food";
+  if(POOS.length) return "poo";
+  if(S.ballOwned && !BALL.off && !BALL.carried && !BALL.held && !BALL.pcarried
+     && S.fun<45 && ROBOT.battery>60) return "ball";
+  return null;
+}
+function botJobX(j){
+  // he parks to the RIGHT of a bowl rather than on top of it: every pose reaches with the
+  // left arm, so this puts the bowl under his hand and keeps the pour clear of his body
+  if(j==="water"||j==="food") return botBowlX(j)+0.095;
+  if(j==="poo")  return POOS.length?POOS[0].x:ROBOT.dockX;
+  if(j==="ball") return BALL.x;
+  return ROBOT.dockX;
+}
+function botFell(kind){
+  if(ROBOT.state==="down"||ROBOT.state==="knock"||ROBOT.state==="slump") return;
+  ROBOT.state = kind==="battery" ? "slump" : "knock";
+  ROBOT.downKind=kind; ROBOT.t=0; ROBOT.job=null; ROBOT.acting=false;
+  beep(kind==="battery"?90:150,.3,"sawtooth");
+  toast(kind==="battery" ? "NOURISH-BOT IS OUT OF CHARGE — TAP HIM"
+                         : "BONES BOWLED THE NOURISH-BOT OVER — TAP HIM",1);
+}
+function botRight(){
+  if(ROBOT.state!=="down") return;
+  ROBOT.state="goto"; ROBOT.tx=ROBOT.dockX; ROBOT.job=null; ROBOT.t=0; ROBOT.downKind=null;
+  beep(420,.06); setTimeout(()=>beep(620,.08),90);
+  for(let i=0;i<7;i++) SUDS.push({x:ROBOT.x+(Math.random()-0.5)*0.07, y:0.79, r:2+Math.random()*3, life:0.45});
+  toast("BACK ON HIS TRACKS — OFF TO CHARGE.");
+}
+function botFinish(j){
+  if(j==="water"){ BOWL.level=1; beep(880,.09); }
+  else if(j==="food"){ if(S.kibble>0){ S.kibble--; FBOWL.level=1; } beep(400,.09,"square"); renderMeters(); }
+  else if(j==="poo"){ if(POOS.length) POOS.shift(); beep(300,.08); }
+  else if(j==="ball"){ BALL.vx=(ROBOT.x<0.5?1:-1)*0.34; BALL.vy=-0.85; BALL.cool=0.4; beep(660,.06); }
+  ROBOT.battery=Math.max(0, ROBOT.battery-(BOT_COST[j]||0));
+}
+function robotTick(dt){
+  if(!S.owned.robot) return;
+  if(R.active||OUTING.active||PK.active||SLEEP.active) return;   // only while the room is live
+  const B=ROBOT, gh=dt*WORK_FF/10;                               // game hours elapsed this frame
+  B.t+=dt;
+  if(B.state==="knock"){ if(B.t>0.85){ B.state="down"; B.t=0; B.downT=0; } return; }
+  if(B.state==="slump"){ if(B.t>1.8){ B.state="down"; B.t=0; B.downT=0; } return; }
+  if(B.state==="down"){
+    B.downT+=gh;
+    if(B.downT>BOT_GIVEUP) botRight();      // he must never be able to starve BONES by lying there
+    return;
+  }
+  if(B.state==="dock") B.battery=Math.min(100,B.battery+BOT_CHARGE*gh);
+  else {
+    // Standby drain applies while he is out on an errand, so long trips genuinely cost charge.
+    // It deliberately does NOT apply while he is limping home empty-handed: a flat battery would
+    // otherwise re-collapse him the instant he was tapped upright, stranding him forever.
+    if(B.job || B.state==="work"){
+      B.battery-=BOT_IDLE_DRAIN*gh;
+      if(B.battery<=0){ B.battery=0; botFell("battery"); return; }
+    }
+    if(CAM.state==="zoomies" && B.zoomArm && Math.abs(CAM.x-B.x)<0.12){
+      B.zoomArm=false;
+      if(Math.random()<0.30){ botFell("zoom"); return; }
+    }
+  }
+  if(B.state==="dock"){
+    const j=botJob();
+    if(j && B.battery>=BOT_RESERVE+BOT_COST[j]){ B.job=j; B.tx=botJobX(j); B.state="goto"; B.t=0; }
+    return;
+  }
+  if(B.state==="goto"){
+    const d=B.tx-B.x, step=BOT_SPEED*dt;
+    if(Math.abs(d)<=step){
+      B.x=B.tx;
+      if(B.job){ B.state="work"; B.t=0; B.acting=false; } else { B.state="dock"; B.t=0; }
+    } else B.x+=Math.sign(d)*step;
+    return;
+  }
+  if(B.state==="work"){
+    const j=B.job;
+    if(B.t>=0.45 && B.t<1.35){                       // the pour/scoop window
+      if(!B.acting){ B.acting=true; B.pourFrom = j==="water"?BOWL.level : j==="food"?FBOWL.level : 0; }
+      const prog=(B.t-0.45)/0.90;
+      if(j==="water"||j==="food"){
+        const lv=B.pourFrom+(1-B.pourFrom)*prog;
+        if(j==="water") BOWL.level=lv; else FBOWL.level=lv;
+        const bx=botBowlX(j);
+        if(Math.random()<0.55){
+          if(j==="water") DRIPS.push({x:bx+(Math.random()-0.5)*0.055, y:0.745+Math.random()*0.03,
+                                      vy:0.30+Math.random()*0.30, life:0.30+Math.random()*0.22});
+          else SUDS.push({x:bx+(Math.random()-0.5)*0.045, y:0.765, r:1.4+Math.random()*2, life:0.28});
+        }
+        if(Math.floor(prog*7)!==Math.floor((prog-dt/0.9)*7))    // descending sploosh / dry rattle
+          beep(j==="water" ? 720-prog*300 : 300+prog*80, .05, j==="water"?"sine":"square", .03);
+      }
+    }
+    if(B.t>=1.35 && B.acting){ B.acting=false; botFinish(j); }
+    if(B.t>1.85){ B.job=null; B.acting=false; B.tx=B.dockX; B.state="goto"; B.t=0; }
+    return;
+  }
+}
+function robotFrame(){
+  const B=ROBOT;
+  if(B.state==="dock")  return BF.DOCKED;
+  if(B.state==="down")  return B.downKind==="battery"?BF.COLLAPSED:BF.TIPPED;
+  if(B.state==="knock") return B.t<0.25?BF.FLAIL : B.t<0.60?BF.FALLING : BF.TIPPED;
+  if(B.state==="slump") return B.t<0.5?BF.LOW1 : B.t<1.0?BF.LOW2 : B.t<1.5?BF.LOW3 : BF.COLLAPSED;
+  if(B.state==="goto")  return B.battery<25 ? (Math.floor(B.t*6)%2?BF.LOW1:BF.LOW2)
+                                            : (Math.floor(B.t*7)%2?BF.IDLE:BF.REACH);
+  if(B.state==="work"){
+    if(B.t<0.15) return BF.LEAN1;
+    if(B.t<0.30) return BF.LEAN2;
+    if(B.t<1.35) return BF.LEAN3;
+    if(B.t<1.60) return BF.LEAN2;
+    return BF.LEAN1;
+  }
+  return BF.IDLE;
+}
+// Drawn with the room fixtures (after BONES) so he can never end up hidden behind him.
+// The sprite's ground line sits on gy like everything else in the room.
 function drawRobot(ctx,w,h,gy,t){
   const bh=h*0.30, px=ROBOT.x*w, dx=ROBOT.dockX*w, dw=bh*0.66;
-  ctx.strokeStyle="#666"; ctx.lineWidth=2;
-  ctx.strokeRect(dx-dw/2, gy-5, dw, 5);                       // the charging plate
-  ctx.beginPath(); ctx.moveTo(dx+dw/2-3,gy-5); ctx.lineTo(dx+dw/2-3,gy-bh*0.62); ctx.stroke();
-  const charging = ROBOT.state==="dock" && ROBOT.battery<100;
-  ctx.fillStyle = charging && Math.floor(t*3)%2 ? "#f22" : "#666";
-  ctx.beginPath();                                            // charge bolt on the post
-  ctx.moveTo(dx+dw/2-6,gy-bh*0.50); ctx.lineTo(dx+dw/2-1,gy-bh*0.56);
-  ctx.lineTo(dx+dw/2-4,gy-bh*0.60); ctx.lineTo(dx+dw/2+1,gy-bh*0.66);
-  ctx.closePath(); ctx.fill();
+  if(ROBOT.state!=="dock"){                                   // the empty dock, waiting for him
+    ctx.strokeStyle="#666"; ctx.lineWidth=2;
+    ctx.strokeRect(dx-dw/2, gy-5, dw, 5);
+    ctx.beginPath(); ctx.moveTo(dx+dw/2-3,gy-5); ctx.lineTo(dx+dw/2-3,gy-bh*0.62); ctx.stroke();
+    ctx.fillStyle="#666";
+    ctx.beginPath();
+    ctx.moveTo(dx+dw/2-6,gy-bh*0.50); ctx.lineTo(dx+dw/2-1,gy-bh*0.56);
+    ctx.lineTo(dx+dw/2-4,gy-bh*0.60); ctx.lineTo(dx+dw/2+1,gy-bh*0.66);
+    ctx.closePath(); ctx.fill();
+  }
   ctx.fillStyle="rgba(0,0,0,.3)";
   ctx.beginPath(); ctx.ellipse(px, gy-2, bh*0.24, bh*0.065, 0,0,7); ctx.fill();
-  const img=ROBOTIMG[ROBOT.fi % ROBOTIMG.length];
+  const fr=robotFrame(), img=ROBOTIMG[fr];
   if(img && img.complete && img.naturalWidth){
     const bw=bh*img.naturalWidth/img.naturalHeight;
     ctx.save(); ctx.imageSmoothingEnabled=false;
     ctx.drawImage(img, px-bw/2, gy-bh, bw, bh);
     ctx.restore();
   }
-  const bx2=px-11, by2=gy-bh-8;                               // battery pip above his head
+  // the pour, drawn over the sprite: an arc from his outstretched hand down into the bowl,
+  // with the droplets robotTick throws landing around it
+  if(ROBOT.state==="work" && (ROBOT.job==="water"||ROBOT.job==="food") && ROBOT.t>=0.45 && ROBOT.t<1.35){
+    const bx=botBowlX(ROBOT.job)*w, hx=px-bh*0.30, hy=gy-bh*0.44, by=gy-h*0.045;
+    ctx.fillStyle = ROBOT.job==="water" ? "#3b82f6" : "#8a5a2b";
+    for(let s=0;s<=1.001;s+=0.055){
+      const x=hx+(bx-hx)*s, y=hy+(by-hy)*(s*s);               // gravity: falls away as it travels
+      ctx.fillRect(x-2+Math.sin(s*9+t*20)*1.4, y, 4, 3);
+    }
+  }
+  const bx2=px-11, by2=gy-bh*(1-(ROBOTTOP[fr]||0))-9;         // battery pip just above his head
   ctx.strokeStyle="#888"; ctx.lineWidth=1; ctx.strokeRect(bx2,by2,22,5);
-  ctx.fillStyle = ROBOT.battery<=20 ? "#f22" : "#fff";
+  const lowBat=ROBOT.battery<=20;
+  ctx.fillStyle = lowBat ? (Math.floor(t*4)%2?"#f22":"#600") : "#fff";
   ctx.fillRect(bx2+1, by2+1, 20*clamp(ROBOT.battery/100,0,1), 3);
-  ctx.strokeStyle="#fff"; ctx.lineWidth=3;
+  if(ROBOT.state==="down"){                                   // tap prompt
+    ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillStyle=Math.floor(t*2)%2?"#f22":"#fff";
+    ctx.fillText("TAP", px, by2-5); ctx.textAlign="left";
+  }
+  // BONES has no idea what to make of a robot lying on its side. The bubble tracks his real
+  // drawn height, so it sits just over his head as a puppy as well as at full size.
+  if(ROBOT.state==="down" && Math.abs(CAM.x-ROBOT.x)<0.22){
+    const dogH=h*0.44*stageScale(Math.min(XPANIM.lvl,S.lvl))*CAMZ();
+    ctx.font="12px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillStyle=Math.floor(t*2)%2?"#fff":"#f22";
+    ctx.fillText("?", CAM.x*w+CAMDWF*w*0.5, gy-dogH-6); ctx.textAlign="left";
+  }
+  ctx.fillStyle="#fff"; ctx.strokeStyle="#fff"; ctx.lineWidth=3;
 }
 function drawCam(t){
   const [ctx,w,h]=fit($("#dogcv"));
@@ -2345,6 +2513,7 @@ document.addEventListener("visibilitychange",()=>{
       if(CAM.state!=="zoomies" && !R.active && !PK.active){
         S.mood=clamp(S.mood+10,0,100);
         CAM.state="zoomies"; CAM.zTarget=CAM.x<0.4?0.98:-0.18; CAM.t=0; CAM.until=5; CAM.fi=0;
+        ROBOT.zoomArm=true;
         toast("HE CAN'T BELIEVE YOU'RE BACK!!");
       }
     },2200);
@@ -3080,6 +3249,7 @@ function loop(now){
     // at work the dogcam runs on fast-forward, so BONES visibly races through his routine
     if(!R.active && !PK.active){ camBehavior(dt*WORK_FF); pupTick(dt*WORK_FF); tickTreats(dt*WORK_FF); }
     if(CAM.workBlockT > 0) CAM.workBlockT = Math.max(0, CAM.workBlockT - dt);
+    robotTick(dt);
     if(MODE==="park" && PK.active){ parkUpdate(dt); parkDraw(t); }
     else drawCam(t);
     if(OUTING.active){
