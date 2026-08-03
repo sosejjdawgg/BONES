@@ -649,29 +649,80 @@ function pkExpandPark(){
 // the single thing that keeps them out of the wave quota, the clear check, the bark sweep and
 // the "N LEFT" counter without a line of special-casing in any of them.
 const NPC_TALK_R=30, NPC_REARM_R=68;
-const PAL_SQ_HP=26, PAL_SQ_CD=1.25, PAL_SQ_RANGE=240, PAL_SQ_FOLLOW=44;
-const PAL_CAT_HP=22, PAL_CAT_ORBIT_R=44, PAL_CAT_ORBIT_SPD=1.7, PAL_CAT_SEEK_R=115, PAL_CAT_SPEED=230, PAL_CAT_LEASH=210;
-const PAL_BIRD_EVERY=7, PAL_BIRD_ALT=54, PAL_BIRD_SPEED=175, PAL_BIRD_N=5;
+// companions have 4 upgrade tiers. current power = T4; T1 is deliberately weak.
+// fixed properties that don't scale with tier:
+const PAL_SQ_FOLLOW=44;
+const PAL_CAT_ORBIT_R=44, PAL_CAT_ORBIT_SPD=1.7, PAL_CAT_LEASH=210;
+const PAL_BIRD_ALT=54, PAL_BIRD_SPEED=175;
 const PAL_LASER_CD=10, PAL_LASER_SWEEP=1.2, PAL_LASER_ARC=0.6, PAL_LASER_SAFE=0.45, PAL_LASER_DMG=3;
 const PAL_NUT_SPEED=210, PAL_NUT_DMG=1;
-const PAL_SHOP=[
-  {k:"sq",   n:"SQUIRREL PAL", fx:"RUNS WITH YOU, THROWS NUTS", c:16},
-  {k:"bird", n:"BIRD FLOCK",   fx:"DIVES WHERE ITS SHADOW LANDS", c:14},
-  {k:"cat",  n:"CAT FRIEND",   fx:"CIRCLES YOU, POUNCES CLOSE", c:18},
-  {k:"eyes", n:"LASER EYES",   fx:"UPGRADE: THE SQUIRREL BLASTS", c:34}
-];
-function pkPalOwned(k){ return PK.pals.some(p=>p.k===k); }
-function pkPalBuyable(o){ return o.k==="eyes" ? (!PK.palEyes && pkPalOwned("sq")) : !pkPalOwned(o.k); }
+// per-tier stat tables (index 0 = T1 … index 3 = T4)
+const PAL_SQ_CD_T    = [4.0, 2.5, 1.5, 1.25];
+const PAL_SQ_RANGE_T = [100, 160, 200, 240];
+const PAL_SQ_NUTS_T  = [1,   1,   2,   2];
+const PAL_SQ_HP_T    = [16,  20,  22,  26];
+const PAL_CAT_SEEK_T = [50,  75,  95,  115];
+const PAL_CAT_SPD_T  = [120, 160, 195, 230];
+const PAL_CAT_HP_T   = [14,  17,  20,  22];
+const PAL_BIRD_N_T   = [2,   3,   4,   5];
+const PAL_BIRD_EVT   = [14,  10,  8,   7];
+function pkSqCd(t)    { return PAL_SQ_CD_T[t-1]; }
+function pkSqRange(t) { return PAL_SQ_RANGE_T[t-1]; }
+function pkSqNuts(t)  { return PAL_SQ_NUTS_T[t-1]; }
+function pkSqHp(t)    { return PAL_SQ_HP_T[t-1]; }
+function pkCatSeekR(t){ return PAL_CAT_SEEK_T[t-1]; }
+function pkCatSpeed(t){ return PAL_CAT_SPD_T[t-1]; }
+function pkCatHp(t)   { return PAL_CAT_HP_T[t-1]; }
+function pkBirdN(t)   { return PAL_BIRD_N_T[t-1]; }
+function pkBirdEvery(t){ return PAL_BIRD_EVT[t-1]; }
+// shop rows: one per companion kind; each row shows the next purchasable tier
+const PAL_KINDS=["sq","bird","cat"];
+const PAL_TIERS={
+  sq:[
+    {n:"SQUIRREL PAL", fx:"FOLLOWS YOU, THROWS NUTS (SLOW)", c:10},
+    {n:"SQUIRREL PAL", fx:"FASTER, LONGER RANGE",            c:18},
+    {n:"SQUIRREL PAL", fx:"DOUBLE SHOT, WIDE RANGE",         c:26},
+    {n:"SQUIRREL PAL", fx:"T4: LASER EYES UNLOCKED",         c:38},
+  ],
+  bird:[
+    {n:"BIRD FLOCK",   fx:"2 BIRDS, EVERY 14 SEC",           c:10},
+    {n:"BIRD FLOCK",   fx:"3 BIRDS, EVERY 10 SEC",           c:16},
+    {n:"BIRD FLOCK",   fx:"4 BIRDS, EVERY 8 SEC",            c:24},
+    {n:"BIRD FLOCK",   fx:"5 BIRDS, EVERY 7 SEC — RELENTLESS",c:34},
+  ],
+  cat:[
+    {n:"CAT FRIEND",   fx:"SHORT RANGE, SLOW POUNCE",        c:12},
+    {n:"CAT FRIEND",   fx:"WIDER PATROL, FASTER",            c:20},
+    {n:"CAT FRIEND",   fx:"QUICK AND AGGRESSIVE",            c:30},
+    {n:"CAT FRIEND",   fx:"T4: FULL POWER, POUNCES ANYTHING",c:38},
+  ]
+};
+function pkPalTier(k){ const p=PK.pals.find(q=>q.k===k); return p?p.tier:0; }
+function pkPalBuyableK(k){ return pkPalTier(k)<4; }
+function pkNextTierData(k){ const t=pkPalTier(k)+1; return t<=4?PAL_TIERS[k][t-1]:null; }
 function pkBuyPal(k){
-  if(k==="eyes"){ PK.palEyes=true; for(const p of PK.pals) if(p.k==="sq") p.laserCd=PAL_LASER_CD*0.4; return; }
+  const existing=PK.pals.find(p=>p.k===k);
+  const tier=(existing?existing.tier:0)+1;
+  if(tier>4) return;
+  if(existing){
+    // upgrade: update stats in place, keep position and motion
+    existing.tier=tier;
+    if(k==="sq"){ existing.hpMax=pkSqHp(tier); existing.hp=Math.min(existing.hp+4,existing.hpMax); existing.cd=pkSqCd(tier); }
+    if(k==="cat"){ existing.hpMax=pkCatHp(tier); existing.hp=Math.min(existing.hp+3,existing.hpMax); }
+    if(k==="bird"){ existing.passT=Math.min(existing.passT, pkBirdEvery(tier)); }
+    return;
+  }
+  // first purchase: spawn beside BONES
   const px=PK.x, py=PK.y;
-  if(k==="sq")   PK.pals.push({k:"sq", x:(px+30)%PK.WW, y:py, hp:PAL_SQ_HP, hpMax:PAL_SQ_HP, cd:PAL_SQ_CD,
+  if(k==="sq")   PK.pals.push({k:"sq", tier:1, x:(px+30)%PK.WW, y:py,
+                               hp:pkSqHp(1), hpMax:pkSqHp(1), cd:pkSqCd(1),
                                dir:1, fi:0, ft:0, kx:0, ky:0, palBurnT:0, contactT:0,
                                laserCd:PAL_LASER_CD*0.4, laserState:"idle", chargeT:0, sweepT:0, aimAng:0, aimBase:0, beamLen:0});
-  if(k==="cat")  PK.pals.push({k:"cat", x:(px-30+PK.WW)%PK.WW, y:py, hp:PAL_CAT_HP, hpMax:PAL_CAT_HP,
+  if(k==="cat")  PK.pals.push({k:"cat", tier:1, x:(px-30+PK.WW)%PK.WW, y:py,
+                               hp:pkCatHp(1), hpMax:pkCatHp(1),
                                orbitAng:Math.random()*6.283, state:"orbit", tgt:null, recall:false,
                                dir:1, fi:0, ft:0, kx:0, ky:0, palBurnT:0, contactT:0});
-  if(k==="bird") PK.pals.push({k:"bird", passT:1.2, birds:[]});
+  if(k==="bird") PK.pals.push({k:"bird", tier:1, passT:1.2, birds:[]});
 }
 // one shared kill path for everything a companion does, so a friend's hit resolves exactly like
 // a bark: a bone drops, they look shocked, then they scuttle off under their own steam
@@ -723,11 +774,12 @@ function pkPalsUpdate(dt,WW,WH){
     if(p.k==="bird"){
       p.passT-=dt;
       if(p.passT<=0 && p.birds.length===0){
-        p.passT=PAL_BIRD_EVERY;
+        p.passT=pkBirdEvery(p.tier);
         const ang=Math.random()*6.283, perp=ang+Math.PI/2, R=Math.max(WW,WH)*0.34;
         const cx=PK.x-Math.cos(ang)*R, cy=PK.y-Math.sin(ang)*R;
-        for(let b=0;b<PAL_BIRD_N;b++){
-          const off=(b-(PAL_BIRD_N-1)/2)*22+(Math.random()-0.5)*10;
+        const birdN=pkBirdN(p.tier);
+        for(let b=0;b<birdN;b++){
+          const off=(b-(birdN-1)/2)*22+(Math.random()-0.5)*10;
           p.birds.push({x:(cx+Math.cos(perp)*off+WW)%WW, y:(cy+Math.sin(perp)*off+WH)%WH,
             vx:Math.cos(ang)*PAL_BIRD_SPEED, vy:Math.sin(ang)*PAL_BIRD_SPEED,
             alt:PAL_BIRD_ALT, state:"cruise", tgt:null, life:R*2/PAL_BIRD_SPEED, fi:0, ft:0});
@@ -774,15 +826,22 @@ function pkPalsUpdate(dt,WW,WH){
           p.dir = tdx<0 ? -1 : 1;
         }
         p.cd-=dt;
-        const tgt=pkNearestEnemy(PK.x,PK.y,PAL_SQ_RANGE);   // whatever is closest to BONES, not to him
+        const tgt=pkNearestEnemy(PK.x,PK.y,pkSqRange(p.tier));
         if(tgt && p.cd<=0){
-          p.cd=PAL_SQ_CD;
+          p.cd=pkSqCd(p.tier);
           const nx=wd(tgt.x-p.x,WW), ny=wd(tgt.y-p.y,WH), nd=Math.hypot(nx,ny)||1;
-          PK.nuts.push({pal:true, x:p.x, y:p.y-8, vx:nx/nd*PAL_NUT_SPEED, vy:ny/nd*PAL_NUT_SPEED, life:2.2});
+          const ang0=Math.atan2(ny,nx);
+          if(pkSqNuts(p.tier)>=2){
+            const spread=0.18;
+            PK.nuts.push({pal:true, x:p.x, y:p.y-8, vx:Math.cos(ang0-spread)*PAL_NUT_SPEED, vy:Math.sin(ang0-spread)*PAL_NUT_SPEED, life:2.2});
+            PK.nuts.push({pal:true, x:p.x, y:p.y-8, vx:Math.cos(ang0+spread)*PAL_NUT_SPEED, vy:Math.sin(ang0+spread)*PAL_NUT_SPEED, life:2.2});
+          } else {
+            PK.nuts.push({pal:true, x:p.x, y:p.y-8, vx:nx/nd*PAL_NUT_SPEED, vy:ny/nd*PAL_NUT_SPEED, life:2.2});
+          }
           p.dir = nx<0 ? -1 : 1;
           beep(620,.04,"square",.02);
         }
-        if(PK.palEyes){
+        if(p.tier>=4){
           p.laserCd-=dt;
           if(p.laserCd<=0){
             const a=pkPalLaserAim(p);
@@ -825,31 +884,29 @@ function pkPalsUpdate(dt,WW,WH){
         if(p.sweepT>=PAL_LASER_SWEEP){ p.laserState="idle"; p.laserCd=PAL_LASER_CD; }
       }
     } else if(p.k==="cat"){
+      const catSpd=pkCatSpeed(p.tier), catSeek=pkCatSeekR(p.tier);
       if(p.state==="orbit"){
         p.orbitAng+=PAL_CAT_ORBIT_SPD*dt;
         const tx=PK.x+Math.cos(p.orbitAng)*PAL_CAT_ORBIT_R, ty=PK.y+Math.sin(p.orbitAng)*PAL_CAT_ORBIT_R*0.6;
         const dx=wd(tx-p.x,WW), dy=wd(ty-p.y,WH), d=Math.hypot(dx,dy)||1;
-        const sp=Math.min(PAL_CAT_SPEED, 55+d*3);
+        const sp=Math.min(catSpd, 55+d*3);
         p.x=(p.x+dx/d*sp*dt+WW)%WW; p.y=(p.y+dy/d*sp*dt+WH)%WH;
         p.dir = dx<0 ? -1 : 1;
-        // once he's been pulled out to the end of his leash he comes all the way home before he'll
-        // take another target, or a running enemy just tows him around the perimeter forever
         if(p.recall && Math.hypot(wd(p.x-PK.x,WW),wd(p.y-PK.y,WH))<PAL_CAT_ORBIT_R*1.6) p.recall=false;
         if(!p.recall){
-          const tgt=pkNearestEnemy(p.x,p.y,PAL_CAT_SEEK_R);
+          const tgt=pkNearestEnemy(p.x,p.y,catSeek);
           if(tgt){ p.state="pounce"; p.tgt=tgt; }
         }
       } else {
         const tg=p.tgt;
         const leash=Math.hypot(wd(p.x-PK.x,WW),wd(p.y-PK.y,WH));
-        // a fleeing target would drag him off the edge of the world, so he gives up and comes back
         if(!tg || tg.fleeing || tg.hp<=0 || leash>PAL_CAT_LEASH){
           if(leash>PAL_CAT_LEASH) p.recall=true;
           p.state="orbit"; p.tgt=null;
         }
         else {
           const dx=wd(tg.x-p.x,WW), dy=wd(tg.y-p.y,WH), d=Math.hypot(dx,dy)||1;
-          p.x=(p.x+dx/d*PAL_CAT_SPEED*dt+WW)%WW; p.y=(p.y+dy/d*PAL_CAT_SPEED*dt+WH)%WH;
+          p.x=(p.x+dx/d*catSpd*dt+WW)%WW; p.y=(p.y+dy/d*catSpd*dt+WH)%WH;
           p.dir = dx<0 ? -1 : 1;
           if(d<16){
             pkPalHit(tg,1,dx/d,dy/d);
@@ -1740,7 +1797,7 @@ function drawPal(ctx,p,sx,sy,t){
   ctx.beginPath(); ctx.ellipse(sx,sy+2,9,3,0,0,7); ctx.fill();
   ctx.strokeStyle="#6cf"; ctx.globalAlpha=0.45+0.3*Math.sin(t*4); ctx.lineWidth=1.5;
   ctx.beginPath(); ctx.ellipse(sx,sy+2,12,4.5,0,0,7); ctx.stroke(); ctx.globalAlpha=1;
-  if(p.k==="sq" && PK.palEyes) drawPalLaserFX(ctx,p,sx,sy);
+  if(p.k==="sq" && p.tier>=4) drawPalLaserFX(ctx,p,sx,sy);
   const frames=ENEMYIMG[p.k];
   const img=frames && frames[p.fi%frames.length];
   const eh = p.k==="cat" ? 22 : 16;
@@ -2187,30 +2244,43 @@ function pkPadDraw(t){
     ctx.fillStyle="#f6a"; ctx.font="10px 'Press Start 2P',monospace"; ctx.textAlign="center";
     ctx.fillText("FRIENDS", w/2, h*0.135);
     ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle="#999";
-    ctx.fillText("THEY STAY FOR THIS RUN ONLY", w/2, h*0.185);
+    ctx.fillText("UPGRADE THROUGH 4 TIERS \u2014 RUN ONLY", w/2, h*0.185);
     const wbW=w*0.5, wbX=w/2-wbW/2, wbY=h*0.21, wbH=h*0.06;
     ctx.strokeStyle="#e8c14a"; ctx.lineWidth=2; ctx.strokeRect(wbX,wbY,wbW,wbH);
     drawBone(ctx, w/2-30, wbY+wbH*0.6, 1, "#e8c14a");
     ctx.fillStyle="#e8c14a"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
     ctx.fillText(PK.bones+" BONES", w/2-18, wbY+wbH*0.65);
-    PAL_SHOP.forEach((o,i)=>{
-      const y=h*pkRowYF(i), cardH=h*PANEL_CARDH, top=y-cardH*0.5;
-      const buyable=pkPalBuyable(o), afford=PK.bones>=o.c;
+    PAL_KINDS.forEach((k,i)=>{
+      const tier=pkPalTier(k), buyable=pkPalBuyableK(k);
+      const td=pkNextTierData(k);
+      const cost=td?td.c:0, afford=PK.bones>=cost;
       const ok=buyable&&afford;
+      const y=h*pkRowYF(i), cardH=h*PANEL_CARDH, top=y-cardH*0.5;
       ctx.strokeStyle = !buyable ? "#334" : (afford?"#f6a":"#663333"); ctx.lineWidth=2;
       ctx.strokeRect(w*0.10, top, w*0.80, cardH);
-      ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
+      // name + action
+      const label = buyable
+        ? (tier===0 ? td.n : "UPGRADE "+td.n)
+        : PAL_TIERS[k][3].n+" \u2014 MAXED";
+      ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="left";
       ctx.fillStyle = !buyable ? "#556" : (afford?"#fff":"#a55");
-      ctx.fillText(o.n, w*0.145, y-1);
-      ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle = buyable?"#999":"#445";
-      const sub = !buyable ? (o.k==="eyes" ? (PK.palEyes?"ALREADY UPGRADED":"NEEDS A SQUIRREL PAL") : "ALREADY WITH YOU") : o.fx;
-      ctx.fillText(sub, w*0.145, y+11);
+      ctx.fillText(label, w*0.145, y-1);
+      // description or maxed note
+      ctx.font="6px 'Press Start 2P',monospace";
+      ctx.fillStyle = buyable?"#999":"#445";
+      ctx.fillText(buyable ? td.fx : "ALL 4 TIERS UNLOCKED", w*0.145, y+11);
+      // tier pips: \u25A0 owned, \u25A1 not yet, shown on right above cost
       ctx.textAlign="right"; ctx.font="7px 'Press Start 2P',monospace";
-      ctx.fillStyle = !buyable ? "#445" : (ok?"#fff":"#f22");
-      ctx.fillText(o.c+"\u25C6", w*0.855, y+2);
+      const pips="\u25A0".repeat(tier)+"\u25A1".repeat(4-tier);
+      ctx.fillStyle = tier>0?"#f6a":"#556";
+      ctx.fillText(pips, w*0.855, y-1);
+      // cost
+      ctx.font="7px 'Press Start 2P',monospace";
+      ctx.fillStyle = !buyable?"#445":(ok?"#fff":"#f22");
+      ctx.fillText(buyable?(cost+"\u25C6"):"", w*0.855, y+11);
       ctx.textAlign="left";
     });
-    const doneY=h*pkRowYF(PAL_SHOP.length), doneH=h*0.055;
+    const doneY=h*pkRowYF(PAL_KINDS.length), doneH=h*0.055;
     ctx.strokeStyle="#666"; ctx.lineWidth=2;
     ctx.strokeRect(w*0.30,doneY-doneH*0.5,w*0.40,doneH);
     ctx.fillStyle="#888"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
@@ -2337,21 +2407,21 @@ function pkPadDraw(t){
     }
     if(PK.friendsOpen){
       const yF=(e.clientY-r.top)/r.height;
-      for(let i=0;i<PAL_SHOP.length;i++){
+      for(let i=0;i<PAL_KINDS.length;i++){
         if(pkRowHit(yF,i)){
-          const o=PAL_SHOP[i];
-          if(!pkPalBuyable(o) || PK.bones<o.c) beep(150,.1);
-          else {
-            PK.bones-=o.c; pkBuyPal(o.k);
-            // toast, not pkFanfare: the panel stays open, and a fanfare's life only ticks down in
-            // the paused parkUpdate, so it would hang there frozen
-            toast(o.n+" JOINS YOU",1);
-            beep(700,.06); setTimeout(()=>beep(900,.06),80);
-          }
+          const k=PAL_KINDS[i];
+          if(!pkPalBuyableK(k)){ beep(150,.1); return; }
+          const td=pkNextTierData(k);
+          if(!td || PK.bones<td.c){ beep(150,.1); return; }
+          PK.bones-=td.c; pkBuyPal(k);
+          const tier=pkPalTier(k);
+          const msg=tier===1 ? td.n+" JOINS YOU" : td.n+" → T"+tier;
+          toast(msg,1);
+          beep(700,.06); setTimeout(()=>beep(900,.06),80);
           return;
         }
       }
-      if(Math.abs(yF-pkRowYF(PAL_SHOP.length))<0.045){ PK.friendsOpen=false; beep(400,.05); }
+      if(Math.abs(yF-pkRowYF(PAL_KINDS.length))<0.045){ PK.friendsOpen=false; beep(400,.05); }
       return;
     }
     const px=e.clientX-r.left, py=e.clientY-r.top;
