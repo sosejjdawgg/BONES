@@ -252,6 +252,19 @@ function openChoice(title,lines,aTxt,aFn,bTxt,bFn){
   else B.style.display="none";
   $("#choice").classList.add("show");
 }
+function fireStageCeremony(stg){
+  if(stg===5){
+    tickTodo("park");
+    openChoice("YOU UNLOCKED THE DOGPARK!",
+      "SURVIVE THE WAVES. BANK BIG XP AT THE<br>RED GATE.<br><br>IF BONES GETS CAUGHT, YOU LOSE IT ALL ☠️",
+      "GO THERE NOW",()=>startPark(), "LATER",null);
+  }
+  else if(stg===50) openLifeChoice();
+  else if(stg===10){ startEvo("A JUNIOR",0.5,0.82,"HE'S BIGGER AND STRONGER.<br><br>COMING UP:<br>STEEL TAG — LV.13<br>LUCKY ROPE — LV.16<br>THE LITTER — LV.18");
+    if(S.bedTier>0 && !bedAdequate()) setTimeout(()=>toast("HE'S OUTGROWN HIS BED — TIME FOR A BIGGER ONE",1),3000); }
+  else if(stg===25){ startEvo("IN HIS PRIME",0.82,1,"FULL SIZE. PEAK CONDITION.<br>TOP FORM MULTIPLIERS ON EVERY RUN.<br><br>AHEAD:<br>SHADOW LEASH — LV.21<br>CHAIN COLLAR — LV.26<br>THE CROSSROADS — LV.50");
+    if(S.bedTier>0 && !bedAdequate()) setTimeout(()=>toast("HE'S OUTGROWN HIS BED — TIME FOR A BIGGER ONE",1),3000); }
+}
 function openLifeChoice(){
   XPLOCK=true;
   openChoice("A CROSSROADS",
@@ -1816,18 +1829,7 @@ function drawCam(t){
     if(XPANIM.pauseT<=0){
       XPANIM.lvl++; XPANIM.frac=0;
       if(S.pendingStage.length && S.pendingStage[0]<=XPANIM.lvl){
-        const stg=S.pendingStage.shift();
-        if(stg===5){
-          tickTodo("park");
-          openChoice("YOU UNLOCKED THE DOGPARK!",
-            "SURVIVE THE WAVES. BANK BIG XP AT THE<br>RED GATE.<br><br>IF BONES GETS CAUGHT, YOU LOSE IT ALL \u2620\ufe0f",
-            "GO THERE NOW",()=>startPark(), "LATER",null);
-        }
-        else if(stg===50) openLifeChoice();
-        else if(stg===10){ startEvo("A JUNIOR",0.5,0.82,"HE'S BIGGER AND STRONGER.<br><br>COMING UP:<br>STEEL TAG \u2014 LV.13<br>LUCKY ROPE \u2014 LV.16<br>THE LITTER \u2014 LV.18");
-          if(S.bedTier>0 && !bedAdequate()) setTimeout(()=>toast("HE'S OUTGROWN HIS BED \u2014 TIME FOR A BIGGER ONE",1),3000); }
-        else if(stg===25){ startEvo("IN HIS PRIME",0.82,1,"FULL SIZE. PEAK CONDITION.<br>TOP FORM MULTIPLIERS ON EVERY RUN.<br><br>AHEAD:<br>SHADOW LEASH \u2014 LV.21<br>CHAIN COLLAR \u2014 LV.26<br>THE CROSSROADS \u2014 LV.50");
-          if(S.bedTier>0 && !bedAdequate()) setTimeout(()=>toast("HE'S OUTGROWN HIS BED \u2014 TIME FOR A BIGGER ONE",1),3000); }
+        fireStageCeremony(S.pendingStage.shift());
       }
     }
   } else if(EVO.active || XPLOCK){
@@ -2892,9 +2894,8 @@ $("#devEvo").onclick=()=>{
   const next = S.lvl<10?10 : S.lvl<25?25 : S.lvl<50?50 : null;
   if(!next) return toast("NO EVOLUTIONS LEFT (DEV)");
   while(S.lvl<next) addXP(Math.max(1, xpNeed(S.lvl)-S.xp));
-  if(next===50) S.lifePathChosen=true;     // skip the crossroads panel too
   devSync(); renderMeters(); renderShop();
-  toast("INSTANT-EVOLVED \u2014 "+stageName()+" (DEV)");
+  toast("INSTANT-EVOLVED \u2014 "+stageName()+" (DEV, NO CEREMONY)");
 };
 $("#devStock").onclick=()=>{ S.kibble+=10; S.snacks+=10; toast("+10 KIBBLE +10 BONE TREATS (DEV)"); renderMeters(); };
 $("#devSick").onclick=()=>{ S.sick=!S.sick; toast(S.sick?"BONES IS SICK (DEV)":"CURED (DEV)"); renderMeters(); };
@@ -2922,6 +2923,27 @@ $("#devBad").onclick=()=>{
   toast("NEGLECT SIMULATED (DEV)",1); renderMeters();
 };
 $("#devDay").onclick=()=>{ CLK.h=23.98; toast("FAST-FORWARDING TO MIDNIGHT (DEV)"); };
+// ceremony previews — call the real ceremony functions directly, bypassing the level/XP
+// gates entirely, so any ceremony can be checked on demand regardless of current save state.
+// devStage50 in particular ignores S.lifePathChosen, so it also works as the escape hatch for
+// saves where devEvo previously set that flag without ever showing the panel.
+$("#devStage5").onclick=()=>fireStageCeremony(5);
+$("#devStage10").onclick=()=>fireStageCeremony(10);
+$("#devStage25").onclick=()=>fireStageCeremony(25);
+$("#devStage50").onclick=()=>fireStageCeremony(50);
+$("#devGoodbye").onclick=()=>startGoodbye();
+$("#devKill").onclick=()=>{ S.dead=true; triggerDeath(); };
+$("#devBedtime").onclick=()=>{ if(!SLEEP.active) triggerBedtime(); };
+// one-way and instant (skips the drive animation) — #devbar lives inside #home, so it
+// vanishes along with the rest of the screen once at work; CLOCK OUT is the way back.
+$("#devWork").onclick=()=>{
+  if(MODE!=="home") return;
+  hidePortrait(); closeStatus(); showScreen("work");
+  Object.assign(W,{plates:[],sel:0,speed:70,spawn:0.5,intv:2.2,streak:0,flash:0,run:true});
+  toast("AT WORK (DEV) — CLOCK OUT TO RETURN");
+};
+$("#devRobot").onclick=()=>{ S.owned.robot=!S.owned.robot; toast(S.owned.robot?"NOURISH-BOT OWNED (DEV)":"NOURISH-BOT REMOVED (DEV)"); renderShop(); };
+$("#devRich").onclick=()=>{ S.money+=500; toast("+$500 (DEV)"); renderMeters(); renderShop(); };
 // Dogpark-only dev tools — the bar itself is nested inside #park, so it's only ever
 // visible while a run is on screen; unlocking it still goes through the same PIN as #devbar.
 $("#pkDevSkip").onclick=()=>{
@@ -2937,6 +2959,10 @@ $("#pkDevGod").onclick=()=>{
   PK.godMode=!PK.godMode;
   $("#pkDevGod").classList.toggle("active",PK.godMode);
   toast(PK.godMode?"GOD MODE ON (DEV)":"GOD MODE OFF (DEV)");
+};
+$("#pkDevHealerNow").onclick=()=>{
+  if(!PK.active) return;
+  pkSpawnHealer(); toast("HEALER SPAWNED (DEV)");
 };
 $("#pkDevBones").onclick=()=>{
   if(!PK.active) return;
