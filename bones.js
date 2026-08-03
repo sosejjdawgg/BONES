@@ -795,6 +795,11 @@ const SENIORIMG = SENIORFRAMES.map(u=>{ const i=new Image(); i.src=u; return i; 
 const BEGIMG    = BEGFRAMES.map(u=>{ const i=new Image(); i.src=u; return i; });
 const SAVAGEIMG = SAVAGEFRAMES.map(u=>{ const i=new Image(); i.src=u; return i; });
 const TREATIMG  = TREATFRAMES.map(u=>{ const i=new Image(); i.src=u; return i; });
+// NOURISH-BOT frames, ordered by how far he leans in: 0 upright/idle, 1 reaching,
+// 2-3 leaning, 4 hunched right down (the refill pose). All five share a ground line
+// and track anchor, so cycling them never makes him hop.
+const ROBOTIMG  = ROBOTFRAMES.map(u=>{ const i=new Image(); i.src=u; return i; });
+const ROBOT = { x:0.62, dockX:0.62, fi:0, ft:0, state:"dock", battery:100 };
 for(const k in _ALLFRAMES) DOGIMG[k] = _ALLFRAMES[k].map(u=>{ const i=new Image(); i.src=u; return i; });
 /* GAME & WATCH FILTER — the happy accident, made law.
    Every DOGCAM sprite quantizes to two tones: ink, and the room's own grey.
@@ -1569,6 +1574,34 @@ function drawSunray(ctx,w,h,t){
   }
   ctx.restore();
 }
+// the NOURISH-BOT and his charging dock. Drawn with the room fixtures (after BONES) so he
+// can never end up hidden behind him. The sprite's ground line sits on gy like everything else.
+function drawRobot(ctx,w,h,gy,t){
+  const bh=h*0.30, px=ROBOT.x*w, dx=ROBOT.dockX*w, dw=bh*0.66;
+  ctx.strokeStyle="#666"; ctx.lineWidth=2;
+  ctx.strokeRect(dx-dw/2, gy-5, dw, 5);                       // the charging plate
+  ctx.beginPath(); ctx.moveTo(dx+dw/2-3,gy-5); ctx.lineTo(dx+dw/2-3,gy-bh*0.62); ctx.stroke();
+  const charging = ROBOT.state==="dock" && ROBOT.battery<100;
+  ctx.fillStyle = charging && Math.floor(t*3)%2 ? "#f22" : "#666";
+  ctx.beginPath();                                            // charge bolt on the post
+  ctx.moveTo(dx+dw/2-6,gy-bh*0.50); ctx.lineTo(dx+dw/2-1,gy-bh*0.56);
+  ctx.lineTo(dx+dw/2-4,gy-bh*0.60); ctx.lineTo(dx+dw/2+1,gy-bh*0.66);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle="rgba(0,0,0,.3)";
+  ctx.beginPath(); ctx.ellipse(px, gy-2, bh*0.24, bh*0.065, 0,0,7); ctx.fill();
+  const img=ROBOTIMG[ROBOT.fi % ROBOTIMG.length];
+  if(img && img.complete && img.naturalWidth){
+    const bw=bh*img.naturalWidth/img.naturalHeight;
+    ctx.save(); ctx.imageSmoothingEnabled=false;
+    ctx.drawImage(img, px-bw/2, gy-bh, bw, bh);
+    ctx.restore();
+  }
+  const bx2=px-11, by2=gy-bh-8;                               // battery pip above his head
+  ctx.strokeStyle="#888"; ctx.lineWidth=1; ctx.strokeRect(bx2,by2,22,5);
+  ctx.fillStyle = ROBOT.battery<=20 ? "#f22" : "#fff";
+  ctx.fillRect(bx2+1, by2+1, 20*clamp(ROBOT.battery/100,0,1), 3);
+  ctx.strokeStyle="#fff"; ctx.lineWidth=3;
+}
 function drawCam(t){
   const [ctx,w,h]=fit($("#dogcv"));
   ctx.fillStyle="#34343c"; ctx.fillRect(0,0,w,h);
@@ -1736,6 +1769,7 @@ function drawCam(t){
   // dog bed (or the sad empty spot where one should be) — sized to BONES' current growth stage,
   // and drawn on top of him so he can't visually cover it when he heads over to rest
   drawDogBed(ctx,bx,gy,bw2,bh2,t,S.bedTier>0,bedAdequate());
+  if(S.owned.robot) drawRobot(ctx,w,h,gy,t);
   // indoor accidents — drawn last of the room fixtures so a poo pile is always visible (and
   // tappable) on top of everything, even if it landed right on the bed
   for(const p of POOS){
