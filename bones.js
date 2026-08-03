@@ -802,7 +802,7 @@ const TREATIMG  = TREATFRAMES.map(u=>{ const i=new Image(); i.src=u; return i; }
 // 2-3 leaning, 4 hunched right down (the refill pose). All five share a ground line
 // and track anchor, so cycling them never makes him hop.
 const ROBOTIMG  = ROBOTFRAMES.map(u=>{ const i=new Image(); i.src=u; return i; });
-const ROBOT = { x:0.62, dockX:0.62, tx:0.62, state:"dock", job:null, t:0, downT:0,
+const ROBOT = { x:0.88, dockX:0.88, tx:0.88, state:"dock", job:null, t:0, downT:0,
                 acting:false, pourFrom:0, battery:100, downKind:null, zoomArm:false };
 for(const k in _ALLFRAMES) DOGIMG[k] = _ALLFRAMES[k].map(u=>{ const i=new Image(); i.src=u; return i; });
 /* GAME & WATCH FILTER — the happy accident, made law.
@@ -838,7 +838,7 @@ function lcdSet(arr){
   });
 }
 for(const k in DOGIMG) lcdSet(DOGIMG[k]);
-lcdSet(BEGIMG); lcdSet(SENIORIMG);
+lcdSet(BEGIMG); lcdSet(SENIORIMG); lcdSet(ROBOTIMG);   // the bot lives on the same LCD as BONES
 const HEARTIMG = HEARTS.map(u=>{ const i=new Image(); i.src=u; return i; });
 const CAM = { x:0.32, dir:1, state:"idle", t:0, fi:0, ft:0, until:1.5, woof:0, bedTarget:false, cameCalled:false, fetchPhase:0, workBlockT:0 };
 const BED = { x:0.56 };
@@ -1588,7 +1588,7 @@ const BF={IDLE:0,REACH:1,LEAN1:2,LEAN2:3,LEAN3:4,LOW1:5,LOW2:6,LOW3:7,COLLAPSED:
 // where the drawn pixels actually start in each frame, as a fraction of the shared canvas
 // height — the poses vary a lot in height, so the battery pip needs this to sit just above
 // his head whichever one is showing instead of floating off the top of a hunched frame
-const ROBOTTOP=[0.144,0.068,0.061,0.015,0.068,0.068,0,0.098,0.015,0.015,0,0,0];
+const ROBOTTOP=[0,0,0.045,0.023,0.258,0,0,0.28,0.303,0,0.311,0.333,0.386];
 const BOT_IDLE_DRAIN=2.0;    // % per game hour just from being switched on — the dock has to matter
 const BOT_CHARGE=100/12;     // % per game hour: a full charge is half a game day
 const BOT_COST={water:10, food:10, poo:15, ball:5};
@@ -1912,6 +1912,9 @@ function drawCam(t){
     ctx.drawImage(img, dx, gy-dh+bob, dw, dh);
     ctx.restore();
   }
+  // the bot stands on the same floor as BONES and obeys the same depth rules, so he goes in
+  // here — after BONES, but before the bowls and the bed, which both occlude him
+  if(S.owned.robot) drawRobot(ctx,w,h,gy,t);
   // water bowl (blue) + food bowl (kibble chunks), both tappable — drawn on top of BONES so
   // he never visually swallows them up when he dips down to drink/eat. an opaque backing
   // fill first means an empty bowl still blocks him out instead of showing him through the rim.
@@ -1937,7 +1940,6 @@ function drawCam(t){
   // dog bed (or the sad empty spot where one should be) — sized to BONES' current growth stage,
   // and drawn on top of him so he can't visually cover it when he heads over to rest
   drawDogBed(ctx,bx,gy,bw2,bh2,t,S.bedTier>0,bedAdequate());
-  if(S.owned.robot) drawRobot(ctx,w,h,gy,t);
   // indoor accidents — drawn last of the room fixtures so a poo pile is always visible (and
   // tappable) on top of everything, even if it landed right on the bed
   for(const p of POOS){
