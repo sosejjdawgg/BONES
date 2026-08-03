@@ -34,7 +34,7 @@ const S = {
   money:10, earned:0, petCd:0,
   owned:{}, equipped:null,
   dailyUsed:false, bestDaily:0, bestPractice:0,
-  streak:0, dayNeglected:false, sick:false, sickTimer:0, wellTimer:0, deathTimer:0, dead:false,
+  streak:0, dayNeglected:false, sick:false, sickTimer:0, wellTimer:0, dead:false, neglectNight:false, neglectNights:0,
   kibble:3, snacks:2, beach:false, compsToday:0,
   jWave3:false, jCollar:false, jTrick:false,
   dHappy:false, dNour:false, dBall:false, dPark:false, dClean:false, dWater:false, dFood:false,
@@ -122,15 +122,7 @@ function tickStats(dt){
   // sickness: sustained severe neglect makes him properly ill
   if(avgStat()<20){ S.sickTimer+=dt; S.wellTimer=0; } else { S.wellTimer+=dt; }
   if(!S.sick && S.sickTimer>75){ S.sick=true; toast("BONES IS SICK. HE NEEDS CARE \u2014 NO RUNS UNTIL HE RECOVERS.",1); beep(100,.4,"sawtooth"); }
-  if(S.sick && S.wellTimer>25){ S.sick=false; S.sickTimer=0; S.deathTimer=0; S.dead=false; toast("BONES IS FEELING BETTER."); beep(700,.1); }
-  if(S.sick && avgStat()<10){
-    const prev=S.deathTimer; S.deathTimer+=dt;
-    if(prev<30 && S.deathTimer>=30){ toast("BONES IS FADING\u2026 HE NEEDS CARE RIGHT NOW.",1); beep(80,.3,"sawtooth"); }
-    if(prev<60 && S.deathTimer>=60){ toast("BONES WON\u2019T LAST MUCH LONGER.",1); beep(60,.5,"sawtooth"); }
-    if(S.deathTimer>=90 && !S.dead){ S.dead=true; triggerDeath(); }
-  } else if(S.deathTimer>0){
-    S.deathTimer=Math.max(0, S.deathTimer-dt*2);
-  }
+  if(S.sick && S.wellTimer>25){ S.sick=false; S.sickTimer=0; S.dead=false; toast("BONES IS FEELING BETTER."); beep(700,.1); }
   if(avgStat()<25) S.dayNeglected=true;
   CLK.h += dt*WORK_FF/10;
   if(CLK.h>=24){
@@ -284,24 +276,23 @@ function successor(){
   renderMeters(); renderShop();
 }
 function triggerDeath(){
-  S.deathTimer=0;
   beep(60,.9,"sawtooth",.04);
   if(PK.active){ PK.active=false; showScreen("home"); }
   if(R.active){ R.active=false; showScreen("home"); }
   OUTING.active=false;
   const hasSave=S.lastSaveAt!=null;
   openChoice(
-    "BONES COLLAPSED",
+    "BONES DIDN'T MAKE IT",
     hasSave
-      ? "CRITICAL NEGLECT SENT BONES TO THE VET.— TIME HAS REWOUND TO YOUR LAST SAVE.<br><br>TAKE BETTER CARE OF HIM."
-      : "CRITICAL NEGLECT LEFT BONES BARELY BREATHING.— CARE FOR HIM.",
-    hasSave ? "REWIND TO LAST SAVE" : "CONTINUE",
+      ? "HE WENT TO SLEEP WITHOUT FOOD OR WATER<br>AND DIDN'T WAKE UP.<br><br>LOAD YOUR LAST SAVE AND TAKE BETTER<br>CARE OF HIM."
+      : "BONES NEEDED CARE AND DIDN'T GET IT.<br><br>FEED HIM. WATER HIM. HE NEEDS YOU.",
+    hasSave ? "LOAD LAST SAVE" : "CONTINUE",
     doRewind
   );
 }
 function doRewind(){
   const ok=loadGame();
-  S.deathTimer=0; S.dead=false;
+  S.dead=false; S.neglectNight=false; S.neglectNights=0;
   if(!ok){
     S.sick=false; S.sickTimer=0; S.wellTimer=0;
     Object.assign(S,{hunger:35,thirst:35,energy:40,clean:40,fun:40,mood:40});
@@ -2019,24 +2010,51 @@ function triggerBedtime(){
   CAM.state="bedsleep"; CAM.fi=0; CAM.t=0; CAM.until=99;
   const img=$("#bedtimeImg");
   img.src=SLEEPFRAMES[0];
-  $("#bedtimeLines").textContent="HIS EYES ARE HEAVY... TIME FOR BED.";
+  const bad = S.sick && avgStat()<20;
+  if(bad){
+    S.neglectNight=true;
+    $("#bedtimeLines").textContent="HE COLLAPSES INTO BED. BONES NEEDS CARE.";
+    beep(100,.35,"sawtooth");
+  } else {
+    S.neglectNight=false; S.neglectNights=0;
+    $("#bedtimeLines").textContent="HIS EYES ARE HEAVY... TIME FOR BED.";
+    beep(220,.25,"sawtooth");
+  }
   $("#bedtimeBtns").classList.remove("ready");
   $("#bedtimePanel").classList.add("show");
-  beep(220,.25,"sawtooth");
-  setTimeout(()=>{ img.src=SLEEPFRAMES[1]; $("#bedtimeLines").textContent="HE'S FAST ASLEEP."; beep(180,.3,"sine"); },1400);
+  const sleepMsg = bad ? "THE NIGHT WON'T HELP HIM." : "HE'S FAST ASLEEP.";
+  setTimeout(()=>{ img.src=SLEEPFRAMES[1]; $("#bedtimeLines").textContent=sleepMsg; if(!bad) beep(180,.3,"sine"); },1400);
   setTimeout(()=>{ $("#bedtimeBtns").classList.add("ready"); },2200);
 }
 function closeBedtime(){
   $("#bedtimePanel").classList.remove("show");
   SLEEP.active=false;
 }
+function pkMorningCheck(){
+  if(!S.neglectNight) return;
+  S.neglectNight=false;
+  S.neglectNights=(S.neglectNights||0)+1;
+  // the night made things worse: sleep without care drained him further
+  S.hunger=Math.max(0,S.hunger-10); S.thirst=Math.max(0,S.thirst-15);
+  S.energy=Math.max(0,S.energy-8);  S.mood=Math.max(0,S.mood-12);
+  renderMeters();
+  if(S.neglectNights>=2 && !S.dead){
+    S.dead=true; triggerDeath();
+  } else {
+    toast("ROUGH NIGHT. BONES NEEDS FOOD AND WATER NOW.",1);
+    beep(80,.3,"sawtooth");
+  }
+}
 function skipToMorning(){
   let remaining=(6-CLK.h)*10;
   while(remaining>0){ const step=Math.min(1,remaining); tickStats(step); remaining-=step; }
   CAM.state="idle"; CAM.fi=0; CAM.until=1;
-  renderMeters(); renderTodo();
-  toast("MORNING — 06:00. BONES IS UP.");
-  beep(660,.1); setTimeout(()=>beep(880,.1),120);
+  pkMorningCheck();
+  if(!S.dead){
+    renderMeters(); renderTodo();
+    if(!S.neglectNight) toast("MORNING — 06:00. BONES IS UP.");
+    if(!S.neglectNight){ beep(660,.1); setTimeout(()=>beep(880,.1),120); }
+  }
 }
 $("#bBedWork").onclick=()=>{ closeBedtime(); enterPaperboy(); };
 $("#bBedSkip").onclick=()=>{ closeBedtime(); skipToMorning(); };
