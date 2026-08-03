@@ -224,9 +224,11 @@ function startPark(plus){
     en:[], fr:[], gate:{}, started:false, shop:null, biscuits:[], drops:[], pendingBury:0, nuts:[],
     powerups:[], starT:0, zoom:1, sniffLvl:0,
     trees:[], scorch:[], embers:[],
-    plusMode:!!plus, mixTypes:null, mixLabel:null, swoopT:0
+    plusMode:!!plus, mixTypes:null, mixLabel:null, swoopT:0,
+    pals:[], palEyes:false, friendsOpen:false, friendsArm:false, npc:{x:.78,y:.18}
   });
   PK.hp=PK.maxhp;
+  PK.healerT=pkHealerGap();
   PK.acts=[{k:"hoop",x:.15,y:.125,cd:0},{k:"tunnel",x:.35,y:.36,cd:0},{k:"ramp",x:.11,y:.39,cd:0},{k:"tunnel",x:.62,y:.70,cd:0},{k:"hoop",x:.85,y:.20,cd:0}];
   PK.waveBanner={text:"WAVE 1 — CLEAR THE BIRDS", life:2.2, max:2.2};
   SPARKS.length=0;
@@ -260,6 +262,21 @@ function pkSpawn(w,h){
     hp:hp0, hpMax:hp0,
     sp:(type==="sq"?70:type==="bird"?85:45)*(1+wv*0.05),
     ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
+}
+// the friend with the bandana — she trots across the park and fully heals BONES on contact.
+// she used to be folded into pkSpawn() at 5%, but every wave now routes through its own bespoke
+// spawner and pkSpawn is never called, so she'd stopped turning up at all. She gets her own clock
+// instead, and it winds tighter every wave past 3, when a run starts actually hurting.
+function pkHealerGap(){
+  const base = PK.wave<=3 ? 30 : Math.max(9, 30-(PK.wave-3)*3.5);
+  return base*(0.8+Math.random()*0.4);
+}
+function pkSpawnHealer(){
+  const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
+  const WW=PK.WW||w*2, WH=PK.WH||h*2;
+  const side=Math.random()<0.5?-1:1;
+  PK.fr.push({x:(PK.x+side*w*0.65+WW)%WW, y:(PK.y+(Math.random()-0.5)*h*0.8+WH)%WH, vx:-side*42, life:16});
+  beep(720,.05);
 }
 // a golden bird carrying a gold bone — one per stage, optional, never counts toward the wave
 // quota. flies a fast, straight line across the world; catch it (like the friend NPC) for a
@@ -314,11 +331,13 @@ function pkBlastSfx(){
 function pkBuildTrees(){
   PK.trees=[];
   const n=Math.round(6*(PK.worldMult/2)*(PK.worldMult/2));
+  const npc=PK.npc||{x:.78,y:.18};
   for(let i=0;i<n;i++){
-    PK.trees.push({
-      x:Math.random()*PK.WW, y:Math.random()*PK.WH,
-      state:"ok", fireT:0, spawned:0, spawnT:0, sway:Math.random()*6.283
-    });
+    // never plant one on top of the bandana dog: a trunk over him puts his shop behind collision
+    let x,y,tries=0;
+    do{ x=Math.random()*PK.WW; y=Math.random()*PK.WH; tries++; }
+    while(tries<24 && Math.hypot(wd(x-npc.x*PK.WW,PK.WW),wd(y-npc.y*PK.WH,PK.WH))<72);
+    PK.trees.push({ x, y, state:"ok", fireT:0, spawned:0, spawnT:0, sway:Math.random()*6.283 });
   }
 }
 function pkIgniteTree(tr){
@@ -346,10 +365,12 @@ function pkTreeCollide(px,py){
   for(const tr of PK.trees){
     if(tr.state==="ash") continue;
     const dx=wd(px-tr.x,PK.WW), dy=wd(py-tr.y,PK.WH);
-    const d=Math.hypot(dx,dy), r=TREE_R*0.72;
-    if(d<r && d>0.001){
-      px=(tr.x+dx/d*r+PK.WW)%PK.WW;
-      py=(tr.y+dy/d*r+PK.WH)%PK.WH;
+    // elliptical footprint, squashed like every other ground shadow here, and wide enough to
+    // account for BONES' own 40px body so he can't stand inside the trunk
+    const nx=dx/TREE_COLL_RX, ny=dy/TREE_COLL_RY, nd=Math.hypot(nx,ny);
+    if(nd<1 && nd>0.001){
+      px=(tr.x+(nx/nd)*TREE_COLL_RX+PK.WW)%PK.WW;
+      py=(tr.y+(ny/nd)*TREE_COLL_RY+PK.WH)%PK.WH;
     }
   }
   return [px,py];
@@ -387,10 +408,14 @@ const RANGER_PLANT_R=200, RANGER_APPROACH_SPD=55, RANGER_WINDUP=0.55, RANGER_THR
 // read and outrun, not twitch-dodged — and only a couple ever fire at once.
 const MADSQ_CHARGE=1.5, MADSQ_SWEEP_TIME=3.0, MADSQ_SWEEP_ARC=0.9, MADSQ_SWEEP_RATE=0.95;
 const MADSQ_WIDTH=18, MADSQ_DMG=14, MADSQ_KNOCK=150, MADSQ_FF_DMG=1;
+// they are tiny animals holding a weapon far too big for them: the shot goes where they were
+// pointing when they pulled it, not where you are now, and it shoves them backwards
+const MADSQ_AIM_ERR=0.42, MADSQ_TRACK_RATE=0.42, MADSQ_RECOIL=95;
 function pkMadsqCap(){ return PK.worldMult>2 ? 4 : 2; }   // doubles once the park has been expanded
 // bone pickup: a small sniff radius that hoovers up nearby drops, upgradeable in the shop
 const PICKUP_BASE=16, SNIFF_BASE=34, SNIFF_STEP=26, SNIFF_PULL=190, SNIFF_LVL_CAP=3;
 // trees: cover from beams, solid to walk through, flammable, and full of squirrels
+const TREE_COLL_RX=26, TREE_COLL_RY=15;
 const TREE_R=15, TREE_BURN_TIME=10, TREE_SPAWN_MAX=15, TREE_SPAWN_EVERY=0.65;
 const ALPHA_LEAP_R=170, ALPHA_LEAP_SPEED=280, ALPHA_LEAP_TIME=0.45, ALPHA_LEAP_CD=4, ALPHA_LEAP_DMG=20, ALPHA_APPROACH_SPD=50; // wave 6
 // WAVE 1 — CLEAR THE BIRDS: loose flocks of 3-7 birds clustered together, standing until
@@ -582,6 +607,270 @@ function pkExpandPark(){
   pkBuildBG(PK.WW,PK.WH);
   pkBuildTrees();
 }
+/* ---------- the bandana dog: a shop for friends who fight beside you ---------- */
+// he stands stock still in the middle of the carnage wearing a red bandana, utterly unbothered.
+// walk up to him and he sells company. Companions live in PK.pals and never in PK.en, which is
+// the single thing that keeps them out of the wave quota, the clear check, the bark sweep and
+// the "N LEFT" counter without a line of special-casing in any of them.
+const NPC_TALK_R=30, NPC_REARM_R=68;
+const PAL_SQ_HP=26, PAL_SQ_CD=1.25, PAL_SQ_RANGE=240, PAL_SQ_FOLLOW=44;
+const PAL_CAT_HP=22, PAL_CAT_ORBIT_R=44, PAL_CAT_ORBIT_SPD=1.7, PAL_CAT_SEEK_R=115, PAL_CAT_SPEED=230, PAL_CAT_LEASH=210;
+const PAL_BIRD_EVERY=7, PAL_BIRD_ALT=54, PAL_BIRD_SPEED=175, PAL_BIRD_N=5;
+const PAL_LASER_CD=10, PAL_LASER_SWEEP=1.2, PAL_LASER_ARC=0.6, PAL_LASER_SAFE=0.45, PAL_LASER_DMG=3;
+const PAL_NUT_SPEED=210, PAL_NUT_DMG=1;
+const PAL_SHOP=[
+  {k:"sq",   n:"SQUIRREL PAL", fx:"RUNS WITH YOU, THROWS NUTS", c:16},
+  {k:"bird", n:"BIRD FLOCK",   fx:"DIVES WHERE ITS SHADOW LANDS", c:14},
+  {k:"cat",  n:"CAT FRIEND",   fx:"CIRCLES YOU, POUNCES CLOSE", c:18},
+  {k:"eyes", n:"LASER EYES",   fx:"UPGRADE: THE SQUIRREL BLASTS", c:34}
+];
+function pkPalOwned(k){ return PK.pals.some(p=>p.k===k); }
+function pkPalBuyable(o){ return o.k==="eyes" ? (!PK.palEyes && pkPalOwned("sq")) : !pkPalOwned(o.k); }
+function pkBuyPal(k){
+  if(k==="eyes"){ PK.palEyes=true; for(const p of PK.pals) if(p.k==="sq") p.laserCd=PAL_LASER_CD*0.4; return; }
+  const px=PK.x, py=PK.y;
+  if(k==="sq")   PK.pals.push({k:"sq", x:(px+30)%PK.WW, y:py, hp:PAL_SQ_HP, hpMax:PAL_SQ_HP, cd:PAL_SQ_CD,
+                               dir:1, fi:0, ft:0, kx:0, ky:0, palBurnT:0, contactT:0,
+                               laserCd:PAL_LASER_CD*0.4, laserState:"idle", chargeT:0, sweepT:0, aimAng:0, aimBase:0, beamLen:0});
+  if(k==="cat")  PK.pals.push({k:"cat", x:(px-30+PK.WW)%PK.WW, y:py, hp:PAL_CAT_HP, hpMax:PAL_CAT_HP,
+                               orbitAng:Math.random()*6.283, state:"orbit", tgt:null, recall:false,
+                               dir:1, fi:0, ft:0, kx:0, ky:0, palBurnT:0, contactT:0});
+  if(k==="bird") PK.pals.push({k:"bird", passT:1.2, birds:[]});
+}
+// one shared kill path for everything a companion does, so a friend's hit resolves exactly like
+// a bark: a bone drops, they look shocked, then they scuttle off under their own steam
+function pkPalHit(e,dmg,ux,uy){
+  if(e.fleeing) return;
+  e.hp-=dmg;
+  if(e.hp<=0){
+    PK.drops.push({x:e.x, y:e.y, v:1, gold:!!e.alpha, life:25});
+    if(Math.random()<STAR_DROP_CHANCE) PK.powerups.push({type:"star", x:e.x, y:e.y-10, life:18});
+    if(Math.random()<MAGNET_DROP_CHANCE) PK.powerups.push({type:"magnet", x:e.x, y:e.y+10, life:18});
+    PK.kills++;
+    e.fleeing=true; e.shockT=0.35; e.fleeT=0;
+    e.fleeVx=ux*FLEE_SPEED; e.fleeVy=uy*FLEE_SPEED;
+    beep(950,.08,"square",.04);
+  } else { e.kx=ux*PK.knock*0.7; e.ky=uy*PK.knock*0.7; }
+}
+function pkNearestEnemy(x,y,maxR){
+  let best=null, bd=maxR;
+  for(const e of PK.en){
+    if(e.fleeing) continue;
+    const d=Math.hypot(wd(e.x-x,PK.WW),wd(e.y-y,PK.WH));
+    if(d<bd){ bd=d; best=e; }
+  }
+  return best;
+}
+// the laser pal must never, under any circumstances, catch BONES. Layer one: an angular exclusion
+// wide enough to cover the whole sweep arc plus the beam's own half-width at the player's range.
+function pkPalAimSafe(p,ang){
+  const pdx=wd(PK.x-p.x,PK.WW), pdy=wd(PK.y-p.y,PK.WH), pd=Math.hypot(pdx,pdy)||1;
+  const guard=Math.atan2(MADSQ_WIDTH+22, Math.max(30,pd))+PAL_LASER_SAFE;
+  return Math.abs(wd(Math.atan2(pdy,pdx)-ang,6.283)) > PAL_LASER_ARC+guard;
+}
+function pkPalLaserAim(p){
+  let best=null, bd=1e9;
+  const range=pkLaserRange();
+  for(const e of PK.en){
+    if(e.fleeing) continue;
+    const dx=wd(e.x-p.x,PK.WW), dy=wd(e.y-p.y,PK.WH), d=Math.hypot(dx,dy);
+    if(d>range) continue;
+    const a=Math.atan2(dy,dx);
+    if(!pkPalAimSafe(p,a)) continue;
+    if(d<bd){ bd=d; best=a; }
+  }
+  return best;   // null = no safe line at all, so he simply holds his fire (and his cooldown)
+}
+function pkPalsUpdate(dt,WW,WH){
+  for(const p of PK.pals){
+    if(p.k==="bird"){
+      p.passT-=dt;
+      if(p.passT<=0 && p.birds.length===0){
+        p.passT=PAL_BIRD_EVERY;
+        const ang=Math.random()*6.283, perp=ang+Math.PI/2, R=Math.max(WW,WH)*0.34;
+        const cx=PK.x-Math.cos(ang)*R, cy=PK.y-Math.sin(ang)*R;
+        for(let b=0;b<PAL_BIRD_N;b++){
+          const off=(b-(PAL_BIRD_N-1)/2)*22+(Math.random()-0.5)*10;
+          p.birds.push({x:(cx+Math.cos(perp)*off+WW)%WW, y:(cy+Math.sin(perp)*off+WH)%WH,
+            vx:Math.cos(ang)*PAL_BIRD_SPEED, vy:Math.sin(ang)*PAL_BIRD_SPEED,
+            alt:PAL_BIRD_ALT, state:"cruise", tgt:null, life:R*2/PAL_BIRD_SPEED, fi:0, ft:0});
+        }
+        beep(880,.05,"square",.025); setTimeout(()=>beep(1040,.04,"square",.02),90);
+      }
+      for(let b=p.birds.length-1;b>=0;b--){
+        const bd=p.birds[b];
+        bd.life-=dt;
+        bd.x=(bd.x+bd.vx*dt+WW)%WW; bd.y=(bd.y+bd.vy*dt+WH)%WH;
+        bd.ft+=dt; if(bd.ft>0.08){ bd.ft=0; bd.fi++; }
+        if(bd.state==="cruise"){
+          // the world position IS the shadow: an enemy the shadow crosses is the one that gets it
+          const hit=pkNearestEnemy(bd.x,bd.y,14);
+          if(hit){ bd.state="dive"; bd.tgt=hit; }
+        } else if(bd.state==="dive"){
+          bd.alt=Math.max(0,bd.alt-PAL_BIRD_ALT*dt/0.22);
+          const tg=bd.tgt;
+          if(!tg || tg.fleeing || tg.hp<=0){ bd.state="climb"; bd.tgt=null; }   // target died mid-dive
+          else if(bd.alt<=2){
+            const dx=wd(tg.x-bd.x,WW), dy=wd(tg.y-bd.y,WH), d=Math.hypot(dx,dy)||1;
+            pkPalHit(tg,1,dx/d,dy/d);
+            for(let s=0;s<4;s++) SPARKS.push({x:tg.x, y:tg.y-6, vx:(Math.random()-0.5)*70, vy:-40-Math.random()*40, life:0.3});
+            beep(1000,.05,"square",.03);
+            bd.state="climb"; bd.tgt=null;
+          }
+        } else {
+          bd.alt=Math.min(PAL_BIRD_ALT, bd.alt+PAL_BIRD_ALT*dt/0.35);
+          if(bd.alt>=PAL_BIRD_ALT-0.5) bd.state="cruise";
+        }
+        if(bd.life<=0) p.birds.splice(b,1);
+      }
+      continue;
+    }
+    p.kx*=0.88; p.ky*=0.88;
+    p.x=(p.x+p.kx*dt+WW)%WW; p.y=(p.y+p.ky*dt+WH)%WH;
+    p.ft+=dt; if(p.ft>0.14){ p.ft=0; p.fi++; }
+    if(p.k==="sq"){
+      const tdx=wd(PK.x-p.x,WW), tdy=wd(PK.y-p.y,WH), td=Math.hypot(tdx,tdy)||1;
+      if(p.laserState==="idle"){
+        if(td>PAL_SQ_FOLLOW){
+          const sp=Math.min(PK.spd*1.25, 55+td*1.7);
+          p.x=(p.x+tdx/td*sp*dt+WW)%WW; p.y=(p.y+tdy/td*sp*dt+WH)%WH;
+          p.dir = tdx<0 ? -1 : 1;
+        }
+        p.cd-=dt;
+        const tgt=pkNearestEnemy(PK.x,PK.y,PAL_SQ_RANGE);   // whatever is closest to BONES, not to him
+        if(tgt && p.cd<=0){
+          p.cd=PAL_SQ_CD;
+          const nx=wd(tgt.x-p.x,WW), ny=wd(tgt.y-p.y,WH), nd=Math.hypot(nx,ny)||1;
+          PK.nuts.push({pal:true, x:p.x, y:p.y-8, vx:nx/nd*PAL_NUT_SPEED, vy:ny/nd*PAL_NUT_SPEED, life:2.2});
+          p.dir = nx<0 ? -1 : 1;
+          beep(620,.04,"square",.02);
+        }
+        if(PK.palEyes){
+          p.laserCd-=dt;
+          if(p.laserCd<=0){
+            const a=pkPalLaserAim(p);
+            if(a!==null){ p.laserState="charge"; p.chargeT=0; p.aimAng=a; }
+          }
+        }
+      } else if(p.laserState==="charge"){
+        p.chargeT+=dt;
+        // layer two: the world doesn't pause, so a line that was safe a moment ago may not be now
+        if(!pkPalAimSafe(p,p.aimAng)){ p.laserState="idle"; p.laserCd=1.2; }
+        else if(p.chargeT>=MADSQ_CHARGE*0.7){ p.laserState="sweep"; p.sweepT=0; p.aimBase=p.aimAng; pkBlastSfx(); }
+      } else {
+        p.sweepT+=dt;
+        p.aimAng=p.aimBase+Math.sin(p.sweepT/PAL_LASER_SWEEP*6.283)*PAL_LASER_ARC;
+        p.dir = Math.cos(p.aimAng)<0 ? -1 : 1;
+        const ux=Math.cos(p.aimAng), uy=Math.sin(p.aimAng);
+        const blk=pkBeamBlocker(p.x,p.y,p.aimAng,pkLaserRange());
+        let len=blk.dist;
+        // layer three: the beam is never tested against BONES at all, and if he sprints into the
+        // line anyway it simply stops short of him. "Never crosses him" holds in pixels too.
+        const bdx=wd(PK.x-p.x,WW), bdy=wd(PK.y-p.y,WH);
+        const balong=bdx*ux+bdy*uy, bperp=Math.abs(bdx*uy-bdy*ux);
+        if(balong>0 && bperp<MADSQ_WIDTH+10) len=Math.min(len, Math.max(0,balong-16));
+        p.beamLen=len;
+        if(blk.tree && len>=blk.dist-0.01) pkIgniteTree(blk.tree);
+        for(const e of PK.en){
+          if(e.fleeing) continue;
+          const dx=wd(e.x-p.x,WW), dy=wd(e.y-p.y,WH);
+          const al=dx*ux+dy*uy, pe=Math.abs(dx*uy-dy*ux);
+          if(al>6 && al<len && pe<MADSQ_WIDTH){
+            e.palBeamT=(e.palBeamT||0)+dt;
+            if(e.palBeamT>0.16){
+              e.palBeamT=0;
+              pkPalHit(e,PAL_LASER_DMG,ux,uy);
+              PK.embers.push({x:e.x, y:e.y, vx:(Math.random()-0.5)*60, vy:-40-Math.random()*40, life:0.5});
+              PK.scorch.push({x:e.x, y:e.y, r:10+Math.random()*6});
+            }
+          }
+        }
+        if(p.sweepT>=PAL_LASER_SWEEP){ p.laserState="idle"; p.laserCd=PAL_LASER_CD; }
+      }
+    } else if(p.k==="cat"){
+      if(p.state==="orbit"){
+        p.orbitAng+=PAL_CAT_ORBIT_SPD*dt;
+        const tx=PK.x+Math.cos(p.orbitAng)*PAL_CAT_ORBIT_R, ty=PK.y+Math.sin(p.orbitAng)*PAL_CAT_ORBIT_R*0.6;
+        const dx=wd(tx-p.x,WW), dy=wd(ty-p.y,WH), d=Math.hypot(dx,dy)||1;
+        const sp=Math.min(PAL_CAT_SPEED, 55+d*3);
+        p.x=(p.x+dx/d*sp*dt+WW)%WW; p.y=(p.y+dy/d*sp*dt+WH)%WH;
+        p.dir = dx<0 ? -1 : 1;
+        // once he's been pulled out to the end of his leash he comes all the way home before he'll
+        // take another target, or a running enemy just tows him around the perimeter forever
+        if(p.recall && Math.hypot(wd(p.x-PK.x,WW),wd(p.y-PK.y,WH))<PAL_CAT_ORBIT_R*1.6) p.recall=false;
+        if(!p.recall){
+          const tgt=pkNearestEnemy(p.x,p.y,PAL_CAT_SEEK_R);
+          if(tgt){ p.state="pounce"; p.tgt=tgt; }
+        }
+      } else {
+        const tg=p.tgt;
+        const leash=Math.hypot(wd(p.x-PK.x,WW),wd(p.y-PK.y,WH));
+        // a fleeing target would drag him off the edge of the world, so he gives up and comes back
+        if(!tg || tg.fleeing || tg.hp<=0 || leash>PAL_CAT_LEASH){
+          if(leash>PAL_CAT_LEASH) p.recall=true;
+          p.state="orbit"; p.tgt=null;
+        }
+        else {
+          const dx=wd(tg.x-p.x,WW), dy=wd(tg.y-p.y,WH), d=Math.hypot(dx,dy)||1;
+          p.x=(p.x+dx/d*PAL_CAT_SPEED*dt+WW)%WW; p.y=(p.y+dy/d*PAL_CAT_SPEED*dt+WH)%WH;
+          p.dir = dx<0 ? -1 : 1;
+          if(d<16){
+            pkPalHit(tg,1,dx/d,dy/d);
+            beep(320,.05,"square",.04);
+            p.state="orbit"; p.tgt=null;
+          }
+        }
+      }
+    }
+  }
+}
+// everything that can hurt a friend, gathered in one place rather than threaded through the nine
+// separate player-contact blocks in the enemy loop. The flock is exempt: it is only ever on the
+// ground for a heartbeat, and per-bird health would raise "which bird did I just lose?".
+function pkPalDamage(dt,WW,WH){
+  for(let i=PK.pals.length-1;i>=0;i--){
+    const p=PK.pals[i];
+    if(p.k==="bird") continue;
+    let touching=false;
+    for(const e of PK.en){
+      if(e.fleeing) continue;
+      const dx=wd(e.x-p.x,WW), dy=wd(e.y-p.y,WH), d=Math.hypot(dx,dy)||1;
+      if(d<14){
+        touching=true;
+        p.contactT+=dt;
+        if(p.contactT>0.5){
+          p.contactT=0; p.hp-=e.alpha?6:2;
+          p.kx=-dx/d*160; p.ky=-dy/d*160;
+          beep(210,.05,"square",.03);
+        }
+        break;
+      }
+    }
+    if(!touching) p.contactT=0;
+    for(const e of PK.en){
+      if(!e.madsq || e.fleeing || e.laserState!=="sweep") continue;
+      const ux=Math.cos(e.aimAng), uy=Math.sin(e.aimAng);
+      const dx=wd(p.x-e.x,WW), dy=wd(p.y-e.y,WH);
+      const al=dx*ux+dy*uy, pe=Math.abs(dx*uy-dy*ux);
+      if(al>0 && al<(e.beamLen||pkLaserRange()) && pe<MADSQ_WIDTH){
+        p.palBurnT+=dt;   // its own timer: sharing burnT would let a doubly-lit enemy steal ticks
+        if(p.palBurnT>0.28){
+          p.palBurnT=0; p.hp-=4;
+          p.kx=ux*180; p.ky=uy*180;
+          PK.embers.push({x:p.x, y:p.y, vx:(Math.random()-0.5)*60, vy:-40, life:0.5});
+        }
+      }
+    }
+    if(p.hp<=0){
+      PK.fx.push({x:p.x, y:p.y-22, txt:"FRIEND DOWN", life:1.4});
+      PK.scorch.push({x:p.x, y:p.y, r:12});
+      PK.pals.splice(i,1);
+      // the upgrade lives on PK, not on the pal, so losing a cheap friend never voids an expensive one
+      toast("A FRIEND WENT DOWN — THE BANDANA DOG HAS MORE",1);
+      beep(150,.25,"sawtooth",.06);
+    }
+  }
+}
 function pkShopOpen(){
   const statAll=[
     {n:"BIGGER BARK",   fx:"+14 BARK RADIUS",    c:12, capKey:"barkBigLvl",  f:()=>{PK.barkR+=14; PK.barkBigLvl++;}},
@@ -613,7 +902,7 @@ function pkShopOpen(){
 }
 function parkUpdate(dt){
   if(!PK.active) return;
-  if(PK.shop || PK.convertOpen) return;   // world pauses while shopping or exchanging bones
+  if(PK.shop || PK.convertOpen || PK.friendsOpen) return;   // world pauses while shopping or exchanging bones
   PK.t+=dt; PK.waveT+=dt;
   PK.chainT=Math.max(0,PK.chainT-dt); if(PK.chainT<=0) PK.chain=0;
   PK.inv=Math.max(0,PK.inv-dt); PK.pulse=Math.max(0,PK.pulse-dt);
@@ -672,6 +961,9 @@ function parkUpdate(dt){
     if(PK.wave===4) setTimeout(()=>toast("WATCH OUT, NUTS INCOMING",1),2300);
     pkShopOpen();
   }
+  // the healer keeps her own rolling clock, so she shows up more and more as the waves bite
+  PK.healerT-=dt;
+  if(PK.healerT<=0){ PK.healerT=pkHealerGap(); if(PK.fr.every(f=>f.golden)) pkSpawnHealer(); }
   // one golden bird per stage — optional, never counts toward the wave quota
   if(!PK.goldenDone && PK.waveT>PK.goldenAt){
     PK.goldenDone=true;
@@ -841,15 +1133,24 @@ function parkUpdate(dt){
         }
       } else if(e.laserState==="charge"){
         e.chargeT+=dt;
+        e.x=(e.x+e.kx*dt+WW)%WW; e.y=(e.y+e.ky*dt+WH)%WH;
         if(e.chargeT>=MADSQ_CHARGE){
-          e.laserState="sweep"; e.sweepT=0; e.aimAng=Math.atan2(dyw,dxw);
+          e.laserState="sweep"; e.sweepT=0;
+          e.aimBase=Math.atan2(dyw,dxw);                       // locked in at the moment of firing
+          e.aimErr=(Math.random()-0.5)*MADSQ_AIM_ERR;          // and they are lousy shots
+          e.aimAng=e.aimBase+e.aimErr;
           pkBlastSfx();
         }
       } else if(e.laserState==="sweep"){
         e.sweepT+=dt;
-        e.aimAng = Math.atan2(dyw,dxw) + Math.sin(e.sweepT*MADSQ_SWEEP_RATE)*MADSQ_SWEEP_ARC;
+        // the anchor creeps toward the player, but only so fast — outrun it and the beam trails you
+        const want=Math.atan2(dyw,dxw), off=wd(want-e.aimBase,6.283);
+        e.aimBase += clamp(off,-MADSQ_TRACK_RATE*dt,MADSQ_TRACK_RATE*dt);
+        e.aimAng = e.aimBase + e.aimErr + Math.sin(e.sweepT*MADSQ_SWEEP_RATE)*MADSQ_SWEEP_ARC;
         e.dir = Math.cos(e.aimAng)<0 ? -1 : 1;
         const ux=Math.cos(e.aimAng), uy=Math.sin(e.aimAng);
+        e.kx-=ux*MADSQ_RECOIL*dt; e.ky-=uy*MADSQ_RECOIL*dt;   // kicked back by their own blast
+        e.x=(e.x+e.kx*dt+WW)%WW; e.y=(e.y+e.ky*dt+WH)%WH;     // rooted, but the kick still slides them
         // a tree in the way eats the whole beam and goes up in flames — that's real cover
         const blk=pkBeamBlocker(e.x,e.y,e.aimAng,pkLaserRange());
         e.beamLen=blk.dist;
@@ -975,16 +1276,32 @@ function parkUpdate(dt){
       if(PK.hp<=0) return pkDeath();
     }
   }
+  pkPalsUpdate(dt,WW,WH);
+  pkPalDamage(dt,WW,WH);
+  // the bandana dog: stand near him to shop, and you have to actually walk away before he'll
+  // talk again — the world is frozen while the panel is up, so a bare radius test would reopen
+  // it the instant it closed. Never while another panel owns the taps.
+  {
+    const nx=PK.npc.x*WW, ny=PK.npc.y*WH;
+    const nd=Math.hypot(wd(nx-PK.x,WW),wd(ny-PK.y,WH));
+    if(nd>NPC_REARM_R) PK.friendsArm=true;
+    if(nd<NPC_TALK_R && PK.friendsArm && !PK.shop && !PK.convertOpen && !PK.friendsOpen){
+      PK.friendsOpen=true; PK.friendsArm=false;
+      beep(560,.06); setTimeout(()=>beep(720,.06),80);
+    }
+  }
   for(let i=PK.fr.length-1;i>=0;i--){
     const f=PK.fr[i];
     f.x=(f.x+f.vx*dt+WW)%WW; f.life-=dt;
     if(Math.hypot(wd(f.x-PK.x,WW),wd(f.y-PK.y,WH))<20){
       if(f.golden){ pkGain(20,f.x,f.y); pkFanfare(null,true,"★ GOLDEN BONE CAUGHT!"); }
       else {
-        PK.hp=Math.min(PK.maxhp,PK.hp+15);
+        // she doesn't patch you up, she puts you right back together
+        PK.hp=PK.maxhp;
         pkGain(9,f.x,f.y);
         S.mood=clamp(S.mood+2,0,100);
-        beep(760,.08);
+        toast("A FRIEND! FULLY HEALED ♥",1);
+        beep(660,.07); setTimeout(()=>beep(880,.07),80); setTimeout(()=>beep(1040,.1),160);
       }
       PK.fr.splice(i,1); continue;
     }
@@ -995,12 +1312,34 @@ function parkUpdate(dt){
     const n=PK.nuts[i];
     n.x=(n.x+n.vx*dt+WW)%WW; n.y=(n.y+n.vy*dt+WH)%WH; n.life-=dt;
     if(n.life<=0){ PK.nuts.splice(i,1); continue; }
+    if(n.pal){
+      // a friendly nut is drawn in a different colour and can never touch BONES
+      const sp=Math.hypot(n.vx,n.vy)||1;
+      let spent=false;
+      for(const e of PK.en){
+        if(e.fleeing) continue;
+        if(Math.hypot(wd(e.x-n.x,WW),wd(e.y-n.y,WH))<13){
+          pkPalHit(e,PAL_NUT_DMG,n.vx/sp,n.vy/sp);
+          spent=true; break;
+        }
+      }
+      if(spent) PK.nuts.splice(i,1);
+      continue;
+    }
     if(Math.hypot(wd(n.x-PK.x,WW),wd(n.y-PK.y,WH))<12 && PK.inv<=0 && !pkInvuln()){
       PK.hp-=10; PK.inv=0.6; beep(140,.15,"sawtooth");
       PK.nuts.splice(i,1);
       if(PK.hp<=0) return pkDeath();
       continue;
     }
+    let hitPal=false;
+    for(const p of PK.pals){
+      if(p.k==="bird") continue;
+      if(Math.hypot(wd(n.x-p.x,WW),wd(n.y-p.y,WH))<12){
+        p.hp-=6; beep(180,.08,"square",.03); hitPal=true; break;
+      }
+    }
+    if(hitPal){ PK.nuts.splice(i,1); continue; }
   }
   for(const a of PK.acts){
     a.cd=Math.max(0,a.cd-dt);
@@ -1300,6 +1639,104 @@ function drawEnemy(ctx,e,sx,sy){
   drawEnemyHP(ctx,e,sx,sy,eh);
   if(e.madsqExplode) drawMadsqExplosion(ctx,sx,sy,e.explodeT);
 }
+// friends are drawn from the same frame sets as their enemy counterparts, so a cool blue tint and
+// a pulsing ring under their feet are what stop them reading as one more thing trying to eat you.
+// drawEnemy is deliberately not reused: it branches on madsq/alpha/fleeing/spooked/stalkAggro/
+// atkState, every one of which is wrong for a pal.
+function drawPalHP(ctx,p,sx,sy,eh){
+  const bw=18, bh=3, bx=sx-bw/2, by=sy-eh-8;
+  ctx.fillStyle="rgba(0,0,0,.55)"; ctx.fillRect(bx-1,by-1,bw+2,bh+2);
+  ctx.strokeStyle="#6cf"; ctx.lineWidth=1; ctx.strokeRect(bx+0.5,by+0.5,bw-1,bh-1);
+  const frac=clamp(p.hp/p.hpMax,0,1);
+  ctx.fillStyle = frac<0.35 ? "#f22" : "#6cf";
+  ctx.fillRect(bx+1,by+1,(bw-2)*frac,bh-2);   // always on, unlike an enemy's — you need to nurse them
+}
+function drawPalLaserFX(ctx,p,sx,sy){
+  const eyeX=sx+(p.dir<0?-4:4), eyeY=sy-11;
+  if(p.laserState==="charge"){
+    const f=clamp(p.chargeT/(MADSQ_CHARGE*0.7),0,1);
+    ctx.save();
+    ctx.globalAlpha=0.25+0.45*f; ctx.fillStyle="#2ad";
+    ctx.beginPath(); ctx.arc(eyeX,eyeY,4+f*14,0,7); ctx.fill();
+    ctx.globalAlpha=1; ctx.fillStyle=f>0.7?"#fff":"#9ef";
+    ctx.beginPath(); ctx.arc(eyeX,eyeY,1.5+f*4,0,7); ctx.fill();
+    ctx.restore();
+  } else if(p.laserState==="sweep"){
+    const ang=p.aimAng, range=p.beamLen||0;
+    const ux=Math.cos(ang), uy=Math.sin(ang);
+    const ex=eyeX+ux*range, ey=eyeY+uy*range;
+    const pulse=0.85+0.15*Math.sin(performance.now()/25);
+    ctx.save(); ctx.lineCap="round";
+    ctx.globalAlpha=0.30; ctx.strokeStyle="#1e9aff"; ctx.lineWidth=MADSQ_WIDTH*2.4*pulse;
+    ctx.beginPath(); ctx.moveTo(eyeX,eyeY); ctx.lineTo(ex,ey); ctx.stroke();
+    ctx.globalAlpha=0.65; ctx.strokeStyle="#5cd8ff"; ctx.lineWidth=MADSQ_WIDTH*1.4*pulse;
+    ctx.beginPath(); ctx.moveTo(eyeX,eyeY); ctx.lineTo(ex,ey); ctx.stroke();
+    ctx.globalAlpha=1; ctx.strokeStyle="#eaffff"; ctx.lineWidth=MADSQ_WIDTH*0.6*pulse;
+    ctx.beginPath(); ctx.moveTo(eyeX,eyeY); ctx.lineTo(ex,ey); ctx.stroke();
+    ctx.restore();
+  }
+}
+function drawPal(ctx,p,sx,sy,t){
+  ctx.fillStyle="rgba(0,0,0,.25)";
+  ctx.beginPath(); ctx.ellipse(sx,sy+2,9,3,0,0,7); ctx.fill();
+  ctx.strokeStyle="#6cf"; ctx.globalAlpha=0.45+0.3*Math.sin(t*4); ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.ellipse(sx,sy+2,12,4.5,0,0,7); ctx.stroke(); ctx.globalAlpha=1;
+  if(p.k==="sq" && PK.palEyes) drawPalLaserFX(ctx,p,sx,sy);
+  const frames=ENEMYIMG[p.k];
+  const img=frames && frames[p.fi%frames.length];
+  const eh = p.k==="cat" ? 22 : 16;
+  if(!img || !img.complete || !img.naturalWidth){
+    ctx.fillStyle="#6cf"; ctx.beginPath(); ctx.arc(sx,sy-eh*0.5,eh*0.4,0,7); ctx.fill();
+  } else {
+    const ew=eh*img.naturalWidth/img.naturalHeight;
+    ctx.save(); ctx.imageSmoothingEnabled=false;
+    ctx.filter="saturate(0.5) hue-rotate(150deg) brightness(1.15)";
+    if(p.dir<0){ ctx.translate(sx*2,0); ctx.scale(-1,1); }
+    ctx.drawImage(img, sx-ew/2, sy-eh, ew, eh);
+    ctx.restore();
+  }
+  drawPalHP(ctx,p,sx,sy,eh);
+}
+// while the flock is up at altitude only its shadow shows on the grass; the bird itself is drawn
+// once it has committed to a dive
+function drawPalBird(ctx,bd,sx,sy,t){
+  const up=clamp(bd.alt/PAL_BIRD_ALT,0,1);
+  ctx.fillStyle="rgba(0,0,0,"+(0.34-0.12*up).toFixed(3)+")";
+  ctx.beginPath(); ctx.ellipse(sx,sy+2,7+3*up,2.5+1.2*up,0,0,7); ctx.fill();
+  if(up>0.97) return;
+  const frames=ENEMYIMG.bird;
+  const img=frames && frames[bd.fi%frames.length];
+  const by=sy-bd.alt;
+  if(!img || !img.complete || !img.naturalWidth){
+    ctx.fillStyle="#6cf"; ctx.beginPath(); ctx.arc(sx,by-8,6,0,7); ctx.fill(); return;
+  }
+  const eh=18, ew=eh*img.naturalWidth/img.naturalHeight;
+  ctx.save(); ctx.imageSmoothingEnabled=false;
+  ctx.filter="saturate(0.5) hue-rotate(150deg) brightness(1.15)";
+  if(bd.vx<0){ ctx.translate(sx*2,0); ctx.scale(-1,1); }
+  ctx.drawImage(img, sx-ew/2, by-eh, ew, eh);
+  ctx.restore();
+}
+function drawBandanaDog(ctx,sx,sy,t){
+  ctx.fillStyle="rgba(0,0,0,.25)";
+  ctx.beginPath(); ctx.ellipse(sx,sy+12,13,4.5,0,0,7); ctx.fill();
+  const glow=0.5+0.5*Math.sin(t*3);
+  ctx.save(); ctx.globalAlpha=0.35*glow; ctx.fillStyle="#f22";
+  ctx.beginPath(); ctx.ellipse(sx,sy,22,16,0,0,7); ctx.fill(); ctx.restore();
+  const img=FRIENDIMG[0];   // he does not move a muscle, so he does not animate
+  if(img && img.complete && img.naturalWidth){
+    const fh=28, fw=fh*img.naturalWidth/img.naturalHeight;
+    ctx.save(); ctx.imageSmoothingEnabled=false;
+    ctx.drawImage(img, sx-fw/2, sy-fh/2, fw, fh);
+    ctx.restore();
+  }
+  ctx.fillStyle="#f22"; ctx.fillRect(sx-6,sy-1,12,4);   // the bandana
+  ctx.fillStyle="#900"; ctx.fillRect(sx-6,sy+2,12,1);
+  ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="center";
+  ctx.fillStyle="#fff"; ctx.globalAlpha=0.55+0.45*glow;
+  ctx.fillText("FRIENDS", sx, sy-20);
+  ctx.globalAlpha=1; ctx.textAlign="left";
+}
 function parkDraw(t){
   if(!PK.active) return;
   const [ctx,w,h]=fit($("#dogcv"));
@@ -1389,19 +1826,48 @@ function parkDraw(t){
     if(nx2<-24||nx2>w+24||ny2<-24||ny2>h+24) continue;
     const ang=Math.atan2(n.vy,n.vx);
     // faint motion trail so a thrown nut reads clearly against the grass
-    ctx.strokeStyle="rgba(255,220,150,.35)"; ctx.lineWidth=2;
+    ctx.strokeStyle = n.pal ? "rgba(150,230,255,.45)" : "rgba(255,220,150,.35)"; ctx.lineWidth=2;
     ctx.beginPath(); ctx.moveTo(nx2,ny2); ctx.lineTo(nx2-Math.cos(ang)*14, ny2-Math.sin(ang)*14); ctx.stroke();
     ctx.fillStyle="rgba(0,0,0,.3)"; ctx.beginPath(); ctx.ellipse(nx2,ny2+5,4,2,0,0,7); ctx.fill();
     ctx.save(); ctx.translate(nx2,ny2); ctx.rotate(ang+performance.now()/90);
     ctx.strokeStyle="#2a1808"; ctx.lineWidth=1.5;
-    ctx.fillStyle="#d99a4a"; ctx.beginPath(); ctx.ellipse(0,0,6,5.5,0,0,7); ctx.fill(); ctx.stroke();
-    ctx.fillStyle="#7a4a1f"; ctx.beginPath(); ctx.ellipse(-2.5,-2.5,3.6,3.2,0,0,7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = n.pal ? "#7fd8f0" : "#d99a4a"; ctx.beginPath(); ctx.ellipse(0,0,6,5.5,0,0,7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = n.pal ? "#2b7f9c" : "#7a4a1f"; ctx.beginPath(); ctx.ellipse(-2.5,-2.5,3.6,3.2,0,0,7); ctx.fill(); ctx.stroke();
     ctx.restore();
   }
   for(const e of PK.en){
     const [ex2,ey2]=SC(e.x,e.y);
     if(ex2<-40||ex2>w+40||ey2<-40||ey2>h+40) continue;
     drawEnemy(ctx,e,ex2,ey2);
+  }
+  {
+    const [nx2,ny2]=SC(PK.npc.x*WW, PK.npc.y*WH);
+    if(nx2>-40&&nx2<w+40&&ny2>-50&&ny2<h+40) drawBandanaDog(ctx,nx2,ny2,t);
+    else {
+      const ang=Math.atan2(ny2-DY,nx2-DX), pul=0.5+0.5*Math.sin(t*4);
+      const ax=DX+Math.cos(ang)*(Math.min(w,h)/2-56), ay=DY+Math.sin(ang)*(Math.min(w,h)/2-56);
+      ctx.save(); ctx.translate(ax,ay); ctx.rotate(ang);
+      ctx.fillStyle="#f6a"; ctx.globalAlpha=pul;
+      ctx.beginPath(); ctx.moveTo(10,0); ctx.lineTo(-7,-7); ctx.lineTo(-7,7); ctx.closePath(); ctx.fill();
+      ctx.restore();
+      ctx.fillStyle="#f6a"; ctx.globalAlpha=pul;
+      ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="center";
+      ctx.fillText("FRIENDS", ax-Math.cos(ang)*22, ay-Math.sin(ang)*22+3);
+      ctx.textAlign="left"; ctx.globalAlpha=1;
+    }
+  }
+  for(const p of PK.pals){
+    if(p.k==="bird"){
+      for(const bd of p.birds){
+        const [bx2,by2]=SC(bd.x,bd.y);
+        if(bx2<-40||bx2>w+40||by2<-90||by2>h+40) continue;
+        drawPalBird(ctx,bd,bx2,by2,t);
+      }
+      continue;
+    }
+    const [px2,py2]=SC(p.x,p.y);
+    if(px2<-40||px2>w+40||py2<-40||py2>h+40) continue;
+    drawPal(ctx,p,px2,py2,t);
   }
   for(const tr of PK.trees){
     const [tx2,ty2]=SC(tr.x,tr.y);
@@ -1528,11 +1994,16 @@ function parkDraw(t){
   }
   pkPadDraw(t);
 }
+// the one place a panel's row geometry lives. The shop and the exchange still mirror their own
+// numbers between draw and tap; new panels use these instead of adding another pair to keep in sync.
+const PANEL_ROW0=0.30, PANEL_STEP=0.115, PANEL_CARDH=0.085;
+function pkRowYF(i){ return PANEL_ROW0+i*PANEL_STEP; }
+function pkRowHit(yF,i){ return Math.abs(yF-pkRowYF(i))<PANEL_CARDH/2; }
 function pkPadDraw(t){
   const [ctx,w,h]=fit($("#parkcv"));
   ctx.fillStyle="#000"; ctx.fillRect(0,0,w,h);
   ctx.strokeStyle="#fff"; ctx.lineWidth=3; ctx.strokeRect(6,6,w-12,h-12);
-  if(!PK.shop && !PK.joy){
+  if(!PK.shop && !PK.joy && !PK.friendsOpen && !PK.convertOpen){
     ctx.fillStyle="#444"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
     ctx.fillText(DN("DRAG ANYWHERE TO MOVE BONES"), w/2, h/2);
   }
@@ -1594,6 +2065,41 @@ function pkPadDraw(t){
       ctx.textAlign="left";
     });
     const doneY=cRow0+3*cRowStep, doneH=h*0.05;
+    ctx.strokeStyle="#666"; ctx.lineWidth=2;
+    ctx.strokeRect(w*0.30,doneY-doneH*0.5,w*0.40,doneH);
+    ctx.fillStyle="#888"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText("DONE", w/2, doneY+doneH*0.15);
+    ctx.textAlign="left";
+  }
+  if(PK.friendsOpen){
+    ctx.strokeStyle="#f6a"; ctx.lineWidth=3; ctx.strokeRect(w*0.06,h*0.07,w*0.88,h*0.80);
+    ctx.fillStyle="#f6a"; ctx.font="10px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText("FRIENDS", w/2, h*0.135);
+    ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle="#999";
+    ctx.fillText("THEY STAY FOR THIS RUN ONLY", w/2, h*0.185);
+    const wbW=w*0.5, wbX=w/2-wbW/2, wbY=h*0.21, wbH=h*0.06;
+    ctx.strokeStyle="#e8c14a"; ctx.lineWidth=2; ctx.strokeRect(wbX,wbY,wbW,wbH);
+    drawBone(ctx, w/2-30, wbY+wbH*0.6, 1, "#e8c14a");
+    ctx.fillStyle="#e8c14a"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
+    ctx.fillText(PK.bones+" BONES", w/2-18, wbY+wbH*0.65);
+    PAL_SHOP.forEach((o,i)=>{
+      const y=h*pkRowYF(i), cardH=h*PANEL_CARDH, top=y-cardH*0.5;
+      const buyable=pkPalBuyable(o), afford=PK.bones>=o.c;
+      const ok=buyable&&afford;
+      ctx.strokeStyle = !buyable ? "#334" : (afford?"#f6a":"#663333"); ctx.lineWidth=2;
+      ctx.strokeRect(w*0.10, top, w*0.80, cardH);
+      ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
+      ctx.fillStyle = !buyable ? "#556" : (afford?"#fff":"#a55");
+      ctx.fillText(o.n, w*0.145, y-1);
+      ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle = buyable?"#999":"#445";
+      const sub = !buyable ? (o.k==="eyes" ? (PK.palEyes?"ALREADY UPGRADED":"NEEDS A SQUIRREL PAL") : "ALREADY WITH YOU") : o.fx;
+      ctx.fillText(sub, w*0.145, y+11);
+      ctx.textAlign="right"; ctx.font="7px 'Press Start 2P',monospace";
+      ctx.fillStyle = !buyable ? "#445" : (ok?"#fff":"#f22");
+      ctx.fillText(o.c+"\u25C6", w*0.855, y+2);
+      ctx.textAlign="left";
+    });
+    const doneY=h*pkRowYF(PAL_SHOP.length), doneH=h*0.055;
     ctx.strokeStyle="#666"; ctx.lineWidth=2;
     ctx.strokeRect(w*0.30,doneY-doneH*0.5,w*0.40,doneH);
     ctx.fillStyle="#888"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
@@ -1715,6 +2221,25 @@ function pkPadDraw(t){
         }
       }
       if(Math.abs(yF-(cRow0+3*cRowStep))<0.04){ PK.convertOpen=false; beep(400,.05); }
+      return;
+    }
+    if(PK.friendsOpen){
+      const yF=(e.clientY-r.top)/r.height;
+      for(let i=0;i<PAL_SHOP.length;i++){
+        if(pkRowHit(yF,i)){
+          const o=PAL_SHOP[i];
+          if(!pkPalBuyable(o) || PK.bones<o.c) beep(150,.1);
+          else {
+            PK.bones-=o.c; pkBuyPal(o.k);
+            // toast, not pkFanfare: the panel stays open, and a fanfare's life only ticks down in
+            // the paused parkUpdate, so it would hang there frozen
+            toast(o.n+" JOINS YOU",1);
+            beep(700,.06); setTimeout(()=>beep(900,.06),80);
+          }
+          return;
+        }
+      }
+      if(Math.abs(yF-pkRowYF(PAL_SHOP.length))<0.045){ PK.friendsOpen=false; beep(400,.05); }
       return;
     }
     const px=e.clientX-r.left, py=e.clientY-r.top;
