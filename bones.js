@@ -523,7 +523,7 @@ function blockAtWork(){
   beep(90,.18,"sawtooth");
   openChoice(
     "YOU ARE AT WORK",
-    "CANNOT DO THAT FROM HERE.<br><br>MAYBE A ROBOT COULD DO THIS FOR YOU SOMEDAY...<br><br><span style='color:#888'>HINT: CHECK THE SHOP — $350</span>",
+    "CANNOT DO THAT FROM HERE.<br><br>MAYBE A ROBOT COULD DO THIS FOR YOU SOMEDAY...",
     "OK", null
   );
 }
