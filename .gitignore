@@ -1,2 +1,5 @@
 combined.js
 dist/
+node_modules/
+package.json
+package-lock.json
