@@ -7,12 +7,26 @@ const PK={active:false, godMode:false}; // godMode is a dev-only toggle and deli
 function wd(d,M){ return ((d + M/2) % M + M) % M - M/2; }  // shortest signed delta on the looping world
 function pkInvuln(){ return PK.godMode || PK.starT>0; }   // star power grants temporary invincibility
 const XP_PER_KILL=0.4, XP_PER_SIDE=2;
+// a long run with a full crew can rack up well over a thousand downed enemies once companions and
+// burning trees start feeding the count, which was banking enough XP to jump several levels at
+// once. The cap keeps a great run worth roughly a level or two rather than a whole afternoon.
+const XP_RUN_CAP=120;
+// every XP faucet a park visit has -- the run itself, side missions, the bones exchange and the
+// garden bury -- draws from this one budget. A cap only on the run total would have meant nothing:
+// burying leftover bones pays 1 XP each, and a good run comes home with over a thousand of them.
+function pkXPLeft(){ return Math.max(0, XP_RUN_CAP-(PK.xpFromRun||0)); }
+function pkAwardXP(n){
+  const give=Math.min(Math.max(0,Math.round(n)), pkXPLeft());
+  PK.xpFromRun=(PK.xpFromRun||0)+give;
+  if(give>0) addXP(give);
+  return give;
+}
 // rare enemy-drop powerups — 1% chance each, independent of the guaranteed bone drop
 const STAR_DROP_CHANCE=0.01, MAGNET_DROP_CHANCE=0.01, STAR_DURATION=15, MAGNET_HOMING_SPEED=280;
 // a steady drip rather than a lump sum: it rewards staying alive with it, not hoarding it
 const REGEN_DROP_CHANCE=0.02, REGEN_DURATION=25, REGEN_RATE=1;
 const HURT_TIME=0.42;   // how long the red buzz rides on BONES and his health bar after a hit
-function pkRunXP(){ return Math.max(0, Math.round(PK.kills*XP_PER_KILL + PK.sideDone*XP_PER_SIDE)); }
+function pkRunXP(){ return clamp(Math.round(PK.kills*XP_PER_KILL + PK.sideDone*XP_PER_SIDE), 0, XP_RUN_CAP); }
 // Dogpark-only relic pool — same lore/names as the Home Shop charms, but tuned to the verbs
 // that actually exist in a Dogpark run (bark, speed, knockback, hp) rather than the runner's
 // jump/score stats. Bought with bones from the between-wave shop; one active at a time, and
@@ -21,7 +35,6 @@ const PK_CHARMS=[
   {id:"spike", name:"SPIKED COLLAR", cost:18, fx:"+20% SPEED", apply:()=>{PK.spd*=1.2;}},
   {id:"band",  name:"RED BANDANA",   cost:14, fx:"+25% BARK RADIUS", apply:()=>{PK.barkR*=1.25;}},
   {id:"bell",  name:"BRASS BELL",    cost:16, fx:"-25% BARK COOLDOWN", apply:()=>{PK.barkMax=Math.max(0.6,PK.barkMax*0.75);}},
-  {id:"bonec", name:"BONE CHARM",    cost:20, fx:"+30% BONES FROM DROPS", apply:()=>{PK.bonesMult=(PK.bonesMult||1)*1.3;}},
   {id:"tag",   name:"STEEL TAG",     cost:22, fx:"+30 MAX HP, HEAL 30", apply:()=>{PK.maxhp+=30; PK.hp=Math.min(PK.maxhp,PK.hp+30);}},
   {id:"rope",  name:"LUCKY ROPE",    cost:18, fx:"+40% KNOCKBACK", apply:()=>{PK.knock*=1.4;}},
   {id:"shadow",name:"SHADOW LEASH",  cost:24, fx:"+30% SPEED, RISKIER", apply:()=>{PK.spd*=1.3;}}
@@ -75,7 +88,7 @@ function drawLock(ctx,x,y,s,color){
 // useful back in the main hub — deliberately a worse rate than just letting kills bank XP
 // normally, so it's a way to not waste leftover bones rather than a primary strategy
 const BONES_EXCHANGE=[
-  {label:"XP",    sub:"10 BONES → 2 XP",    cost:10, f:()=>addXP(2)},
+  {label:"XP",    sub:"10 BONES → 2 XP",    cost:10, f:()=>pkAwardXP(2)},
   {label:"MONEY", sub:"10 BONES → $5",      cost:10, f:()=>{S.money+=5;}},
   {label:"TREAT", sub:"15 BONES → 1 BONE TREAT", cost:15, f:()=>{S.snacks+=1;}}
 ];
@@ -151,11 +164,19 @@ function pkReveal(biscuits, xpFinal, mode){
 }
 function pkOfferGardenBury(biscuits){
   $("#result").classList.remove("show");
+  const pay=Math.min(biscuits, pkXPLeft());   // the bury draws from the same budget as everything else
+  if(pay<=0){
+    // offering a choice worth nothing is worse than not offering it
+    toast("HE'S LEARNED ALL HE CAN TODAY — THE BONES KEEP.",1);
+    showScreen("home"); renderMeters(); renderShop();
+    return;
+  }
+  const note = pay<biscuits ? "<br><br>HE'S NEARLY FULL — ONLY +"+pay+" XP LEFT IN HIM TODAY." : "";
   openChoice("BONES LEFT OVER",
-    "YOU HAVE "+biscuits+" BONES LEFT OVER.<br><br>BURY THEM IN THE GARDEN FOR XP?",
-    "BURY THEM — +"+biscuits+" XP", ()=>{
-      addXP(biscuits); beep(700,.08); setTimeout(()=>beep(950,.09),100);
-      toast("+"+biscuits+" XP FROM THE GARDEN.");
+    "YOU HAVE "+biscuits+" BONES LEFT OVER.<br><br>BURY THEM IN THE GARDEN FOR XP?"+note,
+    "BURY THEM — +"+pay+" XP", ()=>{
+      const got=pkAwardXP(biscuits); beep(700,.08); setTimeout(()=>beep(950,.09),100);
+      toast("+"+got+" XP FROM THE GARDEN.");
       showScreen("home"); renderMeters(); renderShop();
     },
     "LEAVE THEM", ()=>{ showScreen("home"); renderMeters(); renderShop(); });
@@ -231,7 +252,7 @@ function startPark(plus){
     spd:95*(0.75+0.5*S.energy/100)*(S.senior?0.85:1),
     barkMax:Math.max(1.2,3-0.06*S.lvl), barkCd:1, pulse:0,
     barkR:30*(0.8+0.4*S.hunger/100), knock:150,
-    bones:0, bonesMult:1, kills:0, sideDone:0, relic:null, waveBanner:null, shopFlash:null,
+    bones:0, kills:0, xpFromRun:0, sideDone:0, relic:null, waveBanner:null, shopFlash:null,
     worldMult:2, barkBigLvl:0, barkFastLvl:0, speedBonus:null,
     chain:0, chainT:0, inv:0, fx:[],
     x:0,y:0,vx:0,vy:0, joy:null,
@@ -257,7 +278,7 @@ function startPark(plus){
 function pkGain(n,x,y){
   PK.chain = PK.chainT>0 ? Math.min(3,PK.chain+1) : 1;   // capped lower — chain bonus was inflating bones well past shop costs
   PK.chainT=3;
-  const g=Math.round((n+(PK.chain-1))*(PK.bonesMult||1));
+  const g=Math.round(n+(PK.chain-1));
   PK.bones+=g;
   PK.fx.push({x,y,txt:"+"+g,life:0.9});
 }
@@ -589,7 +610,7 @@ function pkBark(){
       // every enemy type barked at counts toward the "bark at everybody" side mission
       PK.barkedTypes[e.t]=true;
       if(!PK.missionBarkAll && PK.barkedTypes.sq && PK.barkedTypes.bird && PK.barkedTypes.cat){
-        PK.missionBarkAll=true; addXP(20);
+        PK.missionBarkAll=true; pkAwardXP(20);
         pkFanfare(null,false,"✓ BARKED AT EVERYONE — +20 XP");
       }
       if(e.hp<=0){
@@ -963,7 +984,7 @@ function parkUpdate(dt){
   if(PK.waveSpawned>=PK.waveQuota && !PK.en.some(e=>!e.fleeing && !e.stalk && !e.stalkAggro && !e.swoop)){
     // survive the very first wave and it's a straight-up XP bonus
     if(PK.wave===1 && !PK.missionSurviveW1){
-      PK.missionSurviveW1=true; addXP(10);
+      PK.missionSurviveW1=true; pkAwardXP(10);
       pkFanfare(null,false,"\u2713 SURVIVED WAVE 1 \u2014 +10 XP");
     }
     // clear the wave within 60s and a charm slot unlocks in the shop; otherwise it shows
@@ -1443,8 +1464,7 @@ function pkDeath(){
   PK.active=false;
   const lost=Math.round(PK.bones*0.9), kept=PK.bones-lost;
   if(lost>0) PARKGHOST={x:PK.x,y:PK.y,bones:lost + (PARKGHOST?PARKGHOST.bones:0)};
-  const earned=Math.round(pkRunXP()*0.5);   // dying costs you half of what the run actually earned
-  if(earned>0) addXP(earned);
+  const earned=pkAwardXP(Math.round(pkRunXP()*0.5));   // dying costs you half of what the run actually earned
   pkExitCosts(); S.fun=clamp(S.fun+10,0,100);
   $("#resTitle").textContent="OVERRUN AT THE PARK"; $("#resTitle").style.color="#f22";
   $("#resPortrait").src=PORTRAITS.sad; $("#resPortraitWrap").classList.add("show");
@@ -1457,15 +1477,16 @@ function pkDeath(){
 function pkBank(){
   PK.active=false;
   const g=PK.bones;
-  const earned=pkRunXP();
-  if(earned>0) addXP(earned);
+  const earned=pkAwardXP(pkRunXP());
   LVLFX = earned>0 ? 1.2 : 0;
   pkExitCosts(); S.fun=clamp(S.fun+20,0,100); S.mood=clamp(S.mood+8,0,100);
   $("#resTitle").textContent="XP BANKED"; $("#resTitle").style.color="#fff";
   $("#resPortrait").src = PORTRAITS.content;   // pkReveal takes it from here, building to HAPPY as the pile grows
   $("#resPortraitWrap").classList.add("show");
   $("#resScore").textContent=g+" BONES";
-  $("#resLines").innerHTML="WAVE "+PK.wave+" REACHED.<br>"+PK.kills+" DOWNED, "+PK.sideDone+" SIDE OBJECTIVES.<br>A GOOD DAY AT THE PARK.";
+  const rawXP=Math.round(PK.kills*XP_PER_KILL + PK.sideDone*XP_PER_SIDE);
+  const capNote = rawXP>earned ? "<br>XP CAPPED AT "+XP_RUN_CAP+" A RUN." : "";
+  $("#resLines").innerHTML="WAVE "+PK.wave+" REACHED.<br>"+PK.kills+" DOWNED, "+PK.sideDone+" SIDE OBJECTIVES."+capNote+"<br>A GOOD DAY AT THE PARK.";
   $("#result").classList.add("show");
   beep(660,.1); setTimeout(()=>beep(880,.1),100); setTimeout(()=>beep(1170,.14),200);
   setTimeout(()=>pkReveal(g,earned,"bank"),500);
@@ -2140,14 +2161,15 @@ function pkPadDraw(t){
     const cRowStep=h*0.10, cCardH=h*0.075, cRow0=h*0.33;
     BONES_EXCHANGE.forEach((o,i)=>{
       const y=cRow0+i*cRowStep, top=y-cCardH*0.5;
-      const afford=PK.bones>=o.cost;
-      ctx.strokeStyle = afford?"#fff":"#663333"; ctx.lineWidth=2;
+      const spent = o.label==="XP" && pkXPLeft()<=0;
+      const afford=PK.bones>=o.cost && !spent;
+      ctx.strokeStyle = spent?"#334":(afford?"#fff":"#663333"); ctx.lineWidth=2;
       ctx.strokeRect(w*0.10, top, w*0.80, cCardH);
       ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
-      ctx.fillStyle = afford?"#fff":"#a55";
+      ctx.fillStyle = spent?"#556":(afford?"#fff":"#a55");
       ctx.fillText(o.label, w*0.145, y-1);
-      ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle="#999";
-      ctx.fillText(o.sub, w*0.145, y+11);
+      ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle = spent?"#445":"#999";
+      ctx.fillText(spent?"XP CAP REACHED THIS RUN":o.sub, w*0.145, y+11);
       ctx.textAlign="right"; ctx.font="7px 'Press Start 2P',monospace";
       ctx.fillStyle = afford?"#fff":"#f22";
       ctx.fillText(o.cost+"◆", w*0.855, y+2);
@@ -2304,7 +2326,8 @@ function pkPadDraw(t){
       for(let i=0;i<3;i++){
         if(Math.abs(yF-(cRow0+i*cRowStep))<tolF){
           const o=BONES_EXCHANGE[i];
-          if(PK.bones>=o.cost){ PK.bones-=o.cost; o.f(); beep(700,.06); toast(o.sub+" — DONE"); }
+          if(o.label==="XP" && pkXPLeft()<=0){ beep(150,.1); toast("XP CAP REACHED FOR THIS RUN",1); }
+          else if(PK.bones>=o.cost){ PK.bones-=o.cost; o.f(); beep(700,.06); toast(o.sub+" — DONE"); }
           else beep(150,.1);
           return;
         }
