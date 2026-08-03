@@ -183,6 +183,7 @@ function pkOfferGardenBury(biscuits){
 }
 let PARKGHOST=null;
 const FRIENDIMG = FRIENDFRAMES.map(u=>{ const i=new Image(); i.src=u; return i; });
+const SHOPDOGIMG = SHOPDOGFRAMES.map(u=>{ const i=new Image(); i.src=u; return i; });
 const TILEIMG={}, PROPIMG={};
 for(const k in PARKTILES){ TILEIMG[k]=new Image(); TILEIMG[k].src=PARKTILES[k]; }
 for(const k in PARKPROPS){ PROPIMG[k]=new Image(); PROPIMG[k].src=PARKPROPS[k]; }
@@ -1839,15 +1840,13 @@ function drawBandanaDog(ctx,sx,sy,t){
   const glow=0.5+0.5*Math.sin(t*3);
   ctx.save(); ctx.globalAlpha=0.35*glow; ctx.fillStyle="#f22";
   ctx.beginPath(); ctx.ellipse(sx,sy,22,16,0,0,7); ctx.fill(); ctx.restore();
-  const img=FRIENDIMG[0];   // he does not move a muscle, so he does not animate
+  const img=SHOPDOGIMG[0];   // he does not move a muscle, so he does not animate
   if(img && img.complete && img.naturalWidth){
     const fh=28, fw=fh*img.naturalWidth/img.naturalHeight;
     ctx.save(); ctx.imageSmoothingEnabled=false;
     ctx.drawImage(img, sx-fw/2, sy-fh/2, fw, fh);
     ctx.restore();
   }
-  ctx.fillStyle="#f22"; ctx.fillRect(sx-6,sy-1,12,4);   // the bandana
-  ctx.fillStyle="#900"; ctx.fillRect(sx-6,sy+2,12,1);
   ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="center";
   ctx.fillStyle="#fff"; ctx.globalAlpha=0.55+0.45*glow;
   ctx.fillText("FRIENDS", sx, sy-20);
