@@ -894,7 +894,16 @@ function lcdSet(arr){
 for(const k in DOGIMG) lcdSet(DOGIMG[k]);
 lcdSet(BEGIMG); lcdSet(SENIORIMG); lcdSet(ROBOTIMG);   // the bot lives on the same LCD as BONES
 const HEARTIMG = HEARTS.map(u=>{ const i=new Image(); i.src=u; return i; });
-const CAM = { x:0.32, dir:1, state:"idle", t:0, fi:0, ft:0, until:1.5, woof:0, bedTarget:false, cameCalled:false, fetchPhase:0, workBlockT:0 };
+// He has to hold a facing for a beat before he is allowed to turn again, or targets that sit
+// near his centre line make him strobe. Any turn that goes through here is rate-limited.
+const CAM_FLIP_MIN=0.45;
+function camFace(want, dt){
+  CAM.dirT=(CAM.dirT||0)+(dt||0);
+  if(want===CAM.dir){ return; }
+  if((CAM.dirT||0) < CAM_FLIP_MIN) return;
+  CAM.dir=want; CAM.dirT=0;
+}
+const CAM = { x:0.32, dir:1, dirT:9, state:"idle", t:0, fi:0, ft:0, until:1.5, woof:0, bedTarget:false, cameCalled:false, fetchPhase:0, workBlockT:0 };
 const BED = { x:0.56 };
 const BOWL = { level:0 };
 const FBOWL = { level:0 };
@@ -1215,6 +1224,7 @@ function camBehavior(dt){
   if(OUTING.active) return;
   const moodMul=(0.55+0.9*S.mood/100)*(S.senior?0.7:1);
   CAM.t+=dt; CAM.ft+=dt; CAM.woof=Math.max(0,CAM.woof-dt);
+  CAM.dirT=(CAM.dirT||0)+dt;
   const fd = CAM.state==="rest"?0.5 : (CAM.state==="come"||CAM.state==="chase"||CAM.state==="fetch")?0.11 : (CAM.state==="walk"||CAM.state==="drinkgo"||CAM.state==="eatgo"||CAM.state==="beggo")?0.16/Math.max(0.6,moodMul) : CAM.state==="shake"?0.12 : CAM.state==="catch"?0.30 : CAM.state==="bark"?0.20 : 0.24;
   if(CAM.ft>=fd){ CAM.ft=0; CAM.fi++; }
   // hearts when fully satisfied
@@ -1367,8 +1377,11 @@ function camBehavior(dt){
   const ballLive = S.ballOwned && (BALL.held || Math.abs(BALL.vx)>0.05 || Math.abs(BALL.vy)>0.05);
   if(!BALL.off && !BALL.carried && !BALL.held && ballLive && BALL.cool<=0 && CAM.state!=="rest" && CAM.state!=="come" && CAM.state!=="zoomies" && CAM.state!=="stay" && !BALL.pcarried && !CAM.bedTarget){
     const aim = clamp(BALL.x + BALL.vx*0.25, 0.02, 0.95); // reads the throw, not the ball
+    // compare against his CENTRE, never the dir-dependent mouth: deriving the mouth from the
+    // facing and the facing from the mouth is what made him strobe under a held ball
+    const ctr = CAM.x + CAMDWF*0.5;
+    if(Math.abs(aim-ctr) > CAMDWF*0.34) camFace(aim>ctr?1:-1, dt);
     const mouth = CAM.x + (CAM.dir>0? CAMDWF*0.80 : CAMDWF*0.20);
-    CAM.dir = aim>mouth?1:-1;
     const near = Math.abs(aim-mouth)<0.10;
     CAM.state = (near && BALL.y<0.60) ? "catch" : "chase"; // rears only when it is above him
     tickTodo("d_ball");

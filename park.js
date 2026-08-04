@@ -292,10 +292,10 @@ function startPark(plus){
     barkMax:Math.max(1.2,3-0.06*S.lvl), barkCd:1, pulse:0,
     barkR:21*(0.8+0.4*S.hunger/100), knock:150,
     bones:0, kills:0, xpFromRun:0, sideDone:0, relic:null, waveBanner:null, shopFlash:null,
-    worldMult:2, barkBigLvl:0, barkFastLvl:0, agiLvl:0, speedBonus:null, shopSel:null,
+    worldMult:2.5, woods:2, barkBigLvl:0, barkFastLvl:0, agiLvl:0, speedBonus:null, shopSel:null,
     chain:0, chainT:0, inv:0, fx:[],
     x:0,y:0,vx:0,vy:0, joy:null,
-    en:[], fr:[], gate:{}, started:false, shop:null, biscuits:[], drops:[], pendingBury:0, nuts:[],
+    en:[], fr:[], gate:{}, gateArm:true, gateAsk:false, started:false, shop:null, biscuits:[], drops:[], pendingBury:0, nuts:[],
     powerups:[], zoomT:0, over:0, regenT:0, regenAcc:0, hurtT:0, hpSeen:0, zoom:1, sniffLvl:0,
     trees:[], scorch:[], embers:[],
     plusMode:!!plus, mixTypes:null, mixLabel:null, swoopT:0,
@@ -413,6 +413,41 @@ function pkBuildTrees(){
     while(tries<24 && Math.hypot(wd(x-npc.x*PK.WW,PK.WW),wd(y-npc.y*PK.WH,PK.WH))<72);
     PK.trees.push({ x, y, state:"ok", fireT:0, spawned:0, spawnT:0, sway:Math.random()*6.283 });
   }
+  pkBuildWoods(PK.woods||2);
+}
+// A wood is a dense block of trunks with lanes cut through it, so there is no straight line
+// from one side to the other. The trees are the same objects as the scattered ones — same
+// shape, same burning, same collision, same beam-blocking — they are just packed tighter.
+const WOOD_SPACING=30, WOOD_JITTER=8, WOOD_LANES=2, WOOD_LANE_W=38;
+function pkAddWood(cx,cy,halfW,halfH){
+  // lanes run across the wood at fixed offsets; a trunk that lands in one is simply not planted
+  const lanes=[];
+  for(let i=0;i<WOOD_LANES;i++) lanes.push((i+0.5+ (Math.random()-0.5)*0.4)/WOOD_LANES*(halfH*2)-halfH);
+  const npc=PK.npc||{x:.78,y:.18};
+  let planted=0;
+  for(let gy=-halfH; gy<=halfH; gy+=WOOD_SPACING){
+    for(let gx=-halfW; gx<=halfW; gx+=WOOD_SPACING){
+      if(lanes.some(L=>Math.abs(gy-L)<WOOD_LANE_W*0.5)) continue;      // keep the lane clear
+      // ragged edge rather than a rectangle of trees
+      const edge=Math.max(Math.abs(gx)/halfW, Math.abs(gy)/halfH);
+      if(edge>0.86 && Math.random()<0.55) continue;
+      const x=(cx+gx+(Math.random()-0.5)*WOOD_JITTER+PK.WW)%PK.WW;
+      const y=(cy+gy+(Math.random()-0.5)*WOOD_JITTER+PK.WH)%PK.WH;
+      if(Math.hypot(wd(x-npc.x*PK.WW,PK.WW),wd(y-npc.y*PK.WH,PK.WH))<80) continue;
+      if(PK.gate && PK.gate.x!=null &&
+         Math.hypot(wd(x-PK.gate.x,PK.WW),wd(y-PK.gate.y,PK.WH))<70) continue;   // never wall the exit in
+      PK.trees.push({ x, y, state:"ok", fireT:0, spawned:0, spawnT:0, sway:Math.random()*6.283, wood:true });
+      planted++;
+    }
+  }
+  return planted;
+}
+// woods always sit straight up or straight down from where BONES starts, so you always know
+// which way to run to find one — and never spawn on top of him
+function pkBuildWoods(n){
+  const cx=PK.WW*0.5, halfW=Math.min(PK.WW*0.32, 210), halfH=Math.min(PK.WH*0.17, 115);
+  const slots=[0.20,0.80,0.06,0.94];
+  for(let i=0;i<n && i<slots.length;i++) pkAddWood(cx, PK.WH*slots[i], halfW, halfH);
 }
 function pkIgniteTree(tr){
   if(!tr || tr.state!=="ok") return;
@@ -493,6 +528,29 @@ function pkMadsqCap(){ return PK.worldMult>2 ? 4 : 2; }   // doubles once the pa
 const PICKUP_BASE=16, SNIFF_BASE=34, SNIFF_STEP=26, SNIFF_PULL=190, SNIFF_LVL_CAP=3;
 // trees: cover from beams, solid to walk through, flammable, and full of squirrels
 const TREE_COLL_RX=26, TREE_COLL_RY=15;
+// Enemies do not path-find so much as flow: each nearby trunk pushes them off it and nudges
+// them around one side, which is enough to make a packed wood produce lots of different
+// routes to the same dog without any search running every frame.
+const TREE_AVOID_R=44;
+function pkSteer(e,x,y,dx,dy){
+  let ax=dx, ay=dy, near=0;
+  for(const tr of PK.trees){
+    if(tr.state==="ash") continue;
+    const tdx=wd(x-tr.x,PK.WW), tdy=wd(y-tr.y,PK.WH);
+    const d=Math.hypot(tdx,tdy);
+    if(d>TREE_AVOID_R || d<0.01) continue;
+    if(tdx*dx+tdy*dy > 0) continue;              // already past it — don't get dragged back
+    near++;
+    const f=(1-d/TREE_AVOID_R);
+    ax += tdx/d*f*2.2; ay += tdy/d*f*2.2;        // straight off the trunk
+    // ...plus a consistent way round, so they commit instead of jittering head-on
+    if(e.side===undefined) e.side = (dx*tdy-dy*tdx) >= 0 ? 1 : -1;
+    ax += -tdy/d*f*1.7*e.side; ay += tdx/d*f*1.7*e.side;
+  }
+  if(!near){ e.side=undefined; return [dx,dy]; }
+  const l=Math.hypot(ax,ay)||1;
+  return [ax/l, ay/l];
+}
 const TREE_R=15, TREE_BURN_TIME=10, TREE_SPAWN_MAX=15, TREE_SPAWN_EVERY=0.65;
 const ALPHA_LEAP_R=170, ALPHA_LEAP_SPEED=280, ALPHA_LEAP_TIME=0.45, ALPHA_LEAP_CD=4, ALPHA_LEAP_DMG=20, ALPHA_APPROACH_SPD=50; // wave 6
 // WAVE 1 — CLEAR THE BIRDS: loose flocks of 3-7 birds clustered together, standing until
@@ -627,7 +685,7 @@ function pkSpawnMixBurst(types){
 // how many enemies a wave needs cleared \u2014 hand-set to match the redesigned wave-by-wave
 // spec. waves beyond 10 keep extending the mix pattern with a gently rising quota.
 function pkWaveQuota(wv){
-  if(wv===1) return 3;    // just chase a bird
+  if(wv===1) return 1;    // literally one bird
   if(wv===2) return 10;   // the birds are upset
   if(wv===3) return 10;   // attack of the cats
   if(wv===4) return 15;   // watch out, nuts
@@ -636,7 +694,7 @@ function pkWaveQuota(wv){
 }
 // what each wave is called. 6 onwards is the same escalating joke, told straight.
 const WNAME={
-  1:"CHASE A BIRD",
+  1:"CATCH A BIRD",
   2:"THE BIRDS ARE UPSET — DEFEND YOURSELF!",
   3:"ATTACK OF THE CATS",
   4:"WATCH OUT — NUTS!",
@@ -706,6 +764,7 @@ function pkAgiCd(){   return Math.max(6, AGI_CD_BASE - AGI_CD_STEP*(PK.agiLvl||0
 function pkAgiHeal(){ return AGI_HEAL_BASE + AGI_HEAL_STEP*(PK.agiLvl||0); }
 function pkExpandPark(){
   PK.worldMult=Math.min(4,PK.worldMult+0.5);
+  if(Math.random()<0.5 && PK.woods<4){ PK.woods++; toast("THE PARK GREW — AND SO DID THE TREES."); }
   PK.zoom=Math.max(0.76,1-(PK.worldMult-2)*0.12);   // zoom out a touch as the park grows, for a wider view
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   PK.WW=w*PK.worldMult; PK.WH=h*PK.worldMult;
@@ -1072,7 +1131,7 @@ function parkUpdate(dt){
   // health total across frames rather than by touching all nine.
   if(PK.hp<PK.hpSeen){ PK.hurtT=HURT_TIME; PK.shake=Math.max(PK.shake||0,0.22); }
   PK.hpSeen=PK.hp;
-  if(PK.shop || PK.convertOpen || PK.friendsOpen) return;   // world pauses while shopping or exchanging bones
+  if(PK.shop || PK.convertOpen || PK.friendsOpen || PK.gateAsk) return;   // world pauses while a panel is up
   PK.t+=dt; PK.waveT+=dt;
   PK.hurtT=Math.max(0,PK.hurtT-dt);
   if(PK.over>0){
@@ -1261,7 +1320,7 @@ function parkUpdate(dt){
         e.x=(e.x+e.lvx*dt+WW)%WW; e.y=(e.y+e.lvy*dt+WH)%WH;
         e.dir = e.lvx<0 ? -1 : 1;
       } else {
-        const sx=dxw/d*STALK_CHASE_SPD, sy=dyw/d*STALK_CHASE_SPD;
+        const [ux3,uy3]=pkSteer(e,e.x,e.y,dxw/d,dyw/d); const sx=ux3*STALK_CHASE_SPD, sy=uy3*STALK_CHASE_SPD;
         e.dir = sx<0 ? -1 : 1;
         e.x=(e.x+(sx+e.kx)*dt+WW)%WW; e.y=(e.y+(sy+e.ky)*dt+WH)%WH;
       }
@@ -1287,7 +1346,7 @@ function parkUpdate(dt){
       const dxw=wd(PK.x-e.x,WW), dyw=wd(PK.y-e.y,WH), d=Math.hypot(dxw,dyw)||1;
       if(e.atkState==="approach"){
         if(d>RANGER_PLANT_R){
-          const sx=dxw/d*e.sp, sy=dyw/d*e.sp;
+          const [ux2,uy2]=pkSteer(e,e.x,e.y,dxw/d,dyw/d); const sx=ux2*e.sp, sy=uy2*e.sp;
           e.dir = sx<0 ? -1 : 1;
           e.x=(e.x+(sx+e.kx)*dt+WW)%WW; e.y=(e.y+(sy+e.ky)*dt+WH)%WH;
         } else {
@@ -1317,7 +1376,7 @@ function parkUpdate(dt){
     if(e.madsq){
       const dxw=wd(PK.x-e.x,WW), dyw=wd(PK.y-e.y,WH), d=Math.hypot(dxw,dyw)||1;
       if(e.laserState==="seek"){
-        const sx=dxw/d*e.sp, sy=dyw/d*e.sp;
+        const [ux2,uy2]=pkSteer(e,e.x,e.y,dxw/d,dyw/d); const sx=ux2*e.sp, sy=uy2*e.sp;
         e.dir = sx<0 ? -1 : 1;
         e.x=(e.x+(sx+e.kx)*dt+WW)%WW; e.y=(e.y+(sy+e.ky)*dt+WH)%WH;
         e.cd-=dt;
@@ -1426,7 +1485,7 @@ function parkUpdate(dt){
           beep(140,.3,"sawtooth"); if(PK.hp<=0) return pkDeath();
         }
       } else {
-        const sx=dxw/d*e.sp, sy=dyw/d*e.sp;
+        const [ux2,uy2]=pkSteer(e,e.x,e.y,dxw/d,dyw/d); const sx=ux2*e.sp, sy=uy2*e.sp;
         e.dir = sx<0 ? -1 : 1;
         e.x=(e.x+(sx+e.kx)*dt+WW)%WW; e.y=(e.y+(sy+e.ky)*dt+WH)%WH;
         e.leapCd-=dt;
@@ -1612,7 +1671,18 @@ function parkUpdate(dt){
       PK.powerups.splice(i,1);
     }
   }
-  if(Math.hypot(wd(PK.gate.x-PK.x,WW),wd(PK.gate.y-PK.y,WH))<26) return pkBank();
+  {
+    const gd=Math.hypot(wd(PK.gate.x-PK.x,WW),wd(PK.gate.y-PK.y,WH));
+    if(gd>70) PK.gateArm=true;                 // you have to actually walk away before it re-asks
+    if(gd<26 && PK.gateArm && !PK.gateAsk){
+      PK.gateArm=false; PK.gateAsk=true;
+      beep(520,.06);
+      openChoice("LEAVE THE PARK?",
+        "YOU'RE CARRYING "+PK.bones+" BONES.<br><br>BANK THEM AND HEAD HOME, OR STAY IN<br>AND KEEP GOING?",
+        "BANK "+PK.bones+" & LEAVE", ()=>{ PK.gateAsk=false; pkBank(); },
+        "STAY IN", ()=>{ PK.gateAsk=false; });
+    }
+  }
 }
 function pkExitCosts(){
   S.energy=clamp(S.energy-12,0,100); S.clean=clamp(S.clean-8,0,100);
