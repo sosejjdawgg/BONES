@@ -5,7 +5,7 @@
 // how many enemies you downed and how many side objectives (hoop/tunnel/ramp) you hit.
 const PK={active:false, godMode:false}; // godMode is a dev-only toggle and deliberately isn't reset per-run
 function wd(d,M){ return ((d + M/2) % M + M) % M - M/2; }  // shortest signed delta on the looping world
-function pkInvuln(){ return PK.godMode || PK.starT>0; }   // star power grants temporary invincibility
+function pkInvuln(){ return PK.godMode || PK.zoomT>0; }   // the golden bone: zoomies + untouchable
 const XP_PER_KILL=0.4, XP_PER_SIDE=2;
 // a long run with a full crew can rack up well over a thousand downed enemies once companions and
 // burning trees start feeding the count, which was banking enough XP to jump several levels at
@@ -22,7 +22,7 @@ function pkAwardXP(n){
   return give;
 }
 // rare enemy-drop powerups — 1% chance each, independent of the guaranteed bone drop
-const STAR_DROP_CHANCE=0.01, MAGNET_DROP_CHANCE=0.01, STAR_DURATION=15, MAGNET_HOMING_SPEED=280;
+const MAGNET_DROP_CHANCE=0.01, ZOOM_DURATION=15, MAGNET_HOMING_SPEED=280;
 // a steady drip rather than a lump sum: it rewards staying alive with it, not hoarding it
 const REGEN_DROP_CHANCE=0.02, REGEN_DURATION=25, REGEN_RATE=1;
 const HURT_TIME=0.42;   // how long the red buzz rides on BONES and his health bar after a hit
@@ -93,6 +93,25 @@ const BONES_EXCHANGE=[
   {label:"TREAT", sub:"15 BONES → 1 BONE TREAT", cost:15, f:()=>{S.snacks+=1;}}
 ];
 const SPARKS=[]; // celebratory burst when a shop purchase lands
+const HITFX=[];  // impact markers: a snapping ring plus a cross, so every bark visibly lands
+// The golden bone sets him off: untouchable, no bark cooldown, and the only time the park
+// plays a tune. Hook first, then the three woofs.
+function pkZoomies(){
+  PK.zoomT=ZOOM_DURATION;
+  pkFanfare(null,true,"★ GOLDEN BONE — THE ZOOMIES!");
+  const hook=[[523,.13],[523,.13],[587,.13],[523,.15],[440,.15],[392,.22]];
+  let acc=0;
+  for(const [f,d] of hook){ const at=acc; setTimeout(()=>beep(f,d,"square",.055), at*1000); acc+=d; }
+  for(let i=0;i<3;i++) setTimeout(()=>beep(150,.13,"sawtooth",.075), (acc+0.14+i*0.23)*1000);
+}
+function pkHitMark(x,y,down){
+  HITFX.push({x,y,life:down?0.42:0.28,max:down?0.42:0.28,down:!!down});
+  const n=down?9:5;
+  for(let i=0;i<n;i++){
+    const a=Math.random()*6.283, sp=(down?70:45)+Math.random()*60;
+    SPARKS.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-30,life:0.28+Math.random()*0.25,gold:down});
+  }
+}
 function pkFanfare(label,big,rawText){
   PK.shopFlash={text:rawText || ((big?"⬥ ":"✓ ")+label+(big?" EQUIPPED!":" BOUGHT!")), life:big?1.6:1.1, max:big?1.6:1.1, gold:!!big};
   const n=big?18:9;
@@ -254,11 +273,11 @@ function startPark(plus){
     barkMax:Math.max(1.2,3-0.06*S.lvl), barkCd:1, pulse:0,
     barkR:21*(0.8+0.4*S.hunger/100), knock:150,
     bones:0, kills:0, xpFromRun:0, sideDone:0, relic:null, waveBanner:null, shopFlash:null,
-    worldMult:2, barkBigLvl:0, barkFastLvl:0, speedBonus:null, shopSel:null,
+    worldMult:2, barkBigLvl:0, barkFastLvl:0, agiLvl:0, speedBonus:null, shopSel:null,
     chain:0, chainT:0, inv:0, fx:[],
     x:0,y:0,vx:0,vy:0, joy:null,
     en:[], fr:[], gate:{}, started:false, shop:null, biscuits:[], drops:[], pendingBury:0, nuts:[],
-    powerups:[], starT:0, regenT:0, regenAcc:0, hurtT:0, hpSeen:0, zoom:1, sniffLvl:0,
+    powerups:[], zoomT:0, regenT:0, regenAcc:0, hurtT:0, hpSeen:0, zoom:1, sniffLvl:0,
     trees:[], scorch:[], embers:[],
     plusMode:!!plus, mixTypes:null, mixLabel:null, swoopT:0,
     pals:[], palEyes:false, friendsOpen:false, friendsArm:false, npc:{x:.78,y:.18}
@@ -267,7 +286,7 @@ function startPark(plus){
   PK.healerT=pkHealerGap();
   PK.acts=[{k:"hoop",x:.15,y:.125,cd:0},{k:"tunnel",x:.35,y:.36,cd:0},{k:"ramp",x:.11,y:.39,cd:0},{k:"tunnel",x:.62,y:.70,cd:0},{k:"hoop",x:.85,y:.20,cd:0}];
   PK.waveBanner={text:"WAVE 1", sub:pkWaveName(1), life:3.2, max:3.2};
-  SPARKS.length=0;
+  SPARKS.length=0; HITFX.length=0;
   S.outTimer=0;
   tickTodo("d_park");
   hidePortrait(); closeStatus();
@@ -621,7 +640,7 @@ function pkEnemyHp(base){ return base + Math.floor(((PK.wave||1)-1)/4.5); }
 const BARK_CAP=62;   // hard ceiling: the bark used to reach ~90 and trivialised whole waves
 const FLEE_SPEED=115, FLEE_TIME=2.2;   // how fast, and how long, a scared-off enemy scuttles before despawning
 function pkBark(){
-  PK.barkCd = PK.starT>0 ? 0 : PK.barkMax;   // star power: unlimited barking, no cooldown
+  PK.barkCd = PK.zoomT>0 ? 0 : PK.barkMax;   // mid-zoomies there is no cooldown at all
   PK.pulse=0.35;
   beep(190,.1,"square",.06);
   let hits=0;
@@ -642,17 +661,19 @@ function pkBark(){
         // he doesn't kill anyone anymore: one bone drops where they were caught, they look
         // shocked, then scuttle off-screen on their own — pkEn's fleeing branch handles the rest
         PK.drops.push({x:e.x, y:e.y, v:1, gold:!!e.alpha, life:25});
-        if(Math.random()<STAR_DROP_CHANCE) PK.powerups.push({type:"star", x:e.x, y:e.y-10, life:18});
         if(Math.random()<MAGNET_DROP_CHANCE) PK.powerups.push({type:"magnet", x:e.x, y:e.y+10, life:18});
         if(Math.random()<REGEN_DROP_CHANCE) PK.powerups.push({type:"regen", x:e.x, y:e.y, life:18});
         PK.kills++;
         hits++;
-        e.fleeing=true; e.shockT=0.35; e.fleeT=0;
+        e.fleeing=true; e.shockT=0.35; e.fleeT=0; e.hitT=0.3;
         e.fleeVx=-dxw/d*FLEE_SPEED; e.fleeVy=-dyw/d*FLEE_SPEED;
+        pkHitMark(e.x, e.y, true);
         beep(950,.08,"square",.04);
       }
       else {
-        e.kx=dxw/d*PK.knock; e.ky=dyw/d*PK.knock;
+        e.kx=dxw/d*PK.knock*1.6; e.ky=dyw/d*PK.knock*1.6;   // shove them, and let it read
+        e.hitT=0.22;                                       // white flash on the sprite
+        pkHitMark(e.x, e.y, false);
         if(e.flock && !e.circling) e.circling=true;   // survives a hit -> breaks formation to circle and dive-attack
       }
     }
@@ -660,6 +681,10 @@ function pkBark(){
   if(hits>0) beep(300,.05);
 }
 const BARK_LVL_CAP=4;
+// the agility course: a top-up you have to go and earn, not a bones dispenser
+const AGI_LVL_CAP=3, AGI_CD_BASE=20, AGI_CD_STEP=4, AGI_HEAL_BASE=0.05, AGI_HEAL_STEP=0.03;
+function pkAgiCd(){   return Math.max(6, AGI_CD_BASE - AGI_CD_STEP*(PK.agiLvl||0)); }
+function pkAgiHeal(){ return AGI_HEAL_BASE + AGI_HEAL_STEP*(PK.agiLvl||0); }
 function pkExpandPark(){
   PK.worldMult=Math.min(4,PK.worldMult+0.5);
   PK.zoom=Math.max(0.76,1-(PK.worldMult-2)*0.12);   // zoom out a touch as the park grows, for a wider view
@@ -756,7 +781,6 @@ function pkPalHit(e,dmg,ux,uy){
   e.hp-=dmg;
   if(e.hp<=0){
     PK.drops.push({x:e.x, y:e.y, v:1, gold:!!e.alpha, life:25});
-    if(Math.random()<STAR_DROP_CHANCE) PK.powerups.push({type:"star", x:e.x, y:e.y-10, life:18});
     if(Math.random()<MAGNET_DROP_CHANCE) PK.powerups.push({type:"magnet", x:e.x, y:e.y+10, life:18});
     if(Math.random()<REGEN_DROP_CHANCE) PK.powerups.push({type:"regen", x:e.x, y:e.y, life:18});
     PK.kills++;
@@ -998,7 +1022,9 @@ function pkShopOpen(){
     {n:"SNACK", ic:"heal",        fx:"HEAL 30 HP",          c:8,  f:()=>PK.hp=Math.min(PK.maxhp,PK.hp+30)},
     {n:"ZOOMIES", ic:"speed",     fx:"+10% SPEED",          c:12, f:()=>PK.spd*=1.1},
     {n:"TOUGH COAT", ic:"hp",     fx:"+15 MAX HP",          c:15, f:()=>{PK.maxhp+=15;PK.hp+=15;}},
-    {n:"KEEN NOSE", ic:"nose",    fx:"WIDER BONE PICKUP",   c:11, capKey:"sniffLvl", capMax:SNIFF_LVL_CAP, f:()=>{PK.sniffLvl=(PK.sniffLvl||0)+1;}}
+    {n:"KEEN NOSE", ic:"nose",    fx:"WIDER BONE PICKUP",   c:11, capKey:"sniffLvl", capMax:SNIFF_LVL_CAP, f:()=>{PK.sniffLvl=(PK.sniffLvl||0)+1;}},
+    {n:"AGILITY TRAINING", ic:"agility", fx:"COURSE HEALS +3%, RESETS 4s SOONER", c:13,
+     capKey:"agiLvl", capMax:AGI_LVL_CAP, f:()=>{PK.agiLvl=(PK.agiLvl||0)+1;}}
   ];
   // capped upgrades stop appearing once they're maxed out
   const pool=statAll.filter(o=>!o.capKey || PK[o.capKey]<(o.capMax||BARK_LVL_CAP))
@@ -1043,9 +1069,11 @@ function parkUpdate(dt){
   }
   PK.chainT=Math.max(0,PK.chainT-dt); if(PK.chainT<=0) PK.chain=0;
   PK.inv=Math.max(0,PK.inv-dt); PK.pulse=Math.max(0,PK.pulse-dt);
-  PK.starT=Math.max(0,PK.starT-dt);
+  PK.zoomT=Math.max(0,PK.zoomT-dt);
   if(PK.waveBanner){ PK.waveBanner.life-=dt; if(PK.waveBanner.life<=0) PK.waveBanner=null; }
   if(PK.shopFlash){ PK.shopFlash.life-=dt; if(PK.shopFlash.life<=0) PK.shopFlash=null; }
+  for(let i=HITFX.length-1;i>=0;i--){ HITFX[i].life-=dt; if(HITFX[i].life<=0) HITFX.splice(i,1); }
+  for(const e of PK.en) if(e.hitT>0) e.hitT-=dt;
   for(let i=SPARKS.length-1;i>=0;i--){ const s=SPARKS[i]; s.x+=s.vx*dt; s.y+=s.vy*dt; s.vy+=140*dt; s.life-=dt; if(s.life<=0) SPARKS.splice(i,1); }
   for(let i=PK.embers.length-1;i>=0;i--){ const em=PK.embers[i]; em.x+=em.vx*dt; em.y+=em.vy*dt; em.vy+=90*dt; em.life-=dt; if(em.life<=0) PK.embers.splice(i,1); }
   if(PK.scorch.length>90) PK.scorch.splice(0, PK.scorch.length-90);
@@ -1127,8 +1155,8 @@ function parkUpdate(dt){
   [PK.x,PK.y]=pkTreeCollide(PK.x,PK.y);
   pkTickTrees(dt);
   PK.barkCd-=dt;
-  if((PK.barkCd<=0||PK.starT>0) && PK.en.some(e=>!e.fleeing && Math.hypot(wd(e.x-PK.x,WW),wd(e.y-PK.y,WH))<PK.barkR)) pkBark();
-  if(PK.starT>0 && Math.random()<0.55){
+  if((PK.barkCd<=0||PK.zoomT>0) && PK.en.some(e=>!e.fleeing && Math.hypot(wd(e.x-PK.x,WW),wd(e.y-PK.y,WH))<PK.barkR)) pkBark();
+  if(PK.zoomT>0 && Math.random()<0.55){
     const sa=Math.random()*6.283;
     SPARKS.push({x:PK.x+Math.cos(sa)*14, y:PK.y+Math.sin(sa)*14-10, vx:Math.cos(sa)*18, vy:Math.sin(sa)*18-30, life:0.35+Math.random()*0.25, gold:true});
   }
@@ -1337,7 +1365,6 @@ function parkUpdate(dt){
         }
         if(e.sweepT>=MADSQ_SWEEP_TIME){
           PK.drops.push({x:e.x, y:e.y, v:1, life:25});
-          if(Math.random()<STAR_DROP_CHANCE) PK.powerups.push({type:"star", x:e.x, y:e.y-10, life:18});
           if(Math.random()<MAGNET_DROP_CHANCE) PK.powerups.push({type:"magnet", x:e.x, y:e.y+10, life:18});
           if(Math.random()<REGEN_DROP_CHANCE) PK.powerups.push({type:"regen", x:e.x, y:e.y, life:18});
           PK.kills++;
@@ -1440,7 +1467,7 @@ function parkUpdate(dt){
     const f=PK.fr[i];
     f.x=(f.x+f.vx*dt+WW)%WW; f.life-=dt;
     if(Math.hypot(wd(f.x-PK.x,WW),wd(f.y-PK.y,WH))<20){
-      if(f.golden){ pkGain(20,f.x,f.y); pkFanfare(null,true,"★ GOLDEN BONE CAUGHT!"); }
+      if(f.golden){ pkGain(20,f.x,f.y); pkZoomies(); }
       else {
         // she doesn't patch you up, she puts you right back together
         PK.hp=PK.maxhp;
@@ -1490,7 +1517,16 @@ function parkUpdate(dt){
   for(const a of PK.acts){
     a.cd=Math.max(0,a.cd-dt);
     if(a.cd<=0 && Math.hypot(wd(a.x*WW-PK.x,WW),wd(a.y*WH-PK.y,WH))<22){
-      a.cd=3; pkGain(2, a.x*WW, a.y*WH); PK.sideDone++; beep(700,.06);
+      a.cd=pkAgiCd(); PK.sideDone++;
+      const heal=Math.max(1,Math.round(PK.maxhp*pkAgiHeal()));
+      const before=PK.hp; PK.hp=Math.min(PK.maxhp,PK.hp+heal);
+      const got=Math.round(PK.hp-before);
+      PK.fx.push({x:a.x*WW, y:a.y*WH-16, txt:got>0?"+"+got+" HP":"FULL", life:1.2});
+      for(let k=0;k<8;k++){
+        const ang=Math.random()*6.283, sp=30+Math.random()*50;
+        SPARKS.push({x:a.x*WW,y:a.y*WH-8,vx:Math.cos(ang)*sp,vy:Math.sin(ang)*sp-20,life:0.5+Math.random()*0.4,heal:true});
+      }
+      beep(700,.06); setTimeout(()=>beep(940,.07),70);
     }
   }
   if(PARKGHOST && Math.hypot(wd(PARKGHOST.x-PK.x,WW),wd(PARKGHOST.y-PK.y,WH))<18){
@@ -1534,10 +1570,6 @@ function parkUpdate(dt){
         PK.regenT+=REGEN_DURATION;   // a second one extends the drip rather than wasting it
         pkFanfare(null,true,"✚ REGEN — +1 HP EVERY SECOND!");
         beep(680,.09); setTimeout(()=>beep(880,.09),90); setTimeout(()=>beep(1100,.12),180);
-      } else if(p.type==="star"){
-        PK.starT=STAR_DURATION;
-        pkFanfare(null,true,"★ STAR POWER — 15s OF FEARLESS BARKING!");
-        beep(1100,.1); setTimeout(()=>beep(1400,.12),100);
       } else {
         for(const dr of PK.drops) dr.magnet=true;
         pkFanfare(null,true,"🧲 MAGNET — BONES INCOMING!");
@@ -1752,6 +1784,10 @@ function drawEnemyHP(ctx,e,sx,sy,eh){
   ctx.fillRect(bx+1,by+1,(bw-2)*frac,bh-2);
 }
 function drawEnemy(ctx,e,sx,sy){
+  // an enemy that has been seen off is already out of the fight, so it fades right down —
+  // at a glance you can tell what still needs barking at and what is just running away
+  const ghost = e.fleeing ? 0.34 : 1;
+  ctx.save(); ctx.globalAlpha*=ghost;
   ctx.fillStyle="rgba(0,0,0,.25)";
   ctx.beginPath(); ctx.ellipse(sx, sy+2, 9, 3, 0, 0, 7); ctx.fill();
   if(e.madsq && !e.fleeing) drawLaserFX(ctx,e,sx,sy);
@@ -1766,7 +1802,7 @@ function drawEnemy(ctx,e,sx,sy){
   const madGlow = e.madsq && (e.laserState==="charge" || e.laserState==="sweep");
   const frames = ENEMYIMG[e.t];
   const img = frames && frames[e.fi % frames.length];
-  if(!img || !img.complete || !img.naturalWidth){ drawEnemyVector(ctx,e,sx,sy); if(e.madsqExplode) drawMadsqExplosion(ctx,sx,sy,e.explodeT); return; }
+  if(!img || !img.complete || !img.naturalWidth){ drawEnemyVector(ctx,e,sx,sy); if(e.madsqExplode) drawMadsqExplosion(ctx,sx,sy,e.explodeT); ctx.restore(); return; }
   let eh = e.alpha?32 : e.t==="cat"?(e.small?22*0.7:22):e.t==="bird"?18:16;
   if(e.big) eh*=1.9;
   const ew = eh*img.naturalWidth/img.naturalHeight;
@@ -1786,8 +1822,16 @@ function drawEnemy(ctx,e,sx,sy){
   if(e.dir<0){ ctx.translate(sx*2,0); ctx.scale(-1,1); }
   ctx.drawImage(img, sx-ew/2, sy-eh, ew, eh);
   ctx.restore();
+  // the instant of impact: the sprite blows out white
+  if(e.hitT>0){
+    ctx.save(); ctx.globalAlpha=Math.min(1,e.hitT/0.22)*0.85;
+    ctx.fillStyle="#fff";
+    ctx.beginPath(); ctx.ellipse(sx, sy-eh*0.5, ew*0.55, eh*0.55, 0,0,7); ctx.fill();
+    ctx.restore();
+  }
   drawEnemyHP(ctx,e,sx,sy,eh);
   if(e.madsqExplode) drawMadsqExplosion(ctx,sx,sy,e.explodeT);
+  ctx.restore();
 }
 // friends are drawn from the same frame sets as their enemy counterparts, so a cool blue tint and
 // a pulsing ring under their feet are what stop them reading as one more thing trying to eat you.
@@ -2058,13 +2102,13 @@ function parkDraw(t){
     ctx.beginPath(); ctx.arc(DX,DY,21,0,7); ctx.stroke(); ctx.restore();
   }
   if(img.complete && !(PK.inv>0&&Math.floor(t*12)%2)){
-    if(PK.starT>0){   // star power: bones flashes gold and shiny with a pulsing aura
+    if(PK.zoomT>0){   // star power: bones flashes gold and shiny with a pulsing aura
       const rglow=0.5+0.5*Math.sin(t*8);
       ctx.save(); ctx.globalAlpha=rglow*0.35; ctx.fillStyle="#ffd94a";
       ctx.beginPath(); ctx.arc(DX,DY,24,0,7); ctx.fill(); ctx.restore();
     }
     ctx.save(); ctx.imageSmoothingEnabled=false;
-    if(PK.starT>0) ctx.filter="sepia(1) saturate(6) hue-rotate(-15deg) brightness(1.35)";
+    if(PK.zoomT>0) ctx.filter="sepia(1) saturate(6) hue-rotate(-15deg) brightness(1.35)";
     else if(hz>0) ctx.filter="brightness(0.5) sepia(1) saturate(14) hue-rotate(-35deg)";
     if(PK.vx<0){ ctx.translate(DX*2,0); ctx.scale(-1,1); }
     ctx.drawImage(img,DX-20+(PK.vx<0?-buzz:buzz),DY-16,40,34);
@@ -2098,10 +2142,26 @@ function parkDraw(t){
       drawMagnetIcon(ctx,px3,py3+bob,8);
     }
   }
+  for(const fxm of HITFX){
+    const [hx,hy]=SC(fxm.x,fxm.y);
+    const k=1-fxm.life/fxm.max;                 // 0 at impact -> 1 as it snaps outward
+    ctx.save();
+    ctx.globalAlpha=Math.max(0,1-k);
+    ctx.strokeStyle=fxm.down?"#e8c14a":"#fff"; ctx.lineWidth=fxm.down?3:2;
+    ctx.beginPath(); ctx.arc(hx,hy,4+k*(fxm.down?24:15),0,7); ctx.stroke();
+    const r2=(fxm.down?11:8)*(1-k*0.45);        // the cross snaps in as the ring goes out
+    ctx.beginPath();
+    ctx.moveTo(hx-r2,hy-r2); ctx.lineTo(hx-r2*0.4,hy-r2*0.4);
+    ctx.moveTo(hx+r2,hy-r2); ctx.lineTo(hx+r2*0.4,hy-r2*0.4);
+    ctx.moveTo(hx-r2,hy+r2); ctx.lineTo(hx-r2*0.4,hy+r2*0.4);
+    ctx.moveTo(hx+r2,hy+r2); ctx.lineTo(hx+r2*0.4,hy+r2*0.4);
+    ctx.stroke();
+    ctx.restore();
+  }
   for(const s of SPARKS){
     const [sx,sy]=SC(s.x,s.y);
     ctx.globalAlpha=Math.max(0,s.life);
-    ctx.fillStyle=s.gold?"#e8c14a":"#fff";
+    ctx.fillStyle=s.heal?"#3fdc7a":s.gold?"#e8c14a":"#fff";
     ctx.fillRect(sx-2,sy-2,4,4);
     ctx.globalAlpha=1;
   }
@@ -2192,27 +2252,6 @@ function parkDraw(t){
     ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
     ctx.restore();
   }
-  ctx.fillStyle="rgba(0,0,0,.38)"; ctx.fillRect(0,0,w,44);
-  const hb=hzh>0 ? Math.sin(t*90)*3.5*hzh*hzh : 0;   // the bar rattles in sympathy with BONES
-  const hfrac=clamp(PK.hp/PK.maxhp,0,1);
-  if(hzh>0){
-    ctx.save(); ctx.globalAlpha=0.55*hzh; ctx.fillStyle="#f22";
-    ctx.fillRect(6+hb,22,98,16); ctx.restore();
-  }
-  ctx.strokeStyle = hzh>0 ? "#f22" : "#fff"; ctx.lineWidth = hzh>0 ? 3 : 2;
-  ctx.strokeRect(10+hb,26,90,8);
-  if(PK.regenT>0){   // the slice regen is about to fill in, ghosted ahead of the bar
-    const ahead=clamp((PK.hp+Math.min(PK.regenT,PK.maxhp-PK.hp))/PK.maxhp,0,1);
-    ctx.save(); ctx.globalAlpha=0.35+0.2*Math.sin(t*6); ctx.fillStyle="#3fdc7a";
-    ctx.fillRect(12+hb+86*hfrac,28,86*(ahead-hfrac),4); ctx.restore();
-  }
-  ctx.fillStyle = hzh>0 ? "#fff" : (PK.hp<PK.maxhp*0.3?"#f22":"#fff");
-  ctx.fillRect(12+hb,28,86*hfrac,4);
-  ctx.lineWidth=2;
-  if(PK.relic){
-    const rc=PK_CHARMS.find(c=>c.id===PK.relic);
-    if(rc){ ctx.fillStyle="#f22"; ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="left"; ctx.fillText("\u2b25 "+rc.name, 10, 41); }
-  }
   pkPadDraw(t);
 }
 // the one place a panel's row geometry lives. The shop and the exchange still mirror their own
@@ -2236,6 +2275,9 @@ function pkShopIcon(ctx,x,y,s2,key,col){
   else if(key==="hp"){ ctx.beginPath(); ctx.moveTo(0,-8); ctx.lineTo(7,-4); ctx.lineTo(7,3); ctx.lineTo(0,8); ctx.lineTo(-7,3); ctx.lineTo(-7,-4); ctx.closePath(); ctx.stroke(); ctx.fillRect(-1.5,-4,3,8); ctx.fillRect(-4,-1.5,8,3); }
   else if(key==="nose"){ drawBone(ctx,0,0,0.85,col); }
   else if(key==="relic"){ ctx.beginPath(); ctx.moveTo(0,-8); ctx.lineTo(8,0); ctx.lineTo(0,8); ctx.lineTo(-8,0); ctx.closePath(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0,-4); ctx.lineTo(4,0); ctx.lineTo(0,4); ctx.lineTo(-4,0); ctx.closePath(); ctx.fill(); }
+  else if(key==="agility"){ ctx.beginPath(); ctx.arc(0,1,7,Math.PI,0); ctx.stroke();
+    ctx.fillRect(-8,1,2,7); ctx.fillRect(6,1,2,7);
+    ctx.beginPath(); ctx.moveTo(-4,-4); ctx.lineTo(0,-9); ctx.lineTo(4,-4); ctx.stroke(); }
   else if(key==="expand"){ ctx.strokeRect(-8,-8,16,16); ctx.beginPath(); ctx.moveTo(0,-8); ctx.lineTo(0,8); ctx.moveTo(-8,0); ctx.lineTo(8,0); ctx.stroke(); }
   else { ctx.beginPath(); ctx.arc(0,0,6,0,7); ctx.stroke(); }
   ctx.restore();
@@ -2400,17 +2442,43 @@ function pkPadDraw(t){
   drawBone(ctx, 24, 26, 1, "#fff");
   ctx.fillStyle="#fff"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
   ctx.fillText(PK.bones+" BONES", 34, 29);
+  {
+    // BONES' health lives down here now — up top it sat straight on the wave meter
+    const hzh=PK.hurtT>0 ? PK.hurtT/HURT_TIME : 0;
+    const hb=hzh>0 ? Math.sin(t*90)*3.5*hzh*hzh : 0;
+    const hfrac=clamp(PK.hp/PK.maxhp,0,1);
+    const bx=w-140, by=14, bw2=128, bh2=14;
+    if(hzh>0){ ctx.save(); ctx.globalAlpha=0.55*hzh; ctx.fillStyle="#f22";
+               ctx.fillRect(bx-4+hb,by-4,bw2+8,bh2+8); ctx.restore(); }
+    ctx.fillStyle="rgba(0,0,0,.6)"; ctx.fillRect(bx+hb,by,bw2,bh2);
+    ctx.strokeStyle = hzh>0 ? "#f22" : "#fff"; ctx.lineWidth = hzh>0 ? 3 : 2;
+    ctx.strokeRect(bx+hb,by,bw2,bh2);
+    if(PK.regenT>0){
+      const ahead=clamp((PK.hp+Math.min(PK.regenT,PK.maxhp-PK.hp))/PK.maxhp,0,1);
+      ctx.save(); ctx.globalAlpha=0.35+0.2*Math.sin(t*6); ctx.fillStyle="#3fdc7a";
+      ctx.fillRect(bx+3+hb+(bw2-6)*hfrac,by+3,(bw2-6)*(ahead-hfrac),bh2-6); ctx.restore();
+    }
+    ctx.fillStyle = hzh>0 ? "#fff" : (PK.hp<PK.maxhp*0.3?"#f22":"#fff");
+    ctx.fillRect(bx+3+hb,by+3,(bw2-6)*hfrac,bh2-6);
+    ctx.fillStyle="#fff"; ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="right";
+    ctx.fillText(Math.max(0,Math.ceil(PK.hp))+"/"+PK.maxhp, bx+bw2, by+bh2+10);
+    ctx.textAlign="left"; ctx.lineWidth=2;
+    if(PK.relic){
+      const rc=PK_CHARMS.find(c=>c.id===PK.relic);
+      if(rc){ ctx.fillStyle="#f22"; ctx.font="6px 'Press Start 2P',monospace"; ctx.fillText("\u2b25 "+rc.name, 10, 46); }
+    }
+  }
   ctx.textAlign="left";
-  if(PK.starT>0){
-    const bw=Math.min(140,w*0.55), bx=w/2-bw/2;
+  if(PK.zoomT>0){
+    const bw=Math.min(170,w*0.62), bx=w/2-bw/2;
     ctx.fillStyle="rgba(255,217,74,.18)"; ctx.fillRect(bx,44,bw,18);
     ctx.strokeStyle="#ffd94a"; ctx.lineWidth=2; ctx.strokeRect(bx,44,bw,18);
     ctx.fillStyle="#ffd94a"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText("★ STAR "+PK.starT.toFixed(1)+"s", w/2, 57);
+    ctx.fillText("THE ZOOMIES "+PK.zoomT.toFixed(1)+"s", w/2, 57);
     ctx.textAlign="left";
   }
   if(PK.regenT>0){
-    const bw=Math.min(140,w*0.55), bx=w/2-bw/2, by=PK.starT>0?66:44;
+    const bw=Math.min(140,w*0.55), bx=w/2-bw/2, by=PK.zoomT>0?66:44;
     ctx.fillStyle="rgba(63,220,122,.18)"; ctx.fillRect(bx,by,bw,18);
     ctx.strokeStyle="#3fdc7a"; ctx.lineWidth=2; ctx.strokeRect(bx,by,bw,18);
     ctx.fillStyle="#3fdc7a"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";

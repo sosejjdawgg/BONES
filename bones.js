@@ -2936,7 +2936,7 @@ $("#shopSup").addEventListener("click",e=>{
   if(t.dataset.sup==="kibble"&&S.money>=2){ S.money-=2; S.kibble++; beep(600,.05); }
   if(t.dataset.sup==="bed") buyBed();
   if(t.dataset.sup==="biggerbed") buyBiggerBed();
-  if(t.dataset.sup==="ball"&&S.money>=5&&!S.ballOwned){ S.money-=5; S.ballOwned=true; BALL.x=0.28; BALL.y=0.795; BALL.vx=0; BALL.vy=0; BALL.off=false; beep(700,.07); setTimeout(()=>beep(950,.09),100); toast("A BALL! FLING IT \u2014 HE'LL BRING IT BACK."); }
+  if(t.dataset.sup==="ball"&&S.money>=5&&!S.ballOwned){ S.money-=5; S.ballOwned=true; BALL.x=0.28; BALL.y=0.795; BALL.vx=0; BALL.vy=0; BALL.off=false; tickTodo("ball"); beep(700,.07); setTimeout(()=>beep(950,.09),100); toast("A BALL! FLING IT \u2014 HE'LL BRING IT BACK."); }
   if(t.dataset.sup==="brush"&&S.money>=18&&!S.brushOwned){ S.money-=18; S.brushOwned=true; beep(660,.07); setTimeout(()=>beep(880,.09),100); toast("A DOG BRUSH. IT HANGS BY THE SPONGE."); }
   if(t.dataset.sup==="hoop"&&S.money>=40&&!S.hoopOwned){ S.money-=40; S.hoopOwned=true; beep(880,.08); setTimeout(()=>beep(1170,.1),100); toast("HOOP MOUNTED BY THE WINDOW. SWISH \u2014 +1 XP A BASKET."); }
   if(t.dataset.sup==="shampoo"&&S.money>=5&&S.shampooPct<100){ S.money-=5; S.shampooOwned=true; S.shampooPct=100; beep(700,.07); setTimeout(()=>beep(950,.09),100); toast("SHAMPOO TOPPED UP \u2014 TIME FOR A BATH!"); }
