@@ -126,6 +126,7 @@ function tickStats(dt){
   S.petCd = Math.max(0, S.petCd-dt);
   S.outTimer += dt;
   if(S.clean<70) SPONGE.rew=false;
+  if(S.groom<70) BRUSH.rew=false;
   if(POOS.length){ S.mood=clamp(S.mood-0.025*POOS.length*dt,0,100); S.clean=clamp(S.clean-0.01*POOS.length*dt,0,100); }
   if(S.outTimer>150 && POOS.length<3 && !R.active && !OUTING.active){
     S.outTimer=40;
@@ -665,13 +666,20 @@ $("#dogcv").addEventListener("pointermove",e=>{
     BRUSH.x=fx; BRUSH.y=fy;
     if(fx>CAM.x-0.02 && fx<CAM.x+CAMDWF+0.04 && fy>0.30 && fy<0.85 && !R.active && !OUTING.active && !PK.active){
       const was=S.groom;
-      S.groom=clamp(S.groom+0.45,0,100);
+      S.groom=clamp(S.groom+0.32,0,100);
       S.mood=clamp(S.mood+0.05,0,100);
-      // loose fur comes away as he is worked over
-      if(Math.random()<0.35){ SUDS.push({x:fx+(Math.random()-0.5)*0.03,y:fy,life:0.7,r:2+Math.random()*3}); if(SUDS.length>60) SUDS.splice(0,SUDS.length-60); }
-      if(Math.random()<0.10) beep(200+Math.random()*90,.03,"square",.015);
-      if(S.groom>=100 && was<100){
-        addXP(6); heartsBurst(2);
+      // loose fur lifts off him as he is worked over — the payoff is the feel, not the XP
+      if(Math.random()<0.55){
+        SUDS.push({x:fx+(Math.random()-0.5)*0.05, y:fy+(Math.random()-0.5)*0.04,
+                   life:0.55+Math.random()*0.5, r:1.5+Math.random()*4});
+        if(SUDS.length>60) SUDS.splice(0,SUDS.length-60);
+      }
+      // bristle rasp, pitched up as his coat comes good
+      if(Math.random()<0.16) beep(170+S.groom*1.2+Math.random()*60, .03, "square", .012);
+      // a chime at each quarter so progress reads without paying out
+      for(const mark of [25,50,75]) if(was<mark && S.groom>=mark){ beep(560+mark*3,.05); heartsBurst(1); }
+      if(S.groom>=100 && !BRUSH.rew){
+        BRUSH.rew=true; addXP(6); heartsBurst(2);
         toast("WELL GROOMED. HE LOOKS SHARP."); beep(880,.08);
       }
     }
@@ -892,7 +900,7 @@ const TAPS={water:{t:0,combo:0},food:{t:0,combo:0}};
 // stats can never grab one by accident
 const SPONGE_X=0.135, SPONGE_Y=0.355, BRUSH_X=0.055, BRUSH_Y=0.355;
 const SPONGE={held:false,x:SPONGE_X,y:SPONGE_Y,rew:false};
-const BRUSH={held:false,x:BRUSH_X,y:BRUSH_Y};
+const BRUSH={held:false,x:BRUSH_X,y:BRUSH_Y,rew:false};
 // Bone treats are real objects in the room, not an instant stat bump: each one you give is
 // tossed in, tumbles, bounces, rolls to a stop and piles on whatever settled before it, and
 // only counts once BONES trots over and actually eats it.
