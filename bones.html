@@ -103,9 +103,12 @@ button.red:active{background:#f22;color:#000}
 @keyframes tdpop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
 .pclose{position:absolute;top:8px;left:8px;font-size:6px;padding:4px 6px;margin:0}
 #todoPanel,#supplies,#menuPanel,#careGuidePanel,#settingsPanel,#shopPanel,#nourish{justify-content:flex-start;padding-top:46px}
-.overpanel .prow{padding:13px 11px;line-height:2;border-width:2px}
+.overpanel .prow{padding:11px 11px;line-height:1.9;border-width:2px}
+.overpanel .prow button{border-color:#e8c14a;color:#e8c14a}
+.overpanel .prow button:disabled{border-color:#555;color:#555}
+.overpanel .prow button:active:not(:disabled){background:#e8c14a;color:#000}
 .overpanel .prow .nm{font-size:8px;letter-spacing:1px}
-.shopicon{width:22px;height:22px;vertical-align:middle;margin-right:2px;image-rendering:pixelated;position:relative;top:-1px}
+.shopicon{width:24px;height:24px;flex:none;vertical-align:middle;margin-right:7px;image-rendering:pixelated;position:relative;top:-1px}
 .overpanel .tiny{color:#8a8a8a;letter-spacing:1px}
 .overpanel h2{letter-spacing:4px}
 .charm{border-width:2px}
@@ -127,7 +130,14 @@ button.red:active{background:#f22;color:#000}
 #bGoOut{grid-column:3;grid-row:1}
 #bSnacks{grid-column:1;grid-row:2}
 #bFetch{grid-column:3;grid-row:2}
-.prow{display:flex;justify-content:space-between;align-items:center;border:3px solid #fff;padding:8px;font-size:8px;gap:6px}
+.prow{display:flex;justify-content:space-between;align-items:center;border:2px solid #fff;background:rgba(255,255,255,.035);padding:9px 10px;font-size:8px;gap:8px}
+/* the balance you are about to spend, stated before the list — as in the park shop */
+.wallet{display:flex;align-items:center;gap:8px;border:2px solid #e8c14a;color:#e8c14a;
+        padding:7px 16px;font-size:9px;letter-spacing:2px;margin-bottom:2px}
+/* a scrolled list should look scrolled, not chopped off mid-card */
+.scrollfade{position:relative}
+.scrollfade::after{content:"";position:absolute;left:0;right:0;bottom:0;height:26px;pointer-events:none;
+                   background:linear-gradient(to bottom,rgba(0,0,0,0),#000)}
 .prow.locked{opacity:.4}
 .prow .nm{line-height:1.6}
 .prow button{font-size:7px;padding:6px 8px}
@@ -286,7 +296,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.105a</span>
+          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.107a</span>
         </div>
       </div>
 
@@ -412,6 +422,7 @@ body.reduce-motion *{animation:none!important}
       <div id="shopPanel" class="overpanel">
         <button class="tiny pclose" id="shopClose">&#10005; CLOSE</button>
         <h2>&#9670; SHOP</h2>
+        <div class="wallet"><img class="shopicon" id="walletIcn" alt=""><span id="shopWallet">$0</span></div>
         <div id="shopScroll" style="width:94%;max-height:72%;overflow-y:auto;display:flex;flex-direction:column;gap:8px">
           <div id="shopSup" style="display:flex;flex-direction:column;gap:8px"></div>
         </div>

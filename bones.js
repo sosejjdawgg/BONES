@@ -2370,6 +2370,11 @@ function renderShopSup(){
 }
 function renderShop(){
   renderShopSup();
+  const wl=$("#shopWallet"), wi=$("#walletIcn");
+  if(wl){ const neg=S.money<0; wl.textContent=(neg?"-$":"$")+Math.abs(S.money);
+          wl.parentElement.style.borderColor=neg?"#f22":"#e8c14a";
+          wl.parentElement.style.color=neg?"#f22":"#e8c14a"; }
+  if(wi && !wi.src) wi.src=ICONS.kibble;
 }
 
 /* ---------- mode switching ---------- */
