@@ -110,7 +110,11 @@ function renderMeters(){
 const WORK_CLOCK_FF=2.5, WORK_NEED_FF=1.25;
 let WORK_FF=1, NEED_FF=1;
 function atWorkNow(){ return MODE==="work" || MODE==="paperboy"; }
-function tickStats(dt){
+function tickStats(dt, force){
+  // The park exists outside the day. Nothing decays and the clock does not move while a run
+  // is on; each cleared wave spends a flat 15 minutes instead (see parkUpdate). Without this
+  // a long run burned a whole night and you came home straight into the bedtime panel.
+  if(PK.active && !force) return;
   const m=mods();
   const nm=(S.senior?0.6:1)*NEED_FF;
   S.hunger = clamp(S.hunger - 0.18*nm*dt, 0, 100);

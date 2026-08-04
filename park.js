@@ -254,7 +254,7 @@ function startPark(plus){
     barkMax:Math.max(1.2,3-0.06*S.lvl), barkCd:1, pulse:0,
     barkR:21*(0.8+0.4*S.hunger/100), knock:150,
     bones:0, kills:0, xpFromRun:0, sideDone:0, relic:null, waveBanner:null, shopFlash:null,
-    worldMult:2, barkBigLvl:0, barkFastLvl:0, speedBonus:null,
+    worldMult:2, barkBigLvl:0, barkFastLvl:0, speedBonus:null, shopSel:null,
     chain:0, chainT:0, inv:0, fx:[],
     x:0,y:0,vx:0,vy:0, joy:null,
     en:[], fr:[], gate:{}, started:false, shop:null, biscuits:[], drops:[], pendingBury:0, nuts:[],
@@ -992,13 +992,13 @@ function pkPalDamage(dt,WW,WH){
 }
 function pkShopOpen(){
   const statAll=[
-    {n:"BIGGER BARK",   fx:"+10 BARK RADIUS",    c:12, capKey:"barkBigLvl",  f:()=>{PK.barkR=Math.min(BARK_CAP,PK.barkR+10); PK.barkBigLvl++;}},
-    {n:"FASTER BARK",   fx:"-0.35s COOLDOWN",     c:14, capKey:"barkFastLvl",f:()=>{PK.barkMax=Math.max(0.8,PK.barkMax-0.35); PK.barkFastLvl++;}},
-    {n:"MIGHTY KNOCKBACK", fx:"+70 KNOCKBACK",    c:10, f:()=>PK.knock+=70},
-    {n:"SNACK",         fx:"HEAL 30 HP",          c:8,  f:()=>PK.hp=Math.min(PK.maxhp,PK.hp+30)},
-    {n:"ZOOMIES",       fx:"+10% SPEED",          c:12, f:()=>PK.spd*=1.1},
-    {n:"TOUGH COAT",    fx:"+15 MAX HP",          c:15, f:()=>{PK.maxhp+=15;PK.hp+=15;}},
-    {n:"KEEN NOSE",     fx:"WIDER BONE PICKUP",   c:11, capKey:"sniffLvl", capMax:SNIFF_LVL_CAP, f:()=>{PK.sniffLvl=(PK.sniffLvl||0)+1;}}
+    {n:"BIGGER BARK", ic:"bark",  fx:"+10 BARK RADIUS",    c:12, capKey:"barkBigLvl",  f:()=>{PK.barkR=Math.min(BARK_CAP,PK.barkR+10); PK.barkBigLvl++;}},
+    {n:"FASTER BARK", ic:"fast",  fx:"-0.35s COOLDOWN",     c:14, capKey:"barkFastLvl",f:()=>{PK.barkMax=Math.max(0.8,PK.barkMax-0.35); PK.barkFastLvl++;}},
+    {n:"MIGHTY KNOCKBACK", ic:"knock", fx:"+70 KNOCKBACK", c:10, f:()=>PK.knock+=70},
+    {n:"SNACK", ic:"heal",        fx:"HEAL 30 HP",          c:8,  f:()=>PK.hp=Math.min(PK.maxhp,PK.hp+30)},
+    {n:"ZOOMIES", ic:"speed",     fx:"+10% SPEED",          c:12, f:()=>PK.spd*=1.1},
+    {n:"TOUGH COAT", ic:"hp",     fx:"+15 MAX HP",          c:15, f:()=>{PK.maxhp+=15;PK.hp+=15;}},
+    {n:"KEEN NOSE", ic:"nose",    fx:"WIDER BONE PICKUP",   c:11, capKey:"sniffLvl", capMax:SNIFF_LVL_CAP, f:()=>{PK.sniffLvl=(PK.sniffLvl||0)+1;}}
   ];
   // capped upgrades stop appearing once they're maxed out
   const pool=statAll.filter(o=>!o.capKey || PK[o.capKey]<(o.capMax||BARK_LVL_CAP))
@@ -1007,16 +1007,17 @@ function pkShopOpen(){
   const candidates=PK_CHARMS.filter(c=>c.id!==PK.relic);
   if(candidates.length && Math.random()<0.4){
     const pick=candidates[Math.floor(Math.random()*candidates.length)];
-    pool.push({n:"\u2b25 "+pick.name, fx:pick.fx, c:pick.cost, relic:true,
+    pool.push({n:"\u2b25 "+pick.name, ic:"relic", fx:pick.fx, c:pick.cost, relic:true,
       f:()=>{ pick.apply(); PK.relic=pick.id; tickTodo("j_collar"); }});
   }
   // rare chance to grow the park itself, up to a 4\u00d74 world
   if(PK.worldMult<4 && Math.random()<0.3){
     const next=Math.min(4,PK.worldMult+0.5);
-    pool.push({n:"EXPAND THE PARK", fx:"GROW WORLD TO "+next+"\u00d7"+next, c:Math.round(14+(PK.worldMult-2)*16), expand:true,
+    pool.push({n:"EXPAND THE PARK", ic:"expand", fx:"GROW WORLD TO "+next+"\u00d7"+next, c:Math.round(14+(PK.worldMult-2)*16), expand:true,
       f:()=>pkExpandPark()});
   }
   PK.shop = pool.sort(()=>Math.random()-0.5).slice(0,3);
+  PK.shopSel = null;      // nothing is bought until it has been confirmed
   PK.joy=null;
 }
 function parkUpdate(dt){
@@ -1081,6 +1082,7 @@ function parkUpdate(dt){
       S.dogParkPlusUnlocked=true;
       setTimeout(()=>pkFanfare(null,true,"🏆 DOGPARK+ UNLOCKED!"),300);
     }
+    tickStats(2.5, true);   // a cleared wave is 15 game minutes — the only time the park spends
     PK.waveT=0; PK.wave++;
     if(PK.wave>=3) tickTodo("j_wave3");
     PK.barkMax=Math.max(1,PK.barkMax-0.12); PK.barkR=Math.min(BARK_CAP,PK.barkR+3.5);
@@ -2165,6 +2167,7 @@ function parkDraw(t){
     ctx.textAlign="left";
     ctx.restore();
   }
+  pkDrawShop(ctx,w,h,t);
   // shop-purchase fanfare — a satisfying beat so spending bones actually feels like a reward
   if(PK.shopFlash){
     const {text,life,max,gold}=PK.shopFlash, el=max-life;
@@ -2217,6 +2220,174 @@ function parkDraw(t){
 const PANEL_ROW0=0.30, PANEL_STEP=0.115, PANEL_CARDH=0.085;
 function pkRowYF(i){ return PANEL_ROW0+i*PANEL_STEP; }
 function pkRowHit(yF,i){ return Math.abs(yF-pkRowYF(i))<PANEL_CARDH/2; }
+
+/* ---------- the park shop, drawn on the park screen itself ---------- */
+// It used to live on the controller pad, where a thumb already steering BONES would buy
+// things by accident between waves. Up here it is out of the way, and nothing is bought
+// until it has been confirmed.
+function pkShopIcon(ctx,x,y,s2,key,col){
+  ctx.save(); ctx.translate(x,y); ctx.scale(s2,s2);
+  ctx.strokeStyle=col; ctx.fillStyle=col; ctx.lineWidth=1.6; ctx.lineJoin="miter";
+  if(key==="bark"){ for(let i=1;i<=3;i++){ ctx.beginPath(); ctx.arc(-4,0,i*3,-0.9,0.9); ctx.stroke(); } ctx.fillRect(-7,-2,3,4); }
+  else if(key==="fast"){ ctx.beginPath(); ctx.moveTo(1,-8); ctx.lineTo(-5,1); ctx.lineTo(-1,1); ctx.lineTo(-2,8); ctx.lineTo(5,-1); ctx.lineTo(1,-1); ctx.closePath(); ctx.fill(); }
+  else if(key==="knock"){ for(let i=0;i<8;i++){ const a=i*Math.PI/4; ctx.beginPath(); ctx.moveTo(Math.cos(a)*3,Math.sin(a)*3); ctx.lineTo(Math.cos(a)*8,Math.sin(a)*8); ctx.stroke(); } }
+  else if(key==="heal"){ ctx.fillRect(-2.5,-8,5,16); ctx.fillRect(-8,-2.5,16,5); }
+  else if(key==="speed"){ for(let i=0;i<2;i++){ ctx.beginPath(); ctx.moveTo(-5+i*6,-7); ctx.lineTo(1+i*6,0); ctx.lineTo(-5+i*6,7); ctx.stroke(); } }
+  else if(key==="hp"){ ctx.beginPath(); ctx.moveTo(0,-8); ctx.lineTo(7,-4); ctx.lineTo(7,3); ctx.lineTo(0,8); ctx.lineTo(-7,3); ctx.lineTo(-7,-4); ctx.closePath(); ctx.stroke(); ctx.fillRect(-1.5,-4,3,8); ctx.fillRect(-4,-1.5,8,3); }
+  else if(key==="nose"){ drawBone(ctx,0,0,0.85,col); }
+  else if(key==="relic"){ ctx.beginPath(); ctx.moveTo(0,-8); ctx.lineTo(8,0); ctx.lineTo(0,8); ctx.lineTo(-8,0); ctx.closePath(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0,-4); ctx.lineTo(4,0); ctx.lineTo(0,4); ctx.lineTo(-4,0); ctx.closePath(); ctx.fill(); }
+  else if(key==="expand"){ ctx.strokeRect(-8,-8,16,16); ctx.beginPath(); ctx.moveTo(0,-8); ctx.lineTo(0,8); ctx.moveTo(-8,0); ctx.lineTo(8,0); ctx.stroke(); }
+  else { ctx.beginPath(); ctx.arc(0,0,6,0,7); ctx.stroke(); }
+  ctx.restore();
+}
+// one shared row geometry, used by both the draw and the hit test so they can never drift
+function pkShopRows(w,h){
+  const rows=[];
+  const cardH=h*0.125, step=h*0.135, top0=h*0.225;
+  for(let i=0;i<3;i++) rows.push({x:w*0.07, y:top0+i*step, w:w*0.86, h:cardH, kind:"offer", idx:i});
+  rows.push({x:w*0.07, y:h*0.635, w:w*0.86, h:cardH, kind:"charm", idx:0});
+  rows.push({x:w*0.32, y:h*0.80,  w:w*0.36, h:h*0.10, kind:"skip", idx:0});
+  return rows;
+}
+function pkShopCard(ctx,r,o,col,dim,afford){
+  ctx.save();
+  ctx.fillStyle="rgba(0,0,0,.72)"; ctx.fillRect(r.x,r.y,r.w,r.h);
+  ctx.globalAlpha=dim;
+  ctx.strokeStyle=col; ctx.lineWidth=2; ctx.strokeRect(r.x,r.y,r.w,r.h);
+  pkShopIcon(ctx, r.x+r.h*0.52, r.y+r.h*0.5, r.h/26, o.ic, col);
+  ctx.textAlign="left"; ctx.font="8px 'Press Start 2P',monospace"; ctx.fillStyle=col;
+  ctx.fillText(o.n, r.x+r.h*1.05, r.y+r.h*0.42);
+  ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle="#9a9a9a";
+  ctx.fillText(o.fx, r.x+r.h*1.05, r.y+r.h*0.75);
+  ctx.textAlign="right"; ctx.font="8px 'Press Start 2P',monospace";
+  ctx.fillStyle = afford ? col : "#f22";
+  ctx.fillText(o.c+"◆", r.x+r.w-8, r.y+r.h*0.60);
+  ctx.restore();
+}
+function pkDrawShop(ctx,w,h,t){
+  if(!PK.shop) return;
+  ctx.save();
+  ctx.fillStyle="rgba(0,0,0,.82)"; ctx.fillRect(0,0,w,h);
+  ctx.strokeStyle="#fff"; ctx.lineWidth=3; ctx.strokeRect(4,4,w-8,h-8);
+  ctx.textAlign="center";
+  ctx.fillStyle="#fff"; ctx.font="10px 'Press Start 2P',monospace";
+  ctx.fillText("★ PARK SHOP ★", w/2, h*0.105);
+  // wallet
+  ctx.strokeStyle="#e8c14a"; ctx.lineWidth=2;
+  const wbW=w*0.42, wbX=w/2-wbW/2, wbY=h*0.135, wbH=h*0.062;
+  ctx.strokeRect(wbX,wbY,wbW,wbH);
+  drawBone(ctx, wbX+16, wbY+wbH*0.55, 1, "#e8c14a");
+  ctx.fillStyle="#e8c14a"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
+  ctx.fillText(PK.bones+" BONES", wbX+28, wbY+wbH*0.68);
+
+  const rows=pkShopRows(w,h);
+  // ---- confirm step: the list is replaced entirely, so a stray tap cannot reach a card
+  if(PK.shopSel){
+    const sel=PK.shopSel, o=sel.item;
+    const col=sel.kind==="charm"?"#e8c14a":(o.relic?"#e8c14a":o.expand?"#6cf":"#fff");
+    const afford=PK.bones>=o.c;
+    const bx=w*0.10, by=h*0.235, bw2=w*0.80, bh2=h*0.30;
+    ctx.fillStyle="rgba(0,0,0,.9)"; ctx.fillRect(bx,by,bw2,bh2);
+    ctx.strokeStyle=col; ctx.lineWidth=3; ctx.strokeRect(bx,by,bw2,bh2);
+    pkShopIcon(ctx, bx+bw2/2, by+bh2*0.26, 1.15, o.ic, col);
+    ctx.textAlign="center"; ctx.font="9px 'Press Start 2P',monospace"; ctx.fillStyle=col;
+    ctx.fillText(o.n, w/2, by+bh2*0.58);
+    ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle="#9a9a9a";
+    ctx.fillText(o.fx, w/2, by+bh2*0.76);
+    ctx.font="8px 'Press Start 2P',monospace"; ctx.fillStyle=afford?"#e8c14a":"#f22";
+    ctx.fillText(o.c+"◆  —  YOU HAVE "+PK.bones+"◆", w/2, by+bh2*0.94);
+    const cy=h*0.58, ch2=h*0.13;
+    ctx.fillStyle="rgba(0,0,0,.9)"; ctx.fillRect(w*0.10,cy,w*0.38,ch2); ctx.fillRect(w*0.52,cy,w*0.38,ch2);
+    ctx.strokeStyle=afford?"#4a9":"#663333"; ctx.lineWidth=3; ctx.strokeRect(w*0.10,cy,w*0.38,ch2);
+    ctx.fillStyle=afford?"#4a9":"#663333"; ctx.font="9px 'Press Start 2P',monospace";
+    ctx.fillText(afford?"BUY":"TOO DEAR", w*0.29, cy+ch2*0.62);
+    ctx.strokeStyle="#f22"; ctx.lineWidth=3; ctx.strokeRect(w*0.52,cy,w*0.38,ch2);
+    ctx.fillStyle="#f22"; ctx.fillText("CANCEL", w*0.71, cy+ch2*0.62);
+    ctx.textAlign="left"; ctx.restore(); return;
+  }
+
+  PK.shop.forEach((o,i)=>{
+    const col = o.relic?"#e8c14a" : o.expand?"#6cf" : "#fff";
+    const glow = (o.relic||o.expand) ? 0.72+0.28*Math.sin(t*5) : 1;
+    pkShopCard(ctx, rows[i], o, col, glow, PK.bones>=o.c);
+  });
+
+  // ---- the 60s clear bonus, deliberately the loudest thing on the panel
+  const br=rows[3];
+  if(PK.speedBonus && PK.speedBonus.unlocked && PK.speedBonus.charm){
+    const ch=PK.speedBonus.charm, afford=PK.bones>=ch.cost;
+    const puls=0.6+0.4*Math.sin(t*7);
+    ctx.save();
+    ctx.globalAlpha=0.30*puls; ctx.fillStyle="#e8c14a";
+    ctx.fillRect(br.x-5,br.y-5,br.w+10,br.h+10);          // halo so it cannot be missed
+    ctx.restore();
+    pkShopCard(ctx, br, {n:"★ "+ch.name, fx:"60s CLEAR REWARD — "+ch.fx, c:ch.cost, ic:"relic"},
+               "#e8c14a", 1, afford);
+    ctx.save(); ctx.globalAlpha=puls;
+    ctx.textAlign="center"; ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle="#e8c14a";
+    ctx.fillText("★ FAST CLEAR UNLOCKED ★", w/2, br.y-8);
+    ctx.restore();
+  } else if(PK.speedBonus){
+    ctx.save();
+    ctx.fillStyle="rgba(0,0,0,.6)"; ctx.fillRect(br.x,br.y,br.w,br.h);
+    ctx.setLineDash([5,4]); ctx.strokeStyle="#555"; ctx.lineWidth=2;
+    ctx.strokeRect(br.x,br.y,br.w,br.h); ctx.setLineDash([]);
+    drawLock(ctx, br.x+br.h*0.52, br.y+br.h*0.5, 1, "#777");
+    ctx.textAlign="left"; ctx.font="7px 'Press Start 2P',monospace"; ctx.fillStyle="#777";
+    ctx.fillText("CHARM LOCKED", br.x+br.h*1.05, br.y+br.h*0.42);
+    ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle="#f22";
+    ctx.fillText("CLEAR A WAVE IN 60s — MISSED BY "+PK.speedBonus.over+"s", br.x+br.h*1.05, br.y+br.h*0.75);
+    ctx.restore();
+  }
+  const sk=rows[4];
+  ctx.fillStyle="rgba(0,0,0,.7)"; ctx.fillRect(sk.x,sk.y,sk.w,sk.h);
+  ctx.strokeStyle="#666"; ctx.lineWidth=2; ctx.strokeRect(sk.x,sk.y,sk.w,sk.h);
+  ctx.fillStyle="#999"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
+  ctx.fillText("SKIP", sk.x+sk.w/2, sk.y+sk.h*0.64);
+  ctx.textAlign="left"; ctx.restore();
+}
+// shop taps live on the park screen. Registered here rather than in the #dogcv handler in
+// bones.js, which bails out early for the whole of a park run.
+(function(){
+  const cv=document.querySelector("#dogcv");
+  cv.addEventListener("pointerdown",e=>{
+    if(!PK.active || !PK.shop) return;
+    const r=cv.getBoundingClientRect();
+    const x=e.clientX-r.left, y=e.clientY-r.top, w=r.width, h=r.height;
+    const hit=(rx,ry,rw,rh)=>x>=rx&&x<=rx+rw&&y>=ry&&y<=ry+rh;
+    if(PK.shopSel){
+      const sel=PK.shopSel, o=sel.item, cy=h*0.58, ch2=h*0.13;
+      if(hit(w*0.52,cy,w*0.38,ch2)){ PK.shopSel=null; beep(300,.05); return; }
+      if(hit(w*0.10,cy,w*0.38,ch2)){
+        if(PK.bones<o.c){ beep(150,.1); return; }
+        PK.bones-=o.c;
+        if(sel.kind==="charm"){
+          o.apply(); PK.relic=o.id; tickTodo("j_collar");
+          PK.speedBonus.charm=null; pkFanfare(o.name,true);
+        } else { o.f(); pkFanfare(o.n.replace(/^⬥ /,""),!!o.relic); }
+        PK.shopSel=null; PK.shop=null;
+      }
+      return;
+    }
+    for(const row of pkShopRows(w,h)){
+      if(!hit(row.x,row.y,row.w,row.h)) continue;
+      if(row.kind==="skip"){ PK.shop=null; PK.shopSel=null; beep(400,.05); return; }
+      if(row.kind==="offer"){
+        const o=PK.shop[row.idx];
+        if(o){ PK.shopSel={kind:"offer", item:o}; beep(620,.05); }
+        return;
+      }
+      if(row.kind==="charm"){
+        const sb=PK.speedBonus;
+        if(sb && sb.unlocked && sb.charm){
+          PK.shopSel={kind:"charm", item:Object.assign({}, sb.charm, {n:"★ "+sb.charm.name, c:sb.charm.cost, ic:"relic", fx:sb.charm.fx})};
+          beep(760,.05);
+        } else beep(150,.08);
+        return;
+      }
+    }
+  });
+})();
 function pkPadDraw(t){
   const [ctx,w,h]=fit($("#parkcv"));
   ctx.fillStyle="#000"; ctx.fillRect(0,0,w,h);
@@ -2336,75 +2507,14 @@ function pkPadDraw(t){
     ctx.textAlign="left";
   }
   if(PK.shop){
-    ctx.strokeStyle="#fff"; ctx.lineWidth=3; ctx.strokeRect(w*0.06,h*0.07,w*0.88,h*0.86);
-    ctx.fillStyle="#fff"; ctx.font="10px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText("\u2605 PARK SHOP \u2605", w/2, h*0.13);
-    // wallet banner \u2014 the balance you're about to spend, front and center
-    const wbW=w*0.5, wbX=w/2-wbW/2, wbY=h*0.16, wbH=h*0.07;
-    ctx.strokeStyle="#e8c14a"; ctx.lineWidth=2; ctx.strokeRect(wbX,wbY,wbW,wbH);
-    drawBone(ctx, w/2-32, wbY+wbH*0.58, 1.1, "#e8c14a");
-    ctx.fillStyle="#e8c14a"; ctx.font="9px 'Press Start 2P',monospace"; ctx.textAlign="left";
-    ctx.fillText(PK.bones+" BONES", w/2-20, wbY+wbH*0.64);
+    // the shop itself lives on the park screen now, out of reach of the thumb that is busy
+    // steering BONES — this is only a pointer so nobody hunts for it down here
+    ctx.strokeStyle="#e8c14a"; ctx.lineWidth=2; ctx.strokeRect(w*0.14,h*0.40,w*0.72,h*0.20);
+    ctx.fillStyle="#e8c14a"; ctx.font="9px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText("\u2605 PARK SHOP OPEN", w/2, h*0.49);
+    ctx.font="7px 'Press Start 2P',monospace"; ctx.fillStyle="#888";
+    ctx.fillText("LOOK UP \u2191", w/2, h*0.56);
     ctx.textAlign="left";
-    // one card-button per offer, evenly spaced \u2014 relics glow gold, park-expansions glow blue
-    const ROW_STEP=h*0.125, cardH=h*0.09, row0=h*0.335;
-    PK.shop.forEach((o,i)=>{
-      const y=row0+i*ROW_STEP, top=y-cardH*0.5;
-      const afford=PK.bones>=o.c;
-      const glowCol = o.relic?"#e8c14a":o.expand?"#6cf":null;
-      const pulse=glowCol ? 0.7+0.3*Math.sin(performance.now()/180) : 1;
-      ctx.save();
-      if(glowCol) ctx.globalAlpha=pulse;
-      ctx.strokeStyle = glowCol || (afford?"#fff":"#663333");
-      ctx.lineWidth = glowCol?3:2;
-      ctx.strokeRect(w*0.10, top, w*0.80, cardH);
-      ctx.restore();
-      ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
-      ctx.fillStyle = glowCol || (afford?"#fff":"#a55");
-      ctx.fillText(o.n, w*0.145, y-2);
-      ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle="#999";
-      ctx.fillText(o.fx, w*0.145, y+10);
-      ctx.textAlign="right"; ctx.font="7px 'Press Start 2P',monospace";
-      ctx.fillStyle = afford ? (glowCol||"#fff") : "#f22";
-      ctx.fillText(o.c+"\u25C6", w*0.855, y+2);
-      ctx.textAlign="left";
-    });
-    // speed-clear bonus row \u2014 wipe a wave inside 60s and a charm slot unlocks here; otherwise
-    // it's shown locked with a padlock and how far over 60s the clear took
-    const bonusY=row0+3*ROW_STEP, bonusTop=bonusY-cardH*0.5;
-    if(PK.speedBonus){
-      if(PK.speedBonus.unlocked && PK.speedBonus.charm){
-        const ch=PK.speedBonus.charm, afford=PK.bones>=ch.cost;
-        const pulse=0.7+0.3*Math.sin(performance.now()/180);
-        ctx.save(); ctx.globalAlpha=pulse;
-        ctx.strokeStyle="#e8c14a"; ctx.lineWidth=3;
-        ctx.strokeRect(w*0.10, bonusTop, w*0.80, cardH);
-        ctx.restore();
-        ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
-        ctx.fillStyle=afford?"#e8c14a":"#a55";
-        ctx.fillText("\u2605 "+ch.name, w*0.145, bonusY-2);
-        ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle="#999";
-        ctx.fillText("60s CLEAR BONUS \u2014 "+ch.fx, w*0.145, bonusY+10);
-        ctx.textAlign="right"; ctx.font="7px 'Press Start 2P',monospace";
-        ctx.fillStyle=afford?"#e8c14a":"#f22";
-        ctx.fillText(ch.cost+"\u25C6", w*0.855, bonusY+2);
-        ctx.textAlign="left";
-      } else {
-        ctx.strokeStyle="#444"; ctx.lineWidth=2;
-        ctx.strokeRect(w*0.10, bonusTop, w*0.80, cardH);
-        drawLock(ctx, w*0.145+5, bonusY-3, 0.9, "#666");
-        ctx.font="7px 'Press Start 2P',monospace"; ctx.fillStyle="#666"; ctx.textAlign="left";
-        ctx.fillText("CHARM LOCKED", w*0.21, bonusY-2);
-        ctx.font="6px 'Press Start 2P',monospace";
-        ctx.fillText("+"+(PK.speedBonus?PK.speedBonus.over:0)+"s OVER THE 60s CLEAR", w*0.21, bonusY+10);
-        ctx.textAlign="left";
-      }
-    }
-    const skipY=row0+4*ROW_STEP-cardH*0.15, skipH=h*0.06;
-    ctx.strokeStyle="#666"; ctx.lineWidth=2;
-    ctx.strokeRect(w*0.30,skipY,w*0.40,skipH);
-    ctx.fillStyle="#888"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText("SKIP", w/2, skipY+skipH*0.65);
   }
   ctx.textAlign="left";
 }
@@ -2413,31 +2523,7 @@ function pkPadDraw(t){
   cv.addEventListener("pointerdown",e=>{
     if(!PK.active) return;
     const r=cv.getBoundingClientRect();
-    if(PK.shop){
-      const yF=(e.clientY-r.top)/r.height;
-      // must mirror pkPadDraw's row0/ROW_STEP/cardH layout exactly, or taps miss the cards
-      const rowStepF=0.125, cardHF=0.09, row0F=0.335, tolF=cardHF/2;
-      for(let i=0;i<3;i++){
-        if(Math.abs(yF-(row0F+i*rowStepF))<tolF){
-          const o=PK.shop[i];
-          if(PK.bones>=o.c){ PK.bones-=o.c; o.f(); pkFanfare(o.n.replace(/^\u2b25 /,""),!!o.relic); PK.shop=null; }
-          else beep(150,.1);
-          return;
-        }
-      }
-      if(PK.speedBonus && PK.speedBonus.unlocked && PK.speedBonus.charm && Math.abs(yF-(row0F+3*rowStepF))<tolF){
-        const ch=PK.speedBonus.charm;
-        if(PK.bones>=ch.cost){
-          PK.bones-=ch.cost; ch.apply(); PK.relic=ch.id; tickTodo("j_collar");
-          PK.speedBonus.charm=null;
-          pkFanfare(ch.name,true); PK.shop=null;
-        } else beep(150,.1);
-        return;
-      }
-      const skipYF=row0F+4*rowStepF-cardHF*0.15+0.03;
-      if(Math.abs(yF-skipYF)<0.045){ PK.shop=null; beep(400,.05); }
-      return;
-    }
+    if(PK.shop) return;      // shop taps belong to the park screen, not the pad
     if(PK.convertOpen){
       const yF=(e.clientY-r.top)/r.height;
       const cRowStep=0.10, cCardH=0.075, cRow0=0.33, tolF=cCardH/2;
