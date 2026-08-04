@@ -371,7 +371,8 @@ function pkSpawnGoldenBird(){
 function pkSpawnFlock(){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
-  const n=(12+Math.floor(Math.random()*9))*pkPlusMult();
+  const remaining=Math.max(1, PK.waveQuota-PK.waveSpawned);
+  const n=Math.min((12+Math.floor(Math.random()*9))*pkPlusMult(), remaining);
   const diagonals=[Math.PI*0.25, Math.PI*0.75, Math.PI*1.25, Math.PI*1.75];
   const ang=diagonals[Math.floor(Math.random()*4)], perp=ang+Math.PI/2;
   const R=Math.max(w,h)*0.85;
@@ -384,7 +385,6 @@ function pkSpawnFlock(){
       hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp, vx:Math.cos(ang)*sp, vy:Math.sin(ang)*sp,
       ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
   }
-  PK.waveSpawned += n;
   if(Math.random()<STALK_CHANCE) pkSpawnStalkCat(PK.x+(Math.random()-0.5)*80, PK.y+(Math.random()-0.5)*80, 1+Math.floor(Math.random()*2));
   toast(n+" BIRDS INBOUND \u2014 BACKUP ARRIVES!",1);
   beep(520,.09,"square",.05); setTimeout(()=>beep(680,.09,"square",.05),90);
@@ -561,7 +561,10 @@ function pkSpawnBirdGroup(){
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
   const ang=Math.random()*6.283, R=Math.max(w,h)*0.62;
   const cx=(PK.x+Math.cos(ang)*R+WW)%WW, cy=(PK.y+Math.sin(ang)*R+WH)%WH;
-  const n=(3+Math.floor(Math.random()*5))*pkPlusMult();   // 3-7 birds
+  // never spawn more than the wave still needs — wave 1's quota of 1 must mean "1 bird",
+  // not "a full flock, of which the clear check will demand every last one"
+  const remaining=Math.max(1, PK.waveQuota-PK.waveSpawned);
+  const n=Math.min((3+Math.floor(Math.random()*5))*pkPlusMult(), remaining);
   for(let i=0;i<n;i++){
     const ox=(Math.random()-0.5)*46, oy=(Math.random()-0.5)*34;
     PK.en.push({t:"bird", standing:true, x:(cx+ox+WW)%WW, y:(cy+oy+WH)%WH,
@@ -589,14 +592,14 @@ function pkSpawnStalkCat(ax, ay, count){
 function pkSpawnCatSquad(){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
-  const n=(2+Math.floor(Math.random()*3))*pkPlusMult();
+  const remaining=Math.max(1, PK.waveQuota-PK.waveSpawned);
+  const n=Math.min((2+Math.floor(Math.random()*3))*pkPlusMult(), remaining);
   const ang=Math.random()*6.283, R=Math.max(w,h)*0.62;
   for(let i=0;i<n;i++){
     const a2=ang+(Math.random()-0.5)*0.8;
     PK.en.push({t:"cat", x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
       hp:pkEnemyHp(2), hpMax:pkEnemyHp(2), sp:48, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
   }
-  PK.waveSpawned+=n;
   return n;
 }
 // WAVE 3 — a lone decorative bird sweeping straight across, left to right. Pure flavor: it
@@ -614,7 +617,8 @@ function pkSpawnSwoopBird(){
 function pkSpawnRangerSquad(){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
-  const n=(2+Math.floor(Math.random()*2))*pkPlusMult();
+  const remaining=Math.max(1, PK.waveQuota-PK.waveSpawned);
+  const n=Math.min((2+Math.floor(Math.random()*2))*pkPlusMult(), remaining);
   const ang=Math.random()*6.283, R=Math.max(w,h)*0.65;
   for(let i=0;i<n;i++){
     const a2=ang+(Math.random()-0.5)*0.9;
@@ -622,7 +626,6 @@ function pkSpawnRangerSquad(){
       hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:RANGER_APPROACH_SPD, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
       atkState:"approach", atkCd:0.6+Math.random()*0.8});
   }
-  PK.waveSpawned+=n;
   return n;
 }
 // WAVE 5 — MAD SQUIRRELS: you made them mad. Same weak 1 HP, but their eyes glow red and they
@@ -631,7 +634,8 @@ function pkSpawnRangerSquad(){
 function pkSpawnMadSquad(){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
-  const n=(2+Math.floor(Math.random()*2))*pkPlusMult();
+  const remaining=Math.max(1, PK.waveQuota-PK.waveSpawned);
+  const n=Math.min((2+Math.floor(Math.random()*2))*pkPlusMult(), remaining);
   const ang=Math.random()*6.283, R=Math.max(w,h)*0.62;
   for(let i=0;i<n;i++){
     const a2=ang+(Math.random()-0.5)*0.9;
@@ -639,7 +643,6 @@ function pkSpawnMadSquad(){
       hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:44, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
       laserState:"seek", chargeT:0, aimAng:0, sweepT:0, cd:0.6+Math.random()*0.8});
   }
-  PK.waveSpawned+=n;
   return n;
 }
 // WAVE 6 — THE ALPHAS: exactly 2 giant alpha cats (5-hit kill, gigantic leap attack) plus a
@@ -668,7 +671,8 @@ function pkPickMixTypes(){
 function pkSpawnMixBurst(types){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
-  const n=(1+Math.floor(Math.random()*3))*pkPlusMult();
+  const remaining=Math.max(1, PK.waveQuota-PK.waveSpawned);
+  const n=Math.min((1+Math.floor(Math.random()*3))*pkPlusMult(), remaining);
   const ang=Math.random()*6.283, R=Math.max(w,h)*0.62;
   for(let i=0;i<n;i++){
     const type=types[Math.floor(Math.random()*types.length)];
@@ -679,7 +683,6 @@ function pkSpawnMixBurst(types){
     else if(type==="ranger") PK.en.push({t:"sq", ranger:true, x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:RANGER_APPROACH_SPD, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0, atkState:"approach", atkCd:0.6+Math.random()*0.8});
     else if(type==="madsq") PK.en.push({t:"sq", madsq:true, x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:44, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0, laserState:"seek", chargeT:0, aimAng:0, sweepT:0, cd:0.6+Math.random()*0.8});
   }
-  PK.waveSpawned+=n;
   return n;
 }
 // how many enemies a wave needs cleared \u2014 hand-set to match the redesigned wave-by-wave
