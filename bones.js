@@ -30,7 +30,7 @@ const S = {
   dogName:"BONES", sel:"bones",
   pup:{owned:false,name:"",hunger:70,thirst:70,mood:75,xp:0,lvl:1},
   pFeed:false, pPlay:false, pPet:false,
-  hunger:52, thirst:48, energy:80, clean:80, fun:70, mood:70,
+  hunger:52, thirst:48, energy:80, clean:80, fun:70, mood:70, groom:90,
   money:10, earned:0, petCd:0,
   owned:{}, equipped:null,
   dailyUsed:false, bestDaily:0, bestPractice:0,
@@ -38,7 +38,7 @@ const S = {
   kibble:3, snacks:2, beach:false, compsToday:0,
   jWave3:false, jCollar:false, jTrick:false,
   dHappy:false, dNour:false, dBall:false, dPark:false, dClean:false, dWater:false, dFood:false,
-  hoopOwned:false, ballOwned:false, shampooOwned:false, shampooPct:0, firstWater:false, firstFood:false, bedHinted:false,
+  hoopOwned:false, ballOwned:false, brushOwned:false, shampooOwned:false, shampooPct:0, firstWater:false, firstFood:false, bedHinted:false,
   bedTier:0, todoWork:false, todoLvl5:false, todoBed:false, todoPark:false, todoBall:false, todoBowls:false, twW:false, twF:false, todoHide:false, outTimer:0,
   lvl:1, xp:0, gen:1, senior:false, seniorDays:0, lifePathChosen:false, litter:false, memorialSrc:null, pendingStage:[],
   lastSaveAt:null, lastSaveDay:0, lastSaveH:0, dogParkPlusUnlocked:false
@@ -64,12 +64,25 @@ function mods(){
 }
 
 /* ---------- meters ---------- */
-const METERS=[["HUNGER","hunger"],["THIRST","thirst"],["ENERGY","energy"],["CLEAN","clean"],["FUN","fun"],["MOOD","mood"]];
+const METERS=[["HUNGER","hunger"],["THIRST","thirst"],["ENERGY","energy"],["CLEAN","clean"],["FUN","fun"],["MOOD","mood"],["GROOM","groom"]];
 function buildMeters(){
   $("#meters").innerHTML = METERS.map(([lb,k])=>
     `<div class="mrow"><span class="lb">${lb}</span><div class="bar" id="bar_${k}"><i></i></div></div>`).join("");
 }
 $("#money1").style.cursor="pointer"; $("#money2").style.cursor="pointer"; $("#money3").style.cursor="pointer";
+// set by the main loop while a park run is on screen. Declared with var, and never read
+// during init, because park.js (and its `const PK`) is concatenated after this file.
+var PARK_HDR=false;
+function syncParkHeader(){
+  const left=Math.max(0,PK.waveQuota-PK.waveSpawned)+PK.en.filter(e=>!e.fleeing).length;
+  $("#camlabel").textContent = PK.plusMode ? "DOGPARK+" : "DOGPARK";
+  $("#clock").textContent    = "WAVE "+PK.wave;
+  $("#camstate").textContent = left+" LEFT";
+  $("#needAlert").classList.add("hidden");     // home needs are not the park's business
+}
+function restoreCamHeader(){
+  $("#camlabel").innerHTML='<span class="rec">&#9679;</span> DOGCAM';
+}
 function renderMeters(){
   for(const [,k] of METERS){
     const el=$("#bar_"+k), v=S[k];
@@ -85,6 +98,7 @@ function renderMeters(){
   na.classList.toggle("crit", minv<40);
   const neg=S.money<0, mstr=(neg?"-$":"$")+Math.abs(S.money);
   for(const id of ["money1","money2","money3"]){ const el=$("#"+id); if(el){ el.textContent=mstr; el.style.color=neg?"#f22":"#fff"; } }
+  if(PARK_HDR) return;              // the park owns the header; don't stamp the clock over it
   $("#clock").textContent = "DAY "+CLK.day+" "+String(Math.floor(CLK.h)).padStart(2,"0")+":00"+(atWorkNow()?" ▶▶":"");
   $("#bests").textContent = "STREAK "+S.streak+"d";
 }
@@ -102,6 +116,7 @@ function tickStats(dt){
   S.hunger = clamp(S.hunger - 0.18*nm*dt, 0, 100);
   S.thirst = clamp(S.thirst - 0.30*nm*dt, 0, 100);
   S.clean  = clamp(S.clean  - 0.09*nm*dt, 0, 100);
+  S.groom  = clamp(S.groom  - 0.012*nm*dt, 0, 100);   // coat matts far slower than anything else
   S.fun    = clamp(S.fun    - 0.15*nm*dt, 0, 100);
   const resting = CAM.state==="rest" || CAM.state==="bedsleep";
   const energyCap = resting ? (bedAdequate()?100:70) : 100;
@@ -147,6 +162,8 @@ function tickStats(dt){
     }
   }
 }
+// groom is deliberately excluded: it decays over days, so folding it in would slowly poison
+// the sickness and neglect checks that key off this average
 function avgStat(){ return (S.hunger+S.thirst+S.energy+S.clean+S.fun+S.mood)/6; }
 const XPF=[]; let LVLFX=0; let MEMIMG=null;
 const XPANIM={lvl:1,frac:0,snd:0,pauseT:0,parts:[],ready:false};
@@ -560,8 +577,16 @@ $("#dogcv").addEventListener("pointerdown",e=>{
   // him face-down and untappable during a shift would strand BONES with nobody able to help
   if(S.owned.robot && ROBOT.state==="down" && fy>0.55 && Math.abs(fx-ROBOT.x)<0.10){ botRight(); return; }
   if(atWorkNow() && !S.owned.robot){ blockAtWork(); return; }
-  const spx=SPONGE.held?SPONGE.x:0.135, spy=SPONGE.held?SPONGE.y:0.50;
-  if(Math.hypot(fx-spx,fy-spy)<0.06){                       // grab the sponge off the wall
+  // a tap that lands on BONES belongs to BONES — wall items never steal it
+  const onDogNow = fx>CAM.x-0.02 && fx<CAM.x+CAMDWF+0.04 && fy>0.30;
+  if(S.brushOwned && !BRUSH.held && !onDogNow && Math.hypot(fx-BRUSH_X,fy-BRUSH_Y)<0.055){
+    BRUSH.held=true; BRUSH.x=fx; BRUSH.y=fy;
+    try{ e.currentTarget.setPointerCapture(e.pointerId); }catch(_){}
+    beep(430,.04); return;
+  }
+  const spx=SPONGE.held?SPONGE.x:SPONGE_X, spy=SPONGE.held?SPONGE.y:SPONGE_Y;
+  if(!SPONGE.held && onDogNow){ /* fall through to the dog */ }
+  else if(Math.hypot(fx-spx,fy-spy)<0.06){                  // grab the sponge off the wall
     if(S.shampooPct<=0){
       openChoice("NO DOG SHAMPOO", "BONES NEEDS SHAMPOO BEFORE YOU CAN WASH HIM.",
         "GO TO SHOP", ()=>openShopPanel(), "CANCEL", ()=>{});
@@ -636,6 +661,22 @@ $("#dogcv").addEventListener("pointerdown",e=>{
 $("#dogcv").addEventListener("pointermove",e=>{
   const r=e.currentTarget.getBoundingClientRect();
   const fx=(e.clientX-r.left)/r.width, fy=(e.clientY-r.top)/r.height;
+  if(BRUSH.held){
+    BRUSH.x=fx; BRUSH.y=fy;
+    if(fx>CAM.x-0.02 && fx<CAM.x+CAMDWF+0.04 && fy>0.30 && fy<0.85 && !R.active && !OUTING.active && !PK.active){
+      const was=S.groom;
+      S.groom=clamp(S.groom+0.45,0,100);
+      S.mood=clamp(S.mood+0.05,0,100);
+      // loose fur comes away as he is worked over
+      if(Math.random()<0.35){ SUDS.push({x:fx+(Math.random()-0.5)*0.03,y:fy,life:0.7,r:2+Math.random()*3}); if(SUDS.length>60) SUDS.splice(0,SUDS.length-60); }
+      if(Math.random()<0.10) beep(200+Math.random()*90,.03,"square",.015);
+      if(S.groom>=100 && was<100){
+        addXP(6); heartsBurst(2);
+        toast("WELL GROOMED. HE LOOKS SHARP."); beep(880,.08);
+      }
+    }
+    return;
+  }
   if(SPONGE.held){
     SPONGE.x=fx; SPONGE.y=fy;
     if(Math.random()<0.4){ DRIPS.push({x:fx+(Math.random()-0.5)*0.015,y:fy+0.015,vy:0.12+Math.random()*0.18,life:0.5+Math.random()*0.3}); if(DRIPS.length>50) DRIPS.splice(0,DRIPS.length-50); }
@@ -677,9 +718,9 @@ $("#dogcv").addEventListener("pointerup",()=>{
   if(BALL.held && (Math.abs(BALL.vx)>0.25 || Math.abs(BALL.vy)>0.25)){
     TRICK.live=true; TRICK.mult=1; TRICK.ticks=0; TRICK.airT=0; TRICK.floorB=0; TRICK.hitWall=false; TRICK.hitWin=false; TRICK.swish=0;
   }
-  BALL.held=false; PET.down=false; SPONGE.held=false; clearTimeout(PET.lp);
+  BALL.held=false; PET.down=false; SPONGE.held=false; BRUSH.held=false; clearTimeout(PET.lp);
 });
-$("#dogcv").addEventListener("pointercancel",()=>{ BALL.held=false; PET.down=false; SPONGE.held=false; clearTimeout(PET.lp); });
+$("#dogcv").addEventListener("pointercancel",()=>{ BALL.held=false; PET.down=false; SPONGE.held=false; BRUSH.held=false; clearTimeout(PET.lp); });
 $("#stClose").onclick=closeStatus;
 $("#meters").addEventListener("click",()=>{
   closeStatus();
@@ -847,7 +888,11 @@ const BOWL = { level:0 };
 const FBOWL = { level:0 };
 const POOS=[];
 const TAPS={water:{t:0,combo:0},food:{t:0,combo:0}};
-const SPONGE={held:false,x:0.135,y:0.50,rew:false};
+// both hang high on the wall, above where BONES' head reaches, so tapping him for his
+// stats can never grab one by accident
+const SPONGE_X=0.135, SPONGE_Y=0.355, BRUSH_X=0.055, BRUSH_Y=0.355;
+const SPONGE={held:false,x:SPONGE_X,y:SPONGE_Y,rew:false};
+const BRUSH={held:false,x:BRUSH_X,y:BRUSH_Y};
 // Bone treats are real objects in the room, not an instant stat bump: each one you give is
 // tossed in, tumbles, bounces, rolls to a stop and piles on whatever settled before it, and
 // only counts once BONES trots over and actually eats it.
@@ -1883,7 +1928,7 @@ function drawCam(t){
   }
   // wall sponge (drag onto BONES to scrub) — yellow, chamfered sponge silhouette with pore dimples
   {
-    const sx=(SPONGE.held?SPONGE.x:0.135)*w, sy=(SPONGE.held?SPONGE.y:0.50)*h;
+    const sx=(SPONGE.held?SPONGE.x:SPONGE_X)*w, sy=(SPONGE.held?SPONGE.y:SPONGE_Y)*h;
     if(!SPONGE.held){ ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(sx,sy-14); ctx.lineTo(sx,sy-8); ctx.stroke(); } // hook
     const sw2=20, sh2=13, c2=4;
     ctx.fillStyle="#e8c93a";
@@ -1902,6 +1947,17 @@ function drawCam(t){
     for(const [px2,py2] of [[-6,-3],[2,-3],[-2,1],[5,2],[-6,3]]) ctx.fillRect(sx+px2-1,sy+py2-1,2,2);
     ctx.strokeStyle="#fff"; ctx.lineWidth=3;
   }
+  // the dog brush on its hook, once bought — drag it onto BONES to work his coat out
+  if(S.brushOwned){
+    const bx4=(BRUSH.held?BRUSH.x:BRUSH_X)*w, by4=(BRUSH.held?BRUSH.y:BRUSH_Y)*h;
+    if(!BRUSH.held){ ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(bx4,by4-14); ctx.lineTo(bx4,by4-7); ctx.stroke(); }
+    ctx.fillStyle="#7a4a22"; ctx.fillRect(bx4-9,by4-6,18,7);          // wooden head
+    ctx.strokeStyle="#3a2410"; ctx.lineWidth=1; ctx.strokeRect(bx4-9,by4-6,18,7);
+    ctx.fillStyle="#7a4a22"; ctx.fillRect(bx4-2.5,by4+1,5,10);        // handle
+    ctx.strokeStyle="#cfcfcf"; ctx.lineWidth=1;
+    for(let i=0;i<6;i++){ const tx4=bx4-7.5+i*3; ctx.beginPath(); ctx.moveTo(tx4,by4-6); ctx.lineTo(tx4,by4-11); ctx.stroke(); }
+    ctx.strokeStyle="#fff"; ctx.lineWidth=3;
+  }
   // blue drips shed by the wet sponge
   for(const d of DRIPS){
     ctx.globalAlpha=Math.max(0,d.life);
@@ -1915,7 +1971,8 @@ function drawCam(t){
     ctx.strokeStyle="#f22"; ctx.lineWidth=3;
     if(PULSE.k==="water") ctx.strokeRect(w*0.04-4, gy-u*1.6-4, u*4+8, u*1.6+8);
     else if(PULSE.k==="food") ctx.strokeRect(w*0.04+u*4+4, gy-u*1.6-4, u*4+8, u*1.6+8);
-    else if(PULSE.k==="sponge") ctx.strokeRect(0.135*w-14, 0.50*h-12, 28, 24);
+    else if(PULSE.k==="sponge") ctx.strokeRect(SPONGE_X*w-14, SPONGE_Y*h-12, 28, 24);
+    else if(PULSE.k==="brush") ctx.strokeRect(BRUSH_X*w-13, BRUSH_Y*h-12, 26, 24);
     else if(PULSE.k==="bed") ctx.strokeRect(bx-4, gy-bh2-4, bw2+8, bh2+8);
     ctx.strokeStyle="#fff";
   }
@@ -2234,6 +2291,14 @@ const ICONS = {
     x.fillStyle="rgba(255,255,255,.55)";
     x.beginPath(); x.arc(w*0.40,h*0.46,w*0.07,0,Math.PI*2); x.fill();
   }),
+  brush: makeIcon((x,w,h)=>{
+    x.strokeStyle="#fff"; x.lineWidth=2;
+    x.strokeRect(w*0.22,h*0.30,w*0.56,h*0.22);          // the head
+    x.beginPath(); x.moveTo(w*0.42,h*0.52); x.lineTo(w*0.42,h*0.78);
+    x.moveTo(w*0.58,h*0.52); x.lineTo(w*0.58,h*0.78); x.stroke();   // handle
+    x.strokeStyle="#8a8a8a"; x.lineWidth=1.4;
+    for(let i=0;i<5;i++){ const bx=w*(0.27+i*0.115); x.beginPath(); x.moveTo(bx,h*0.30); x.lineTo(bx,h*0.16); x.stroke(); }
+  }),
   hoop: makeIcon((x,w,h)=>{
     x.strokeStyle="#f22"; x.lineWidth=2.4;
     x.beginPath(); x.ellipse(w/2,h*0.38,w*0.34,h*0.09,0,0,Math.PI*2); x.stroke();
@@ -2285,6 +2350,7 @@ function renderShopSup(){
         ? '<div class="prow" style="border-color:#f22"><span class="nm" style="color:#f22">'+icn("bed")+' BIGGER BED<br><span class="tiny">HE\'S OUTGROWN HIS BED</span></span><button data-sup="biggerbed" '+(S.money<45?"disabled":"")+'>BUY $45</button></div>'
         : "")},
     {req:2, html:(S.ballOwned?"":'<div class="prow'+(S.lvl<2?" locked":"")+'"><span class="nm">'+icn("ball")+' RUBBER BALL<br><span class="tiny">'+(S.lvl<2?"UNLOCKS LV.2":"FETCH, TRICK SHOTS \u2014 ONE-TIME")+'</span></span><button data-sup="ball" '+(S.lvl<2||S.money<5?"disabled":"")+'>BUY $5</button></div>')},
+    {req:2, html:(S.brushOwned?"":'<div class="prow"><span class="nm">'+icn("brush")+' DOG BRUSH<br><span class="tiny">HANGS BY THE SPONGE \u2014 KEEPS HIS COAT RIGHT</span></span><button data-sup="brush" '+(S.money<18?"disabled":"")+'>BUY $18</button></div>')},
     {req:3, html:(S.hoopOwned?"":'<div class="prow"><span class="nm">'+icn("hoop")+' BASKETBALL HOOP<br><span class="tiny">TRICK SHOTS BY THE WINDOW \u2014 ONE-TIME</span></span><button data-sup="hoop" '+(S.money<40?"disabled":"")+'>BUY $40</button></div>')},
     {req:4, html:(S.owned.robot?"":'<div class="prow"><span class="nm">\ud83e\udd16 NOURISH-BOT<br><span class="tiny">FEEDS &amp; WATERS BONES WHILE AT WORK \u2014 ONE-TIME</span></span><button data-sup="robot" '+(S.money<350?"disabled":"")+'>BUY $350</button></div>')}
   ];
@@ -2859,6 +2925,7 @@ $("#shopSup").addEventListener("click",e=>{
   if(t.dataset.sup==="bed") buyBed();
   if(t.dataset.sup==="biggerbed") buyBiggerBed();
   if(t.dataset.sup==="ball"&&S.money>=5&&!S.ballOwned){ S.money-=5; S.ballOwned=true; BALL.x=0.28; BALL.y=0.795; BALL.vx=0; BALL.vy=0; BALL.off=false; beep(700,.07); setTimeout(()=>beep(950,.09),100); toast("A BALL! FLING IT \u2014 HE'LL BRING IT BACK."); }
+  if(t.dataset.sup==="brush"&&S.money>=18&&!S.brushOwned){ S.money-=18; S.brushOwned=true; beep(660,.07); setTimeout(()=>beep(880,.09),100); toast("A DOG BRUSH. IT HANGS BY THE SPONGE."); }
   if(t.dataset.sup==="hoop"&&S.money>=40&&!S.hoopOwned){ S.money-=40; S.hoopOwned=true; beep(880,.08); setTimeout(()=>beep(1170,.1),100); toast("HOOP MOUNTED BY THE WINDOW. SWISH \u2014 +1 XP A BASKET."); }
   if(t.dataset.sup==="shampoo"&&S.money>=5&&S.shampooPct<100){ S.money-=5; S.shampooOwned=true; S.shampooPct=100; beep(700,.07); setTimeout(()=>beep(950,.09),100); toast("SHAMPOO TOPPED UP \u2014 TIME FOR A BATH!"); }
   if(t.dataset.sup==="snack"&&S.money>=3){ S.money-=3; S.snacks++; beep(600,.05); }
@@ -3310,8 +3377,8 @@ function loop(now){
     if(!R.active && !PK.active){ camBehavior(dt*WORK_FF); pupTick(dt*WORK_FF); tickTreats(dt*WORK_FF); }
     if(CAM.workBlockT > 0) CAM.workBlockT = Math.max(0, CAM.workBlockT - dt);
     robotTick(dt);
-    if(MODE==="park" && PK.active){ parkUpdate(dt); parkDraw(t); }
-    else drawCam(t);
+    if(MODE==="park" && PK.active){ parkUpdate(dt); parkDraw(t); PARK_HDR=true; syncParkHeader(); }
+    else { if(PARK_HDR){ PARK_HDR=false; restoreCamHeader(); } drawCam(t); }
     if(OUTING.active){
       OUTING.timer-=dt;
       if(OUTING.timer<=0){

@@ -33,7 +33,7 @@ function pkRunXP(){ return clamp(Math.round(PK.kills*XP_PER_KILL + PK.sideDone*X
 // none of it persists once the run ends.
 const PK_CHARMS=[
   {id:"spike", name:"SPIKED COLLAR", cost:18, fx:"+20% SPEED", apply:()=>{PK.spd*=1.2;}},
-  {id:"band",  name:"RED BANDANA",   cost:14, fx:"+25% BARK RADIUS", apply:()=>{PK.barkR*=1.25;}},
+  {id:"band",  name:"RED BANDANA",   cost:14, fx:"+25% BARK RADIUS", apply:()=>{PK.barkR=Math.min(BARK_CAP,PK.barkR*1.25);}},
   {id:"bell",  name:"BRASS BELL",    cost:16, fx:"-25% BARK COOLDOWN", apply:()=>{PK.barkMax=Math.max(0.6,PK.barkMax*0.75);}},
   {id:"tag",   name:"STEEL TAG",     cost:22, fx:"+30 MAX HP, HEAL 30", apply:()=>{PK.maxhp+=30; PK.hp=Math.min(PK.maxhp,PK.hp+30);}},
   {id:"rope",  name:"LUCKY ROPE",    cost:18, fx:"+40% KNOCKBACK", apply:()=>{PK.knock*=1.4;}},
@@ -252,7 +252,7 @@ function startPark(plus){
     maxhp:Math.round(100+100*S.mood/100),
     spd:95*(0.75+0.5*S.energy/100)*(S.senior?0.85:1),
     barkMax:Math.max(1.2,3-0.06*S.lvl), barkCd:1, pulse:0,
-    barkR:30*(0.8+0.4*S.hunger/100), knock:150,
+    barkR:21*(0.8+0.4*S.hunger/100), knock:150,
     bones:0, kills:0, xpFromRun:0, sideDone:0, relic:null, waveBanner:null, shopFlash:null,
     worldMult:2, barkBigLvl:0, barkFastLvl:0, speedBonus:null,
     chain:0, chainT:0, inv:0, fx:[],
@@ -266,7 +266,7 @@ function startPark(plus){
   PK.hp=PK.maxhp;
   PK.healerT=pkHealerGap();
   PK.acts=[{k:"hoop",x:.15,y:.125,cd:0},{k:"tunnel",x:.35,y:.36,cd:0},{k:"ramp",x:.11,y:.39,cd:0},{k:"tunnel",x:.62,y:.70,cd:0},{k:"hoop",x:.85,y:.20,cd:0}];
-  PK.waveBanner={text:"WAVE 1 — CLEAR THE BIRDS", life:2.2, max:2.2};
+  PK.waveBanner={text:"WAVE 1", sub:pkWaveName(1), life:3.2, max:3.2};
   SPARKS.length=0;
   S.outTimer=0;
   tickTodo("d_park");
@@ -293,7 +293,7 @@ function pkSpawn(w,h){
   const r=Math.random(), wv=PK.wave;
   const type = r<Math.max(0.2,0.55-wv*0.04)?"sq" : r<0.8?"bird":"cat";
   const ang=Math.random()*6.283, R=Math.max(w,h)*0.62;
-  const hp0=type==="cat"?2:1;
+  const hp0=pkEnemyHp(type==="cat"?2:1);
   PK.en.push({t:type, x:(PK.x+Math.cos(ang)*R+WW)%WW, y:(PK.y+Math.sin(ang)*R+WH)%WH,
     hp:hp0, hpMax:hp0,
     sp:(type==="sq"?70:type==="bird"?85:45)*(1+wv*0.05),
@@ -343,7 +343,7 @@ function pkSpawnFlock(){
     const off=(i-(n-1)/2)*15+(Math.random()-0.5)*8;         // staggered wedge formation
     const sxo=cx+Math.cos(perp)*off, syo=cy+Math.sin(perp)*off;
     PK.en.push({t:"bird", flock:true, x:(sxo+WW)%WW, y:(syo+WH)%WH,
-      hp:1, hpMax:1, sp, vx:Math.cos(ang)*sp, vy:Math.sin(ang)*sp,
+      hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp, vx:Math.cos(ang)*sp, vy:Math.sin(ang)*sp,
       ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
   }
   PK.waveSpawned += n;
@@ -423,7 +423,7 @@ function pkTickTrees(dt){
       const a=Math.random()*6.283;
       PK.en.push({t:"sq", madsq:true, fromTree:true,
         x:(tr.x+Math.cos(a)*TREE_R+PK.WW)%PK.WW, y:(tr.y+Math.sin(a)*TREE_R+PK.WH)%PK.WH,
-        hp:1, hpMax:1, sp:44, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
+        hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:44, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
         laserState:"seek", chargeT:0, aimAng:0, sweepT:0, cd:0.8+Math.random()*1.2});
       beep(320+Math.random()*160,.04,"square",.02);
     }
@@ -437,7 +437,7 @@ function pkTickTrees(dt){
 // ===== WAVE REDESIGN v2 =====
 const STANDING_SPOOK_R=58, SPOOK_SPEED=100, SPOOK_LIFE=3.2;   // wave 1: how close before a roost startles, and how it scatters
 const STALK_CHANCE=0.20;                                      // waves 1-2: chance a bird-flock spawn also drops stalking cats
-const STALK_CAT_SOFTCAP=6, STALK_AGGRO_R=65, STALK_ORBIT_R=48, STALK_ORBIT_SPEED=0.9, STALK_LEAP_SPEED=185, STALK_LEAP_TIME=0.3, STALK_CHASE_SPD=62;
+const STALK_CAT_SOFTCAP=6, STALK_AGGRO_R=65, STALK_ORBIT_R=48, STALK_ORBIT_SPEED=0.9, STALK_LEAP_SPEED=215, STALK_LEAP_TIME=0.5, STALK_CHASE_SPD=62, STALK_WIND=0.45;
 const NUT_SPEED=145;                                          // wave 4/mix: thrown-nut projectile speed
 const RANGER_PLANT_R=200, RANGER_APPROACH_SPD=55, RANGER_WINDUP=0.55, RANGER_THROW_CD=1.5;   // wave 4: nut-throwing squirrels
 // wave 5: rotating-beam squirrels. The sweep is deliberately slow — this beam is meant to be
@@ -447,6 +447,9 @@ const MADSQ_WIDTH=18, MADSQ_DMG=14, MADSQ_KNOCK=150, MADSQ_FF_DMG=1;
 // they are tiny animals holding a weapon far too big for them: the shot goes where they were
 // pointing when they pulled it, not where you are now, and it shoves them backwards
 const MADSQ_AIM_ERR=0.42, MADSQ_TRACK_RATE=0.42, MADSQ_RECOIL=95;
+// the aim stops following you partway through the wind-up and visibly freezes, so the shot
+// goes where you were, not where you are. That frozen beat is the window to get clear.
+const MADSQ_LOCK=0.55;
 function pkMadsqCap(){ return PK.worldMult>2 ? 4 : 2; }   // doubles once the park has been expanded
 // bone pickup: a small sniff radius that hoovers up nearby drops, upgradeable in the shop
 const PICKUP_BASE=16, SNIFF_BASE=34, SNIFF_STEP=26, SNIFF_PULL=190, SNIFF_LVL_CAP=3;
@@ -466,7 +469,7 @@ function pkSpawnBirdGroup(){
   for(let i=0;i<n;i++){
     const ox=(Math.random()-0.5)*46, oy=(Math.random()-0.5)*34;
     PK.en.push({t:"bird", standing:true, x:(cx+ox+WW)%WW, y:(cy+oy+WH)%WH,
-      hp:1, hpMax:1, sp:0, ph:Math.random()*6, kx:0, ky:0, dir:Math.random()<0.5?-1:1, fi:0, ft:0});
+      hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:0, ph:Math.random()*6, kx:0, ky:0, dir:Math.random()<0.5?-1:1, fi:0, ft:0});
   }
   if(Math.random()<STALK_CHANCE) pkSpawnStalkCat(cx,cy, 1+Math.floor(Math.random()*2));
   return n;
@@ -482,7 +485,7 @@ function pkSpawnStalkCat(ax, ay, count){
   const n=Math.min(count, STALK_CAT_SOFTCAP-alive);
   for(let i=0;i<n;i++){
     PK.en.push({t:"cat", stalk:true, x:(ax+WW)%WW, y:(ay+WH)%WH,
-      hp:2, hpMax:2, sp:0, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
+      hp:pkEnemyHp(2), hpMax:pkEnemyHp(2), sp:0, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
       anchorX:(ax+WW)%WW, anchorY:(ay+WH)%WH, orbitAng:Math.random()*6.283});
   }
 }
@@ -495,7 +498,7 @@ function pkSpawnCatSquad(){
   for(let i=0;i<n;i++){
     const a2=ang+(Math.random()-0.5)*0.8;
     PK.en.push({t:"cat", x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
-      hp:2, hpMax:2, sp:48, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
+      hp:pkEnemyHp(2), hpMax:pkEnemyHp(2), sp:48, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
   }
   PK.waveSpawned+=n;
   return n;
@@ -520,7 +523,7 @@ function pkSpawnRangerSquad(){
   for(let i=0;i<n;i++){
     const a2=ang+(Math.random()-0.5)*0.9;
     PK.en.push({t:"sq", ranger:true, x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
-      hp:1, hpMax:1, sp:RANGER_APPROACH_SPD, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
+      hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:RANGER_APPROACH_SPD, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
       atkState:"approach", atkCd:0.6+Math.random()*0.8});
   }
   PK.waveSpawned+=n;
@@ -537,7 +540,7 @@ function pkSpawnMadSquad(){
   for(let i=0;i<n;i++){
     const a2=ang+(Math.random()-0.5)*0.9;
     PK.en.push({t:"sq", madsq:true, x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
-      hp:1, hpMax:1, sp:44, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
+      hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:44, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
       laserState:"seek", chargeT:0, aimAng:0, sweepT:0, cd:0.6+Math.random()*0.8});
   }
   PK.waveSpawned+=n;
@@ -551,7 +554,7 @@ function pkSpawnAlphaSquad(){
   for(let i=0;i<2;i++){
     const ang=(i/2)*6.283+Math.random()*0.5, R=Math.max(w,h)*0.6;
     PK.en.push({t:"cat", alpha:true, big:true, x:(PK.x+Math.cos(ang)*R+WW)%WW, y:(PK.y+Math.sin(ang)*R+WH)%WH,
-      hp:5, hpMax:5, sp:ALPHA_APPROACH_SPD, ph:0, kx:0, ky:0, dir:1, fi:0, ft:0, leapCd:1.5+Math.random()});
+      hp:pkEnemyHp(5), hpMax:pkEnemyHp(5), sp:ALPHA_APPROACH_SPD, ph:0, kx:0, ky:0, dir:1, fi:0, ft:0, leapCd:1.5+Math.random()});
   }
   toast("☠ THE ALPHAS HAVE ARRIVED",1);
   beep(120,.35,"sawtooth",.05);
@@ -575,10 +578,10 @@ function pkSpawnMixBurst(types){
     const type=types[Math.floor(Math.random()*types.length)];
     const a2=ang+(Math.random()-0.5)*0.9;
     const x=(PK.x+Math.cos(a2)*R+WW)%WW, y=(PK.y+Math.sin(a2)*R+WH)%WH;
-    if(type==="bird") PK.en.push({t:"bird", x,y, hp:1,hpMax:1, sp:85, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0});
-    else if(type==="cat") PK.en.push({t:"cat", x,y, hp:2,hpMax:2, sp:48, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0});
-    else if(type==="ranger") PK.en.push({t:"sq", ranger:true, x,y, hp:1,hpMax:1, sp:RANGER_APPROACH_SPD, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0, atkState:"approach", atkCd:0.6+Math.random()*0.8});
-    else if(type==="madsq") PK.en.push({t:"sq", madsq:true, x,y, hp:1,hpMax:1, sp:44, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0, laserState:"seek", chargeT:0, aimAng:0, sweepT:0, cd:0.6+Math.random()*0.8});
+    if(type==="bird") PK.en.push({t:"bird", x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:85, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0});
+    else if(type==="cat") PK.en.push({t:"cat", x,y, hp:pkEnemyHp(2),hpMax:pkEnemyHp(2), sp:48, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0});
+    else if(type==="ranger") PK.en.push({t:"sq", ranger:true, x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:RANGER_APPROACH_SPD, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0, atkState:"approach", atkCd:0.6+Math.random()*0.8});
+    else if(type==="madsq") PK.en.push({t:"sq", madsq:true, x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:44, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0, laserState:"seek", chargeT:0, aimAng:0, sweepT:0, cd:0.6+Math.random()*0.8});
   }
   PK.waveSpawned+=n;
   return n;
@@ -586,15 +589,36 @@ function pkSpawnMixBurst(types){
 // how many enemies a wave needs cleared \u2014 hand-set to match the redesigned wave-by-wave
 // spec. waves beyond 10 keep extending the mix pattern with a gently rising quota.
 function pkWaveQuota(wv){
-  if(wv===1) return 5;
-  if(wv===2) return 20;
-  if(wv===3) return 10;
-  if(wv===4) return 20;
-  if(wv===5) return 25;
-  if(wv===6) return 22;   // 2 alphas + 20 regular cats
-  if(wv>=7 && wv<=10) return 20+(wv-7)*2;   // 20, 22, 24, 26
-  return 26+(wv-10)*2;
+  if(wv===1) return 3;    // just chase a bird
+  if(wv===2) return 10;   // the birds are upset
+  if(wv===3) return 10;   // attack of the cats
+  if(wv===4) return 15;   // watch out, nuts
+  if(wv===5) return 15;   // coming out of the trees
+  return Math.round(20*Math.pow(1.25, wv-6));   // 20, 25, 31, 39, 49, 61, 76...
 }
+// what each wave is called. 6 onwards is the same escalating joke, told straight.
+const WNAME={
+  1:"CHASE A BIRD",
+  2:"THE BIRDS ARE UPSET — DEFEND YOURSELF!",
+  3:"ATTACK OF THE CATS",
+  4:"WATCH OUT — NUTS!",
+  5:"THEY'RE COMING OUT OF THE GOD DAMNED TREES!",
+  6:"GOOD LUCK — YOU'RE ON YOUR OWN",
+  7:"STILL HERE? THEY NOTICED.",
+  8:"THE WHOLE PARK IS AWAKE NOW",
+  9:"THIS IS NOT A DRILL",
+  10:"☠ NOBODY IS COMING TO HELP",
+  11:"YOU WERE WARNED",
+  12:"☠ RUN, BONES. JUST RUN."
+};
+function pkWaveName(wv){
+  if(WNAME[wv]) return WNAME[wv];
+  return PK.mixLabel ? PK.mixLabel+" — STILL COMING" : "STILL COMING";
+}
+// enemies toughen as the waves climb: a bird takes 3 barks by wave 10, and everything
+// else scales off its own base the same way
+function pkEnemyHp(base){ return base + Math.floor(((PK.wave||1)-1)/4.5); }
+const BARK_CAP=62;   // hard ceiling: the bark used to reach ~90 and trivialised whole waves
 const FLEE_SPEED=115, FLEE_TIME=2.2;   // how fast, and how long, a scared-off enemy scuttles before despawning
 function pkBark(){
   PK.barkCd = PK.starT>0 ? 0 : PK.barkMax;   // star power: unlimited barking, no cooldown
@@ -968,7 +992,7 @@ function pkPalDamage(dt,WW,WH){
 }
 function pkShopOpen(){
   const statAll=[
-    {n:"BIGGER BARK",   fx:"+14 BARK RADIUS",    c:12, capKey:"barkBigLvl",  f:()=>{PK.barkR+=14; PK.barkBigLvl++;}},
+    {n:"BIGGER BARK",   fx:"+10 BARK RADIUS",    c:12, capKey:"barkBigLvl",  f:()=>{PK.barkR=Math.min(BARK_CAP,PK.barkR+10); PK.barkBigLvl++;}},
     {n:"FASTER BARK",   fx:"-0.35s COOLDOWN",     c:14, capKey:"barkFastLvl",f:()=>{PK.barkMax=Math.max(0.8,PK.barkMax-0.35); PK.barkFastLvl++;}},
     {n:"MIGHTY KNOCKBACK", fx:"+70 KNOCKBACK",    c:10, f:()=>PK.knock+=70},
     {n:"SNACK",         fx:"HEAL 30 HP",          c:8,  f:()=>PK.hp=Math.min(PK.maxhp,PK.hp+30)},
@@ -1059,18 +1083,14 @@ function parkUpdate(dt){
     }
     PK.waveT=0; PK.wave++;
     if(PK.wave>=3) tickTodo("j_wave3");
-    PK.barkMax=Math.max(1,PK.barkMax-0.12); PK.barkR+=5;
+    PK.barkMax=Math.max(1,PK.barkMax-0.12); PK.barkR=Math.min(BARK_CAP,PK.barkR+3.5);
     PK.waveQuota=pkWaveQuota(PK.wave); PK.waveSpawned=0;
     PK.goldenDone=false; PK.goldenAt=3+Math.random()*8;
-    const WNAME={1:"CLEAR THE BIRDS",2:"BIRD BACKUP",3:"CAT BACKUP",4:"NUT THROWERS",5:"\u26a0 MAD SQUIRRELS",6:"\u2620 THE ALPHAS"};
     if(PK.wave===6) pkSpawnAlphaSquad();
-    if(PK.wave>=7){ PK.mixTypes=pkPickMixTypes(); PK.mixLabel=MIX_NAME[PK.mixTypes[0]]+" & "+MIX_NAME[PK.mixTypes[1]]; }
-    const label = PK.wave>=7 ? PK.mixLabel : WNAME[PK.wave];
-    const waveLabel="WAVE "+PK.wave+(label?" \u2014 "+label:"");
-    toast(waveLabel);
-    PK.waveBanner={text:waveLabel, life:2.2, max:2.2};
+    // from wave 6 the types come mixed \u2014 that is the point of "you're on your own"
+    if(PK.wave>=6){ PK.mixTypes=pkPickMixTypes(); PK.mixLabel=MIX_NAME[PK.mixTypes[0]]+" & "+MIX_NAME[PK.mixTypes[1]]; }
+    PK.waveBanner={text:"WAVE "+PK.wave, sub:pkWaveName(PK.wave), life:3.2, max:3.2};
     beep(500,.08);
-    if(PK.wave===4) setTimeout(()=>toast("WATCH OUT, NUTS INCOMING",1),2300);
     pkShopOpen();
   }
   // the healer keeps her own rolling clock, so she shows up more and more as the waves bite
@@ -1093,9 +1113,8 @@ function parkUpdate(dt){
     else if(wv===2){ PK.spawnT=8; PK.waveSpawned+=pkSpawnFlock(); }              // BIRD BACKUP: long diagonal formations
     else if(wv===3){ PK.spawnT=4; PK.waveSpawned+=pkSpawnCatSquad(); }           // CAT BACKUP: direct cat squads
     else if(wv===4){ PK.spawnT=4.5; PK.waveSpawned+=pkSpawnRangerSquad(); }      // NUT THROWERS: ranged squirrels
-    else if(wv===5){ PK.spawnT=5; PK.waveSpawned+=pkSpawnMadSquad(); }           // MAD SQUIRRELS: rotating-beam squirrels
-    else if(wv===6){ PK.spawnT=4; PK.waveSpawned+=pkSpawnCatSquad(); }           // THE ALPHAS: regular-cat trickle (alphas spawned once at wave start)
-    else { PK.spawnT=3.5; PK.waveSpawned+=pkSpawnMixBurst(PK.mixTypes||pkPickMixTypes()); }   // mixed threats, waves 7+
+    else if(wv===5){ PK.spawnT=5; PK.waveSpawned+=pkSpawnMadSquad(); }           // out of the trees: rotating-beam squirrels
+    else { PK.spawnT=3.5; PK.waveSpawned+=pkSpawnMixBurst(PK.mixTypes||pkPickMixTypes()); }   // mixed threats, wave 6+
   }
   let mx=0,my=0;
   if(PK.joy){ mx=PK.joy.dx; my=PK.joy.dy; }
@@ -1154,8 +1173,7 @@ function parkUpdate(dt){
     if(e.stalk){
       const dxw0=wd(PK.x-e.x,WW), dyw0=wd(PK.y-e.y,WH), d0=Math.hypot(dxw0,dyw0)||1;
       if(d0<STALK_AGGRO_R){
-        e.stalk=false; e.stalkAggro=true; e.leapT=STALK_LEAP_TIME;
-        e.lvx=dxw0/d0*STALK_LEAP_SPEED; e.lvy=dyw0/d0*STALK_LEAP_SPEED;
+        e.stalk=false; e.stalkAggro=true; e.windT=STALK_WIND; e.leapT=0;
         beep(160,.09,"square",.05);
       } else {
         e.orbitAng+=STALK_ORBIT_SPEED*dt;
@@ -1170,7 +1188,17 @@ function parkUpdate(dt){
     }
     if(e.stalkAggro){
       const dxw=wd(PK.x-e.x,WW), dyw=wd(PK.y-e.y,WH), d=Math.hypot(dxw,dyw)||1;
-      if(e.leapT>0){
+      if(e.windT>0){
+        // crouch first. The leap commits to wherever BONES was when the crouch ended, so
+        // a player who reads the tell and moves is genuinely missed.
+        e.windT-=dt;
+        e.dir = dxw<0 ? -1 : 1;
+        if(e.windT<=0){
+          e.leapT=STALK_LEAP_TIME;
+          e.lvx=dxw/d*STALK_LEAP_SPEED; e.lvy=dyw/d*STALK_LEAP_SPEED;
+          beep(220,.06,"square",.05);
+        }
+      } else if(e.leapT>0){
         e.leapT-=dt;
         e.x=(e.x+e.lvx*dt+WW)%WW; e.y=(e.y+e.lvy*dt+WH)%WH;
         e.dir = e.lvx<0 ? -1 : 1;
@@ -1246,9 +1274,12 @@ function parkUpdate(dt){
       } else if(e.laserState==="charge"){
         e.chargeT+=dt;
         e.x=(e.x+e.kx*dt+WW)%WW; e.y=(e.y+e.ky*dt+WH)%WH;
+        // it tracks you early in the wind-up, then locks and holds dead still for the last
+        // MADSQ_LOCK seconds — that frozen aim line is the tell
+        if(e.chargeT < MADSQ_CHARGE-MADSQ_LOCK) e.aimAng=Math.atan2(dyw,dxw);
         if(e.chargeT>=MADSQ_CHARGE){
           e.laserState="sweep"; e.sweepT=0;
-          e.aimBase=Math.atan2(dyw,dxw);                       // locked in at the moment of firing
+          e.aimBase=e.aimAng;                                  // fires where it was pointing
           e.aimErr=(Math.random()-0.5)*MADSQ_AIM_ERR;          // and they are lousy shots
           e.aimAng=e.aimBase+e.aimErr;
           pkBlastSfx();
@@ -1722,7 +1753,7 @@ function drawEnemy(ctx,e,sx,sy){
   ctx.fillStyle="rgba(0,0,0,.25)";
   ctx.beginPath(); ctx.ellipse(sx, sy+2, 9, 3, 0, 0, 7); ctx.fill();
   if(e.madsq && !e.fleeing) drawLaserFX(ctx,e,sx,sy);
-  if((e.fleeing && e.shockT>0 && !e.madsqExplode || (e.spooked && e.spookT<0.3) || (e.stalkAggro && e.leapT>0)) && Math.floor(performance.now()/90)%2){
+  if((e.fleeing && e.shockT>0 && !e.madsqExplode || (e.spooked && e.spookT<0.3) || (e.stalkAggro && (e.leapT>0||e.windT>0))) && Math.floor(performance.now()/90)%2){
     ctx.fillStyle="#fff"; ctx.font="bold 13px 'Press Start 2P',monospace"; ctx.textAlign="center";
     ctx.fillText("!", sx, sy-24); ctx.textAlign="left";
   }
@@ -2093,16 +2124,45 @@ function parkDraw(t){
     ctx.globalAlpha=1;
   }
   ctx.restore();   // back to screen space for the fixed HUD (banners, flashes, health bar)
+  {
+    // wave progress, sat directly under the DOGPARK header so everything about the wave
+    // reads in one place at the top of the screen
+    const left=Math.max(0,PK.waveQuota-PK.waveSpawned)+PK.en.filter(e=>!e.fleeing).length;
+    const pct=clamp(1-left/Math.max(1,PK.waveQuota),0,1);
+    const bw=w*0.46, bx=w/2-bw/2, by=25;
+    ctx.fillStyle="rgba(0,0,0,.55)"; ctx.fillRect(bx,by,bw,7);
+    ctx.fillStyle="#4a9"; ctx.fillRect(bx+1,by+1,(bw-2)*pct,5);
+    ctx.strokeStyle="rgba(255,255,255,.55)"; ctx.lineWidth=1; ctx.strokeRect(bx,by,bw,7);
+    ctx.fillStyle="#cfe6ff"; ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText(Math.round(pct*100)+"% CLEAR", w/2, by+17); ctx.textAlign="left";
+  }
   // wave-transition banner \u2014 pops in, holds, fades, so a new wave actually reads as an event
   if(PK.waveBanner){
-    const {text,life,max}=PK.waveBanner, el=max-life;
-    let alpha; if(el<0.15) alpha=el/0.15; else if(life<0.6) alpha=Math.max(0,life/0.6); else alpha=1;
+    const {text,sub,life,max}=PK.waveBanner, el=max-life;
+    // eases in, holds, then lifts and fades out rather than just blinking off
+    const inP=Math.min(1,el/0.35), outP=Math.min(1,life/0.8);
+    const alpha=Math.min(inP,outP), rise=(1-outP)*h*0.05;
+    const band=sub?h*0.22:h*0.15, top=h*0.33-rise;
     ctx.save(); ctx.globalAlpha=alpha;
-    ctx.fillStyle="rgba(0,0,0,.6)"; ctx.fillRect(0,h*0.36,w,h*0.15);
+    ctx.fillStyle="rgba(0,0,0,.68)"; ctx.fillRect(0,top,w,band);
     ctx.strokeStyle="#f22"; ctx.lineWidth=3;
-    ctx.beginPath(); ctx.moveTo(0,h*0.36); ctx.lineTo(w,h*0.36); ctx.moveTo(0,h*0.51); ctx.lineTo(w,h*0.51); ctx.stroke();
-    ctx.fillStyle="#fff"; ctx.font="13px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText(text, w/2, h*0.45); ctx.textAlign="left";
+    ctx.beginPath(); ctx.moveTo(0,top); ctx.lineTo(w,top);
+    ctx.moveTo(0,top+band); ctx.lineTo(w,top+band); ctx.stroke();
+    ctx.textAlign="center";
+    ctx.fillStyle="#fff"; ctx.font="14px 'Press Start 2P',monospace";
+    ctx.fillText(text, w/2, top+(sub?band*0.36:band*0.62));
+    if(sub){
+      // long taglines wrap rather than running off a phone screen
+      ctx.fillStyle="#f22"; ctx.font="8px 'Press Start 2P',monospace";
+      const words=sub.split(" "); const lines=[]; let cur="";
+      for(const wd2 of words){
+        const trial=cur?cur+" "+wd2:wd2;
+        if(ctx.measureText(trial).width > w-28 && cur){ lines.push(cur); cur=wd2; } else cur=trial;
+      }
+      if(cur) lines.push(cur);
+      lines.forEach((ln,i)=>ctx.fillText(ln, w/2, top+band*0.64+i*12));
+    }
+    ctx.textAlign="left";
     ctx.restore();
   }
   // shop-purchase fanfare — a satisfying beat so spending bones actually feels like a reward
@@ -2169,17 +2229,6 @@ function pkPadDraw(t){
   drawBone(ctx, 24, 26, 1, "#fff");
   ctx.fillStyle="#fff"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
   ctx.fillText(PK.bones+" BONES", 34, 29);
-  const leftToClear=Math.max(0,PK.waveQuota-PK.waveSpawned)+PK.en.filter(e=>!e.fleeing).length;
-  ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.strokeRect(w-100,10,90,30);
-  ctx.fillStyle="#fff"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
-  ctx.fillText("WAVE "+PK.wave, w-55, 23);
-  ctx.font="6px 'Press Start 2P',monospace";
-  ctx.fillText(leftToClear+" LEFT", w-55, 34);
-  const waveTotal=Math.max(1,PK.waveQuota), wavePct=clamp(Math.round((1-leftToClear/waveTotal)*100),0,100);
-  ctx.fillStyle="#fff"; ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="center";
-  ctx.fillText(wavePct+"% CLEAR", w-55, 51);
-  ctx.strokeStyle="#666"; ctx.lineWidth=1; ctx.strokeRect(w-100,54,90,8);
-  ctx.fillStyle="#4a9"; ctx.fillRect(w-99,55,88*wavePct/100,6);
   ctx.textAlign="left";
   if(PK.starT>0){
     const bw=Math.min(140,w*0.55), bx=w/2-bw/2;
