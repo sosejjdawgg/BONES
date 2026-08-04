@@ -802,7 +802,7 @@ const TREATIMG  = TREATFRAMES.map(u=>{ const i=new Image(); i.src=u; return i; }
 // 2-3 leaning, 4 hunched right down (the refill pose). All five share a ground line
 // and track anchor, so cycling them never makes him hop.
 const ROBOTIMG  = ROBOTFRAMES.map(u=>{ const i=new Image(); i.src=u; return i; });
-const ROBOT = { x:0.88, dockX:0.88, tx:0.88, state:"dock", job:null, t:0, downT:0,
+const ROBOT = { x:0.88, dockX:0.88, tx:0.88, dir:-1, state:"dock", job:null, t:0, downT:0,
                 acting:false, pourFrom:0, battery:100, downKind:null, zoomArm:false };
 for(const k in _ALLFRAMES) DOGIMG[k] = _ALLFRAMES[k].map(u=>{ const i=new Image(); i.src=u; return i; });
 /* GAME & WATCH FILTER — the happy accident, made law.
@@ -1589,7 +1589,7 @@ const BF={IDLE:0,REACH:1,LEAN1:2,LEAN2:3,LEAN3:4,LOW1:5,LOW2:6,LOW3:7,COLLAPSED:
 // height — the poses vary a lot in height, so the battery pip needs this to sit just above
 // his head whichever one is showing instead of floating off the top of a hunched frame
 const ROBOTTOP=[0,0,0.045,0.023,0.258,0,0,0.28,0.303,0,0.311,0.333,0.386];
-const BOT_IDLE_DRAIN=2.0;    // % per game hour just from being switched on — the dock has to matter
+const BOT_IDLE_DRAIN=8.0;    // % per game hour while off the dock — the dock has to matter
 const BOT_CHARGE=100/12;     // % per game hour: a full charge is half a game day
 const BOT_COST={water:10, food:10, poo:15, ball:5};
 const BOT_RESERVE=22;        // he won't leave the dock without enough charge to get home again
@@ -1652,13 +1652,11 @@ function robotTick(dt){
   }
   if(B.state==="dock") B.battery=Math.min(100,B.battery+BOT_CHARGE*gh);
   else {
-    // Standby drain applies while he is out on an errand, so long trips genuinely cost charge.
-    // It deliberately does NOT apply while he is limping home empty-handed: a flat battery would
-    // otherwise re-collapse him the instant he was tapped upright, stranding him forever.
-    if(B.job || B.state==="work"){
-      B.battery-=BOT_IDLE_DRAIN*gh;
-      if(B.battery<=0){ B.battery=0; botFell("battery"); return; }
-    }
+    // Standby drain runs the whole time he is off the dock, so every trip costs real charge.
+    // He only actually gives out mid-errand though: limping home he runs on fumes and may reach
+    // 0 without collapsing, otherwise a tap would just re-kill him short of the dock forever.
+    B.battery=Math.max(0, B.battery-BOT_IDLE_DRAIN*gh);
+    if(B.battery<=0 && B.job){ botFell("battery"); return; }
     if(CAM.state==="zoomies" && B.zoomArm && Math.abs(CAM.x-B.x)<0.12){
       B.zoomArm=false;
       if(Math.random()<0.30){ botFell("zoom"); return; }
@@ -1674,7 +1672,12 @@ function robotTick(dt){
     if(Math.abs(d)<=step){
       B.x=B.tx;
       if(B.job){ B.state="work"; B.t=0; B.acting=false; } else { B.state="dock"; B.t=0; }
-    } else B.x+=Math.sign(d)*step;
+    } else {
+      B.dir=Math.sign(d);                     // he faces where he is going, and holds that pose
+      B.x+=step*B.dir;
+      if(Math.random()<0.22)                  // grit kicked up behind the tracks
+        SUDS.push({x:B.x-B.dir*0.035, y:0.795, r:1.4+Math.random()*2.2, life:0.32});
+    }
     return;
   }
   if(B.state==="work"){
@@ -1706,8 +1709,9 @@ function robotFrame(){
   if(B.state==="down")  return B.downKind==="battery"?BF.COLLAPSED:BF.TIPPED;
   if(B.state==="knock") return B.t<0.25?BF.FLAIL : B.t<0.60?BF.FALLING : BF.TIPPED;
   if(B.state==="slump") return B.t<0.5?BF.LOW1 : B.t<1.0?BF.LOW2 : B.t<1.5?BF.LOW3 : BF.COLLAPSED;
-  if(B.state==="goto")  return B.battery<25 ? (Math.floor(B.t*6)%2?BF.LOW1:BF.LOW2)
-                                            : (Math.floor(B.t*7)%2?BF.IDLE:BF.REACH);
+  // rolling: one held pose, arm out front, mirrored by ROBOT.dir in drawRobot. Cycling frames
+  // here just made him flap his arms and reverse home without ever turning round.
+  if(B.state==="goto")  return B.battery<25 ? BF.LOW1 : BF.REACH;
   if(B.state==="work"){
     if(B.t<0.15) return BF.LEAN1;
     if(B.t<0.30) return BF.LEAN2;
@@ -1736,8 +1740,13 @@ function drawRobot(ctx,w,h,gy,t){
   const fr=robotFrame(), img=ROBOTIMG[fr];
   if(img && img.complete && img.naturalWidth){
     const bw=bh*img.naturalWidth/img.naturalHeight;
+    // the sprite is drawn arm-to-the-left, so mirror it whenever he is heading right
+    const flip = ROBOT.state==="goto" && ROBOT.dir>0;
+    // tracked vehicle: he shakes as he rolls, and never while parked
+    const rum = ROBOT.state==="goto" ? (Math.floor(t*24)%2?1:0) : 0;
     ctx.save(); ctx.imageSmoothingEnabled=false;
-    ctx.drawImage(img, px-bw/2, gy-bh, bw, bh);
+    if(flip){ ctx.translate(px*2,0); ctx.scale(-1,1); }
+    ctx.drawImage(img, px-bw/2, gy-bh-rum, bw, bh);
     ctx.restore();
   }
   // the pour, drawn over the sprite: an arc from his outstretched hand down into the bowl,
