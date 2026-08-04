@@ -391,8 +391,14 @@ function pkSpawnFlock(){
   return n;
 }
 const LASER_WIDTH=13;
-function pkLaserRange(){ return Math.min(PK.WW,PK.WH)*0.42; }   // stays under half the world so the
-                                                                 // wrap-aware hit-test never disagrees with the straight beam drawn on screen
+// tied to what's actually ON SCREEN, not the (often much bigger, once the park has expanded)
+// world size — a squirrel used to be able to open fire from beyond the visible edge, so a hit
+// landed with no beam ever having been seen. Capped a little inside the half-diagonal so a
+// firing squirrel is never right on the edge of the frame either.
+function pkLaserRange(){
+  const cv=$("#dogcv");
+  return Math.min(cv.clientWidth,cv.clientHeight)/(2*(PK.zoom||1))*0.82;
+}
 function pkPlusMult(){ return PK.plusMode ? 2 : 1; }   // DOGPARK+: same wave structure, double enemies on screen at once
 /* ---------- trees: cover, collision, kindling, and squirrel nests ---------- */
 // the BBBSSHHHZZZHHH — layered saw tones plus a noise-ish crackle tail
@@ -421,25 +427,25 @@ function pkBuildTrees(){
 // holds the bandana dog at its exact centre, so walking the path in is the whole point of it.
 // Trees here are the same objects as the ones scattered elsewhere — same shape, burning,
 // collision, beam-blocking — just arranged densely instead of at random.
-const GROVE_SPACING=13;              // grid step used to fill the ring — tight, so it reads solid
-const GROVE_PATH_W=44;               // path corridor width — empirically checked against the real
+const GROVE_SPACING=16;              // grid step used to fill the ring — spread a bit further apart
+                                      // so individual trunks read clearly instead of one solid blob
+const GROVE_PATH_W=58;               // path corridor width — empirically checked against the real
                                       // trunk collision ellipse (TREE_COLL_RX/RY), not just eyeballed
-const GROVE_SWEEP=1.0;                // radians of the ring the path breaches (a single modest gap,
-                                      // not most of the circumference)
-const GROVE_COLLAPSE=0.35;           // fraction of the sweep over which the path dives from the
-                                      // outer edge down near the centre, so it only has to cut
-                                      // through actual ring material very briefly
+const GROVE_SWEEP=2.4;                // radians of the ring the path winds through — a longer,
+                                      // proper walk in rather than a quick step through a gap
+const GROVE_COLLAPSE=0.55;           // fraction of the sweep over which the path dives from the
+                                      // outer edge down near the centre
 const GROVE_HALO_STEP=26;            // sampling step for the fading ring of loose outer trees
-function pkGroveOuterR(){ return Math.min(PK.WW,PK.WH)*0.135; }   // ~1 cell of a 4x4 park, majority stays open field
+function pkGroveOuterR(){ return Math.min(PK.WW,PK.WH)*0.155; }   // ~1 cell of a 4x4 park, majority stays open field
 function pkBuildGrove(cx, cy, withNPC){
-  const outerR=pkGroveOuterR(), innerR=outerR*0.40;
+  const outerR=pkGroveOuterR(), innerR=outerR*0.35;
   const entryAngle=Math.random()*6.283;
   // the path's centreline, as actual points — checking true distance to this curve (rather than
   // approximating with "same radius at that angle") is what keeps the corridor genuinely walkable;
   // the cheaper radial approximation left the spiral clipping straight through trunk hitboxes
   const spiralR=t=>{ const tc=Math.min(1,t/GROVE_COLLAPSE); return outerR + (innerR*0.22-outerR)*tc; };
   const curve=[];
-  for(let t=0;t<=1.001;t+=1/90){
+  for(let t=0;t<=1.001;t+=1/220){
     const ang=entryAngle+t*GROVE_SWEEP, r=spiralR(t);
     curve.push([cx+Math.cos(ang)*r, cy+Math.sin(ang)*r]);
   }
@@ -500,9 +506,24 @@ function pkBuildWoods(n){
     pkBuildGrove(PK.WW*s[0], PK.WH*s[1], false);
   }
 }
+const TREE_CLUSTER_R=42;   // how close a neighbour has to be to count as "packed in together"
+function pkTreeClusterCount(tr){
+  let n=0;
+  for(const o of PK.trees){
+    if(o===tr || o.state==="ash") continue;
+    if(Math.hypot(wd(o.x-tr.x,PK.WW),wd(o.y-tr.y,PK.WH))<TREE_CLUSTER_R) n++;
+  }
+  return n;
+}
+const FIRE_CAP=5;   // at most this many trees burning at once — a whole ring alight would be unplayable
+function pkFireCount(){ let n=0; for(const t of PK.trees) if(t.state==="fire") n++; return n; }
 function pkIgniteTree(tr){
   if(!tr || tr.state!=="ok") return;
+  if(pkFireCount()>=FIRE_CAP) return;   // the beam still stops here (pkBeamBlocker), it just won't catch
   tr.state="fire"; tr.fireT=0; tr.spawnT=0.25;
+  // solo tree, cornered and panicking: the full 15. Packed shoulder-to-shoulder in the ring,
+  // there's nowhere for that many to have been living — down to as few as 3.
+  tr.spawnMax=clamp(15-pkTreeClusterCount(tr)*1.4, 3, 15);
   toast("THE TREE'S ALIGHT — THEY'RE POURING OUT!",1);
   beep(90,.45,"sawtooth",.09); setTimeout(()=>beep(140,.35,"sawtooth",.07),110);
 }
@@ -541,7 +562,7 @@ function pkTickTrees(dt){
     if(tr.state!=="fire") continue;
     tr.fireT+=dt;
     tr.spawnT-=dt;
-    if(tr.spawnT<=0 && tr.spawned<TREE_SPAWN_MAX){   // a burning nest keeps disgorging squirrels
+    if(tr.spawnT<=0 && tr.spawned<(tr.spawnMax||TREE_SPAWN_MAX)){   // a burning nest keeps disgorging squirrels
       tr.spawnT=TREE_SPAWN_EVERY;
       tr.spawned++;
       const a=Math.random()*6.283;
@@ -574,7 +595,7 @@ const MADSQ_AIM_ERR=0.42, MADSQ_TRACK_RATE=0.42, MADSQ_RECOIL=95;
 // the aim stops following you partway through the wind-up and visibly freezes, so the shot
 // goes where you were, not where you are. That frozen beat is the window to get clear.
 const MADSQ_LOCK=0.55;
-function pkMadsqCap(){ return PK.worldMult>2 ? 4 : 2; }   // doubles once the park has been expanded
+function pkMadsqCap(){ return 2; }   // fixed — at most 2 beams live at once, whatever size the park is
 // bone pickup: a small sniff radius that hoovers up nearby drops, upgradeable in the shop
 const PICKUP_BASE=16, SNIFF_BASE=34, SNIFF_STEP=26, SNIFF_PULL=190, SNIFF_LVL_CAP=3;
 // trees: cover from beams, solid to walk through, flammable, and full of squirrels
@@ -1481,15 +1502,24 @@ function parkUpdate(dt){
         const ux=Math.cos(e.aimAng), uy=Math.sin(e.aimAng);
         e.kx-=ux*MADSQ_RECOIL*dt; e.ky-=uy*MADSQ_RECOIL*dt;   // kicked back by their own blast
         e.x=(e.x+e.kx*dt+WW)%WW; e.y=(e.y+e.ky*dt+WH)%WH;     // rooted, but the kick still slides them
-        // a tree in the way eats the whole beam and goes up in flames — that's real cover
+        // find whatever the beam actually reaches FIRST — a tree, BONES, or another animal —
+        // so it visibly stops there instead of lancing on through to the next thing in line
         const blk=pkBeamBlocker(e.x,e.y,e.aimAng,pkLaserRange());
-        e.beamLen=blk.dist;
-        if(blk.tree){
+        const along=dxw*ux+dyw*uy, perp=Math.abs(dxw*uy-dyw*ux);
+        let stopDist=blk.dist;
+        if(along>0 && perp<MADSQ_WIDTH && along<stopDist) stopDist=along;
+        for(const o of PK.en){
+          if(o===e || o.fleeing) continue;
+          const odx=wd(o.x-e.x,WW), ody=wd(o.y-e.y,WH);
+          const oa=odx*ux+ody*uy, op=Math.abs(odx*uy-ody*ux);
+          if(oa>10 && op<MADSQ_WIDTH && oa<stopDist) stopDist=oa;
+        }
+        e.beamLen=stopDist;
+        if(blk.tree && blk.dist<=stopDist+0.5){   // the tree is what it actually reached this frame
           pkIgniteTree(blk.tree);
           if(Math.random()<0.25) PK.embers.push({x:e.x+ux*blk.dist, y:e.y+uy*blk.dist, vx:(Math.random()-0.5)*40, vy:-30-Math.random()*50, life:0.6});
         }
-        const along=dxw*ux+dyw*uy, perp=Math.abs(dxw*uy-dyw*ux);
-        if(along>0 && along<blk.dist && perp<MADSQ_WIDTH && PK.inv<=0 && !pkInvuln()){
+        if(along>0 && along<=stopDist+0.5 && perp<MADSQ_WIDTH && PK.inv<=0 && !pkInvuln()){
           pkHurt(MADSQ_DMG); PK.inv=0.55;
           PK.x=(PK.x+ux*MADSQ_KNOCK*dt*6+WW)%WW; PK.y=(PK.y+uy*MADSQ_KNOCK*dt*6+WH)%WH;
           PK.vx=ux*90; PK.vy=uy*90;
@@ -1497,12 +1527,13 @@ function parkUpdate(dt){
           PK.scorch.push({x:PK.x, y:PK.y, r:16+Math.random()*8});
           beep(140,.2,"sawtooth",.07); if(PK.hp<=0) return pkDeath();
         }
-        // the beams are indiscriminate: anything else caught in one gets blasted too
+        // the beam still hits indiscriminately, but only whatever it actually reaches first —
+        // not everything strung out along the same line behind it
         for(const o of PK.en){
           if(o===e || o.fleeing) continue;
           const odx=wd(o.x-e.x,WW), ody=wd(o.y-e.y,WH);
           const oa=odx*ux+ody*uy, op=Math.abs(odx*uy-ody*ux);
-          if(oa>10 && oa<blk.dist && op<MADSQ_WIDTH){
+          if(oa>10 && oa<=stopDist+0.5 && op<MADSQ_WIDTH){
             o.burnT=(o.burnT||0)+dt;
             if(o.burnT>0.28){
               o.burnT=0;
@@ -1902,9 +1933,12 @@ function pkDrawTree(ctx,tr,x,y,t){
   const cy=y-31;
   ctx.fillStyle=burning?"#5a3212":"#37782f";
   ctx.strokeStyle="#0a1a0c"; ctx.lineWidth=2.5;
-  ctx.beginPath(); ctx.arc(x+sway,cy,TREE_R,0,7); ctx.fill(); ctx.stroke();
-  ctx.beginPath(); ctx.arc(x-TREE_R*0.55+sway,cy+5,TREE_R*0.62,0,7); ctx.fill(); ctx.stroke();
-  ctx.beginPath(); ctx.arc(x+TREE_R*0.55+sway,cy+5,TREE_R*0.62,0,7); ctx.fill(); ctx.stroke();
+  // grove trees spread their canopy a smidge fuller than an ambient tree — purely a render
+  // scale on the foliage, trunk and collision are untouched
+  const cs=tr.wood?1.16:1;
+  ctx.beginPath(); ctx.arc(x+sway,cy,TREE_R*cs,0,7); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(x-TREE_R*0.55*cs+sway,cy+5,TREE_R*0.62*cs,0,7); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(x+TREE_R*0.55*cs+sway,cy+5,TREE_R*0.62*cs,0,7); ctx.fill(); ctx.stroke();
   if(burning){
     // roaring flames: layered licks that flicker independently, plus rising heat specks
     const f=tr.fireT;
@@ -2128,25 +2162,16 @@ function parkDraw(t){
     ctx.globalAlpha=1;
   }
   {
+    // shown only where the gate actually is — no off-screen pointer any more, find it for real
     const [gx,gy2]=SC(PK.gate.x,PK.gate.y);
     const pul=0.6+0.4*Math.sin(t*5);
     if(gx>-30&&gx<w+30&&gy2>-45&&gy2<h+45){
       ctx.strokeStyle="#f22"; ctx.globalAlpha=pul; ctx.lineWidth=4;
       ctx.strokeRect(gx-24,gy2-16,48,32); ctx.globalAlpha=1;
+      ctx.fillStyle="#000"; ctx.fillRect(gx-30,gy2-9,60,18);   // a solid backdrop so EXIT actually pops
       ctx.fillStyle="#f22"; ctx.globalAlpha=pul;
       ctx.font="11px 'Press Start 2P',monospace"; ctx.textAlign="center";
       ctx.fillText("EXIT",gx,gy2+4);
-      ctx.textAlign="left"; ctx.globalAlpha=1;
-    } else {
-      const ang=Math.atan2(gy2-DY,gx-DX);
-      const ex=DX+Math.cos(ang)*(Math.min(w,h)/2-30), ey=DY+Math.sin(ang)*(Math.min(w,h)/2-30);
-      ctx.save(); ctx.translate(ex,ey); ctx.rotate(ang);
-      ctx.fillStyle="#f22"; ctx.globalAlpha=pul;
-      ctx.beginPath(); ctx.moveTo(12,0); ctx.lineTo(-8,-8); ctx.lineTo(-8,8); ctx.closePath(); ctx.fill();
-      ctx.restore(); ctx.globalAlpha=1;
-      ctx.fillStyle="#f22"; ctx.globalAlpha=pul;
-      ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
-      ctx.fillText("EXIT", ex-Math.cos(ang)*24, ey-Math.sin(ang)*24+3);
       ctx.textAlign="left"; ctx.globalAlpha=1;
     }
   }
@@ -2207,20 +2232,9 @@ function parkDraw(t){
     drawEnemy(ctx,e,ex2,ey2);
   }
   {
+    // shown only where he actually is — finding him in the grove is the point, no arrow to spoil it
     const [nx2,ny2]=SC(PK.npc.x*WW, PK.npc.y*WH);
     if(nx2>-40&&nx2<w+40&&ny2>-50&&ny2<h+40) drawBandanaDog(ctx,nx2,ny2,t);
-    else {
-      const ang=Math.atan2(ny2-DY,nx2-DX), pul=0.5+0.5*Math.sin(t*4);
-      const ax=DX+Math.cos(ang)*(Math.min(w,h)/2-56), ay=DY+Math.sin(ang)*(Math.min(w,h)/2-56);
-      ctx.save(); ctx.translate(ax,ay); ctx.rotate(ang);
-      ctx.fillStyle="#f6a"; ctx.globalAlpha=pul;
-      ctx.beginPath(); ctx.moveTo(10,0); ctx.lineTo(-7,-7); ctx.lineTo(-7,7); ctx.closePath(); ctx.fill();
-      ctx.restore();
-      ctx.fillStyle="#f6a"; ctx.globalAlpha=pul;
-      ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="center";
-      ctx.fillText("FRIENDS", ax-Math.cos(ang)*22, ay-Math.sin(ang)*22+3);
-      ctx.textAlign="left"; ctx.globalAlpha=1;
-    }
   }
   for(const p of PK.pals){
     if(p.k==="bird"){
@@ -2235,16 +2249,22 @@ function parkDraw(t){
     if(px2<-40||px2>w+40||py2<-40||py2>h+40) continue;
     drawPal(ctx,p,px2,py2,t);
   }
-  // dappled canopy shade under the grove — cast before the trunks, so it reads as shadow
-  // falling on the ground rather than a tint over the trees themselves
+  // the walk in: dark under the canopy itself, then a lighter clearing once you're actually
+  // through it — cast before the trunks, so it reads as light/shadow on the ground rather
+  // than a tint over the trees
   for(const g of PK.groveCenters){
     const [gcx,gcy]=SC(g.x,g.y);
-    if(gcx<-g.r*1.6||gcx>w+g.r*1.6||gcy<-g.r*1.6||gcy>h+g.r*1.6) continue;
+    const R=g.r*1.15;
+    if(gcx<-R||gcx>w+R||gcy<-R||gcy>h+R) continue;
     ctx.save();
-    const grad=ctx.createRadialGradient(gcx,gcy,g.r*0.2,gcx,gcy,g.r*1.15);
-    grad.addColorStop(0,"rgba(6,14,6,.40)"); grad.addColorStop(0.7,"rgba(6,14,6,.24)"); grad.addColorStop(1,"rgba(6,14,6,0)");
+    const grad=ctx.createRadialGradient(gcx,gcy,0,gcx,gcy,R);
+    grad.addColorStop(0,   "rgba(255,248,222,.16)");   // the clearing: a pool of light at the centre
+    grad.addColorStop(0.26,"rgba(255,244,210,.05)");
+    grad.addColorStop(0.42,"rgba(5,12,5,.22)");         // into shadow — this is the canopy band
+    grad.addColorStop(0.68,"rgba(4,9,4,.48)");
+    grad.addColorStop(1,   "rgba(4,9,4,0)");            // and back out to ordinary daylight
     ctx.fillStyle=grad;
-    ctx.beginPath(); ctx.ellipse(gcx,gcy,g.r*1.15,g.r*1.15*0.62,0,0,7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(gcx,gcy,R,R*0.62,0,0,7); ctx.fill();
     ctx.restore();
   }
   for(const tr of PK.trees){
