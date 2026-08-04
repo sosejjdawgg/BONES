@@ -292,7 +292,7 @@ function startPark(plus){
     barkMax:Math.max(1.2,3-0.06*S.lvl), barkCd:1, pulse:0,
     barkR:21*(0.8+0.4*S.hunger/100), knock:150,
     bones:0, kills:0, xpFromRun:0, sideDone:0, relic:null, waveBanner:null, shopFlash:null,
-    worldMult:2, groves:1, groveCenters:[], leaves:[], barkBigLvl:0, barkFastLvl:0, agiLvl:0, speedBonus:null, shopSel:null,
+    worldMult:4, groves:1, groveCenters:[], leaves:[], barkBigLvl:0, barkFastLvl:0, agiLvl:0, speedBonus:null, shopSel:null,
     chain:0, chainT:0, inv:0, fx:[],
     x:0,y:0,vx:0,vy:0, joy:null,
     en:[], fr:[], gate:{}, gateArm:true, gateAsk:false, started:false, shop:null, biscuits:[], drops:[], pendingBury:0, nuts:[],
@@ -429,13 +429,14 @@ function pkBuildTrees(){
 // collision, beam-blocking — just arranged densely instead of at random.
 const GROVE_SPACING=16;              // grid step used to fill the ring — spread a bit further apart
                                       // so individual trunks read clearly instead of one solid blob
-const GROVE_PATH_W=58;               // path corridor width — empirically checked against the real
+const GROVE_PATH_W=116;              // path corridor width — empirically checked against the real
                                       // trunk collision ellipse (TREE_COLL_RX/RY), not just eyeballed
 const GROVE_SWEEP=2.4;                // radians of the ring the path winds through — a longer,
                                       // proper walk in rather than a quick step through a gap
 const GROVE_COLLAPSE=0.55;           // fraction of the sweep over which the path dives from the
                                       // outer edge down near the centre
-const GROVE_HALO_STEP=26;            // sampling step for the fading ring of loose outer trees
+const GROVE_HALO_STEP=20;            // sampling step for the fading ring of loose outer trees — a
+                                      // bit finer, for more trees scattered around the outside
 function pkGroveOuterR(){ return Math.min(PK.WW,PK.WH)*0.155; }   // ~1 cell of a 4x4 park, majority stays open field
 function pkBuildGrove(cx, cy, withNPC){
   const outerR=pkGroveOuterR(), innerR=outerR*0.35;
@@ -474,12 +475,12 @@ function pkBuildGrove(cx, cy, withNPC){
   }
   // a loose, fading scatter just beyond the ring, thinning out with distance — the wood
   // announcing itself before you're actually in it, rather than starting on a hard line
-  const fadeR=outerR*2.4;
+  const fadeR=outerR*2.7;   // a longer, more natural taper back out to open field
   for(let gy=-fadeR; gy<=fadeR; gy+=GROVE_HALO_STEP){
     for(let gx=-fadeR; gx<=fadeR; gx+=GROVE_HALO_STEP){
       const r=Math.hypot(gx,gy);
       if(r<=outerR*1.08 || r>fadeR) continue;
-      const p=Math.pow(1-(r-outerR)/(fadeR-outerR), 1.8)*0.4;
+      const p=Math.pow(1-(r-outerR)/(fadeR-outerR), 1.6)*0.58;
       if(Math.random()>p) continue;
       const x=(cx+gx+(Math.random()-0.5)*GROVE_HALO_STEP+PK.WW)%PK.WW;
       const y=(cy+gy+(Math.random()-0.5)*GROVE_HALO_STEP+PK.WH)%PK.WH;
@@ -642,6 +643,15 @@ function pkSpawnBirdGroup(){
     PK.en.push({t:"bird", standing:true, x:(cx+ox+WW)%WW, y:(cy+oy+WH)%WH,
       hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:0, ph:Math.random()*6, kx:0, ky:0, dir:Math.random()<0.5?-1:1, fi:0, ft:0});
   }
+  // it's the park — a lone quota-capped bird standing in a huge map is a needle in a haystack.
+  // top the roost up to a proper-looking flock with decorative extras that don't count toward
+  // the quota (same treatment as a stalking cat), so there's always plenty to actually find
+  const DECOR_ROOST=4;
+  for(let i=n;i<DECOR_ROOST;i++){
+    const ox=(Math.random()-0.5)*64, oy=(Math.random()-0.5)*44;
+    PK.en.push({t:"bird", standing:true, decor:true, x:(cx+ox+WW)%WW, y:(cy+oy+WH)%WH,
+      hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:0, ph:Math.random()*6, kx:0, ky:0, dir:Math.random()<0.5?-1:1, fi:0, ft:0});
+  }
   if(Math.random()<STALK_CHANCE) pkSpawnStalkCat(cx,cy, 1+Math.floor(Math.random()*2));
   return n;
 }
@@ -793,7 +803,7 @@ const BARK_CAP=62;   // hard ceiling: the bark used to reach ~90 and trivialised
 // enemies that never block a wave clearing and never count toward "N LEFT" — side hazards
 // the player opted into (a burning tree's squirrels) or ambient extras (stalking cats, the
 // decorative wave-3 swoop bird), as opposed to the wave's actual, fixed quota
-function pkSideHazard(e){ return e.stalk || e.stalkAggro || e.swoop || e.fromTree; }
+function pkSideHazard(e){ return e.stalk || e.stalkAggro || e.swoop || e.fromTree || e.decor; }
 const FLEE_SPEED=115, FLEE_TIME=2.2;   // how fast, and how long, a scared-off enemy scuttles before despawning
 function pkBark(){
   PK.barkCd = PK.zoomT>0 ? 0 : PK.barkMax;   // mid-zoomies there is no cooldown at all
@@ -842,9 +852,9 @@ const AGI_LVL_CAP=3, AGI_CD_BASE=20, AGI_CD_STEP=4, AGI_HEAL_BASE=0.05, AGI_HEAL
 function pkAgiCd(){   return Math.max(6, AGI_CD_BASE - AGI_CD_STEP*(PK.agiLvl||0)); }
 function pkAgiHeal(){ return AGI_HEAL_BASE + AGI_HEAL_STEP*(PK.agiLvl||0); }
 function pkExpandPark(){
-  PK.worldMult=Math.min(4,PK.worldMult+0.5);
+  PK.worldMult=Math.min(8,PK.worldMult+0.5);
   if(Math.random()<0.5 && PK.groves<3){ PK.groves++; toast("THE PARK GREW — AND SO DID THE TREES."); }
-  PK.zoom=Math.max(0.76,1-(PK.worldMult-2)*0.12);   // zoom out a touch as the park grows, for a wider view
+  PK.zoom=Math.max(0.76,1-(PK.worldMult-4)*0.06);   // zoom out a touch as the park grows, for a wider view
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   PK.WW=w*PK.worldMult; PK.WH=h*PK.worldMult;
   pkBuildBG(PK.WW,PK.WH);
@@ -1194,9 +1204,9 @@ function pkShopOpen(){
       f:()=>{ pick.apply(); PK.relic=pick.id; tickTodo("j_collar"); }});
   }
   // rare chance to grow the park itself, up to a 4\u00d74 world
-  if(PK.worldMult<4 && Math.random()<0.3){
-    const next=Math.min(4,PK.worldMult+0.5);
-    pool.push({n:"EXPAND THE PARK", ic:"expand", fx:"GROW WORLD TO "+next+"\u00d7"+next, c:Math.round(14+(PK.worldMult-2)*16), expand:true,
+  if(PK.worldMult<8 && Math.random()<0.3){
+    const next=Math.min(8,PK.worldMult+0.5);
+    pool.push({n:"EXPAND THE PARK", ic:"expand", fx:"GROW WORLD TO "+next+"\u00d7"+next, c:Math.round(14+(PK.worldMult-4)*16), expand:true,
       f:()=>pkExpandPark()});
   }
   PK.shop = pool.sort(()=>Math.random()-0.5).slice(0,3);
