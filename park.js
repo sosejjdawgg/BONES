@@ -5,6 +5,25 @@
 // how many enemies you downed and how many side objectives (hoop/tunnel/ramp) you hit.
 const PK={active:false, godMode:false}; // godMode is a dev-only toggle and deliberately isn't reset per-run
 function wd(d,M){ return ((d + M/2) % M + M) % M - M/2; }  // shortest signed delta on the looping world
+// Overheal. Running the agility course at full health banks a yellow shield on top of the
+// bar. It bleeds away on its own — faster the fuller it is, so a big stack is a burst to
+// spend, not something to sit on — and while any of it is left he runs a little quicker.
+const OVER_FRAC=0.60;        // shield ceiling, as a fraction of max HP
+const OVER_DRAIN=1.6;        // HP/sec at an empty shield
+const OVER_DRAIN_SCALE=7.0;  // ...rising to this much more at a full one
+const OVER_SPEED=1.16;       // the kick you get for having any left
+function pkOverCap(){ return PK.maxhp*OVER_FRAC; }
+function pkHurt(n){
+  if(PK.over>0){                       // the shield eats it first
+    const ate=Math.min(PK.over,n);
+    PK.over-=ate; n-=ate;
+    PK.shake=Math.max(PK.shake||0,0.16);
+    beep(540,.06,"square",.045);
+    for(let i=0;i<5;i++){ const a2=Math.random()*6.283, sp=40+Math.random()*50;
+      SPARKS.push({x:PK.x,y:PK.y-12,vx:Math.cos(a2)*sp,vy:Math.sin(a2)*sp-25,life:0.3,gold:true}); }
+  }
+  if(n>0) PK.hp-=n;
+}
 function pkInvuln(){ return PK.godMode || PK.zoomT>0; }   // the golden bone: zoomies + untouchable
 const XP_PER_KILL=0.4, XP_PER_SIDE=2;
 // a long run with a full crew can rack up well over a thousand downed enemies once companions and
@@ -277,7 +296,7 @@ function startPark(plus){
     chain:0, chainT:0, inv:0, fx:[],
     x:0,y:0,vx:0,vy:0, joy:null,
     en:[], fr:[], gate:{}, started:false, shop:null, biscuits:[], drops:[], pendingBury:0, nuts:[],
-    powerups:[], zoomT:0, regenT:0, regenAcc:0, hurtT:0, hpSeen:0, zoom:1, sniffLvl:0,
+    powerups:[], zoomT:0, over:0, regenT:0, regenAcc:0, hurtT:0, hpSeen:0, zoom:1, sniffLvl:0,
     trees:[], scorch:[], embers:[],
     plusMode:!!plus, mixTypes:null, mixLabel:null, swoopT:0,
     pals:[], palEyes:false, friendsOpen:false, friendsArm:false, npc:{x:.78,y:.18}
@@ -1056,6 +1075,15 @@ function parkUpdate(dt){
   if(PK.shop || PK.convertOpen || PK.friendsOpen) return;   // world pauses while shopping or exchanging bones
   PK.t+=dt; PK.waveT+=dt;
   PK.hurtT=Math.max(0,PK.hurtT-dt);
+  if(PK.over>0){
+    const f=clamp(PK.over/Math.max(1,pkOverCap()),0,1);
+    PK.over=Math.max(0, PK.over-(OVER_DRAIN+OVER_DRAIN_SCALE*f)*dt);
+    if(PK.over>0 && Math.random()<0.30){   // it visibly burns off him while it lasts
+      const a5=Math.random()*6.283;
+      SPARKS.push({x:PK.x+Math.cos(a5)*12, y:PK.y+Math.sin(a5)*10-8,
+                   vx:Math.cos(a5)*10, vy:-24-Math.random()*20, life:0.3+Math.random()*0.2, gold:true});
+    }
+  }
   if(PK.regenT>0){
     PK.regenT=Math.max(0,PK.regenT-dt);
     PK.regenAcc+=REGEN_RATE*dt;
@@ -1148,7 +1176,7 @@ function parkUpdate(dt){
   }
   let mx=0,my=0;
   if(PK.joy){ mx=PK.joy.dx; my=PK.joy.dy; }
-  if(Math.hypot(mx,my)>0.1){ const l=Math.hypot(mx,my); PK.vx=mx/l*PK.spd; PK.vy=my/l*PK.spd; }
+  if(Math.hypot(mx,my)>0.1){ const l=Math.hypot(mx,my), sp2=PK.spd*(PK.over>0?OVER_SPEED:1); PK.vx=mx/l*sp2; PK.vy=my/l*sp2; }
   else { PK.vx*=0.8; PK.vy*=0.8; }
   PK.x=(PK.x+PK.vx*dt+WW)%WW;
   PK.y=(PK.y+PK.vy*dt+WH)%WH;
@@ -1239,7 +1267,7 @@ function parkUpdate(dt){
       }
       e.ft+=dt; if(e.ft>0.1){ e.ft=0; e.fi++; }
       if(d<14 && PK.inv<=0 && !pkInvuln()){
-        PK.hp-=8; PK.inv=0.6; e.kx=-dxw/d*220; e.ky=-dyw/d*220;
+        pkHurt(8); PK.inv=0.6; e.kx=-dxw/d*220; e.ky=-dyw/d*220;
         beep(110,.12,"sawtooth"); if(PK.hp<=0) return pkDeath();
       }
       continue;
@@ -1278,7 +1306,7 @@ function parkUpdate(dt){
       }
       e.ft+=dt; if(e.ft>0.12){ e.ft=0; e.fi++; }
       if(d<14 && PK.inv<=0 && !pkInvuln()){
-        PK.hp-=6; PK.inv=0.6; e.kx=-dxw/d*200; e.ky=-dyw/d*200;
+        pkHurt(6); PK.inv=0.6; e.kx=-dxw/d*200; e.ky=-dyw/d*200;
         beep(110,.12,"sawtooth"); if(PK.hp<=0) return pkDeath();
       }
       continue;
@@ -1298,7 +1326,7 @@ function parkUpdate(dt){
           e.laserState="charge"; e.chargeT=0; e.aimAng=Math.atan2(dyw,dxw);
         }
         if(d<14 && PK.inv<=0 && !pkInvuln()){
-          PK.hp-=8; PK.inv=0.6; e.kx=-dxw/d*220; e.ky=-dyw/d*220;
+          pkHurt(8); PK.inv=0.6; e.kx=-dxw/d*220; e.ky=-dyw/d*220;
           beep(110,.12,"sawtooth"); if(PK.hp<=0) return pkDeath();
         }
       } else if(e.laserState==="charge"){
@@ -1333,7 +1361,7 @@ function parkUpdate(dt){
         }
         const along=dxw*ux+dyw*uy, perp=Math.abs(dxw*uy-dyw*ux);
         if(along>0 && along<blk.dist && perp<MADSQ_WIDTH && PK.inv<=0 && !pkInvuln()){
-          PK.hp-=MADSQ_DMG; PK.inv=0.55;
+          pkHurt(MADSQ_DMG); PK.inv=0.55;
           PK.x=(PK.x+ux*MADSQ_KNOCK*dt*6+WW)%WW; PK.y=(PK.y+uy*MADSQ_KNOCK*dt*6+WH)%WH;
           PK.vx=ux*90; PK.vy=uy*90;
           PK.shake=0.5;
@@ -1394,7 +1422,7 @@ function parkUpdate(dt){
         e.dir = e.lvx<0 ? -1 : 1;
         if(e.leapActT<=0){ e.leapState=null; e.leapCd=ALPHA_LEAP_CD; }
         if(d<20 && PK.inv<=0 && !pkInvuln()){
-          PK.hp-=ALPHA_LEAP_DMG; PK.inv=0.7; e.kx=-dxw/d*260; e.ky=-dyw/d*260;
+          pkHurt(ALPHA_LEAP_DMG); PK.inv=0.7; e.kx=-dxw/d*260; e.ky=-dyw/d*260;
           beep(140,.3,"sawtooth"); if(PK.hp<=0) return pkDeath();
         }
       } else {
@@ -1404,7 +1432,7 @@ function parkUpdate(dt){
         e.leapCd-=dt;
         if(e.leapCd<=0 && d<ALPHA_LEAP_R){ e.leapState="windup"; e.leapWindT=0.6; e.leapAng=Math.atan2(dyw,dxw); }
         if(d<16 && PK.inv<=0 && !pkInvuln()){
-          PK.hp-=14; PK.inv=0.6; e.kx=-dxw/d*220; e.ky=-dyw/d*220;
+          pkHurt(14); PK.inv=0.6; e.kx=-dxw/d*220; e.ky=-dyw/d*220;
           beep(110,.12,"sawtooth"); if(PK.hp<=0) return pkDeath();
         }
       }
@@ -1427,7 +1455,7 @@ function parkUpdate(dt){
       e.x=(e.x+(e.vx+e.kx)*dt+WW)%WW;
       e.y=(e.y+(e.vy+e.ky)*dt+WH)%WH;
       if(d<14 && PK.inv<=0 && !pkInvuln()){
-        PK.hp-=8; PK.inv=0.6;
+        pkHurt(8); PK.inv=0.6;
         e.kx=-dxw/d*220; e.ky=-dyw/d*220;
         beep(110,.12,"sawtooth");
         if(PK.hp<=0) return pkDeath();
@@ -1443,7 +1471,7 @@ function parkUpdate(dt){
     e.x=(e.x+(sx+e.kx)*dt+WW)%WW;
     e.y=(e.y+(sy+e.ky)*dt+WH)%WH;
     if(d<14 && PK.inv<=0 && !pkInvuln()){
-      PK.hp-=8; PK.inv=0.6;
+      pkHurt(8); PK.inv=0.6;
       e.kx=-dxw/d*220; e.ky=-dyw/d*220;
       beep(110,.12,"sawtooth");
       if(PK.hp<=0) return pkDeath();
@@ -1500,7 +1528,7 @@ function parkUpdate(dt){
       continue;
     }
     if(Math.hypot(wd(n.x-PK.x,WW),wd(n.y-PK.y,WH))<12 && PK.inv<=0 && !pkInvuln()){
-      PK.hp-=10; PK.inv=0.6; beep(140,.15,"sawtooth");
+      pkHurt(10); PK.inv=0.6; beep(140,.15,"sawtooth");
       PK.nuts.splice(i,1);
       if(PK.hp<=0) return pkDeath();
       continue;
@@ -1520,8 +1548,14 @@ function parkUpdate(dt){
       a.cd=pkAgiCd(); PK.sideDone++;
       const heal=Math.max(1,Math.round(PK.maxhp*pkAgiHeal()));
       const before=PK.hp; PK.hp=Math.min(PK.maxhp,PK.hp+heal);
-      const got=Math.round(PK.hp-before);
-      PK.fx.push({x:a.x*WW, y:a.y*WH-16, txt:got>0?"+"+got+" HP":"FULL", life:1.2});
+      let got=Math.round(PK.hp-before), over=0;
+      if(heal-got>0.5){                   // already full: the rest banks as a shield
+        const spill=heal-(PK.hp-before);
+        const ob=PK.over; PK.over=Math.min(pkOverCap(), PK.over+spill);
+        over=Math.round(PK.over-ob);
+      }
+      PK.fx.push({x:a.x*WW, y:a.y*WH-16,
+                  txt: over>0 ? "+"+over+" SHIELD" : got>0 ? "+"+got+" HP" : "FULL", life:1.2});
       for(let k=0;k<8;k++){
         const ang=Math.random()*6.283, sp=30+Math.random()*50;
         SPARKS.push({x:a.x*WW,y:a.y*WH-8,vx:Math.cos(ang)*sp,vy:Math.sin(ang)*sp-20,life:0.5+Math.random()*0.4,heal:true});
@@ -2460,8 +2494,18 @@ function pkPadDraw(t){
     }
     ctx.fillStyle = hzh>0 ? "#fff" : (PK.hp<PK.maxhp*0.3?"#f22":"#fff");
     ctx.fillRect(bx+3+hb,by+3,(bw2-6)*hfrac,bh2-6);
-    ctx.fillStyle="#fff"; ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="right";
-    ctx.fillText(Math.max(0,Math.ceil(PK.hp))+"/"+PK.maxhp, bx+bw2, by+bh2+10);
+    if(PK.over>0){
+      // the shield rides on top of a full bar, and glows harder the bigger it is
+      const of2=clamp(PK.over/Math.max(1,pkOverCap()),0,1);
+      ctx.save();
+      ctx.globalAlpha=0.55+0.45*Math.abs(Math.sin(t*7));
+      ctx.fillStyle="#ffd94a";
+      ctx.fillRect(bx+3+hb,by+3,(bw2-6)*of2,bh2-6);
+      ctx.strokeStyle="#ffd94a"; ctx.lineWidth=2; ctx.strokeRect(bx+hb,by,bw2,bh2);
+      ctx.restore();
+    }
+    ctx.fillStyle=PK.over>0?"#ffd94a":"#fff"; ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="right";
+    ctx.fillText((PK.over>0?"+"+Math.ceil(PK.over)+"  ":"")+Math.max(0,Math.ceil(PK.hp))+"/"+PK.maxhp, bx+bw2, by+bh2+10);
     ctx.textAlign="left"; ctx.lineWidth=2;
     if(PK.relic){
       const rc=PK_CHARMS.find(c=>c.id===PK.relic);
