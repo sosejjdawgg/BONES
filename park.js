@@ -292,14 +292,14 @@ function startPark(plus){
     barkMax:Math.max(1.2,3-0.06*S.lvl), barkCd:1, pulse:0,
     barkR:21*(0.8+0.4*S.hunger/100), knock:150,
     bones:0, kills:0, xpFromRun:0, sideDone:0, relic:null, waveBanner:null, shopFlash:null,
-    worldMult:2.5, woods:2, barkBigLvl:0, barkFastLvl:0, agiLvl:0, speedBonus:null, shopSel:null,
+    worldMult:2, groves:1, groveCenters:[], leaves:[], barkBigLvl:0, barkFastLvl:0, agiLvl:0, speedBonus:null, shopSel:null,
     chain:0, chainT:0, inv:0, fx:[],
     x:0,y:0,vx:0,vy:0, joy:null,
     en:[], fr:[], gate:{}, gateArm:true, gateAsk:false, started:false, shop:null, biscuits:[], drops:[], pendingBury:0, nuts:[],
     powerups:[], zoomT:0, over:0, regenT:0, regenAcc:0, hurtT:0, hpSeen:0, zoom:1, sniffLvl:0,
     trees:[], scorch:[], embers:[],
     plusMode:!!plus, mixTypes:null, mixLabel:null, swoopT:0,
-    pals:[], palEyes:false, friendsOpen:false, friendsArm:false, npc:{x:.78,y:.18}
+    pals:[], palEyes:false, friendsOpen:false, friendsArm:false, npc:{x:.5,y:.5}
   });
   PK.hp=PK.maxhp;
   PK.healerT=pkHealerGap();
@@ -413,41 +413,92 @@ function pkBuildTrees(){
     while(tries<24 && Math.hypot(wd(x-npc.x*PK.WW,PK.WW),wd(y-npc.y*PK.WH,PK.WH))<72);
     PK.trees.push({ x, y, state:"ok", fireT:0, spawned:0, spawnT:0, sway:Math.random()*6.283 });
   }
-  pkBuildWoods(PK.woods||2);
+  pkBuildWoods(PK.groves||1);
 }
-// A wood is a dense block of trunks with lanes cut through it, so there is no straight line
-// from one side to the other. The trees are the same objects as the scattered ones — same
-// shape, same burning, same collision, same beam-blocking — they are just packed tighter.
-const WOOD_SPACING=30, WOOD_JITTER=8, WOOD_LANES=2, WOOD_LANE_W=38;
-function pkAddWood(cx,cy,halfW,halfH){
-  // lanes run across the wood at fixed offsets; a trunk that lands in one is simply not planted
-  const lanes=[];
-  for(let i=0;i<WOOD_LANES;i++) lanes.push((i+0.5+ (Math.random()-0.5)*0.4)/WOOD_LANES*(halfH*2)-halfH);
-  const npc=PK.npc||{x:.78,y:.18};
+// A grove is a circular stand of trees dense enough to block a straight line through, with
+// one path spiralling from a gap in the ring down to a clear centre — small enough on the map
+// that it reads as a landmark to find, not a zone you have to cross. The main grove always
+// holds the bandana dog at its exact centre, so walking the path in is the whole point of it.
+// Trees here are the same objects as the ones scattered elsewhere — same shape, burning,
+// collision, beam-blocking — just arranged densely instead of at random.
+const GROVE_SPACING=13;              // grid step used to fill the ring — tight, so it reads solid
+const GROVE_PATH_W=44;               // path corridor width — empirically checked against the real
+                                      // trunk collision ellipse (TREE_COLL_RX/RY), not just eyeballed
+const GROVE_SWEEP=1.0;                // radians of the ring the path breaches (a single modest gap,
+                                      // not most of the circumference)
+const GROVE_COLLAPSE=0.35;           // fraction of the sweep over which the path dives from the
+                                      // outer edge down near the centre, so it only has to cut
+                                      // through actual ring material very briefly
+const GROVE_HALO_STEP=26;            // sampling step for the fading ring of loose outer trees
+function pkGroveOuterR(){ return Math.min(PK.WW,PK.WH)*0.135; }   // ~1 cell of a 4x4 park, majority stays open field
+function pkBuildGrove(cx, cy, withNPC){
+  const outerR=pkGroveOuterR(), innerR=outerR*0.40;
+  const entryAngle=Math.random()*6.283;
+  // the path's centreline, as actual points — checking true distance to this curve (rather than
+  // approximating with "same radius at that angle") is what keeps the corridor genuinely walkable;
+  // the cheaper radial approximation left the spiral clipping straight through trunk hitboxes
+  const spiralR=t=>{ const tc=Math.min(1,t/GROVE_COLLAPSE); return outerR + (innerR*0.22-outerR)*tc; };
+  const curve=[];
+  for(let t=0;t<=1.001;t+=1/90){
+    const ang=entryAngle+t*GROVE_SWEEP, r=spiralR(t);
+    curve.push([cx+Math.cos(ang)*r, cy+Math.sin(ang)*r]);
+  }
+  const distToPath=(x,y)=>{
+    let best=Infinity;
+    for(const [px,py] of curve){ const d=Math.hypot(wd(x-px,PK.WW),wd(y-py,PK.WH)); if(d<best) best=d; }
+    return best;
+  };
   let planted=0;
-  for(let gy=-halfH; gy<=halfH; gy+=WOOD_SPACING){
-    for(let gx=-halfW; gx<=halfW; gx+=WOOD_SPACING){
-      if(lanes.some(L=>Math.abs(gy-L)<WOOD_LANE_W*0.5)) continue;      // keep the lane clear
-      // ragged edge rather than a rectangle of trees
-      const edge=Math.max(Math.abs(gx)/halfW, Math.abs(gy)/halfH);
-      if(edge>0.86 && Math.random()<0.55) continue;
-      const x=(cx+gx+(Math.random()-0.5)*WOOD_JITTER+PK.WW)%PK.WW;
-      const y=(cy+gy+(Math.random()-0.5)*WOOD_JITTER+PK.WH)%PK.WH;
-      if(Math.hypot(wd(x-npc.x*PK.WW,PK.WW),wd(y-npc.y*PK.WH,PK.WH))<80) continue;
-      if(PK.gate && PK.gate.x!=null &&
-         Math.hypot(wd(x-PK.gate.x,PK.WW),wd(y-PK.gate.y,PK.WH))<70) continue;   // never wall the exit in
+  // the dense ring, plus a soft dappled fringe just past its outer edge
+  for(let gy=-outerR; gy<=outerR; gy+=GROVE_SPACING){
+    for(let gx=-outerR; gx<=outerR; gx+=GROVE_SPACING){
+      const r=Math.hypot(gx,gy);
+      if(r>outerR*1.06 || r<innerR*0.85) continue;
+      const x=(cx+gx+(Math.random()-0.5)*6+PK.WW)%PK.WW;
+      const y=(cy+gy+(Math.random()-0.5)*6+PK.WH)%PK.WH;
+      if(distToPath(x,y) < GROVE_PATH_W/2) continue;      // keep the corridor genuinely clear
+      const inner=(innerR-r)/(innerR*0.15);                // soft transition into the clearing
+      if(inner>0 && Math.random()<clamp(inner,0,1)) continue;
+      const outer=(r-outerR)/(outerR*0.06);                // and a ragged, not ruler-straight, outside edge
+      if(outer>0 && Math.random()<0.35+outer*0.5) continue;
+      if(PK.gate && PK.gate.x!=null && Math.hypot(wd(x-PK.gate.x,PK.WW),wd(y-PK.gate.y,PK.WH))<70) continue;
       PK.trees.push({ x, y, state:"ok", fireT:0, spawned:0, spawnT:0, sway:Math.random()*6.283, wood:true });
       planted++;
     }
   }
+  // a loose, fading scatter just beyond the ring, thinning out with distance — the wood
+  // announcing itself before you're actually in it, rather than starting on a hard line
+  const fadeR=outerR*2.4;
+  for(let gy=-fadeR; gy<=fadeR; gy+=GROVE_HALO_STEP){
+    for(let gx=-fadeR; gx<=fadeR; gx+=GROVE_HALO_STEP){
+      const r=Math.hypot(gx,gy);
+      if(r<=outerR*1.08 || r>fadeR) continue;
+      const p=Math.pow(1-(r-outerR)/(fadeR-outerR), 1.8)*0.4;
+      if(Math.random()>p) continue;
+      const x=(cx+gx+(Math.random()-0.5)*GROVE_HALO_STEP+PK.WW)%PK.WW;
+      const y=(cy+gy+(Math.random()-0.5)*GROVE_HALO_STEP+PK.WH)%PK.WH;
+      if(distToPath(x,y) < GROVE_PATH_W*0.7) continue;    // a stray halo tree could otherwise
+                                                           // block the doorway before the ring even starts
+      if(PK.gate && PK.gate.x!=null && Math.hypot(wd(x-PK.gate.x,PK.WW),wd(y-PK.gate.y,PK.WH))<70) continue;
+      PK.trees.push({ x, y, state:"ok", fireT:0, spawned:0, spawnT:0, sway:Math.random()*6.283 });
+    }
+  }
+  if(withNPC) PK.npc={x:cx/PK.WW, y:cy/PK.WH};
+  PK.groveCenters.push({x:cx,y:cy,r:outerR,entryAngle});
   return planted;
 }
-// woods always sit straight up or straight down from where BONES starts, so you always know
-// which way to run to find one — and never spawn on top of him
+// the main grove always sits straight up or down from where BONES starts, so you always know
+// which way to head to find it; further groves (from expanding the park) land in whichever
+// quarter is still empty, so they never stack on top of each other or the first one
 function pkBuildWoods(n){
-  const cx=PK.WW*0.5, halfW=Math.min(PK.WW*0.32, 210), halfH=Math.min(PK.WH*0.17, 115);
-  const slots=[0.20,0.80,0.06,0.94];
-  for(let i=0;i<n && i<slots.length;i++) pkAddWood(cx, PK.WH*slots[i], halfW, halfH);
+  PK.groveCenters=[];
+  const cx=PK.WW*0.5, dir=Math.random()<0.5?1:-1, off=Math.min(PK.WH*0.30, pkGroveOuterR()*2.6);
+  pkBuildGrove(cx, PK.WH*0.5+dir*off, true);
+  const extraSlots=[[0.5,0.5-dir*off*2.1/PK.WH], [0.18,0.22],[0.82,0.78],[0.18,0.78],[0.82,0.22]];
+  for(let i=1;i<n;i++){
+    const s=extraSlots[i]||[0.15+Math.random()*0.7,0.15+Math.random()*0.7];
+    pkBuildGrove(PK.WW*s[0], PK.WH*s[1], false);
+  }
 }
 function pkIgniteTree(tr){
   if(!tr || tr.state!=="ok") return;
@@ -718,6 +769,10 @@ function pkWaveName(wv){
 // else scales off its own base the same way
 function pkEnemyHp(base){ return base + Math.floor(((PK.wave||1)-1)/4.5); }
 const BARK_CAP=62;   // hard ceiling: the bark used to reach ~90 and trivialised whole waves
+// enemies that never block a wave clearing and never count toward "N LEFT" — side hazards
+// the player opted into (a burning tree's squirrels) or ambient extras (stalking cats, the
+// decorative wave-3 swoop bird), as opposed to the wave's actual, fixed quota
+function pkSideHazard(e){ return e.stalk || e.stalkAggro || e.swoop || e.fromTree; }
 const FLEE_SPEED=115, FLEE_TIME=2.2;   // how fast, and how long, a scared-off enemy scuttles before despawning
 function pkBark(){
   PK.barkCd = PK.zoomT>0 ? 0 : PK.barkMax;   // mid-zoomies there is no cooldown at all
@@ -767,7 +822,7 @@ function pkAgiCd(){   return Math.max(6, AGI_CD_BASE - AGI_CD_STEP*(PK.agiLvl||0
 function pkAgiHeal(){ return AGI_HEAL_BASE + AGI_HEAL_STEP*(PK.agiLvl||0); }
 function pkExpandPark(){
   PK.worldMult=Math.min(4,PK.worldMult+0.5);
-  if(Math.random()<0.5 && PK.woods<4){ PK.woods++; toast("THE PARK GREW — AND SO DID THE TREES."); }
+  if(Math.random()<0.5 && PK.groves<3){ PK.groves++; toast("THE PARK GREW — AND SO DID THE TREES."); }
   PK.zoom=Math.max(0.76,1-(PK.worldMult-2)*0.12);   // zoom out a touch as the park grows, for a wider view
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   PK.WW=w*PK.worldMult; PK.WH=h*PK.worldMult;
@@ -1166,6 +1221,18 @@ function parkUpdate(dt){
   for(const e of PK.en) if(e.hitT>0) e.hitT-=dt;
   for(let i=SPARKS.length-1;i>=0;i--){ const s=SPARKS[i]; s.x+=s.vx*dt; s.y+=s.vy*dt; s.vy+=140*dt; s.life-=dt; if(s.life<=0) SPARKS.splice(i,1); }
   for(let i=PK.embers.length-1;i>=0;i--){ const em=PK.embers[i]; em.x+=em.vx*dt; em.y+=em.vy*dt; em.vy+=90*dt; em.life-=dt; if(em.life<=0) PK.embers.splice(i,1); }
+  // a slow drift of leaves under the canopy — atmosphere for the grove, not gameplay, so it
+  // only bothers spawning them for the grove BONES is actually near
+  for(let i=PK.leaves.length-1;i>=0;i--){
+    const lf=PK.leaves[i]; lf.y+=lf.vy*dt; lf.x+=Math.sin(lf.t*1.3+lf.ph)*7*dt; lf.t+=dt; lf.life-=dt;
+    if(lf.life<=0) PK.leaves.splice(i,1);
+  }
+  const nearGrove=PK.groveCenters.find(g=>Math.hypot(wd(PK.x-g.x,PK.WW),wd(PK.y-g.y,PK.WH))<g.r*1.3);
+  if(nearGrove && PK.leaves.length<22 && Math.random()<0.55){
+    const a=Math.random()*6.283, r=Math.random()*nearGrove.r*0.9;
+    PK.leaves.push({x:nearGrove.x+Math.cos(a)*r, y:nearGrove.y+Math.sin(a)*r*0.6-40,
+                     vy:10+Math.random()*8, t:Math.random()*6, ph:Math.random()*6.283, life:4+Math.random()*2});
+  }
   if(PK.scorch.length>90) PK.scorch.splice(0, PK.scorch.length-90);
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   if(!PK.started){
@@ -1182,7 +1249,7 @@ function parkUpdate(dt){
   // spooked-but-alive roost birds that got away clean also don't block the clear)
   // a startled bird is still very much alive — it only settles back down — so it has to block
   // the clear like anything else. Only downed enemies and ambient extras are ignored here.
-  if(PK.waveSpawned>=PK.waveQuota && !PK.en.some(e=>!e.fleeing && !e.stalk && !e.stalkAggro && !e.swoop)){
+  if(PK.waveSpawned>=PK.waveQuota && !PK.en.some(e=>!e.fleeing && !pkSideHazard(e))){
     // survive the very first wave and it's a straight-up XP bonus
     if(PK.wave===1 && !PK.missionSurviveW1){
       PK.missionSurviveW1=true; pkAwardXP(10);
@@ -2168,10 +2235,31 @@ function parkDraw(t){
     if(px2<-40||px2>w+40||py2<-40||py2>h+40) continue;
     drawPal(ctx,p,px2,py2,t);
   }
+  // dappled canopy shade under the grove — cast before the trunks, so it reads as shadow
+  // falling on the ground rather than a tint over the trees themselves
+  for(const g of PK.groveCenters){
+    const [gcx,gcy]=SC(g.x,g.y);
+    if(gcx<-g.r*1.6||gcx>w+g.r*1.6||gcy<-g.r*1.6||gcy>h+g.r*1.6) continue;
+    ctx.save();
+    const grad=ctx.createRadialGradient(gcx,gcy,g.r*0.2,gcx,gcy,g.r*1.15);
+    grad.addColorStop(0,"rgba(6,14,6,.40)"); grad.addColorStop(0.7,"rgba(6,14,6,.24)"); grad.addColorStop(1,"rgba(6,14,6,0)");
+    ctx.fillStyle=grad;
+    ctx.beginPath(); ctx.ellipse(gcx,gcy,g.r*1.15,g.r*1.15*0.62,0,0,7); ctx.fill();
+    ctx.restore();
+  }
   for(const tr of PK.trees){
     const [tx2,ty2]=SC(tr.x,tr.y);
     if(tx2<-70||tx2>w+70||ty2<-90||ty2>h+70) continue;
     pkDrawTree(ctx,tr,tx2,ty2,t);
+  }
+  for(const lf of PK.leaves){
+    const [lx,ly]=SC(lf.x,lf.y);
+    if(lx<-10||lx>w+10||ly<-10||ly>h+10) continue;
+    ctx.save();
+    ctx.globalAlpha=Math.min(1,lf.life*0.7);
+    ctx.translate(lx,ly); ctx.rotate(lf.t*1.4+lf.ph);
+    ctx.fillStyle="#5a8a3a"; ctx.beginPath(); ctx.ellipse(0,0,3.2,1.6,0,0,7); ctx.fill();
+    ctx.restore();
   }
   for(const em of PK.embers){
     const [ex3,ey3]=SC(em.x,em.y);
@@ -2296,7 +2384,7 @@ function parkDraw(t){
   {
     // wave progress, sat directly under the DOGPARK header so everything about the wave
     // reads in one place at the top of the screen
-    const left=Math.max(0,PK.waveQuota-PK.waveSpawned)+PK.en.filter(e=>!e.fleeing).length;
+    const left=Math.max(0,PK.waveQuota-PK.waveSpawned)+PK.en.filter(e=>!e.fleeing && !pkSideHazard(e)).length;
     const pct=clamp(1-left/Math.max(1,PK.waveQuota),0,1);
     const bw=w*0.46, bx=w/2-bw/2, by=25;
     ctx.fillStyle="rgba(0,0,0,.55)"; ctx.fillRect(bx,by,bw,7);
