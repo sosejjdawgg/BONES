@@ -638,18 +638,17 @@ function pkSpawnBirdGroup(){
   // not "a full flock, of which the clear check will demand every last one"
   const remaining=Math.max(1, PK.waveQuota-PK.waveSpawned);
   const n=Math.min((3+Math.floor(Math.random()*5))*pkPlusMult(), remaining);
-  for(let i=0;i<n;i++){
-    const ox=(Math.random()-0.5)*46, oy=(Math.random()-0.5)*34;
-    PK.en.push({t:"bird", standing:true, x:(cx+ox+WW)%WW, y:(cy+oy+WH)%WH,
-      hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:0, ph:Math.random()*6, kx:0, ky:0, dir:Math.random()<0.5?-1:1, fi:0, ft:0});
-  }
   // it's the park — a lone quota-capped bird standing in a huge map is a needle in a haystack.
-  // top the roost up to a proper-looking flock with decorative extras that don't count toward
-  // the quota (same treatment as a stalking cat), so there's always plenty to actually find
+  // spawn a proper-looking flock, but every bird in it shares one roost ticket: whichever one
+  // the player actually finds and downs first satisfies the whole group (roost.killed>=need,
+  // checked in pkSideHazard), so there's no hidden "correct" bird — any of them clears it
+  const roost={need:n, killed:0};
   const DECOR_ROOST=4;
-  for(let i=n;i<DECOR_ROOST;i++){
-    const ox=(Math.random()-0.5)*64, oy=(Math.random()-0.5)*44;
-    PK.en.push({t:"bird", standing:true, decor:true, x:(cx+ox+WW)%WW, y:(cy+oy+WH)%WH,
+  const total=Math.max(n, DECOR_ROOST);
+  for(let i=0;i<total;i++){
+    const spread=i<n?46:64, vspread=i<n?34:44;
+    const ox=(Math.random()-0.5)*spread, oy=(Math.random()-0.5)*vspread;
+    PK.en.push({t:"bird", standing:true, roost, x:(cx+ox+WW)%WW, y:(cy+oy+WH)%WH,
       hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:0, ph:Math.random()*6, kx:0, ky:0, dir:Math.random()<0.5?-1:1, fi:0, ft:0});
   }
   if(Math.random()<STALK_CHANCE) pkSpawnStalkCat(cx,cy, 1+Math.floor(Math.random()*2));
@@ -803,7 +802,7 @@ const BARK_CAP=62;   // hard ceiling: the bark used to reach ~90 and trivialised
 // enemies that never block a wave clearing and never count toward "N LEFT" — side hazards
 // the player opted into (a burning tree's squirrels) or ambient extras (stalking cats, the
 // decorative wave-3 swoop bird), as opposed to the wave's actual, fixed quota
-function pkSideHazard(e){ return e.stalk || e.stalkAggro || e.swoop || e.fromTree || e.decor; }
+function pkSideHazard(e){ return e.stalk || e.stalkAggro || e.swoop || e.fromTree || e.decor || (e.roost && e.roost.killed>=e.roost.need); }
 const FLEE_SPEED=115, FLEE_TIME=2.2;   // how fast, and how long, a scared-off enemy scuttles before despawning
 function pkBark(){
   PK.barkCd = PK.zoomT>0 ? 0 : PK.barkMax;   // mid-zoomies there is no cooldown at all
@@ -831,6 +830,7 @@ function pkBark(){
         if(Math.random()<REGEN_DROP_CHANCE) PK.powerups.push({type:"regen", x:e.x, y:e.y, life:18});
         PK.kills++;
         hits++;
+        if(e.roost) e.roost.killed++;
         e.fleeing=true; e.shockT=0.35; e.fleeT=0; e.hitT=0.3;
         e.fleeVx=-dxw/d*FLEE_SPEED; e.fleeVy=-dyw/d*FLEE_SPEED;
         pkHitMark(e.x, e.y, true);
@@ -951,6 +951,7 @@ function pkPalHit(e,dmg,ux,uy){
     if(Math.random()<MAGNET_DROP_CHANCE) PK.powerups.push({type:"magnet", x:e.x, y:e.y+10, life:18});
     if(Math.random()<REGEN_DROP_CHANCE) PK.powerups.push({type:"regen", x:e.x, y:e.y, life:18});
     PK.kills++;
+    if(e.roost) e.roost.killed++;
     e.fleeing=true; e.shockT=0.35; e.fleeT=0;
     e.fleeVx=ux*FLEE_SPEED; e.fleeVy=uy*FLEE_SPEED;
     beep(950,.08,"square",.04);
@@ -1553,6 +1554,7 @@ function parkUpdate(dt){
               if(o.hp<=0){
                 PK.drops.push({x:o.x, y:o.y, v:1, life:25});
                 PK.kills++;
+                if(o.roost) o.roost.killed++;
                 o.fleeing=true; o.shockT=0.3; o.fleeT=0;
                 o.fleeVx=ux*FLEE_SPEED; o.fleeVy=uy*FLEE_SPEED;
                 PK.scorch.push({x:o.x, y:o.y, r:12+Math.random()*6});
@@ -2236,29 +2238,8 @@ function parkDraw(t){
     ctx.fillStyle = n.pal ? "#2b7f9c" : "#7a4a1f"; ctx.beginPath(); ctx.ellipse(-2.5,-2.5,3.6,3.2,0,0,7); ctx.fill(); ctx.stroke();
     ctx.restore();
   }
-  for(const e of PK.en){
-    const [ex2,ey2]=SC(e.x,e.y);
-    if(ex2<-40||ex2>w+40||ey2<-40||ey2>h+40) continue;
-    drawEnemy(ctx,e,ex2,ey2);
-  }
-  {
-    // shown only where he actually is — finding him in the grove is the point, no arrow to spoil it
-    const [nx2,ny2]=SC(PK.npc.x*WW, PK.npc.y*WH);
-    if(nx2>-40&&nx2<w+40&&ny2>-50&&ny2<h+40) drawBandanaDog(ctx,nx2,ny2,t);
-  }
-  for(const p of PK.pals){
-    if(p.k==="bird"){
-      for(const bd of p.birds){
-        const [bx2,by2]=SC(bd.x,bd.y);
-        if(bx2<-40||bx2>w+40||by2<-90||by2>h+40) continue;
-        drawPalBird(ctx,bd,bx2,by2,t);
-      }
-      continue;
-    }
-    const [px2,py2]=SC(p.x,p.y);
-    if(px2<-40||px2>w+40||py2<-40||py2>h+40) continue;
-    drawPal(ctx,p,px2,py2,t);
-  }
+  // ground cover renders before any living thing — foliage must never be able to paint over
+  // an enemy, pal, or the friends dog, however dense the grove gets
   // the walk in: dark under the canopy itself, then a lighter clearing once you're actually
   // through it — cast before the trunks, so it reads as light/shadow on the ground rather
   // than a tint over the trees
@@ -2281,6 +2262,29 @@ function parkDraw(t){
     const [tx2,ty2]=SC(tr.x,tr.y);
     if(tx2<-70||tx2>w+70||ty2<-90||ty2>h+70) continue;
     pkDrawTree(ctx,tr,tx2,ty2,t);
+  }
+  for(const e of PK.en){
+    const [ex2,ey2]=SC(e.x,e.y);
+    if(ex2<-40||ex2>w+40||ey2<-40||ey2>h+40) continue;
+    drawEnemy(ctx,e,ex2,ey2);
+  }
+  {
+    // shown only where he actually is — finding him in the grove is the point, no arrow to spoil it
+    const [nx2,ny2]=SC(PK.npc.x*WW, PK.npc.y*WH);
+    if(nx2>-40&&nx2<w+40&&ny2>-50&&ny2<h+40) drawBandanaDog(ctx,nx2,ny2,t);
+  }
+  for(const p of PK.pals){
+    if(p.k==="bird"){
+      for(const bd of p.birds){
+        const [bx2,by2]=SC(bd.x,bd.y);
+        if(bx2<-40||bx2>w+40||by2<-90||by2>h+40) continue;
+        drawPalBird(ctx,bd,bx2,by2,t);
+      }
+      continue;
+    }
+    const [px2,py2]=SC(p.x,p.y);
+    if(px2<-40||px2>w+40||py2<-40||py2>h+40) continue;
+    drawPal(ctx,p,px2,py2,t);
   }
   for(const lf of PK.leaves){
     const [lx,ly]=SC(lf.x,lf.y);
