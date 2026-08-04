@@ -629,11 +629,24 @@ const ALPHA_LEAP_R=170, ALPHA_LEAP_SPEED=280, ALPHA_LEAP_TIME=0.45, ALPHA_LEAP_C
 // WAVE 1 — CLEAR THE BIRDS: loose flocks of 3-7 birds clustered together, standing until
 // BONES gets close, then the whole flock startles and scatters (still hittable mid-scatter,
 // and settles back into a roost instead of despawning if it gets away clean). 1-hit kill.
+// true if (x,y) is inside or near a grove's tree ring — same 1.15x pad the canopy shadow uses
+function pkInGrove(x,y){
+  for(const g of PK.groveCenters){
+    const dx=wd(x-g.x,PK.WW), dy=wd(y-g.y,PK.WH);
+    if(Math.hypot(dx,dy) < g.r*1.15) return true;
+  }
+  return false;
+}
 function pkSpawnBirdGroup(){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
-  const ang=Math.random()*6.283, R=Math.max(w,h)*0.62;
-  const cx=(PK.x+Math.cos(ang)*R+WW)%WW, cy=(PK.y+Math.sin(ang)*R+WH)%WH;
+  const R=Math.max(w,h)*0.62;
+  // birds belong in the open field, not buried in a wooded grove where the canopy hides the
+  // whole flock — keep resampling the angle around the same ring until it lands clear of one
+  let ang=Math.random()*6.283, cx=(PK.x+Math.cos(ang)*R+WW)%WW, cy=(PK.y+Math.sin(ang)*R+WH)%WH, tries=0;
+  while(pkInGrove(cx,cy) && tries<24){
+    ang=Math.random()*6.283; cx=(PK.x+Math.cos(ang)*R+WW)%WW; cy=(PK.y+Math.sin(ang)*R+WH)%WH; tries++;
+  }
   // never spawn more than the wave still needs — wave 1's quota of 1 must mean "1 bird",
   // not "a full flock, of which the clear check will demand every last one"
   const remaining=Math.max(1, PK.waveQuota-PK.waveSpawned);
@@ -643,10 +656,10 @@ function pkSpawnBirdGroup(){
   // the player actually finds and downs first satisfies the whole group (roost.killed>=need,
   // checked in pkSideHazard), so there's no hidden "correct" bird — any of them clears it
   const roost={need:n, killed:0};
-  const DECOR_ROOST=4;
+  const DECOR_ROOST=12;
   const total=Math.max(n, DECOR_ROOST);
   for(let i=0;i<total;i++){
-    const spread=i<n?46:64, vspread=i<n?34:44;
+    const spread=i<n?46:82, vspread=i<n?34:58;
     const ox=(Math.random()-0.5)*spread, oy=(Math.random()-0.5)*vspread;
     PK.en.push({t:"bird", standing:true, roost, x:(cx+ox+WW)%WW, y:(cy+oy+WH)%WH,
       hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:0, ph:Math.random()*6, kx:0, ky:0, dir:Math.random()<0.5?-1:1, fi:0, ft:0});
