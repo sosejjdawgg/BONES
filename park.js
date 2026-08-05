@@ -2271,9 +2271,50 @@ function pkDrawScorch(ctx,SC,w,h){
     ctx.restore();
   }
 }
+// A dense grove can put 500+ ordinary standing trees on screen at once, and each one used to cost
+// ~9 separate canvas draws (shadow, trunk fill+stroke, 3 canopy arcs each fill+stroke) — with
+// hundreds in view that alone was ~25ms/frame. A healthy, non-burning tree's shape never actually
+// changes frame to frame beyond a ±1.4px canopy sway, so it's baked once into a small offscreen
+// canvas per (wood/ambient x sway-phase) combination and blitted with a single drawImage from then
+// on. Only the ash/burning/quaking/flying states — rare, and never more than a handful at once —
+// still fall through to the live per-frame draw below.
+const TREE_SPRITE_PHASES=4, TREE_SPRITE_AX=30, TREE_SPRITE_AY=50;
+let TREE_SPRITES=null;
+function pkBuildTreeSprite(wood,sway){
+  const c=document.createElement("canvas"); c.width=60; c.height=64;
+  const ctx=c.getContext("2d");
+  const x=TREE_SPRITE_AX, y=TREE_SPRITE_AY;
+  ctx.fillStyle="rgba(0,0,0,.32)";
+  ctx.beginPath(); ctx.ellipse(x,y+4,TREE_R*0.9,TREE_R*0.36,0,0,7); ctx.fill();
+  ctx.fillStyle="#4a3520"; ctx.strokeStyle="#0a0806"; ctx.lineWidth=2.5;
+  ctx.fillRect(x-5,y-21,10,21); ctx.strokeRect(x-5,y-21,10,21);
+  const cy=y-31, cs=wood?1.16:1;
+  ctx.fillStyle="#37782f"; ctx.strokeStyle="#0a1a0c"; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.arc(x+sway,cy,TREE_R*cs,0,7); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(x-TREE_R*0.55*cs+sway,cy+5,TREE_R*0.62*cs,0,7); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(x+TREE_R*0.55*cs+sway,cy+5,TREE_R*0.62*cs,0,7); ctx.fill(); ctx.stroke();
+  return c;
+}
+function pkTreeSprites(){
+  if(TREE_SPRITES) return TREE_SPRITES;
+  TREE_SPRITES=[[],[]];
+  for(let wood=0;wood<2;wood++) for(let p=0;p<TREE_SPRITE_PHASES;p++){
+    const sway=(-1.4+2.8*p/(TREE_SPRITE_PHASES-1));
+    TREE_SPRITES[wood].push(pkBuildTreeSprite(!!wood,sway));
+  }
+  return TREE_SPRITES;
+}
 function pkDrawTree(ctx,tr,x,y,t){
   const burning=tr.state==="fire", ash=tr.state==="ash";
   const quaking=tr.quakeT>0;
+  const flying0=tr.knockT>0;
+  if(!burning && !ash && !quaking && !flying0){
+    // the fast path: a plain standing tree, blitted from cache instead of hand-drawn
+    const sprites=pkTreeSprites(), phase=clamp(Math.round((Math.sin(tr.sway)*1.4+1.4)/2.8*(TREE_SPRITE_PHASES-1)),0,TREE_SPRITE_PHASES-1);
+    const img=sprites[tr.wood?1:0][phase];
+    ctx.drawImage(img, x-TREE_SPRITE_AX, y-TREE_SPRITE_AY);
+    return;
+  }
   const flying=tr.knockT>0;
   let flyP=0;
   if(flying){

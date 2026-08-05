@@ -25,7 +25,7 @@ const PB_WALL_H=60, PB_ROOF_H=32;
 
 const PB={
   active:false, run:false,
-  dist:0, speed:0, houses:[], nextIdx:0,
+  dist:0, speed:0, houses:[], decoys:[], nextIdx:0,
   pressing:false, pressSide:null, pressT:0,
   charging:null, fx:[], shake:0,
   camX:0, camY:0, swipe:null,
@@ -40,8 +40,19 @@ function pbNewRoute(){
     houses.push({doorNum:doorStart+i, side, worldDist:PB_HOUSE_GAP*(i+1), thrown:false, zone:null, angryT:0, happyT:0, tip:0});
     side = side==="L" ? "R" : "L";
   }
+  // decoys: houses on the street that just aren't due a delivery — pure scenery, never a throw
+  // target, never touched by pbThrow/updatePaperboy's nextIdx logic. Inspired by the original
+  // Paperboy's non-subscriber houses: they fill in the gaps so the street doesn't read as an
+  // empty runway between every delivery.
+  const decoys=[];
+  let decoyDoor=doorStart+PB_ROUTE_LEN+3;
+  for(let i=0;i<PB_ROUTE_LEN-1;i++){
+    const mid=PB_HOUSE_GAP*(i+1.5);
+    decoys.push({worldDist:mid+(Math.random()-0.5)*PB_HOUSE_GAP*0.3, side:Math.random()<0.5?"L":"R", doorNum:decoyDoor, zone:null});
+    decoyDoor+=1+Math.floor(Math.random()*2);
+  }
   Object.assign(PB,{
-    houses, nextIdx:0, dist:0, speed:PB_SPEED0,
+    houses, decoys, nextIdx:0, dist:0, speed:PB_SPEED0,
     pressing:false, pressSide:null, pressT:0, charging:null, fx:[], shake:0, swipe:null,
     stats:{perfect:0, house:0, destruction:0, miss:0, skillshot:0, tips:0}
   });
@@ -395,7 +406,7 @@ function pbDrawHUD(ctx,w,h){
   ctx.textAlign="left";
   if(PB.charging){
     const p=clamp(PB.charging.t/PB_CHARGE_TIME,0,1), full=p>=1;
-    const bw=w*0.6, bx=w/2-bw/2, by=h*0.80;
+    const bw=w*0.6, bx=w/2-bw/2, by=h*0.68;
     const col = full ? "#ffd94a" : "#f22";
     ctx.fillStyle="rgba(0,0,0,.7)"; ctx.fillRect(bx-5,by-18,bw+10,48);
     ctx.fillStyle=col; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
@@ -409,17 +420,52 @@ function pbDrawHUD(ctx,w,h){
     ctx.textAlign="left";
   }
 }
+// Route minimap: a strip of the whole street, one small square per house. White = due a delivery,
+// not thrown yet. Green/red = thrown, matching the doorstep outcome (good vs bad zone). Decoys —
+// houses that were never due a delivery — get a dim neutral marker that never changes. A blinking
+// dot tracks the van's live position along the same strip.
+function pbDrawMinimap(ctx,w,h){
+  const x0=14, barW=w-28, y0=h-26, barH=14;
+  const domainMax=PB_HOUSE_GAP*(PB_ROUTE_LEN+1);
+  const xAt = d => x0 + barW*clamp(d/domainMax,0,1);
+  ctx.fillStyle="rgba(0,0,0,.55)"; ctx.fillRect(x0-6,y0-4,barW+12,barH+8);
+  ctx.strokeStyle="rgba(255,255,255,.25)"; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(x0,y0+barH/2); ctx.lineTo(x0+barW,y0+barH/2); ctx.stroke();
+  for(const hh of PB.decoys){
+    const x=xAt(hh.worldDist);
+    ctx.fillStyle="#444"; ctx.strokeStyle="#222"; ctx.lineWidth=1;
+    ctx.fillRect(x-3,y0+2,6,barH-4); ctx.strokeRect(x-3,y0+2,6,barH-4);
+  }
+  for(const hh of PB.houses){
+    const x=xAt(hh.worldDist);
+    let fill="#fff", stroke="#888";
+    if(hh.zone==="doormat"||hh.zone==="house"){ fill="#3fdc7a"; stroke="#0a5c2c"; }
+    else if(hh.zone==="window"||hh.zone==="destruction"||hh.zone==="miss"){ fill="#f22"; stroke="#7a0000"; }
+    ctx.fillStyle=fill; ctx.strokeStyle=stroke; ctx.lineWidth=1;
+    ctx.fillRect(x-3,y0,6,barH); ctx.strokeRect(x-3,y0,6,barH);
+  }
+  if(Math.floor(performance.now()/220)%2){
+    const x=xAt(PB.dist);
+    ctx.fillStyle="#ffd94a";
+    ctx.beginPath(); ctx.arc(x,y0+barH/2,4,0,7); ctx.fill();
+  }
+}
 function drawPaperboy(t){
   const [ctx,w,h]=fit($("#paperboycv"));
   ctx.fillStyle="#000"; ctx.fillRect(0,0,w,h);
   PB.camX = w*0.36 + (Math.random()-0.5)*PB.shake*7;
   PB.camY = h*0.26 + (Math.random()-0.5)*PB.shake*7;
   pbDrawRoad(ctx);
-  // ground layer first, so every path/doormat sits under every building
+  // ground layer first, so every path/doormat sits under every building. Decoys render exactly
+  // like real houses but are never "next", so their path/doormat never highlights.
   for(let i=0;i<PB.houses.length;i++){
     const hh=PB.houses[i];
     if(Math.abs(hh.worldDist-PB.dist)>900) continue;
     pbDrawGround(ctx,hh,i===PB.nextIdx);
+  }
+  for(const hh of PB.decoys){
+    if(Math.abs(hh.worldDist-PB.dist)>900) continue;
+    pbDrawGround(ctx,hh,false);
   }
   // the throw line: shows exactly where a parcel leaves the van, so lining it up with a
   // path is the whole aiming read
@@ -432,7 +478,7 @@ function drawPaperboy(t){
   }
   // painter's order: farther from the camera (smaller x+y) draws first
   const drawables=[];
-  for(const hh of PB.houses){
+  for(const hh of [...PB.houses, ...PB.decoys]){
     if(Math.abs(hh.worldDist-PB.dist)>900) continue;
     const yhi=Math.max(pbSideY(hh.side)*PB_HOUSE_Y0, pbSideY(hh.side)*(PB_HOUSE_Y0+PB_HOUSE_DEPTH));
     drawables.push({d:hh.worldDist+yhi, f:()=>pbDrawHouse(ctx,hh,t)});
@@ -442,6 +488,7 @@ function drawPaperboy(t){
   for(const dd of drawables) dd.f();
   for(const f of PB.fx){ if(f.t==="parcel") pbDrawParcelFX(ctx,f); }
   pbDrawHUD(ctx,w,h);
+  pbDrawMinimap(ctx,w,h);
 }
 (function(){
   // Swipe delivery straight on the route view: flick left or right to throw that way. Press and

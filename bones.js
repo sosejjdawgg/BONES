@@ -2986,7 +2986,7 @@ function unlockSort(rows){ return rows.sort((a,b)=>a.req-b.req).map(r=>r.html).j
 function renderGoOut(){
   const workL=S.earned<5000, compL=S.lvl<15, beachL=S.lvl<9, litL=S.lvl<18, agiL=S.lvl<8;
   const rows=[
-    {req:0, html:'<div class="prow"><span class="nm">&#9642; PAPERBOY ROUTE<br><span class="tiny">DELIVER PARCELS FOR CASH</span></span><button data-go="paperboy">GO</button></div>'},
+    {req:0, html:'<div class="prow"><span class="nm">&#9642; DELIVERY DRIVER<br><span class="tiny">DELIVER PARCELS FOR CASH</span></span><button data-go="paperboy">GO</button></div>'},
     {req:8, html:'<div class="prow'+(agiL?" locked":"")+'"><span class="nm">&#9650; AGILITY TRAINING<br><span class="tiny">'+(agiL?"UNLOCKS LV.8":"-15 ENERGY \u2014 +12 XP")+'</span></span><button data-go="agility" '+(agiL?"disabled":"")+'>TRAIN</button></div>'},
     {req:9, html:'<div class="prow'+(beachL?" locked":"")+'"><span class="nm">&#9679; BEACH DAY<br><span class="tiny">'+(beachL?"UNLOCKS LV.9":(S.beach?"OWNED \u2014 BIG FUN":"UNLOCK $25"))+'</span></span><button data-go="beach" '+(beachL||OUTING.active?"disabled":"")+'>'+(S.beach?"GO":"BUY")+'</button></div>'},
     {req:15, html:'<div class="prow'+(compL?" locked":"")+'"><span class="nm">&#9733; DOG COMPETITION<br><span class="tiny">'+(compL?"UNLOCKS LV.15":"PRIZE MONEY \u2014 "+(3-S.compsToday)+"/3 TODAY")+'</span></span><button data-go="comp" '+(compL?"disabled":"")+'>ENTER</button></div>'},
