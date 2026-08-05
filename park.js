@@ -878,15 +878,21 @@ function pkPickMixTypes(){
   const b=pool.splice(Math.floor(Math.random()*pool.length),1)[0];
   return [a,b];
 }
+// waves 6+: the interval between bursts, and how wide a burst fans out — both climb with the
+// wave, or by wave 10-11 the player is just walking around waiting for the next trickle instead
+// of being run ragged. Fixed at wave 6's original pace, ramps from there.
+function pkMixInterval(wv){ return Math.max(0.9, 3.5-Math.max(0,wv-6)*0.35); }
 function pkSpawnMixBurst(types){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
   const remaining=Math.max(1, PK.waveQuota-PK.waveSpawned);
-  const n=Math.min((1+Math.floor(Math.random()*3))*pkPlusMult(), remaining);
+  const climb=Math.max(0,PK.wave-6);
+  const n=Math.min(((1+Math.floor(Math.random()*3))+Math.floor(climb/2))*pkPlusMult(), remaining);
   const ang=Math.random()*6.283, R=Math.max(w,h)*0.62;
+  const spread=Math.min(6.283, 0.9+climb*0.15);   // fans out wider each wave — surrounded, not funneled
   for(let i=0;i<n;i++){
     const type=types[Math.floor(Math.random()*types.length)];
-    const a2=ang+(Math.random()-0.5)*0.9;
+    const a2=ang+(Math.random()-0.5)*spread;
     const x=(PK.x+Math.cos(a2)*R+WW)%WW, y=(PK.y+Math.sin(a2)*R+WH)%WH;
     if(type==="bird") PK.en.push({t:"bird", x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:85, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0});
     else if(type==="cat") PK.en.push({t:"cat", x,y, hp:pkEnemyHp(2),hpMax:pkEnemyHp(2), sp:48, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0});
@@ -1501,7 +1507,7 @@ function parkUpdate(dt){
     else if(wv===3){ PK.spawnT=4; PK.waveSpawned+=pkSpawnCatSquad(); }           // CAT BACKUP: direct cat squads
     else if(wv===4){ PK.spawnT=4.5; PK.waveSpawned+=pkSpawnRangerSquad(); }      // NUT THROWERS: ranged squirrels
     else if(wv===5){ PK.spawnT=5; PK.waveSpawned+=pkSpawnMadSquad(); }           // out of the trees: rotating-beam squirrels
-    else { PK.spawnT=3.5; PK.waveSpawned+=pkSpawnMixBurst(PK.mixTypes||pkPickMixTypes()); }   // mixed threats, wave 6+
+    else { PK.spawnT=pkMixInterval(PK.wave); PK.waveSpawned+=pkSpawnMixBurst(PK.mixTypes||pkPickMixTypes()); }   // mixed threats, wave 6+
   }
   let mx=0,my=0;
   if(PK.joy){ mx=PK.joy.dx; my=PK.joy.dy; }
