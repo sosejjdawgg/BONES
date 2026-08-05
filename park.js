@@ -293,7 +293,7 @@ function startPark(plus){
     spd:95*(0.75+0.5*S.energy/100)*(S.senior?0.85:1),
     barkMax:Math.max(1.2,3-0.06*S.lvl), barkCd:1, pulse:0,
     barkR:21*(0.8+0.4*S.hunger/100), knock:150,
-    bones:0, kills:0, xpFromRun:0, sideDone:0, relic:null, waveBanner:null, shopFlash:null, apeKills:0, apeWaveT:0,
+    bones:0, kills:0, xpFromRun:0, sideDone:0, relic:null, waveBanner:null, shopFlash:null, apeKills:0, apeWaveT:0, idleT:0,
     worldMult:4, groves:1, groveCenters:[], leaves:[], barkBigLvl:0, barkFastLvl:0, agiLvl:0, speedBonus:null, shopSel:null,
     chain:0, chainT:0, inv:0, fx:[],
     x:0,y:0,vx:0,vy:0, joy:null,
@@ -724,7 +724,7 @@ const ALPHA_LEAP_R=170, ALPHA_LEAP_SPEED=280, ALPHA_LEAP_TIME=0.45, ALPHA_LEAP_C
 // dedicated wave-8 ape assault (see APE_WAVE below).
 // APE_SPD is its top chase speed, not an instant speed — see APE_ACCEL/APE_TURN_RATE below,
 // which give the chase a heavy, momentum-driven feel instead of gluing to the player
-const APE_CAP=1, APE_HP=88, APE_SPD=190,
+const APE_CAP=1, APE_HP=44, APE_SPD=190,
       APE_LEAP_MINR=70, APE_LEAP_MAXR=520, APE_LEAP_SPEED=340, APE_LEAP_TMIN=0.7, APE_LEAP_TMAX=1.9, APE_ARC_H=78,
       APE_WINDUP=0.65, APE_LEAP_CD=6.5, APE_TOUCH_DMG=12, APE_SLAM_DMG=32, APE_SLAM_R=62, APE_LAND_TIME=0.35, APE_INTRO=0.9;
 // heavy-chaser tuning: it accelerates/decelerates toward its top speed rather than snapping to
@@ -737,7 +737,7 @@ function pkApeCount(){ let n=0; for(const e of PK.en) if(e.t==="ape" && !e.fleei
 // WAVE 8 — apes start dropping out of the trees themselves, in couples, far more often than
 // the rare fire-triggered spawn; clearing this wave means downing APE_WAVE_QUOTA of them while
 // the ordinary mixed enemies for this stage keep spawning and attacking in the background
-const APE_WAVE=8, APE_WAVE_QUOTA=10, APE_WAVE_CAP=6, APE_WAVE_HP=36;
+const APE_WAVE=8, APE_WAVE_QUOTA=10, APE_WAVE_CAP=6, APE_WAVE_HP=18;
 // WAVE 1 — CLEAR THE BIRDS: loose flocks of 3-7 birds clustered together, standing until
 // BONES gets close, then the whole flock startles and scatters (still hittable mid-scatter,
 // and settles back into a roost instead of despawning if it gets away clean). 1-hit kill.
@@ -1031,38 +1031,43 @@ const PAL_BIRD_ALT=54, PAL_BIRD_SPEED=175;
 const PAL_LASER_CD=10, PAL_LASER_SWEEP=1.2, PAL_LASER_ARC=0.6, PAL_LASER_SAFE=0.45, PAL_LASER_DMG=3;
 const PAL_NUT_SPEED=210, PAL_NUT_DMG=1;
 // per-tier stat tables (index 0 = T1 … index 3 = T4)
-const PAL_SQ_CD_T    = [4.0, 2.5, 1.5, 1.25];
+// the squirrel never fires more than one nut at a time — its upgrades are fire rate and damage
+// instead, building up to T4's laser eyes rather than a shotgun blast of acorns
+const PAL_SQ_CD_T    = [4.0, 2.5, 1.5, 1.0];
 const PAL_SQ_RANGE_T = [100, 160, 200, 240];
-const PAL_SQ_NUTS_T  = [1,   1,   2,   2];
+const PAL_SQ_DMG_T   = [1,   2,   3,   4];
 const PAL_SQ_HP_T    = [16,  20,  22,  26];
 const PAL_CAT_SEEK_T = [50,  75,  95,  115];
 const PAL_CAT_SPD_T  = [120, 160, 195, 230];
 const PAL_CAT_HP_T   = [14,  17,  20,  22];
-const PAL_BIRD_N_T   = [2,   3,   4,   5];
+// double the flock size at every tier, and only the T4 dive itself hits twice as hard
+const PAL_BIRD_N_T   = [4,   6,   8,   10];
 const PAL_BIRD_EVT   = [14,  10,  8,   7];
+const PAL_BIRD_DMG_T = [1,   1,   1,   2];
 function pkSqCd(t)    { return PAL_SQ_CD_T[t-1]; }
 function pkSqRange(t) { return PAL_SQ_RANGE_T[t-1]; }
-function pkSqNuts(t)  { return PAL_SQ_NUTS_T[t-1]; }
+function pkSqDmg(t)   { return PAL_SQ_DMG_T[t-1]; }
 function pkSqHp(t)    { return PAL_SQ_HP_T[t-1]; }
 function pkCatSeekR(t){ return PAL_CAT_SEEK_T[t-1]; }
 function pkCatSpeed(t){ return PAL_CAT_SPD_T[t-1]; }
 function pkCatHp(t)   { return PAL_CAT_HP_T[t-1]; }
 function pkBirdN(t)   { return PAL_BIRD_N_T[t-1]; }
 function pkBirdEvery(t){ return PAL_BIRD_EVT[t-1]; }
+function pkBirdDmg(t) { return PAL_BIRD_DMG_T[t-1]; }
 // shop rows: one per companion kind; each row shows the next purchasable tier
 const PAL_KINDS=["sq","bird","cat"];
 const PAL_TIERS={
   sq:[
     {n:"SQUIRREL PAL", fx:"FOLLOWS YOU, THROWS NUTS (SLOW)", c:10},
-    {n:"SQUIRREL PAL", fx:"FASTER, LONGER RANGE",            c:18},
-    {n:"SQUIRREL PAL", fx:"DOUBLE SHOT, WIDE RANGE",         c:26},
+    {n:"SQUIRREL PAL", fx:"FASTER FIRE, MORE DAMAGE",        c:18},
+    {n:"SQUIRREL PAL", fx:"FASTER STILL, HEAVIER HITS",      c:26},
     {n:"SQUIRREL PAL", fx:"T4: LASER EYES UNLOCKED",         c:38},
   ],
   bird:[
-    {n:"BIRD FLOCK",   fx:"2 BIRDS, EVERY 14 SEC",           c:10},
-    {n:"BIRD FLOCK",   fx:"3 BIRDS, EVERY 10 SEC",           c:16},
-    {n:"BIRD FLOCK",   fx:"4 BIRDS, EVERY 8 SEC",            c:24},
-    {n:"BIRD FLOCK",   fx:"5 BIRDS, EVERY 7 SEC — RELENTLESS",c:34},
+    {n:"BIRD FLOCK",   fx:"4 BIRDS, EVERY 14 SEC",           c:13},
+    {n:"BIRD FLOCK",   fx:"6 BIRDS, EVERY 10 SEC",           c:21},
+    {n:"BIRD FLOCK",   fx:"8 BIRDS, EVERY 8 SEC",            c:31},
+    {n:"BIRD FLOCK",   fx:"10 BIRDS, EVERY 7 SEC — DOUBLE DAMAGE",c:44},
   ],
   cat:[
     {n:"CAT FRIEND",   fx:"SHORT RANGE, SLOW POUNCE",        c:12},
@@ -1176,7 +1181,7 @@ function pkPalsUpdate(dt,WW,WH){
           if(!tg || tg.fleeing || tg.hp<=0){ bd.state="climb"; bd.tgt=null; }   // target died mid-dive
           else if(bd.alt<=2){
             const dx=wd(tg.x-bd.x,WW), dy=wd(tg.y-bd.y,WH), d=Math.hypot(dx,dy)||1;
-            pkPalHit(tg,1,dx/d,dy/d);
+            pkPalHit(tg,pkBirdDmg(p.tier),dx/d,dy/d);
             for(let s=0;s<4;s++) SPARKS.push({x:tg.x, y:tg.y-6, vx:(Math.random()-0.5)*70, vy:-40-Math.random()*40, life:0.3});
             beep(1000,.05,"square",.03);
             bd.state="climb"; bd.tgt=null;
@@ -1205,14 +1210,9 @@ function pkPalsUpdate(dt,WW,WH){
         if(tgt && p.cd<=0){
           p.cd=pkSqCd(p.tier);
           const nx=wd(tgt.x-p.x,WW), ny=wd(tgt.y-p.y,WH), nd=Math.hypot(nx,ny)||1;
-          const ang0=Math.atan2(ny,nx);
-          if(pkSqNuts(p.tier)>=2){
-            const spread=0.18;
-            PK.nuts.push({pal:true, x:p.x, y:p.y-8, vx:Math.cos(ang0-spread)*PAL_NUT_SPEED, vy:Math.sin(ang0-spread)*PAL_NUT_SPEED, life:2.2});
-            PK.nuts.push({pal:true, x:p.x, y:p.y-8, vx:Math.cos(ang0+spread)*PAL_NUT_SPEED, vy:Math.sin(ang0+spread)*PAL_NUT_SPEED, life:2.2});
-          } else {
-            PK.nuts.push({pal:true, x:p.x, y:p.y-8, vx:nx/nd*PAL_NUT_SPEED, vy:ny/nd*PAL_NUT_SPEED, life:2.2});
-          }
+          // always a single nut — upgrades land as fire rate and damage instead, so it never
+          // reads as a shotgun blast, only as a squirrel getting steadily more dangerous
+          PK.nuts.push({pal:true, dmg:pkSqDmg(p.tier), x:p.x, y:p.y-8, vx:nx/nd*PAL_NUT_SPEED, vy:ny/nd*PAL_NUT_SPEED, life:2.2});
           p.dir = nx<0 ? -1 : 1;
           beep(620,.04,"square",.02);
         }
@@ -1508,6 +1508,30 @@ function parkUpdate(dt){
     else if(wv===4){ PK.spawnT=4.5; PK.waveSpawned+=pkSpawnRangerSquad(); }      // NUT THROWERS: ranged squirrels
     else if(wv===5){ PK.spawnT=5; PK.waveSpawned+=pkSpawnMadSquad(); }           // out of the trees: rotating-beam squirrels
     else { PK.spawnT=pkMixInterval(PK.wave); PK.waveSpawned+=pkSpawnMixBurst(PK.mixTypes||pkPickMixTypes()); }   // mixed threats, wave 6+
+  }
+  // idle-gap safety net: something nearby (any enemy — a standing bird flock counts, it's still
+  // a "bad guy" to find, it just doesn't have to be attacking — a friend, a powerup, or the NPC)
+  // resets this countdown. If it ever empties out for IDLE_GRACE seconds, force this wave's own
+  // spawner to fire right now rather than waiting out the rest of its normal interval, so a run
+  // of bad luck between scheduled bursts never leaves the player alone for long.
+  {
+    const IDLE_GRACE=5, presenceR=Math.max(w,h)*0.8;
+    const hasPresence =
+      PK.en.some(e=>!e.fleeing && Math.hypot(wd(e.x-PK.x,WW),wd(e.y-PK.y,WH))<presenceR) ||
+      PK.fr.some(f=>Math.hypot(wd(f.x-PK.x,WW),wd(f.y-PK.y,WH))<presenceR) ||
+      PK.powerups.some(pu=>Math.hypot(wd(pu.x-PK.x,WW),wd(pu.y-PK.y,WH))<presenceR) ||
+      Math.hypot(wd(PK.npc.x*WW-PK.x,WW),wd(PK.npc.y*WH-PK.y,WH))<presenceR;
+    PK.idleT = hasPresence ? 0 : (PK.idleT||0)+dt;
+    if(PK.idleT>=IDLE_GRACE && PK.waveSpawned<PK.waveQuota){
+      const wv=PK.wave;
+      if(wv===1) PK.waveSpawned+=pkSpawnBirdGroup();
+      else if(wv===2) PK.waveSpawned+=pkSpawnFlock();
+      else if(wv===3) PK.waveSpawned+=pkSpawnCatSquad();
+      else if(wv===4) PK.waveSpawned+=pkSpawnRangerSquad();
+      else if(wv===5) PK.waveSpawned+=pkSpawnMadSquad();
+      else PK.waveSpawned+=pkSpawnMixBurst(PK.mixTypes||pkPickMixTypes());
+      PK.idleT=0; PK.spawnT=Math.max(PK.spawnT,1.5);   // don't also let the normal timer double-fire right after
+    }
   }
   let mx=0,my=0;
   if(PK.joy){ mx=PK.joy.dx; my=PK.joy.dy; }
@@ -1959,7 +1983,7 @@ function parkUpdate(dt){
       for(const e of PK.en){
         if(e.fleeing) continue;
         if(Math.hypot(wd(e.x-n.x,WW),wd(e.y-n.y,WH))<13){
-          pkPalHit(e,PAL_NUT_DMG,n.vx/sp,n.vy/sp);
+          pkPalHit(e,n.dmg||PAL_NUT_DMG,n.vx/sp,n.vy/sp);
           spent=true; break;
         }
       }
@@ -2423,18 +2447,11 @@ function drawEnemy(ctx,e,sx,sy){
   if(e.madsqExplode) drawMadsqExplosion(ctx,sx,sy,e.explodeT);
   ctx.restore();
 }
-// friends are drawn from the same frame sets as their enemy counterparts, so a cool blue tint and
-// a pulsing ring under their feet are what stop them reading as one more thing trying to eat you.
-// drawEnemy is deliberately not reused: it branches on madsq/alpha/fleeing/spooked/stalkAggro/
-// atkState, every one of which is wrong for a pal.
-function drawPalHP(ctx,p,sx,sy,eh){
-  const bw=18, bh=3, bx=sx-bw/2, by=sy-eh-8;
-  ctx.fillStyle="rgba(0,0,0,.55)"; ctx.fillRect(bx-1,by-1,bw+2,bh+2);
-  ctx.strokeStyle="#6cf"; ctx.lineWidth=1; ctx.strokeRect(bx+0.5,by+0.5,bw-1,bh-1);
-  const frac=clamp(p.hp/p.hpMax,0,1);
-  ctx.fillStyle = frac<0.35 ? "#f22" : "#6cf";
-  ctx.fillRect(bx+1,by+1,(bw-2)*frac,bh-2);   // always on, unlike an enemy's — you need to nurse them
-}
+// friends are drawn from the same frame sets as their enemy counterparts, so a cool blue tint
+// is what stops them reading as one more thing trying to eat you. Their health now lives on the
+// control screen HUD instead of a floating bar out here (see pkPadDraw). drawEnemy is
+// deliberately not reused: it branches on madsq/alpha/fleeing/spooked/stalkAggro/atkState, every
+// one of which is wrong for a pal.
 function drawPalLaserFX(ctx,p,sx,sy){
   const eyeX=sx+(p.dir<0?-4:4), eyeY=sy-11;
   if(p.laserState==="charge"){
@@ -2463,8 +2480,6 @@ function drawPalLaserFX(ctx,p,sx,sy){
 function drawPal(ctx,p,sx,sy,t){
   ctx.fillStyle="rgba(0,0,0,.25)";
   ctx.beginPath(); ctx.ellipse(sx,sy+2,9,3,0,0,7); ctx.fill();
-  ctx.strokeStyle="#6cf"; ctx.globalAlpha=0.45+0.3*Math.sin(t*4); ctx.lineWidth=1.5;
-  ctx.beginPath(); ctx.ellipse(sx,sy+2,12,4.5,0,0,7); ctx.stroke(); ctx.globalAlpha=1;
   if(p.k==="sq" && p.tier>=4) drawPalLaserFX(ctx,p,sx,sy);
   const frames=ENEMYIMG[p.k];
   const img=frames && frames[p.fi%frames.length];
@@ -2479,7 +2494,8 @@ function drawPal(ctx,p,sx,sy,t){
     ctx.drawImage(img, sx-ew/2, sy-eh, ew, eh);
     ctx.restore();
   }
-  drawPalHP(ctx,p,sx,sy,eh);
+  // no ring, no floating HP bar out here anymore — a pal's health lives on the control screen
+  // now, stacked under BONES' own bar (see pkPadDraw), so the DOGPARK world itself stays clean
 }
 // while the flock is up at altitude only its shadow shows on the grass; the bird itself is drawn
 // once it has committed to a dive
@@ -3074,6 +3090,23 @@ function pkPadDraw(t){
     if(PK.relic){
       const rc=PK_CHARMS.find(c=>c.id===PK.relic);
       if(rc){ ctx.fillStyle="#f22"; ctx.font="6px 'Press Start 2P',monospace"; ctx.fillText("\u2b25 "+rc.name, 10, 46); }
+    }
+    // sub-friends' health lives directly under BONES' own bar, smaller \u2014 he's their leader.
+    // only squirrel/cat carry HP at all (the bird flock is never itself a target)
+    let ppy=by+bh2+8;
+    for(const kind of ["sq","cat"]){
+      const p=PK.pals.find(q=>q.k===kind);
+      if(!p) continue;
+      const pw=86, ph2=8, pbx=bx+bw2-pw;
+      const pfrac=clamp(p.hp/p.hpMax,0,1);
+      ctx.fillStyle="rgba(0,0,0,.55)"; ctx.fillRect(pbx-1,ppy-1,pw+2,ph2+2);
+      ctx.strokeStyle="#6cf"; ctx.lineWidth=1; ctx.strokeRect(pbx+0.5,ppy+0.5,pw-1,ph2-1);
+      ctx.fillStyle = pfrac<0.35 ? "#f22" : "#6cf";
+      ctx.fillRect(pbx+1,ppy+1,(pw-2)*pfrac,ph2-2);
+      ctx.fillStyle="#6cf"; ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="right";
+      ctx.fillText(kind==="sq"?"SQUIRREL":"CAT", pbx-4, ppy+ph2-1);
+      ctx.textAlign="left";
+      ppy+=ph2+5;
     }
   }
   ctx.textAlign="left";
