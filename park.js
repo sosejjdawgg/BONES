@@ -1392,6 +1392,10 @@ function parkUpdate(dt){
       S.dogParkPlusUnlocked=true;
       setTimeout(()=>pkFanfare(null,true,"🏆 DOGPARK+ UNLOCKED!"),300);
     }
+    // the roost that just satisfied this wave's quota, and any stalking cats that came with it,
+    // have done their job — clear them out so they don't linger as bird-shaped red herrings the
+    // player can keep "catching" with zero effect on the next wave's actual goal
+    PK.en=PK.en.filter(e=>!((e.roost && e.roost.killed>=e.roost.need) || e.stalk || e.stalkAggro));
     tickStats(2.5, true);   // a cleared wave is 15 game minutes — the only time the park spends
     PK.waveT=0; PK.wave++;
     if(PK.wave>=3) tickTodo("j_wave3");
