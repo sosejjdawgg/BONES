@@ -529,6 +529,12 @@ function pkIgniteTree(tr){
   tr.spawnMax=clamp(15-pkTreeClusterCount(tr)*1.4, 3, 15);
   toast("THE TREE'S ALIGHT — THEY'RE POURING OUT!",1);
   beep(90,.45,"sawtooth",.09); setTimeout(()=>beep(140,.35,"sawtooth",.07),110);
+  // this tree is somebody's home — a small chance something much bigger evacuates while it's
+  // still burning (not after: a stump is useless to it). Wave 8 has its own dedicated, far more
+  // frequent ape assault, so this rare roll sits out that wave.
+  if(PK.wave!==APE_WAVE && pkApeCount()<APE_CAP && Math.random()<0.05){
+    tr.quakeT=APE_TELL_TIME; tr.quakeMax=APE_TELL_TIME;
+  }
 }
 function pkSpawnApeRaw(x,y,hpBase){
   const hp=pkEnemyHp(hpBase);
@@ -588,8 +594,10 @@ function pkTreeCollide(px,py){
 function pkTickTrees(dt){
   for(const tr of PK.trees){
     tr.sway+=dt*(tr.state==="fire"?5:1.1);
-    // a stump that rolled the rare ape spawn trembles and glows for a beat before it actually
-    // bursts open — ticks in "ash" state too, so this has to run ahead of the fire-only continue
+    // a tree that rolled the rare ape spawn trembles and glows on top of its own flames for a
+    // beat before the ape actually bursts out — it has to still be burning when this happens
+    // (a stump is useless to it), so the roll and the whole tell run entirely inside "fire" state,
+    // well before TREE_BURN_TIME would ever turn it to ash
     if(tr.quakeT>0){
       tr.quakeT-=dt;
       const qp=1-clamp(tr.quakeT/tr.quakeMax,0,1);
@@ -607,7 +615,14 @@ function pkTickTrees(dt){
         }
         PK.shake=Math.max(PK.shake||0,0.5);
         beep(150,.3,"sawtooth"); setTimeout(()=>beep(90,.35,"sawtooth",.08),90);
-        pkSpawnApe(tr.x,tr.y);
+        // steps out beside its burning home rather than standing exactly inside it, so both
+        // are visible — and faces back at it during the intro instead of at whatever direction
+        // it happens to spawn in
+        const ea=Math.random()*6.283, er=TREE_R*1.8;
+        const ex=(tr.x+Math.cos(ea)*er+PK.WW)%PK.WW, ey=(tr.y+Math.sin(ea)*er+PK.WH)%PK.WH;
+        pkSpawnApe(ex,ey);
+        const ape=PK.en[PK.en.length-1];
+        if(ape && ape.t==="ape") ape.dir = Math.cos(ea)>0 ? -1 : 1;
       }
     }
     if(tr.state!=="fire") continue;
@@ -627,14 +642,6 @@ function pkTickTrees(dt){
       tr.state="ash";
       PK.scorch.push({x:tr.x, y:tr.y, r:TREE_R*1.6});
       beep(70,.5,"sawtooth",.05);
-      // burnt to the ground — a small chance something much bigger was living in it. Wave 8
-      // has its own dedicated, far more frequent ape assault, so this rare roll sits out that wave.
-      // it doesn't burst out right away — the stump trembles for APE_TELL_TIME first (drawn in
-      // pkDrawTree), so the reveal reads as a real event instead of a silent pop-in
-      if(PK.wave!==APE_WAVE && pkApeCount()<APE_CAP && Math.random()<0.05){
-        tr.quakeT=APE_TELL_TIME; tr.quakeMax=APE_TELL_TIME;
-        beep(50,.4,"sawtooth",.08);
-      }
     }
   }
 }
@@ -2117,8 +2124,9 @@ function pkDrawTree(ctx,tr,x,y,t){
   const burning=tr.state==="fire", ash=tr.state==="ash";
   const quaking=tr.quakeT>0;
   if(quaking){
-    // the stump trembles harder the closer it gets to actually bursting open, with a warm glow
-    // building underneath it the whole time — the tell that something is about to erupt
+    // the whole burning tree trembles harder the closer it gets to actually bursting open, with
+    // a warm glow building underneath it on top of its own flames — the tell that its occupant
+    // is about to erupt out before the fire finishes it off
     const qp=1-clamp(tr.quakeT/tr.quakeMax,0,1);
     const amp=1+qp*3.5;
     x+=(Math.random()-0.5)*amp; y+=(Math.random()-0.5)*amp*0.6;
@@ -2275,6 +2283,12 @@ function drawApe(ctx,e,sx,sy){
     ctx.fillStyle="#fff";
     ctx.beginPath(); ctx.ellipse(sx, dy-eh*0.5, ew*0.5, eh*0.5, 0,0,7); ctx.fill();
     ctx.restore();
+  }
+  if(e.introT>0 && Math.floor(performance.now()/150)%2){
+    // its home just burned — a beat of red-hot frustration glaring at the wreckage before it
+    // turns that on you
+    ctx.fillStyle="#f22"; ctx.font="bold 15px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText("!", sx, dy-eh-8); ctx.textAlign="left";
   }
   drawEnemyHP(ctx,e,sx,dy,eh);
   ctx.restore();
