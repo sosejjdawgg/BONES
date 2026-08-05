@@ -281,6 +281,8 @@ function pkBuildBG(w,h){
 }
 const ENEMYIMG={};
 for(const k in ENEMYFRAMES) ENEMYIMG[k] = ENEMYFRAMES[k].map(u=>{ const i=new Image(); i.src=u; return i; });
+const APEIMG={};
+for(const k in APEFRAMES) APEIMG[k] = APEFRAMES[k].map(u=>{ const i=new Image(); i.src=u; return i; });
 function startPark(plus){
   Object.assign(PK,{
     active:true,t:0,wave:1,waveT:0,spawnT:1,
@@ -528,6 +530,13 @@ function pkIgniteTree(tr){
   toast("THE TREE'S ALIGHT — THEY'RE POURING OUT!",1);
   beep(90,.45,"sawtooth",.09); setTimeout(()=>beep(140,.35,"sawtooth",.07),110);
 }
+function pkSpawnApe(x,y){
+  PK.en.push({t:"ape", boss:true, x, y, hp:pkEnemyHp(APE_HP), hpMax:pkEnemyHp(APE_HP), sp:APE_SPD,
+    ph:0, kx:0, ky:0, dir:1, fi:0, ft:0, side:undefined,
+    introT:APE_INTRO, leapState:null, leapCd:APE_LEAP_CD*0.6, leapWindT:0, leapActT:0, landT:0});
+  toast("A HUGE APE CRASHES OUT OF THE FLAMES!",1);
+  beep(55,.6,"sawtooth",.12); setTimeout(()=>beep(42,.55,"sawtooth",.1),150);
+}
 // first non-ash tree a beam runs into: it soaks the shot (cover) and catches light
 function pkBeamBlocker(ox,oy,ang,range){
   const ux=Math.cos(ang), uy=Math.sin(ang);
@@ -577,6 +586,8 @@ function pkTickTrees(dt){
       tr.state="ash";
       PK.scorch.push({x:tr.x, y:tr.y, r:TREE_R*1.6});
       beep(70,.5,"sawtooth",.05);
+      // burnt to the ground — a small chance something much bigger was living in it
+      if(pkApeCount()<APE_CAP && Math.random()<0.02) pkSpawnApe(tr.x,tr.y);
     }
   }
 }
@@ -626,6 +637,12 @@ function pkSteer(e,x,y,dx,dy){
 }
 const TREE_R=15, TREE_BURN_TIME=10, TREE_SPAWN_MAX=15, TREE_SPAWN_EVERY=0.65;
 const ALPHA_LEAP_R=170, ALPHA_LEAP_SPEED=280, ALPHA_LEAP_TIME=0.45, ALPHA_LEAP_CD=4, ALPHA_LEAP_DMG=20, ALPHA_APPROACH_SPD=50; // wave 6
+// FIRE BOSS — a rare, brutally tough ape a burnt-out tree can cough up. Runs the player down,
+// then winds up into a huge telegraphed leap and comes smashing down for a wide area hit —
+// never blocks the wave (pkSideHazard) since it's an optional bonus threat, not a requirement
+const APE_CAP=1, APE_HP=22, APE_SPD=112, APE_LEAP_R=200, APE_LEAP_SPEED=250, APE_LEAP_TIME=0.6,
+      APE_WINDUP=0.75, APE_LEAP_CD=5.5, APE_TOUCH_DMG=12, APE_SLAM_DMG=30, APE_SLAM_R=58, APE_LAND_TIME=0.35, APE_INTRO=0.9;
+function pkApeCount(){ let n=0; for(const e of PK.en) if(e.t==="ape" && !e.fleeing) n++; return n; }
 // WAVE 1 — CLEAR THE BIRDS: loose flocks of 3-7 birds clustered together, standing until
 // BONES gets close, then the whole flock startles and scatters (still hittable mid-scatter,
 // and settles back into a roost instead of despawning if it gets away clean). 1-hit kill.
@@ -815,7 +832,7 @@ const BARK_CAP=62;   // hard ceiling: the bark used to reach ~90 and trivialised
 // enemies that never block a wave clearing and never count toward "N LEFT" — side hazards
 // the player opted into (a burning tree's squirrels) or ambient extras (stalking cats, the
 // decorative wave-3 swoop bird), as opposed to the wave's actual, fixed quota
-function pkSideHazard(e){ return e.stalk || e.stalkAggro || e.swoop || e.fromTree || e.decor || (e.roost && e.roost.killed>=e.roost.need); }
+function pkSideHazard(e){ return e.stalk || e.stalkAggro || e.swoop || e.fromTree || e.decor || e.boss || (e.roost && e.roost.killed>=e.roost.need); }
 const FLEE_SPEED=115, FLEE_TIME=2.2;   // how fast, and how long, a scared-off enemy scuttles before despawning
 function pkBark(){
   PK.barkCd = PK.zoomT>0 ? 0 : PK.barkMax;   // mid-zoomies there is no cooldown at all
@@ -838,12 +855,13 @@ function pkBark(){
       if(e.hp<=0){
         // he doesn't kill anyone anymore: one bone drops where they were caught, they look
         // shocked, then scuttle off-screen on their own — pkEn's fleeing branch handles the rest
-        PK.drops.push({x:e.x, y:e.y, v:1, gold:!!e.alpha, life:25});
+        PK.drops.push({x:e.x, y:e.y, v:e.boss?8:1, gold:!!e.alpha||!!e.boss, life:25});
         if(Math.random()<MAGNET_DROP_CHANCE) PK.powerups.push({type:"magnet", x:e.x, y:e.y+10, life:18});
         if(Math.random()<REGEN_DROP_CHANCE) PK.powerups.push({type:"regen", x:e.x, y:e.y, life:18});
         PK.kills++;
         hits++;
         if(e.roost) e.roost.killed++;
+        if(e.boss) pkFanfare(null,false,"✓ THE APE IS DOWN — +8 BONES");
         e.fleeing=true; e.shockT=0.35; e.fleeT=0; e.hitT=0.3;
         e.fleeVx=-dxw/d*FLEE_SPEED; e.fleeVy=-dyw/d*FLEE_SPEED;
         pkHitMark(e.x, e.y, true);
@@ -1624,6 +1642,52 @@ function parkUpdate(dt){
       e.ft+=dt; if(e.ft>0.12){ e.ft=0; e.fi++; }
       continue;
     }
+    // FIRE BOSS — a huge ape: stands and roars for a beat after crashing out of the burning
+    // tree, then runs the player down and, once close enough, winds up into a heavily
+    // telegraphed leap that ends in a wide-area slam (not just a point-blank bite)
+    if(e.t==="ape"){
+      const dxw=wd(PK.x-e.x,WW), dyw=wd(PK.y-e.y,WH), d=Math.hypot(dxw,dyw)||1;
+      if(e.introT>0){
+        e.introT-=dt; e.dir = dxw<0 ? -1 : 1;
+        continue;
+      }
+      if(e.landT>0) e.landT=Math.max(0,e.landT-dt);
+      if(e.leapState==="windup"){
+        e.dir = dxw<0 ? -1 : 1;
+        e.leapWindT-=dt;
+        if(e.leapWindT<=0){
+          e.leapState="leap"; e.leapActT=APE_LEAP_TIME;
+          e.lvx=Math.cos(e.leapAng)*APE_LEAP_SPEED; e.lvy=Math.sin(e.leapAng)*APE_LEAP_SPEED;
+        }
+      } else if(e.leapState==="leap"){
+        e.leapActT-=dt;
+        e.x=(e.x+e.lvx*dt+WW)%WW; e.y=(e.y+e.lvy*dt+WH)%WH;
+        e.dir = e.lvx<0 ? -1 : 1;
+        if(e.leapActT<=0){
+          e.leapState=null; e.leapCd=APE_LEAP_CD; e.landT=APE_LAND_TIME;
+          PK.scorch.push({x:e.x, y:e.y, r:APE_SLAM_R*0.5});
+          beep(65,.35,"sawtooth",.1);
+          const ldx=wd(PK.x-e.x,WW), ldy=wd(PK.y-e.y,WH), ld=Math.hypot(ldx,ldy)||1;
+          if(ld<APE_SLAM_R && PK.inv<=0 && !pkInvuln()){
+            pkHurt(APE_SLAM_DMG); PK.inv=0.9; PK.shake=0.7;
+            PK.vx=ldx/ld*220; PK.vy=ldy/ld*220;
+            beep(120,.3,"sawtooth"); if(PK.hp<=0) return pkDeath();
+          }
+        }
+      } else {
+        const [ux2,uy2]=pkSteer(e,e.x,e.y,dxw/d,dyw/d); const sx=ux2*e.sp, sy=uy2*e.sp;
+        e.dir = sx<0 ? -1 : 1;
+        e.x=(e.x+(sx+e.kx)*dt+WW)%WW; e.y=(e.y+(sy+e.ky)*dt+WH)%WH;
+        e.leapCd-=dt;
+        if(e.leapCd<=0 && d<APE_LEAP_R){ e.leapState="windup"; e.leapWindT=APE_WINDUP; e.leapAng=Math.atan2(dyw,dxw); }
+        if(d<20 && PK.inv<=0 && !pkInvuln()){
+          pkHurt(APE_TOUCH_DMG); PK.inv=0.6; e.kx=-dxw/d*220; e.ky=-dyw/d*220;
+          beep(110,.12,"sawtooth"); if(PK.hp<=0) return pkDeath();
+        }
+      }
+      e.ft+=dt; if(e.ft>0.14){ e.ft=0; e.fi++; }
+      continue;
+    }
     if(e.flock){
       // straight-line flight, no homing — if it'd fly clean out of the fray, rubber-band
       // the heading back toward the player's area instead of leaving
@@ -2016,7 +2080,49 @@ function drawEnemyHP(ctx,e,sx,sy,eh){
   ctx.fillStyle = frac<0.4 ? "#f22" : "#fff";
   ctx.fillRect(bx+1,by+1,(bw-2)*frac,bh-2);
 }
+// the fire boss uses its own frame set (idle/run/jump), not the generic cycle-through-every-
+// frame scheme drawEnemy uses for everything else, so it gets its own draw path entirely
+function drawApe(ctx,e,sx,sy){
+  const ghost = e.fleeing ? 0.34 : 1;
+  ctx.save(); ctx.globalAlpha*=ghost;
+  ctx.fillStyle="rgba(0,0,0,.32)";
+  ctx.beginPath(); ctx.ellipse(sx, sy+7, 22, 6.5, 0, 0, 7); ctx.fill();
+  if(e.leapState==="windup" && Math.floor(performance.now()/80)%2){
+    ctx.fillStyle="#f22"; ctx.beginPath(); ctx.arc(sx, sy-64, 3, 0, 7); ctx.fill();
+  }
+  if(e.landT>0){
+    // the shockwave ring from the slam, expanding out to the true hit radius then gone
+    const p=1-clamp(e.landT/APE_LAND_TIME,0,1);
+    ctx.save(); ctx.globalAlpha*=(1-p)*0.75; ctx.strokeStyle="#ffb347"; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.arc(sx, sy, APE_SLAM_R*Math.max(0.05,p), 0, 7); ctx.stroke();
+    ctx.restore();
+  }
+  let img;
+  if(e.introT>0) img = APEIMG.idle[0];
+  else if(e.leapState==="windup") img = APEIMG.jump[0];
+  else if(e.leapState==="leap"){
+    const prog=1-clamp(e.leapActT/APE_LEAP_TIME,0,1);
+    img = prog<0.55 ? APEIMG.jump[0] : APEIMG.jump[1];
+  }
+  else if(e.landT>0) img = APEIMG.jump[2];
+  else img = APEIMG.run[Math.floor(e.fi)%APEIMG.run.length];
+  if(!img || !img.complete || !img.naturalWidth){ ctx.restore(); return; }
+  const eh=54, ew=eh*img.naturalWidth/img.naturalHeight;
+  ctx.save(); ctx.imageSmoothingEnabled=false;
+  if(e.dir<0){ ctx.translate(sx*2,0); ctx.scale(-1,1); }
+  ctx.drawImage(img, sx-ew/2, sy-eh, ew, eh);
+  ctx.restore();
+  if(e.hitT>0){
+    ctx.save(); ctx.globalAlpha=Math.min(1,e.hitT/0.22)*0.85;
+    ctx.fillStyle="#fff";
+    ctx.beginPath(); ctx.ellipse(sx, sy-eh*0.5, ew*0.5, eh*0.5, 0,0,7); ctx.fill();
+    ctx.restore();
+  }
+  drawEnemyHP(ctx,e,sx,sy,eh);
+  ctx.restore();
+}
 function drawEnemy(ctx,e,sx,sy){
+  if(e.t==="ape") return drawApe(ctx,e,sx,sy);
   // an enemy that has been seen off is already out of the fight, so it fades right down —
   // at a glance you can tell what still needs barking at and what is just running away
   const ghost = e.fleeing ? 0.34 : 1;
