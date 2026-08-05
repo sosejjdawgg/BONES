@@ -588,6 +588,28 @@ function pkTreeCollide(px,py){
 function pkTickTrees(dt){
   for(const tr of PK.trees){
     tr.sway+=dt*(tr.state==="fire"?5:1.1);
+    // a stump that rolled the rare ape spawn trembles and glows for a beat before it actually
+    // bursts open — ticks in "ash" state too, so this has to run ahead of the fire-only continue
+    if(tr.quakeT>0){
+      tr.quakeT-=dt;
+      const qp=1-clamp(tr.quakeT/tr.quakeMax,0,1);
+      if(Math.random()<0.3+qp*0.5){   // dust and bark kicked loose, picking up as it nears the reveal
+        const a=Math.random()*6.283, r=TREE_R*(0.6+Math.random()*0.6);
+        PK.embers.push({x:tr.x+Math.cos(a)*r, y:tr.y+Math.sin(a)*r*0.5,
+          vx:(Math.random()-0.5)*30, vy:-15-Math.random()*45*qp, life:0.45+Math.random()*0.3, dust:true});
+      }
+      if(tr.quakeT<=0){
+        // the reveal: a bright burst of sparks and a shockwave ring, then the ape itself is there
+        PK.scorch.push({x:tr.x, y:tr.y, r:TREE_R*2.2});
+        for(let i=0;i<16;i++){
+          const a=Math.random()*6.283, sp=60+Math.random()*90;
+          SPARKS.push({x:tr.x, y:tr.y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp-40, life:0.4+Math.random()*0.3, gold:true});
+        }
+        PK.shake=Math.max(PK.shake||0,0.5);
+        beep(150,.3,"sawtooth"); setTimeout(()=>beep(90,.35,"sawtooth",.08),90);
+        pkSpawnApe(tr.x,tr.y);
+      }
+    }
     if(tr.state!=="fire") continue;
     tr.fireT+=dt;
     tr.spawnT-=dt;
@@ -606,8 +628,13 @@ function pkTickTrees(dt){
       PK.scorch.push({x:tr.x, y:tr.y, r:TREE_R*1.6});
       beep(70,.5,"sawtooth",.05);
       // burnt to the ground — a small chance something much bigger was living in it. Wave 8
-      // has its own dedicated, far more frequent ape assault, so this rare roll sits out that wave
-      if(PK.wave!==APE_WAVE && pkApeCount()<APE_CAP && Math.random()<0.05) pkSpawnApe(tr.x,tr.y);
+      // has its own dedicated, far more frequent ape assault, so this rare roll sits out that wave.
+      // it doesn't burst out right away — the stump trembles for APE_TELL_TIME first (drawn in
+      // pkDrawTree), so the reveal reads as a real event instead of a silent pop-in
+      if(PK.wave!==APE_WAVE && pkApeCount()<APE_CAP && Math.random()<0.05){
+        tr.quakeT=APE_TELL_TIME; tr.quakeMax=APE_TELL_TIME;
+        beep(50,.4,"sawtooth",.08);
+      }
     }
   }
 }
@@ -669,6 +696,7 @@ const ALPHA_LEAP_R=170, ALPHA_LEAP_SPEED=280, ALPHA_LEAP_TIME=0.45, ALPHA_LEAP_C
 const APE_CAP=1, APE_HP=88, APE_SPD=112,
       APE_LEAP_MINR=70, APE_LEAP_MAXR=520, APE_LEAP_SPEED=340, APE_LEAP_TMIN=0.7, APE_LEAP_TMAX=1.9, APE_ARC_H=78,
       APE_WINDUP=0.65, APE_LEAP_CD=6.5, APE_TOUCH_DMG=12, APE_SLAM_DMG=32, APE_SLAM_R=62, APE_LAND_TIME=0.35, APE_INTRO=0.9;
+const APE_TELL_TIME=1.8;   // how long the stump trembles/glows before the ape actually bursts out
 function pkApeCount(){ let n=0; for(const e of PK.en) if(e.t==="ape" && !e.fleeing) n++; return n; }
 // WAVE 8 — apes start dropping out of the trees themselves, in couples, far more often than
 // the rare fire-triggered spawn; clearing this wave means downing APE_WAVE_QUOTA of them while
@@ -2087,6 +2115,24 @@ function pkDrawScorch(ctx,SC,w,h){
 }
 function pkDrawTree(ctx,tr,x,y,t){
   const burning=tr.state==="fire", ash=tr.state==="ash";
+  const quaking=tr.quakeT>0;
+  if(quaking){
+    // the stump trembles harder the closer it gets to actually bursting open, with a warm glow
+    // building underneath it the whole time — the tell that something is about to erupt
+    const qp=1-clamp(tr.quakeT/tr.quakeMax,0,1);
+    const amp=1+qp*3.5;
+    x+=(Math.random()-0.5)*amp; y+=(Math.random()-0.5)*amp*0.6;
+    ctx.save();
+    const R=TREE_R*(2.1+qp*1.7);
+    const glowA=0.16+qp*0.34+Math.sin(t*(9+qp*18))*0.05;
+    const grad=ctx.createRadialGradient(x,y,0,x,y,R);
+    grad.addColorStop(0,   `rgba(255,150,40,${glowA})`);
+    grad.addColorStop(0.55,`rgba(255,90,20,${glowA*0.45})`);
+    grad.addColorStop(1,   "rgba(255,60,10,0)");
+    ctx.fillStyle=grad;
+    ctx.beginPath(); ctx.ellipse(x,y,R,R*0.55,0,0,7); ctx.fill();
+    ctx.restore();
+  }
   ctx.save();
   ctx.fillStyle="rgba(0,0,0,.32)";
   ctx.beginPath(); ctx.ellipse(x,y+4,TREE_R*0.9,TREE_R*0.36,0,0,7); ctx.fill();
@@ -2530,7 +2576,7 @@ function parkDraw(t){
     const [ex3,ey3]=SC(em.x,em.y);
     if(ex3<-20||ex3>w+20||ey3<-20||ey3>h+20) continue;
     ctx.globalAlpha=Math.max(0,em.life*1.6);
-    ctx.fillStyle=em.life>0.3?"#ffd06a":"#f2400f";
+    ctx.fillStyle=em.dust ? (em.life>0.3?"#a08258":"#6b5335") : (em.life>0.3?"#ffd06a":"#f2400f");
     ctx.fillRect(ex3-1.5,ey3-1.5,3,3);
     ctx.globalAlpha=1;
   }
