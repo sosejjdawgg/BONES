@@ -513,7 +513,7 @@ const TREE_CLUSTER_R=42;   // how close a neighbour has to be to count as "packe
 function pkTreeClusterCount(tr){
   let n=0;
   for(const o of PK.trees){
-    if(o===tr || o.state==="ash") continue;
+    if(o===tr || o.state==="ash" || o.knockT>0) continue;
     if(Math.hypot(wd(o.x-tr.x,PK.WW),wd(o.y-tr.y,PK.WH))<TREE_CLUSTER_R) n++;
   }
   return n;
@@ -568,7 +568,7 @@ function pkBeamBlocker(ox,oy,ang,range){
   const ux=Math.cos(ang), uy=Math.sin(ang);
   let best=null, bestD=range;
   for(const tr of PK.trees){
-    if(tr.state==="ash") continue;
+    if(tr.state==="ash" || tr.knockT>0) continue;
     const dx=wd(tr.x-ox,PK.WW), dy=wd(tr.y-oy,PK.WH);
     const along=dx*ux+dy*uy;
     if(along<=0 || along>=bestD) continue;
@@ -580,7 +580,7 @@ function pkBeamBlocker(ox,oy,ang,range){
 // keeps BONES out of a trunk — slides him around it rather than stopping him dead
 function pkTreeCollide(px,py){
   for(const tr of PK.trees){
-    if(tr.state==="ash") continue;
+    if(tr.state==="ash" || tr.knockT>0) continue;
     const dx=wd(px-tr.x,PK.WW), dy=wd(py-tr.y,PK.WH);
     // elliptical footprint, squashed like every other ground shadow here, and wide enough to
     // account for BONES' own 40px body so he can't stand inside the trunk
@@ -593,7 +593,25 @@ function pkTreeCollide(px,py){
   return [px,py];
 }
 function pkTickTrees(dt){
-  for(const tr of PK.trees){
+  for(let ti=PK.trees.length-1;ti>=0;ti--){
+    const tr=PK.trees[ti];
+    // smashed by an ape's landing: flying outward, tumbling, and gone the instant it lands —
+    // ticks regardless of state, so this has to run ahead of the fire-only continue below
+    if(tr.knockT>0){
+      tr.knockT-=dt;
+      tr.knockRot=(tr.knockRot||0)+tr.knockRotV*dt;
+      if(tr.knockT<=0){
+        // it's destroyed — a burst of splinters and a thud where it finally comes down
+        const lx=tr.knockX0+tr.knockDX, ly=tr.knockY0+tr.knockDY;
+        for(let i=0;i<10;i++){
+          const a=Math.random()*6.283, sp=40+Math.random()*70;
+          PK.embers.push({x:lx, y:ly, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp-30, life:0.35+Math.random()*0.25, dust:true});
+        }
+        beep(85,.22,"square",.08);
+        PK.trees.splice(ti,1);
+        continue;
+      }
+    }
     tr.sway+=dt*(tr.state==="fire"?5:1.1);
     // a tree that rolled the rare ape spawn trembles and glows on top of its own flames for a
     // beat before the ape actually bursts out — it has to still be burning when this happens
@@ -677,7 +695,7 @@ const TREE_AVOID_R=44;
 function pkSteer(e,x,y,dx,dy){
   let ax=dx, ay=dy, near=0;
   for(const tr of PK.trees){
-    if(tr.state==="ash") continue;
+    if(tr.state==="ash" || tr.knockT>0) continue;
     const tdx=wd(x-tr.x,PK.WW), tdy=wd(y-tr.y,PK.WH);
     const d=Math.hypot(tdx,tdy);
     if(d>TREE_AVOID_R || d<0.01) continue;
@@ -694,6 +712,9 @@ function pkSteer(e,x,y,dx,dy){
   return [ax/l, ay/l];
 }
 const TREE_R=15, TREE_BURN_TIME=10, TREE_SPAWN_MAX=15, TREE_SPAWN_EVERY=0.65;
+// how a tree caught in an ape's landing gets launched: flung outward, tumbling, gone for good
+// once it lands — a destructible payoff for a slam that connects near any cover
+const TREE_KNOCK_TIME=0.6, TREE_KNOCK_DIST=95, TREE_KNOCK_ARC=55;
 const ALPHA_LEAP_R=170, ALPHA_LEAP_SPEED=280, ALPHA_LEAP_TIME=0.45, ALPHA_LEAP_CD=4, ALPHA_LEAP_DMG=20, ALPHA_APPROACH_SPD=50; // wave 6
 // FIRE BOSS — a rare, brutally tough ape a burnt-out tree can cough up. Runs the player down,
 // then commits to a long-range leap: a fixed landing point it telegraphs with a ground shadow
@@ -1803,6 +1824,20 @@ function parkUpdate(dt){
             PK.vx=ldx/ld*220; PK.vy=ldy/ld*220;
             beep(120,.3,"sawtooth"); if(PK.hp<=0) return pkDeath();
           }
+          // destructive landing: anything with cover in the slam radius gets launched
+          // outward, tumbling away, and destroyed — a satisfying payoff for a slam that
+          // connects near the trees, whatever state they're in
+          for(const tr of PK.trees){
+            if(tr.knockT>0) continue;
+            const tdx=wd(tr.x-e.x,WW), tdy=wd(tr.y-e.y,WH), td=Math.hypot(tdx,tdy)||1;
+            if(td<APE_SLAM_R){
+              tr.quakeT=0; tr.knockT=TREE_KNOCK_TIME; tr.knockMax=TREE_KNOCK_TIME;
+              tr.knockX0=tr.x; tr.knockY0=tr.y;
+              const flingDist=TREE_KNOCK_DIST*(0.7+Math.random()*0.6);
+              tr.knockDX=tdx/td*flingDist; tr.knockDY=tdy/td*flingDist;
+              tr.knockRot=0; tr.knockRotV=(Math.random()<0.5?-1:1)*(7+Math.random()*5);
+            }
+          }
         }
       } else {
         // a heavy, not-fully-in-control charge: it aims a little behind a fast-moving target
@@ -2148,6 +2183,15 @@ function pkDrawScorch(ctx,SC,w,h){
 function pkDrawTree(ctx,tr,x,y,t){
   const burning=tr.state==="fire", ash=tr.state==="ash";
   const quaking=tr.quakeT>0;
+  const flying=tr.knockT>0;
+  let flyP=0;
+  if(flying){
+    // launched by an ape's landing: arcs outward while tumbling end over end, fading out
+    // just before it comes down for good
+    flyP=clamp(1-tr.knockT/tr.knockMax,0,1);
+    const arcH=Math.sin(flyP*Math.PI)*TREE_KNOCK_ARC;
+    x+=tr.knockDX*flyP; y+=tr.knockDY*flyP-arcH;
+  }
   if(quaking){
     // the whole burning tree trembles harder the closer it gets to actually bursting open, with
     // a warm glow building underneath it on top of its own flames — the tell that its occupant
@@ -2167,6 +2211,10 @@ function pkDrawTree(ctx,tr,x,y,t){
     ctx.restore();
   }
   ctx.save();
+  if(flying){
+    ctx.translate(x,y); ctx.rotate(tr.knockRot||0); ctx.translate(-x,-y);
+    ctx.globalAlpha*=1-clamp((flyP-0.65)/0.35,0,1)*0.7;
+  }
   ctx.fillStyle="rgba(0,0,0,.32)";
   ctx.beginPath(); ctx.ellipse(x,y+4,TREE_R*0.9,TREE_R*0.36,0,0,7); ctx.fill();
   if(ash){
