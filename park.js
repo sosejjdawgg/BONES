@@ -628,8 +628,11 @@ const MADSQ_AIM_ERR=0.42, MADSQ_TRACK_RATE=0.42, MADSQ_RECOIL=95;
 // goes where you were, not where you are. That frozen beat is the window to get clear.
 const MADSQ_LOCK=0.55;
 function pkMadsqCap(){ return 2; }   // fixed — at most 2 beams live at once, whatever size the park is
-// bone pickup: a small sniff radius that hoovers up nearby drops, upgradeable in the shop
-const PICKUP_BASE=16, SNIFF_BASE=34, SNIFF_STEP=26, SNIFF_PULL=190, SNIFF_LVL_CAP=3;
+// bone pickup: a small sniff radius that hoovers up nearby drops, upgradeable in the shop.
+// All three (and the powerup pickup radius below) were cut 25% — bones were getting picked up
+// too easily without ever having to actually walk over them.
+const PICKUP_BASE=12, SNIFF_BASE=25.5, SNIFF_STEP=19.5, SNIFF_PULL=190, SNIFF_LVL_CAP=3;
+const POWERUP_PICKUP_R=13.5;   // was 18 — the regen/magnet powerup pickup radius, same 25% cut
 // trees: cover from beams, solid to walk through, flammable, and full of squirrels
 const TREE_COLL_RX=26, TREE_COLL_RY=15;
 // Enemies do not path-find so much as flow: each nearby trunk pushes them off it and nudges
@@ -682,34 +685,38 @@ function pkInGrove(x,y){
   }
   return false;
 }
+// several separate roosts scattered around in different directions, not just one — the park
+// felt empty with a single flock, and a lone quota-capped bird in a huge map is a needle in a
+// haystack. Every bird across every cluster shares one roost ticket: whichever one the player
+// actually finds and downs first satisfies the whole thing (roost.killed>=need, checked in
+// pkSideHazard), so there's no hidden "correct" cluster — any bird anywhere clears it
+const BIRD_CLUSTERS=3, BIRD_ROOST_SIZE=12;
 function pkSpawnBirdGroup(){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
   const R=Math.max(w,h)*0.62;
-  // birds belong in the open field, not buried in a wooded grove where the canopy hides the
-  // whole flock — keep resampling the angle around the same ring until it lands clear of one
-  let ang=Math.random()*6.283, cx=(PK.x+Math.cos(ang)*R+WW)%WW, cy=(PK.y+Math.sin(ang)*R+WH)%WH, tries=0;
-  while(pkInGrove(cx,cy) && tries<24){
-    ang=Math.random()*6.283; cx=(PK.x+Math.cos(ang)*R+WW)%WW; cy=(PK.y+Math.sin(ang)*R+WH)%WH; tries++;
-  }
   // never spawn more than the wave still needs — wave 1's quota of 1 must mean "1 bird",
-  // not "a full flock, of which the clear check will demand every last one"
+  // not "a field full of them, of which the clear check will demand every last one"
   const remaining=Math.max(1, PK.waveQuota-PK.waveSpawned);
   const n=Math.min((3+Math.floor(Math.random()*5))*pkPlusMult(), remaining);
-  // it's the park — a lone quota-capped bird standing in a huge map is a needle in a haystack.
-  // spawn a proper-looking flock, but every bird in it shares one roost ticket: whichever one
-  // the player actually finds and downs first satisfies the whole group (roost.killed>=need,
-  // checked in pkSideHazard), so there's no hidden "correct" bird — any of them clears it
   const roost={need:n, killed:0};
-  const DECOR_ROOST=12;
-  const total=Math.max(n, DECOR_ROOST);
-  for(let i=0;i<total;i++){
-    const spread=i<n?46:82, vspread=i<n?34:58;
-    const ox=(Math.random()-0.5)*spread, oy=(Math.random()-0.5)*vspread;
-    PK.en.push({t:"bird", standing:true, roost, x:(cx+ox+WW)%WW, y:(cy+oy+WH)%WH,
-      hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:0, ph:Math.random()*6, kx:0, ky:0, dir:Math.random()<0.5?-1:1, fi:0, ft:0});
+  for(let c=0;c<BIRD_CLUSTERS;c++){
+    // birds belong in the open field, not buried in a wooded grove where the canopy hides the
+    // whole flock — keep resampling the angle around the same ring until it lands clear of one,
+    // and spread each cluster to its own angle so they don't just pile on top of each other
+    let ang=(6.283*c/BIRD_CLUSTERS)+(Math.random()-0.5)*1.6, cx=(PK.x+Math.cos(ang)*R+WW)%WW, cy=(PK.y+Math.sin(ang)*R+WH)%WH, tries=0;
+    while(pkInGrove(cx,cy) && tries<24){
+      ang=Math.random()*6.283; cx=(PK.x+Math.cos(ang)*R+WW)%WW; cy=(PK.y+Math.sin(ang)*R+WH)%WH; tries++;
+    }
+    for(let i=0;i<BIRD_ROOST_SIZE;i++){
+      const counted=(c===0 && i<n);   // only the very first cluster carries the "real" bird(s), cosmetically tighter
+      const spread=counted?46:82, vspread=counted?34:58;
+      const ox=(Math.random()-0.5)*spread, oy=(Math.random()-0.5)*vspread;
+      PK.en.push({t:"bird", standing:true, roost, x:(cx+ox+WW)%WW, y:(cy+oy+WH)%WH,
+        hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:0, ph:Math.random()*6, kx:0, ky:0, dir:Math.random()<0.5?-1:1, fi:0, ft:0});
+    }
+    if(Math.random()<STALK_CHANCE) pkSpawnStalkCat(cx,cy, 1+Math.floor(Math.random()*2));
   }
-  if(Math.random()<STALK_CHANCE) pkSpawnStalkCat(cx,cy, 1+Math.floor(Math.random()*2));
   return n;
 }
 // WAVES 1-2 — a cat (or two) stalking/circling around a bird flock. Doesn't count toward the
@@ -872,6 +879,17 @@ function pkWavePct(){
   return clamp(1-pkLeftCount()/Math.max(1,PK.waveQuota),0,1);
 }
 const FLEE_SPEED=115, FLEE_TIME=2.2;   // how fast, and how long, a scared-off enemy scuttles before despawning
+// bark hit-testing treats every enemy as a bare point at (x,y) — barkR alone made a visual touch
+// against a wide sprite (birds especially, whose art is wider than its anchor suggests) fail to
+// register. Padding the reach by each type's own rough footprint is what "touching it" actually
+// means, and it has to be identical here and in the auto-trigger check below or the two disagree.
+function pkHitR(e){
+  if(e.t==="bird") return 9;
+  if(e.t==="cat") return e.small?7:10;
+  if(e.boss) return 16;
+  if(e.alpha) return 14;
+  return 8;
+}
 function pkBark(){
   PK.barkCd = PK.zoomT>0 ? 0 : PK.barkMax;   // mid-zoomies there is no cooldown at all
   PK.pulse=0.35;
@@ -882,8 +900,8 @@ function pkBark(){
     if(e.fleeing) continue;   // already scared off — can't be hit again
     const dxw=wd(e.x-PK.x,PK.WW), dyw=wd(e.y-PK.y,PK.WH);
     const d=Math.hypot(dxw,dyw)||1;
-    if(d<PK.barkR){
-      e.hp--;
+    if(d<PK.barkR+pkHitR(e)){
+      e.hp--;   // flat, regardless of how many others are in the circle with it — no falloff
       // every enemy type barked at counts toward the "bark at everybody" side mission
       PK.barkedTypes[e.t]=true;
       if(!PK.missionBarkAll && PK.barkedTypes.sq && PK.barkedTypes.bird && PK.barkedTypes.cat){
@@ -1426,7 +1444,7 @@ function parkUpdate(dt){
   [PK.x,PK.y]=pkTreeCollide(PK.x,PK.y);
   pkTickTrees(dt);
   PK.barkCd-=dt;
-  if((PK.barkCd<=0||PK.zoomT>0) && PK.en.some(e=>!e.fleeing && Math.hypot(wd(e.x-PK.x,WW),wd(e.y-PK.y,WH))<PK.barkR)) pkBark();
+  if((PK.barkCd<=0||PK.zoomT>0) && PK.en.some(e=>!e.fleeing && Math.hypot(wd(e.x-PK.x,WW),wd(e.y-PK.y,WH))<PK.barkR+pkHitR(e))) pkBark();
   if(PK.zoomT>0 && Math.random()<0.55){
     const sa=Math.random()*6.283;
     SPARKS.push({x:PK.x+Math.cos(sa)*14, y:PK.y+Math.sin(sa)*14-10, vx:Math.cos(sa)*18, vy:Math.sin(sa)*18-30, life:0.35+Math.random()*0.25, gold:true});
@@ -1915,7 +1933,7 @@ function parkUpdate(dt){
     const p=PK.powerups[i];
     p.life-=dt;
     if(p.life<=0){ PK.powerups.splice(i,1); continue; }
-    if(Math.hypot(wd(p.x-PK.x,WW),wd(p.y-PK.y,WH))<18){
+    if(Math.hypot(wd(p.x-PK.x,WW),wd(p.y-PK.y,WH))<POWERUP_PICKUP_R){
       if(p.type==="regen"){
         PK.regenT+=REGEN_DURATION;   // a second one extends the drip rather than wasting it
         pkFanfare(null,true,"✚ REGEN — +1 HP EVERY SECOND!");
