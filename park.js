@@ -284,15 +284,20 @@ for(const k in ENEMYFRAMES) ENEMYIMG[k] = ENEMYFRAMES[k].map(u=>{ const i=new Im
 const APEIMG={};
 for(const k in APEFRAMES) APEIMG[k] = APEFRAMES[k].map(u=>{ const i=new Image(); i.src=u; return i; });
 function startPark(plus){
+  // level and mood affect performance the same "base * (low + span*stat/100)" way the RUNNER
+  // minigame's computeForm() already does: a higher-level dog is slightly faster, and a
+  // happy/well-cared-for one gets a real but modest edge over a neglected one
+  const lvlMul=1+clamp(S.lvl,0,50)/50*0.12;    // lvl 1 -> ~1.00x, lvl 50+ -> 1.12x, capped
+  const moodMul=0.90+0.20*S.mood/100;          // mood 0 -> 0.90x, mood 100 -> 1.10x
   Object.assign(PK,{
     active:true,t:0,wave:1,waveT:0,spawnT:1,
     waveQuota:pkWaveQuota(1), waveSpawned:0,
-    goldenDone:false, goldenAt:3+Math.random()*8,
+    goldenDone:false, goldenAt:3+Math.random()*8, goldenWarned:false, goldenBanner:null,
     convertOpen:false, barkedTypes:{}, missionBarkAll:false, missionSurviveW1:false,
     maxhp:Math.round(100+100*S.mood/100),
-    spd:95*(0.75+0.5*S.energy/100)*(S.senior?0.85:1),
+    spd:95*(0.75+0.5*S.energy/100)*(S.senior?0.85:1)*lvlMul*moodMul,
     barkMax:Math.max(1.2,3-0.06*S.lvl), barkCd:1, pulse:0,
-    barkR:21*(0.8+0.4*S.hunger/100), knock:150,
+    barkR:21*(0.8+0.4*S.hunger/100), knock:150*(0.85+0.3*S.mood/100),
     bones:0, kills:0, xpFromRun:0, sideDone:0, relic:null, waveBanner:null, shopFlash:null, apeKills:0, apeWaveT:0, idleT:0,
     worldMult:4, groves:1, groveCenters:[], leaves:[], barkBigLvl:0, barkFastLvl:0, agiLvl:0, speedBonus:null, shopSel:null,
     chain:0, chainT:0, inv:0, fx:[],
@@ -360,9 +365,12 @@ function pkSpawnHealer(){
 function pkSpawnGoldenBird(){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
-  const side=Math.random()<0.5?-1:1, sp=150+Math.random()*30;
+  const side=Math.random()<0.5?-1:1;
+  // always a little slower than BONES' own top speed — however fast a given build actually is —
+  // so a player already moving toward it can always, eventually, close the gap
+  const sp=PK.spd*(0.75+Math.random()*0.25);
   PK.fr.push({golden:true, x:(PK.x+side*w*0.7+WW)%WW, y:(PK.y+(Math.random()-0.5)*h*0.6+WH)%WH,
-    vx:-side*sp, life:11});
+    vx:-side*sp, life:15});
   toast("A GOLDEN BIRD FLIES BY — CATCH IT!",1);
   beep(900,.05); setTimeout(()=>beep(1200,.06),70);
 }
@@ -374,12 +382,13 @@ function pkSpawnFlock(){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
   const remaining=Math.max(1, PK.waveQuota-PK.waveSpawned);
-  const n=Math.min((12+Math.floor(Math.random()*9))*pkPlusMult(), remaining);
+  // +25% count and +25% speed over the original baseline — more of them, and meaningfully faster
+  const n=Math.min(Math.round((12+Math.floor(Math.random()*9))*1.25)*pkPlusMult(), remaining);
   const diagonals=[Math.PI*0.25, Math.PI*0.75, Math.PI*1.25, Math.PI*1.75];
   const ang=diagonals[Math.floor(Math.random()*4)], perp=ang+Math.PI/2;
   const R=Math.max(w,h)*0.85;
   const cx=PK.x-Math.cos(ang)*R, cy=PK.y-Math.sin(ang)*R;   // upstream of the flight path
-  const sp=90+Math.random()*20;
+  const sp=(90+Math.random()*20)*1.25;
   for(let i=0;i<n;i++){
     const off=(i-(n-1)/2)*15+(Math.random()-0.5)*8;         // staggered wedge formation
     const sxo=cx+Math.cos(perp)*off, syo=cy+Math.sin(perp)*off;
@@ -894,7 +903,7 @@ function pkSpawnMixBurst(types){
     const type=types[Math.floor(Math.random()*types.length)];
     const a2=ang+(Math.random()-0.5)*spread;
     const x=(PK.x+Math.cos(a2)*R+WW)%WW, y=(PK.y+Math.sin(a2)*R+WH)%WH;
-    if(type==="bird") PK.en.push({t:"bird", x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:85, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0});
+    if(type==="bird") PK.en.push({t:"bird", x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:106.25, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0});   // +25% over the original 85
     else if(type==="cat") PK.en.push({t:"cat", x,y, hp:pkEnemyHp(2),hpMax:pkEnemyHp(2), sp:48, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0});
     else if(type==="ranger") PK.en.push({t:"sq", ranger:true, x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:RANGER_APPROACH_SPD, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0, atkState:"approach", atkCd:0.6+Math.random()*0.8});
     else if(type==="madsq") PK.en.push({t:"sq", madsq:true, x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:44, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0, laserState:"seek", chargeT:0, aimAng:0, sweepT:0, cd:0.6+Math.random()*0.8});
@@ -1380,6 +1389,16 @@ function parkUpdate(dt){
   if(PK.hp<PK.hpSeen){ PK.hurtT=HURT_TIME; PK.shake=Math.max(PK.shake||0,0.22); }
   PK.hpSeen=PK.hp;
   if(PK.shop || PK.convertOpen || PK.friendsOpen || PK.gateAsk) return;   // world pauses while a panel is up
+  // exercise costs him something: DOGPARK deliberately sits outside the day/night clock
+  // (tickStats no-ops while PK.active — see its own comment), so this is a small, self-contained
+  // drain instead of unblocking that whole system mid-run. A real session leaves him noticeably
+  // spent, so there's always something to come home and actually take care of.
+  {
+    const parkNm=S.senior?0.6:1;   // mirrors tickStats' own senior mercy factor
+    S.energy=clamp(S.energy-0.15*parkNm*dt,0,100);
+    S.hunger=clamp(S.hunger-0.06*parkNm*dt,0,100);
+    S.thirst=clamp(S.thirst-0.10*parkNm*dt,0,100);
+  }
   PK.t+=dt; PK.waveT+=dt;
   PK.hurtT=Math.max(0,PK.hurtT-dt);
   if(PK.over>0){
@@ -1406,6 +1425,7 @@ function parkUpdate(dt){
   PK.inv=Math.max(0,PK.inv-dt); PK.pulse=Math.max(0,PK.pulse-dt);
   PK.zoomT=Math.max(0,PK.zoomT-dt);
   if(PK.waveBanner){ PK.waveBanner.life-=dt; if(PK.waveBanner.life<=0) PK.waveBanner=null; }
+  if(PK.goldenBanner){ PK.goldenBanner.life-=dt; if(PK.goldenBanner.life<=0) PK.goldenBanner=null; }
   if(PK.shopFlash){ PK.shopFlash.life-=dt; if(PK.shopFlash.life<=0) PK.shopFlash=null; }
   for(let i=HITFX.length-1;i>=0;i--){ HITFX[i].life-=dt; if(HITFX[i].life<=0) HITFX.splice(i,1); }
   for(const e of PK.en) if(e.hitT>0) e.hitT-=dt;
@@ -1471,7 +1491,7 @@ function parkUpdate(dt){
     if(PK.wave>=3) tickTodo("j_wave3");
     PK.barkMax=Math.max(1,PK.barkMax-0.12); PK.barkR=Math.min(BARK_CAP,PK.barkR+3.5);
     PK.waveQuota=pkWaveQuota(PK.wave); PK.waveSpawned=0;
-    PK.goldenDone=false; PK.goldenAt=3+Math.random()*8;
+    PK.goldenDone=false; PK.goldenAt=3+Math.random()*8; PK.goldenWarned=false;
     if(PK.wave===6) pkSpawnAlphaSquad();
     // from wave 6 the types come mixed \u2014 that is the point of "you're on your own"
     if(PK.wave>=6){ PK.mixTypes=pkPickMixTypes(); PK.mixLabel=MIX_NAME[PK.mixTypes[0]]+" & "+MIX_NAME[PK.mixTypes[1]]; }
@@ -1483,6 +1503,13 @@ function parkUpdate(dt){
   // the healer keeps her own rolling clock, so she shows up more and more as the waves bite
   PK.healerT-=dt;
   if(PK.healerT<=0){ PK.healerT=pkHealerGap(); if(PK.fr.every(f=>f.golden)) pkSpawnHealer(); }
+  // a Golden Axe-style heads-up a beat before she actually appears, so there's a real chance to
+  // get in position rather than reacting cold to a 1.7s toast
+  if(!PK.goldenWarned && PK.waveT>PK.goldenAt-1.3){
+    PK.goldenWarned=true;
+    PK.goldenBanner={text:"GOLDEN BIRD INCOMING", sub:"CATCH HER FOR THE ZOOMIES!", life:1.6, max:1.6};
+    beep(700,.08); setTimeout(()=>beep(950,.09),90);
+  }
   // one golden bird per stage — optional, never counts toward the wave quota
   if(!PK.goldenDone && PK.waveT>PK.goldenAt){
     PK.goldenDone=true;
@@ -1918,7 +1945,7 @@ function parkUpdate(dt){
       e.x=(e.x+(e.vx+e.kx)*dt+WW)%WW;
       e.y=(e.y+(e.vy+e.ky)*dt+WH)%WH;
       if(d<14 && PK.inv<=0 && !pkInvuln()){
-        pkHurt(8); PK.inv=0.6;
+        pkHurt(10); PK.inv=0.6;   // +25% over the original 8, matching the flock's own buff
         e.kx=-dxw/d*220; e.ky=-dyw/d*220;
         beep(110,.12,"sawtooth");
         if(PK.hp<=0) return pkDeath();
@@ -1934,7 +1961,7 @@ function parkUpdate(dt){
     e.x=(e.x+(sx+e.kx)*dt+WW)%WW;
     e.y=(e.y+(sy+e.ky)*dt+WH)%WH;
     if(d<14 && PK.inv<=0 && !pkInvuln()){
-      pkHurt(8); PK.inv=0.6;
+      pkHurt(e.t==="bird"?10:8); PK.inv=0.6;   // birds hit 25% harder than the shared baseline
       e.kx=-dxw/d*220; e.ky=-dyw/d*220;
       beep(110,.12,"sawtooth");
       if(PK.hp<=0) return pkDeath();
@@ -1969,7 +1996,10 @@ function parkUpdate(dt){
       }
       PK.fr.splice(i,1); continue;
     }
-    if(f.life<=0) PK.fr.splice(i,1);
+    if(f.life<=0){
+      if(f.golden){ toast("THE GOLDEN BIRD GOT AWAY"); beep(260,.16,"sawtooth",.05); }
+      PK.fr.splice(i,1);
+    }
   }
   // thrown nuts — simple straight-line projectiles from ranger/mad squirrels
   for(let i=PK.nuts.length-1;i>=0;i--){
@@ -2199,6 +2229,37 @@ function drawLaserFX(ctx,e,sx,sy){
   }
 }
 // scorched ground left behind by beams and burnt-out trees
+// a big, unmissable event banner — pops in, holds, lifts and fades. Shared by the wave-transition
+// banner (red) and the golden-bird heads-up (gold) so both "something important is happening"
+// moments read as the same visual language instead of two competing UI treatments
+function pkDrawBanner(ctx,w,h,banner,color){
+  if(!banner) return;
+  const {text,sub,life,max}=banner, el=max-life;
+  const inP=Math.min(1,el/0.35), outP=Math.min(1,life/0.8);
+  const alpha=Math.min(inP,outP), rise=(1-outP)*h*0.05;
+  const band=sub?h*0.22:h*0.15, top=h*0.33-rise;
+  ctx.save(); ctx.globalAlpha=alpha;
+  ctx.fillStyle="rgba(0,0,0,.68)"; ctx.fillRect(0,top,w,band);
+  ctx.strokeStyle=color; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.moveTo(0,top); ctx.lineTo(w,top);
+  ctx.moveTo(0,top+band); ctx.lineTo(w,top+band); ctx.stroke();
+  ctx.textAlign="center";
+  ctx.fillStyle="#fff"; ctx.font="14px 'Press Start 2P',monospace";
+  ctx.fillText(text, w/2, top+(sub?band*0.36:band*0.62));
+  if(sub){
+    // long taglines wrap rather than running off a phone screen
+    ctx.fillStyle=color; ctx.font="8px 'Press Start 2P',monospace";
+    const words=sub.split(" "); const lines=[]; let cur="";
+    for(const wd2 of words){
+      const trial=cur?cur+" "+wd2:wd2;
+      if(ctx.measureText(trial).width > w-28 && cur){ lines.push(cur); cur=wd2; } else cur=trial;
+    }
+    if(cur) lines.push(cur);
+    lines.forEach((ln,i)=>ctx.fillText(ln, w/2, top+band*0.64+i*12));
+  }
+  ctx.textAlign="left";
+  ctx.restore();
+}
 function pkDrawScorch(ctx,SC,w,h){
   for(const sc of PK.scorch){
     const [x,y]=SC(sc.x,sc.y);
@@ -2812,35 +2873,11 @@ function parkDraw(t){
     ctx.fillStyle="#cfe6ff"; ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="center";
     ctx.fillText(Math.round(pct*100)+"% CLEAR", w/2, by+17); ctx.textAlign="left";
   }
-  // wave-transition banner \u2014 pops in, holds, fades, so a new wave actually reads as an event
-  if(PK.waveBanner){
-    const {text,sub,life,max}=PK.waveBanner, el=max-life;
-    // eases in, holds, then lifts and fades out rather than just blinking off
-    const inP=Math.min(1,el/0.35), outP=Math.min(1,life/0.8);
-    const alpha=Math.min(inP,outP), rise=(1-outP)*h*0.05;
-    const band=sub?h*0.22:h*0.15, top=h*0.33-rise;
-    ctx.save(); ctx.globalAlpha=alpha;
-    ctx.fillStyle="rgba(0,0,0,.68)"; ctx.fillRect(0,top,w,band);
-    ctx.strokeStyle="#f22"; ctx.lineWidth=3;
-    ctx.beginPath(); ctx.moveTo(0,top); ctx.lineTo(w,top);
-    ctx.moveTo(0,top+band); ctx.lineTo(w,top+band); ctx.stroke();
-    ctx.textAlign="center";
-    ctx.fillStyle="#fff"; ctx.font="14px 'Press Start 2P',monospace";
-    ctx.fillText(text, w/2, top+(sub?band*0.36:band*0.62));
-    if(sub){
-      // long taglines wrap rather than running off a phone screen
-      ctx.fillStyle="#f22"; ctx.font="8px 'Press Start 2P',monospace";
-      const words=sub.split(" "); const lines=[]; let cur="";
-      for(const wd2 of words){
-        const trial=cur?cur+" "+wd2:wd2;
-        if(ctx.measureText(trial).width > w-28 && cur){ lines.push(cur); cur=wd2; } else cur=trial;
-      }
-      if(cur) lines.push(cur);
-      lines.forEach((ln,i)=>ctx.fillText(ln, w/2, top+band*0.64+i*12));
-    }
-    ctx.textAlign="left";
-    ctx.restore();
-  }
+  // wave-transition banner \u2014 pops in, holds, fades, so a new wave actually reads as an event.
+  // the golden-bird heads-up reuses the exact same treatment, just gold instead of red, so the
+  // two read as one consistent "big event" idiom rather than two different UI languages
+  pkDrawBanner(ctx,w,h,PK.waveBanner,"#f22");
+  pkDrawBanner(ctx,w,h,PK.goldenBanner,"#e8c14a");
   pkDrawShop(ctx,w,h,t);
   // shop-purchase fanfare — a satisfying beat so spending bones actually feels like a reward
   if(PK.shopFlash){
