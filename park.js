@@ -540,6 +540,7 @@ function pkSpawnApeRaw(x,y,hpBase){
   const hp=pkEnemyHp(hpBase);
   PK.en.push({t:"ape", boss:true, x, y, hp, hpMax:hp, sp:APE_SPD,
     ph:0, kx:0, ky:0, dir:1, fi:0, ft:0, side:undefined,
+    heading:Math.random()*6.283, spdCur:0,
     introT:APE_INTRO, leapState:null, leapCd:1, leapWindT:0, leapActT:0, landT:0});
 }
 function pkSpawnApe(x,y){
@@ -700,9 +701,16 @@ const ALPHA_LEAP_R=170, ALPHA_LEAP_SPEED=280, ALPHA_LEAP_TIME=0.45, ALPHA_LEAP_C
 // a real dodge window before it crashes down for a wide area hit. Never blocks the wave
 // (pkSideHazard) since it's an optional bonus threat, not a requirement — except during the
 // dedicated wave-8 ape assault (see APE_WAVE below).
-const APE_CAP=1, APE_HP=88, APE_SPD=112,
+// APE_SPD is its top chase speed, not an instant speed — see APE_ACCEL/APE_TURN_RATE below,
+// which give the chase a heavy, momentum-driven feel instead of gluing to the player
+const APE_CAP=1, APE_HP=88, APE_SPD=190,
       APE_LEAP_MINR=70, APE_LEAP_MAXR=520, APE_LEAP_SPEED=340, APE_LEAP_TMIN=0.7, APE_LEAP_TMAX=1.9, APE_ARC_H=78,
       APE_WINDUP=0.65, APE_LEAP_CD=6.5, APE_TOUCH_DMG=12, APE_SLAM_DMG=32, APE_SLAM_R=62, APE_LAND_TIME=0.35, APE_INTRO=0.9;
+// heavy-chaser tuning: it accelerates/decelerates toward its top speed rather than snapping to
+// it, and turns at a limited rate rather than snapping to face the target — so overrunning a
+// player who suddenly changes direction and having to wheel back around is a real, visible
+// thing that happens, not just a chase that always glues on perfectly
+const APE_ACCEL=260, APE_TURN_RATE=2.4, APE_AIM_LAG=0.4;
 const APE_TELL_TIME=1.8;   // how long the stump trembles/glows before the ape actually bursts out
 function pkApeCount(){ let n=0; for(const e of PK.en) if(e.t==="ape" && !e.fleeing) n++; return n; }
 // WAVE 8 — apes start dropping out of the trees themselves, in couples, far more often than
@@ -1797,9 +1805,26 @@ function parkUpdate(dt){
           }
         }
       } else {
-        const [ux2,uy2]=pkSteer(e,e.x,e.y,dxw/d,dyw/d); const sx=ux2*e.sp, sy=uy2*e.sp;
+        // a heavy, not-fully-in-control charge: it aims a little behind a fast-moving target
+        // (so outrunning it is actually possible), turns toward that at a limited rate, and
+        // only spins up to full speed once it's actually facing roughly the right way — so
+        // overrunning a target that cuts away and having to wheel back around actually happens
+        const tx=PK.x-PK.vx*APE_AIM_LAG, ty=PK.y-PK.vy*APE_AIM_LAG;
+        const ldx=wd(tx-e.x,WW), ldy=wd(ty-e.y,WH);
+        const [ux2,uy2]=pkSteer(e,e.x,e.y,ldx/(Math.hypot(ldx,ldy)||1),ldy/(Math.hypot(ldx,ldy)||1));
+        const wantAng=Math.atan2(uy2,ux2);
+        const angDiff=wd(wantAng-e.heading,6.283);
+        e.heading+=clamp(angDiff,-APE_TURN_RATE*dt,APE_TURN_RATE*dt);
+        const align=Math.cos(angDiff);
+        const targetSpd=e.sp*clamp(align,0.05,1);
+        e.spdCur+=clamp(targetSpd-e.spdCur,-APE_ACCEL*dt,APE_ACCEL*dt);
+        const sx=Math.cos(e.heading)*e.spdCur, sy=Math.sin(e.heading)*e.spdCur;
         e.dir = sx<0 ? -1 : 1;
         e.x=(e.x+(sx+e.kx)*dt+WW)%WW; e.y=(e.y+(sy+e.ky)*dt+WH)%WH;
+        // stomping dust when it's really moving, so the charge reads as heavy and out of control
+        if(e.spdCur>e.sp*0.55 && Math.random()<0.3){
+          PK.embers.push({x:e.x, y:e.y+8, vx:(Math.random()-0.5)*20, vy:-8-Math.random()*10, life:0.25+Math.random()*0.2, dust:true});
+        }
         e.leapCd-=dt;
         // the leap is the primary attack — it fires on cooldown whenever not already adjacent,
         // regardless of exactly how far away BONES is (long range is the point)
