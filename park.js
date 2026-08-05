@@ -605,8 +605,9 @@ function pkTickTrees(dt){
       tr.state="ash";
       PK.scorch.push({x:tr.x, y:tr.y, r:TREE_R*1.6});
       beep(70,.5,"sawtooth",.05);
-      // burnt to the ground — a small chance something much bigger was living in it
-      if(pkApeCount()<APE_CAP && Math.random()<0.02) pkSpawnApe(tr.x,tr.y);
+      // burnt to the ground — a small chance something much bigger was living in it. Wave 8
+      // has its own dedicated, far more frequent ape assault, so this rare roll sits out that wave
+      if(PK.wave!==APE_WAVE && pkApeCount()<APE_CAP && Math.random()<0.05) pkSpawnApe(tr.x,tr.y);
     }
   }
 }
@@ -662,14 +663,14 @@ const ALPHA_LEAP_R=170, ALPHA_LEAP_SPEED=280, ALPHA_LEAP_TIME=0.45, ALPHA_LEAP_C
 // a real dodge window before it crashes down for a wide area hit. Never blocks the wave
 // (pkSideHazard) since it's an optional bonus threat, not a requirement — except during the
 // dedicated wave-8 ape assault (see APE_WAVE below).
-const APE_CAP=1, APE_HP=22, APE_SPD=112,
+const APE_CAP=1, APE_HP=88, APE_SPD=112,
       APE_LEAP_MINR=70, APE_LEAP_MAXR=520, APE_LEAP_SPEED=340, APE_LEAP_TMIN=0.7, APE_LEAP_TMAX=1.9, APE_ARC_H=78,
       APE_WINDUP=0.65, APE_LEAP_CD=6.5, APE_TOUCH_DMG=12, APE_SLAM_DMG=32, APE_SLAM_R=62, APE_LAND_TIME=0.35, APE_INTRO=0.9;
 function pkApeCount(){ let n=0; for(const e of PK.en) if(e.t==="ape" && !e.fleeing) n++; return n; }
 // WAVE 8 — apes start dropping out of the trees themselves, in couples, far more often than
 // the rare fire-triggered spawn; clearing this wave means downing APE_WAVE_QUOTA of them while
 // the ordinary mixed enemies for this stage keep spawning and attacking in the background
-const APE_WAVE=8, APE_WAVE_QUOTA=10, APE_WAVE_CAP=6, APE_WAVE_HP=9;
+const APE_WAVE=8, APE_WAVE_QUOTA=10, APE_WAVE_CAP=6, APE_WAVE_HP=36;
 // WAVE 1 — CLEAR THE BIRDS: loose flocks of 3-7 birds clustered together, standing until
 // BONES gets close, then the whole flock startles and scatters (still hittable mid-scatter,
 // and settles back into a roost instead of despawning if it gets away clean). 1-hit kill.
@@ -2152,9 +2153,9 @@ function drawApe(ctx,e,sx,sy){
   const ghost = e.fleeing ? 0.34 : 1;
   ctx.save(); ctx.globalAlpha*=ghost;
   ctx.fillStyle="rgba(0,0,0,.32)";
-  ctx.beginPath(); ctx.ellipse(sx, sy+7, 22, 6.5, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(sx, sy+5, 15.5, 4.5, 0, 0, 7); ctx.fill();
   if(e.leapState==="windup" && Math.floor(performance.now()/80)%2){
-    ctx.fillStyle="#f22"; ctx.beginPath(); ctx.arc(sx, sy-64, 3, 0, 7); ctx.fill();
+    ctx.fillStyle="#f22"; ctx.beginPath(); ctx.arc(sx, sy-45, 3, 0, 7); ctx.fill();
   }
   let prog=0, lift=0;
   if(e.leapState==="leap"){
@@ -2187,14 +2188,14 @@ function drawApe(ctx,e,sx,sy){
   else if(e.landT>0) img = APEIMG.jump[2];
   else img = APEIMG.run[Math.floor(e.fi)%APEIMG.run.length];
   if(!img || !img.complete || !img.naturalWidth){ ctx.restore(); return; }
-  const eh=54, ew=eh*img.naturalWidth/img.naturalHeight;
+  const eh=38, ew=eh*img.naturalWidth/img.naturalHeight;
   const dy=sy-lift;
   if(lift>1){
     // a small ground contact shadow keeps drifting under it while it's lifted, distinct from
     // the big dark landing-zone ellipse already drawn above at the true impact point
     ctx.save(); ctx.globalAlpha*=0.25*(lift/APE_ARC_H);
     ctx.fillStyle="#000";
-    ctx.beginPath(); ctx.ellipse(sx, sy+7, 16, 5, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(sx, sy+5, 11, 3.5, 0, 0, 7); ctx.fill();
     ctx.restore();
   }
   ctx.save(); ctx.imageSmoothingEnabled=false;
