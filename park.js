@@ -293,7 +293,7 @@ function startPark(plus){
     spd:95*(0.75+0.5*S.energy/100)*(S.senior?0.85:1),
     barkMax:Math.max(1.2,3-0.06*S.lvl), barkCd:1, pulse:0,
     barkR:21*(0.8+0.4*S.hunger/100), knock:150,
-    bones:0, kills:0, xpFromRun:0, sideDone:0, relic:null, waveBanner:null, shopFlash:null,
+    bones:0, kills:0, xpFromRun:0, sideDone:0, relic:null, waveBanner:null, shopFlash:null, apeKills:0, apeWaveT:0,
     worldMult:4, groves:1, groveCenters:[], leaves:[], barkBigLvl:0, barkFastLvl:0, agiLvl:0, speedBonus:null, shopSel:null,
     chain:0, chainT:0, inv:0, fx:[],
     x:0,y:0,vx:0,vy:0, joy:null,
@@ -530,12 +530,31 @@ function pkIgniteTree(tr){
   toast("THE TREE'S ALIGHT — THEY'RE POURING OUT!",1);
   beep(90,.45,"sawtooth",.09); setTimeout(()=>beep(140,.35,"sawtooth",.07),110);
 }
-function pkSpawnApe(x,y){
-  PK.en.push({t:"ape", boss:true, x, y, hp:pkEnemyHp(APE_HP), hpMax:pkEnemyHp(APE_HP), sp:APE_SPD,
+function pkSpawnApeRaw(x,y,hpBase){
+  const hp=pkEnemyHp(hpBase);
+  PK.en.push({t:"ape", boss:true, x, y, hp, hpMax:hp, sp:APE_SPD,
     ph:0, kx:0, ky:0, dir:1, fi:0, ft:0, side:undefined,
-    introT:APE_INTRO, leapState:null, leapCd:APE_LEAP_CD*0.6, leapWindT:0, leapActT:0, landT:0});
+    introT:APE_INTRO, leapState:null, leapCd:1, leapWindT:0, leapActT:0, landT:0});
+}
+function pkSpawnApe(x,y){
+  pkSpawnApeRaw(x,y,APE_HP);
   toast("A HUGE APE CRASHES OUT OF THE FLAMES!",1);
   beep(55,.6,"sawtooth",.12); setTimeout(()=>beep(42,.55,"sawtooth",.1),150);
+}
+// WAVE 8 — a couple crash down out of two random trees at once, weaker than the rare fire boss
+// (this is a swarm objective, not a lone miniboss), capped so the assault doesn't spiral away
+function pkSpawnApeCouple(){
+  if(!PK.trees.length) return;
+  let n=0;
+  for(let k=0;k<2 && pkApeCount()<APE_WAVE_CAP;k++){
+    const tr=PK.trees[Math.floor(Math.random()*PK.trees.length)];
+    pkSpawnApeRaw(tr.x, tr.y, APE_WAVE_HP);
+    n++;
+  }
+  if(n>0){
+    toast("APES ARE DROPPING FROM THE TREES!",1);
+    beep(58,.5,"sawtooth",.1); setTimeout(()=>beep(58,.5,"sawtooth",.1),120);
+  }
 }
 // first non-ash tree a beam runs into: it soaks the shot (cover) and catches light
 function pkBeamBlocker(ox,oy,ang,range){
@@ -638,11 +657,19 @@ function pkSteer(e,x,y,dx,dy){
 const TREE_R=15, TREE_BURN_TIME=10, TREE_SPAWN_MAX=15, TREE_SPAWN_EVERY=0.65;
 const ALPHA_LEAP_R=170, ALPHA_LEAP_SPEED=280, ALPHA_LEAP_TIME=0.45, ALPHA_LEAP_CD=4, ALPHA_LEAP_DMG=20, ALPHA_APPROACH_SPD=50; // wave 6
 // FIRE BOSS — a rare, brutally tough ape a burnt-out tree can cough up. Runs the player down,
-// then winds up into a huge telegraphed leap and comes smashing down for a wide area hit —
-// never blocks the wave (pkSideHazard) since it's an optional bonus threat, not a requirement
-const APE_CAP=1, APE_HP=22, APE_SPD=112, APE_LEAP_R=200, APE_LEAP_SPEED=250, APE_LEAP_TIME=0.6,
-      APE_WINDUP=0.75, APE_LEAP_CD=5.5, APE_TOUCH_DMG=12, APE_SLAM_DMG=30, APE_SLAM_R=58, APE_LAND_TIME=0.35, APE_INTRO=0.9;
+// then commits to a long-range leap: a fixed landing point it telegraphs with a ground shadow
+// and danger ring that crawl toward the target while the ape itself arcs high overhead, giving
+// a real dodge window before it crashes down for a wide area hit. Never blocks the wave
+// (pkSideHazard) since it's an optional bonus threat, not a requirement — except during the
+// dedicated wave-8 ape assault (see APE_WAVE below).
+const APE_CAP=1, APE_HP=22, APE_SPD=112,
+      APE_LEAP_MINR=70, APE_LEAP_MAXR=520, APE_LEAP_SPEED=340, APE_LEAP_TMIN=0.7, APE_LEAP_TMAX=1.9, APE_ARC_H=78,
+      APE_WINDUP=0.65, APE_LEAP_CD=6.5, APE_TOUCH_DMG=12, APE_SLAM_DMG=32, APE_SLAM_R=62, APE_LAND_TIME=0.35, APE_INTRO=0.9;
 function pkApeCount(){ let n=0; for(const e of PK.en) if(e.t==="ape" && !e.fleeing) n++; return n; }
+// WAVE 8 — apes start dropping out of the trees themselves, in couples, far more often than
+// the rare fire-triggered spawn; clearing this wave means downing APE_WAVE_QUOTA of them while
+// the ordinary mixed enemies for this stage keep spawning and attacking in the background
+const APE_WAVE=8, APE_WAVE_QUOTA=10, APE_WAVE_CAP=6, APE_WAVE_HP=9;
 // WAVE 1 — CLEAR THE BIRDS: loose flocks of 3-7 birds clustered together, standing until
 // BONES gets close, then the whole flock startles and scatters (still hittable mid-scatter,
 // and settles back into a roost instead of despawning if it gets away clean). 1-hit kill.
@@ -815,7 +842,7 @@ const WNAME={
   5:"THEY'RE COMING OUT OF THE GOD DAMNED TREES!",
   6:"GOOD LUCK — YOU'RE ON YOUR OWN",
   7:"STILL HERE? THEY NOTICED.",
-  8:"THE WHOLE PARK IS AWAKE NOW",
+  8:"THE TREES ARE DROPPING APES — CLEAR 10",
   9:"THIS IS NOT A DRILL",
   10:"☠ NOBODY IS COMING TO HELP",
   11:"YOU WERE WARNED",
@@ -833,6 +860,16 @@ const BARK_CAP=62;   // hard ceiling: the bark used to reach ~90 and trivialised
 // the player opted into (a burning tree's squirrels) or ambient extras (stalking cats, the
 // decorative wave-3 swoop bird), as opposed to the wave's actual, fixed quota
 function pkSideHazard(e){ return e.stalk || e.stalkAggro || e.swoop || e.fromTree || e.decor || e.boss || (e.roost && e.roost.killed>=e.roost.need); }
+// shared by both "N LEFT" displays (the pad and the camera header) — wave 8 tracks ape kills
+// instead of the usual mixed quota, since that's this stage's actual objective
+function pkLeftCount(){
+  if(PK.wave===APE_WAVE) return Math.max(0, APE_WAVE_QUOTA-(PK.apeKills||0));
+  return Math.max(0,PK.waveQuota-PK.waveSpawned)+PK.en.filter(e=>!e.fleeing && !pkSideHazard(e)).length;
+}
+function pkWavePct(){
+  if(PK.wave===APE_WAVE) return clamp((PK.apeKills||0)/APE_WAVE_QUOTA,0,1);
+  return clamp(1-pkLeftCount()/Math.max(1,PK.waveQuota),0,1);
+}
 const FLEE_SPEED=115, FLEE_TIME=2.2;   // how fast, and how long, a scared-off enemy scuttles before despawning
 function pkBark(){
   PK.barkCd = PK.zoomT>0 ? 0 : PK.barkMax;   // mid-zoomies there is no cooldown at all
@@ -861,7 +898,7 @@ function pkBark(){
         PK.kills++;
         hits++;
         if(e.roost) e.roost.killed++;
-        if(e.boss) pkFanfare(null,false,"✓ THE APE IS DOWN — +8 BONES");
+        if(e.boss){ PK.apeKills=(PK.apeKills||0)+1; pkFanfare(null,false,"✓ THE APE IS DOWN — +8 BONES"); }
         e.fleeing=true; e.shockT=0.35; e.fleeT=0; e.hitT=0.3;
         e.fleeVx=-dxw/d*FLEE_SPEED; e.fleeVy=-dyw/d*FLEE_SPEED;
         pkHitMark(e.x, e.y, true);
@@ -978,11 +1015,12 @@ function pkPalHit(e,dmg,ux,uy){
   if(e.fleeing) return;
   e.hp-=dmg;
   if(e.hp<=0){
-    PK.drops.push({x:e.x, y:e.y, v:1, gold:!!e.alpha, life:25});
+    PK.drops.push({x:e.x, y:e.y, v:e.boss?8:1, gold:!!e.alpha||!!e.boss, life:25});
     if(Math.random()<MAGNET_DROP_CHANCE) PK.powerups.push({type:"magnet", x:e.x, y:e.y+10, life:18});
     if(Math.random()<REGEN_DROP_CHANCE) PK.powerups.push({type:"regen", x:e.x, y:e.y, life:18});
     PK.kills++;
     if(e.roost) e.roost.killed++;
+    if(e.boss){ PK.apeKills=(PK.apeKills||0)+1; pkFanfare(null,false,"✓ THE APE IS DOWN — +8 BONES"); }
     e.fleeing=true; e.shockT=0.35; e.fleeT=0;
     e.fleeVx=ux*FLEE_SPEED; e.fleeVy=uy*FLEE_SPEED;
     beep(950,.08,"square",.04);
@@ -1312,7 +1350,12 @@ function parkUpdate(dt){
   // spooked-but-alive roost birds that got away clean also don't block the clear)
   // a startled bird is still very much alive — it only settles back down — so it has to block
   // the clear like anything else. Only downed enemies and ambient extras are ignored here.
-  if(PK.waveSpawned>=PK.waveQuota && !PK.en.some(e=>!e.fleeing && !pkSideHazard(e))){
+  // WAVE 8 is the one exception: its objective is ape kills specifically, not the usual mixed
+  // quota (which the normal mix spawner still runs in the background the whole time)
+  const waveClear = PK.wave===APE_WAVE
+    ? (PK.apeKills||0)>=APE_WAVE_QUOTA
+    : (PK.waveSpawned>=PK.waveQuota && !PK.en.some(e=>!e.fleeing && !pkSideHazard(e)));
+  if(waveClear){
     // survive the very first wave and it's a straight-up XP bonus
     if(PK.wave===1 && !PK.missionSurviveW1){
       PK.missionSurviveW1=true; pkAwardXP(10);
@@ -1339,6 +1382,7 @@ function parkUpdate(dt){
     if(PK.wave===6) pkSpawnAlphaSquad();
     // from wave 6 the types come mixed \u2014 that is the point of "you're on your own"
     if(PK.wave>=6){ PK.mixTypes=pkPickMixTypes(); PK.mixLabel=MIX_NAME[PK.mixTypes[0]]+" & "+MIX_NAME[PK.mixTypes[1]]; }
+    if(PK.wave===APE_WAVE){ PK.apeKills=0; PK.apeWaveT=2.5; }
     PK.waveBanner={text:"WAVE "+PK.wave, sub:pkWaveName(PK.wave), life:3.2, max:3.2};
     beep(500,.08);
     pkShopOpen();
@@ -1355,6 +1399,12 @@ function parkUpdate(dt){
   if(PK.wave===3){
     PK.swoopT=(PK.swoopT||0)-dt;
     if(PK.swoopT<=0){ pkSpawnSwoopBird(); PK.swoopT=5+Math.random()*4; }
+  }
+  // WAVE 8 — apes keep dropping out of the trees in couples, far more often than the rare
+  // fire-triggered spawn anywhere else, on top of whatever the normal mix spawner is sending
+  if(PK.wave===APE_WAVE){
+    PK.apeWaveT=(PK.apeWaveT||0)-dt;
+    if(PK.apeWaveT<=0){ pkSpawnApeCouple(); PK.apeWaveT=7+Math.random()*3; }
   }
   PK.spawnT-=dt;
   if(PK.spawnT<=0 && PK.waveSpawned<PK.waveQuota){
@@ -1583,9 +1633,10 @@ function parkUpdate(dt){
               o.kx=ux*MADSQ_KNOCK*1.6; o.ky=uy*MADSQ_KNOCK*1.6;
               PK.embers.push({x:o.x, y:o.y, vx:(Math.random()-0.5)*60, vy:-40-Math.random()*40, life:0.5});
               if(o.hp<=0){
-                PK.drops.push({x:o.x, y:o.y, v:1, life:25});
+                PK.drops.push({x:o.x, y:o.y, v:o.boss?8:1, gold:!!o.boss, life:25});
                 PK.kills++;
                 if(o.roost) o.roost.killed++;
+                if(o.boss){ PK.apeKills=(PK.apeKills||0)+1; pkFanfare(null,false,"✓ THE APE IS DOWN — +8 BONES"); }
                 o.fleeing=true; o.shockT=0.3; o.fleeT=0;
                 o.fleeVx=ux*FLEE_SPEED; o.fleeVy=uy*FLEE_SPEED;
                 PK.scorch.push({x:o.x, y:o.y, r:12+Math.random()*6});
@@ -1642,9 +1693,12 @@ function parkUpdate(dt){
       e.ft+=dt; if(e.ft>0.12){ e.ft=0; e.fi++; }
       continue;
     }
-    // FIRE BOSS — a huge ape: stands and roars for a beat after crashing out of the burning
-    // tree, then runs the player down and, once close enough, winds up into a heavily
-    // telegraphed leap that ends in a wide-area slam (not just a point-blank bite)
+    // FIRE BOSS — a huge ape: stands and roars for a beat after arriving, then its main
+    // attack is a long-range leap. It commits to a fixed landing point the instant the leap
+    // begins (wherever BONES was standing then) — not a live homing missile — and telegraphs
+    // it the whole time it's airborne with a ground shadow and danger ring that crawl toward
+    // that point while the ape itself arcs high overhead. Reading the shadow and moving off it
+    // is the dodge; standing still in it is not. It only bites on contact when already adjacent.
     if(e.t==="ape"){
       const dxw=wd(PK.x-e.x,WW), dyw=wd(PK.y-e.y,WH), d=Math.hypot(dxw,dyw)||1;
       if(e.introT>0){
@@ -1656,20 +1710,30 @@ function parkUpdate(dt){
         e.dir = dxw<0 ? -1 : 1;
         e.leapWindT-=dt;
         if(e.leapWindT<=0){
-          e.leapState="leap"; e.leapActT=APE_LEAP_TIME;
-          e.lvx=Math.cos(e.leapAng)*APE_LEAP_SPEED; e.lvy=Math.sin(e.leapAng)*APE_LEAP_SPEED;
+          // commit now: the landing point is BONES' position at this instant, fixed for the
+          // whole flight — but capped to APE_LEAP_MAXR, so a target that's genuinely too far
+          // away gets a leap that lands short of them rather than one flung at absurd speed
+          // to cover the full raw distance in the same capped duration
+          const dist=clamp(d,10,APE_LEAP_MAXR), scale=dist/d;
+          e.leapDur=clamp(dist/APE_LEAP_SPEED, APE_LEAP_TMIN, APE_LEAP_TMAX);
+          e.leapActT=e.leapDur;
+          e.leapStartX=e.x; e.leapStartY=e.y;
+          e.leapDX=dxw*scale; e.leapDY=dyw*scale;
+          e.leapState="leap";
         }
       } else if(e.leapState==="leap"){
         e.leapActT-=dt;
-        e.x=(e.x+e.lvx*dt+WW)%WW; e.y=(e.y+e.lvy*dt+WH)%WH;
-        e.dir = e.lvx<0 ? -1 : 1;
+        const prog=clamp(1-e.leapActT/e.leapDur,0,1);
+        e.x=(e.leapStartX+e.leapDX*prog+WW)%WW;
+        e.y=(e.leapStartY+e.leapDY*prog+WH)%WH;
+        e.dir = e.leapDX<0 ? -1 : 1;
         if(e.leapActT<=0){
           e.leapState=null; e.leapCd=APE_LEAP_CD; e.landT=APE_LAND_TIME;
           PK.scorch.push({x:e.x, y:e.y, r:APE_SLAM_R*0.5});
           beep(65,.35,"sawtooth",.1);
           const ldx=wd(PK.x-e.x,WW), ldy=wd(PK.y-e.y,WH), ld=Math.hypot(ldx,ldy)||1;
           if(ld<APE_SLAM_R && PK.inv<=0 && !pkInvuln()){
-            pkHurt(APE_SLAM_DMG); PK.inv=0.9; PK.shake=0.7;
+            pkHurt(APE_SLAM_DMG); PK.inv=0.9; PK.shake=0.8;
             PK.vx=ldx/ld*220; PK.vy=ldy/ld*220;
             beep(120,.3,"sawtooth"); if(PK.hp<=0) return pkDeath();
           }
@@ -1679,7 +1743,9 @@ function parkUpdate(dt){
         e.dir = sx<0 ? -1 : 1;
         e.x=(e.x+(sx+e.kx)*dt+WW)%WW; e.y=(e.y+(sy+e.ky)*dt+WH)%WH;
         e.leapCd-=dt;
-        if(e.leapCd<=0 && d<APE_LEAP_R){ e.leapState="windup"; e.leapWindT=APE_WINDUP; e.leapAng=Math.atan2(dyw,dxw); }
+        // the leap is the primary attack — it fires on cooldown whenever not already adjacent,
+        // regardless of exactly how far away BONES is (long range is the point)
+        if(e.leapCd<=0 && d>APE_LEAP_MINR){ e.leapState="windup"; e.leapWindT=APE_WINDUP; }
         if(d<20 && PK.inv<=0 && !pkInvuln()){
           pkHurt(APE_TOUCH_DMG); PK.inv=0.6; e.kx=-dxw/d*220; e.ky=-dyw/d*220;
           beep(110,.12,"sawtooth"); if(PK.hp<=0) return pkDeath();
@@ -2090,6 +2156,23 @@ function drawApe(ctx,e,sx,sy){
   if(e.leapState==="windup" && Math.floor(performance.now()/80)%2){
     ctx.fillStyle="#f22"; ctx.beginPath(); ctx.arc(sx, sy-64, 3, 0, 7); ctx.fill();
   }
+  let prog=0, lift=0;
+  if(e.leapState==="leap"){
+    prog=clamp(1-e.leapActT/e.leapDur,0,1);
+    lift=Math.sin(prog*Math.PI)*APE_ARC_H;
+    // the actual danger zone: a dark landing shadow plus a pulsing ring at true hit radius,
+    // both sat at (sx,sy) — the real ground/impact position the leap is crawling toward —
+    // while the ape itself is drawn lifted well above it. This is what to dodge, not the sprite.
+    ctx.save(); ctx.globalAlpha*=0.5;
+    ctx.fillStyle="#000";
+    ctx.beginPath(); ctx.ellipse(sx, sy, APE_SLAM_R*0.85, APE_SLAM_R*0.4, 0, 0, 7); ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.globalAlpha*=0.4+0.35*Math.sin(performance.now()/65);
+    ctx.strokeStyle="#f33"; ctx.lineWidth=2.5;
+    ctx.beginPath(); ctx.ellipse(sx, sy, APE_SLAM_R, APE_SLAM_R*0.5, 0, 0, 7); ctx.stroke();
+    ctx.restore();
+  }
   if(e.landT>0){
     // the shockwave ring from the slam, expanding out to the true hit radius then gone
     const p=1-clamp(e.landT/APE_LAND_TIME,0,1);
@@ -2100,25 +2183,31 @@ function drawApe(ctx,e,sx,sy){
   let img;
   if(e.introT>0) img = APEIMG.idle[0];
   else if(e.leapState==="windup") img = APEIMG.jump[0];
-  else if(e.leapState==="leap"){
-    const prog=1-clamp(e.leapActT/APE_LEAP_TIME,0,1);
-    img = prog<0.55 ? APEIMG.jump[0] : APEIMG.jump[1];
-  }
+  else if(e.leapState==="leap") img = prog<0.4 ? APEIMG.jump[0] : APEIMG.jump[1];
   else if(e.landT>0) img = APEIMG.jump[2];
   else img = APEIMG.run[Math.floor(e.fi)%APEIMG.run.length];
   if(!img || !img.complete || !img.naturalWidth){ ctx.restore(); return; }
   const eh=54, ew=eh*img.naturalWidth/img.naturalHeight;
+  const dy=sy-lift;
+  if(lift>1){
+    // a small ground contact shadow keeps drifting under it while it's lifted, distinct from
+    // the big dark landing-zone ellipse already drawn above at the true impact point
+    ctx.save(); ctx.globalAlpha*=0.25*(lift/APE_ARC_H);
+    ctx.fillStyle="#000";
+    ctx.beginPath(); ctx.ellipse(sx, sy+7, 16, 5, 0, 0, 7); ctx.fill();
+    ctx.restore();
+  }
   ctx.save(); ctx.imageSmoothingEnabled=false;
   if(e.dir<0){ ctx.translate(sx*2,0); ctx.scale(-1,1); }
-  ctx.drawImage(img, sx-ew/2, sy-eh, ew, eh);
+  ctx.drawImage(img, sx-ew/2, dy-eh, ew, eh);
   ctx.restore();
   if(e.hitT>0){
     ctx.save(); ctx.globalAlpha=Math.min(1,e.hitT/0.22)*0.85;
     ctx.fillStyle="#fff";
-    ctx.beginPath(); ctx.ellipse(sx, sy-eh*0.5, ew*0.5, eh*0.5, 0,0,7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(sx, dy-eh*0.5, ew*0.5, eh*0.5, 0,0,7); ctx.fill();
     ctx.restore();
   }
-  drawEnemyHP(ctx,e,sx,sy,eh);
+  drawEnemyHP(ctx,e,sx,dy,eh);
   ctx.restore();
 }
 function drawEnemy(ctx,e,sx,sy){
@@ -2537,8 +2626,7 @@ function parkDraw(t){
   {
     // wave progress, sat directly under the DOGPARK header so everything about the wave
     // reads in one place at the top of the screen
-    const left=Math.max(0,PK.waveQuota-PK.waveSpawned)+PK.en.filter(e=>!e.fleeing && !pkSideHazard(e)).length;
-    const pct=clamp(1-left/Math.max(1,PK.waveQuota),0,1);
+    const pct=pkWavePct();
     const bw=w*0.46, bx=w/2-bw/2, by=25;
     ctx.fillStyle="rgba(0,0,0,.55)"; ctx.fillRect(bx,by,bw,7);
     ctx.fillStyle="#4a9"; ctx.fillRect(bx+1,by+1,(bw-2)*pct,5);

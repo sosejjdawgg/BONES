@@ -74,10 +74,9 @@ $("#money1").style.cursor="pointer"; $("#money2").style.cursor="pointer"; $("#mo
 // during init, because park.js (and its `const PK`) is concatenated after this file.
 var PARK_HDR=false;
 function syncParkHeader(){
-  const left=Math.max(0,PK.waveQuota-PK.waveSpawned)+PK.en.filter(e=>!e.fleeing && !pkSideHazard(e)).length;
   $("#camlabel").textContent = PK.plusMode ? "DOGPARK+" : "DOGPARK";
   $("#clock").textContent    = "WAVE "+PK.wave;
-  $("#camstate").textContent = left+" LEFT";
+  $("#camstate").textContent = pkLeftCount()+" LEFT";
   $("#needAlert").classList.add("hidden");     // home needs are not the park's business
 }
 function restoreCamHeader(){
