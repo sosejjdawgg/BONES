@@ -109,7 +109,8 @@ function drawLock(ctx,x,y,s,color){
 const BONES_EXCHANGE=[
   {label:"XP",    sub:"10 BONES → 2 XP",    cost:10, f:()=>pkAwardXP(2)},
   {label:"MONEY", sub:"10 BONES → $5",      cost:10, f:()=>{S.money+=5;}},
-  {label:"TREAT", sub:"15 BONES → 1 BONE TREAT", cost:15, f:()=>{S.snacks+=1;}}
+  {label:"TREAT", sub:"15 BONES → 1 BONE TREAT", cost:15, f:()=>{S.snacks+=1;}},
+  {label:"COMPASS", sub:"100 BONES → FIND FRIENDS & SECRETS", cost:100, f:()=>{PK.compass=true;}}
 ];
 const SPARKS=[]; // celebratory burst when a shop purchase lands
 const HITFX=[];  // impact markers: a snapping ring plus a cross, so every bark visibly lands
@@ -292,8 +293,8 @@ function startPark(plus){
   Object.assign(PK,{
     active:true,t:0,wave:1,waveT:0,spawnT:1,
     waveQuota:pkWaveQuota(1), waveSpawned:0,
-    goldenDone:false, goldenAt:3+Math.random()*8, goldenWarned:false, goldenBanner:null,
-    convertOpen:false, barkedTypes:{}, missionBarkAll:false, missionSurviveW1:false,
+    goldenDone:false, goldenAt:3+Math.random()*8, goldenWarned:false, goldenBanner:null, goldenSkipNext:false,
+    convertOpen:false, barkedTypes:{}, missionBarkAll:false, missionSurviveW1:false, compass:false,
     maxhp:Math.round(100+100*S.mood/100),
     spd:95*(0.75+0.5*S.energy/100)*(S.senior?0.85:1)*lvlMul*moodMul,
     barkMax:Math.max(1.2,3-0.06*S.lvl), barkCd:1, pulse:0,
@@ -1491,7 +1492,11 @@ function parkUpdate(dt){
     if(PK.wave>=3) tickTodo("j_wave3");
     PK.barkMax=Math.max(1,PK.barkMax-0.12); PK.barkR=Math.min(BARK_CAP,PK.barkR+3.5);
     PK.waveQuota=pkWaveQuota(PK.wave); PK.waveSpawned=0;
-    PK.goldenDone=false; PK.goldenAt=3+Math.random()*8; PK.goldenWarned=false;
+    // the golden bird visits every wave — except the one right after she was actually caught,
+    // which sits out as her one wave of downtime before she's back
+    if(PK.goldenSkipNext){ PK.goldenDone=true; PK.goldenSkipNext=false; }
+    else PK.goldenDone=false;
+    PK.goldenAt=3+Math.random()*8; PK.goldenWarned=false;
     if(PK.wave===6) pkSpawnAlphaSquad();
     // from wave 6 the types come mixed \u2014 that is the point of "you're on your own"
     if(PK.wave>=6){ PK.mixTypes=pkPickMixTypes(); PK.mixLabel=MIX_NAME[PK.mixTypes[0]]+" & "+MIX_NAME[PK.mixTypes[1]]; }
@@ -1985,7 +1990,7 @@ function parkUpdate(dt){
     const f=PK.fr[i];
     f.x=(f.x+f.vx*dt+WW)%WW; f.life-=dt;
     if(Math.hypot(wd(f.x-PK.x,WW),wd(f.y-PK.y,WH))<20){
-      if(f.golden){ pkGain(20,f.x,f.y); pkZoomies(); }
+      if(f.golden){ pkGain(20,f.x,f.y); pkZoomies(); PK.goldenSkipNext=true; }
       else {
         // she doesn't patch you up, she puts you right back together
         PK.hp=PK.maxhp;
@@ -2237,7 +2242,9 @@ function pkDrawBanner(ctx,w,h,banner,color){
   const {text,sub,life,max}=banner, el=max-life;
   const inP=Math.min(1,el/0.35), outP=Math.min(1,life/0.8);
   const alpha=Math.min(inP,outP), rise=(1-outP)*h*0.05;
-  const band=sub?h*0.22:h*0.15, top=h*0.33-rise;
+  // lower-middle of the play area, not the top-middle — the old spot sat right over Bones and
+  // the action; this way a wave/golden-bird banner never blocks the fight it's announcing
+  const band=sub?h*0.22:h*0.15, top=h*0.90-band-rise;
   ctx.save(); ctx.globalAlpha=alpha;
   ctx.fillStyle="rgba(0,0,0,.68)"; ctx.fillRect(0,top,w,band);
   ctx.strokeStyle=color; ctx.lineWidth=3;
@@ -2259,6 +2266,23 @@ function pkDrawBanner(ctx,w,h,banner,color){
   }
   ctx.textAlign="left";
   ctx.restore();
+}
+// COMPASS powerup: a small pulsing edge-arrow pointing at something off-screen. Once it's
+// actually in view there's nothing left to point at, so the arrow just doesn't draw.
+function pkDrawCompassArrow(ctx,w,h,DX,DY,SC,t,tx,ty,label,color){
+  const [mx,my]=SC(tx,ty);
+  if(mx>-30&&mx<w+30&&my>-30&&my<h+30) return;
+  const ang=Math.atan2(my-DY,mx-DX);
+  const R=Math.min(w,h)/2;
+  const ex=DX+Math.cos(ang)*(R-42), ey=DY+Math.sin(ang)*(R-42);
+  const pulse=0.4+0.5*Math.abs(Math.sin(t*4));
+  ctx.save(); ctx.translate(ex,ey); ctx.rotate(ang);
+  ctx.strokeStyle=color; ctx.globalAlpha=pulse; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(10,0); ctx.lineTo(-6,-6); ctx.lineTo(-6,6); ctx.closePath(); ctx.stroke();
+  ctx.restore();
+  const lx=DX+Math.cos(ang)*(R-60), ly=DY+Math.sin(ang)*(R-60);
+  ctx.fillStyle=color; ctx.globalAlpha=pulse; ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="center";
+  ctx.fillText(label, lx, ly); ctx.textAlign="left"; ctx.globalAlpha=1;
 }
 function pkDrawScorch(ctx,SC,w,h){
   for(const sc of PK.scorch){
@@ -2691,6 +2715,23 @@ function parkDraw(t){
       ctx.restore(); ctx.globalAlpha=1;
     }
   }
+  if(PK.compass){
+    pkDrawCompassArrow(ctx,w,h,DX,DY,SC,t,PK.gate.x,PK.gate.y,"EXIT","#f22");
+    let nearestHeal=null, bestHD=Infinity;
+    for(const p of PK.powerups){
+      if(p.type!=="regen") continue;
+      const d=Math.hypot(wd(p.x-PK.x,WW),wd(p.y-PK.y,WH));
+      if(d<bestHD){ bestHD=d; nearestHeal=p; }
+    }
+    if(nearestHeal) pkDrawCompassArrow(ctx,w,h,DX,DY,SC,t,nearestHeal.x,nearestHeal.y,"HEALTH","#3fdc7a");
+    let nearestFriend=null, bestFD=Infinity;
+    for(const f2 of PK.fr){
+      if(f2.golden) continue;
+      const d=Math.hypot(wd(f2.x-PK.x,WW),wd(f2.y-PK.y,WH));
+      if(d<bestFD){ bestFD=d; nearestFriend=f2; }
+    }
+    if(nearestFriend) pkDrawCompassArrow(ctx,w,h,DX,DY,SC,t,nearestFriend.x,nearestFriend.y,"FRIEND","#f6a");
+  }
   for(const f of PK.fr){
     const [fx2,fy2]=SC(f.x,f.y);
     if(fx2<-40||fx2>w+40||fy2<-40||fy2>h+40) continue;
@@ -2903,17 +2944,6 @@ function parkDraw(t){
     ctx.globalAlpha=1;
   }
   ctx.restore();   // back to screen space for the fixed HUD (banners, flashes, health bar)
-  {
-    // wave progress, sat directly under the DOGPARK header so everything about the wave
-    // reads in one place at the top of the screen
-    const pct=pkWavePct();
-    const bw=w*0.46, bx=w/2-bw/2, by=25;
-    ctx.fillStyle="rgba(0,0,0,.55)"; ctx.fillRect(bx,by,bw,7);
-    ctx.fillStyle="#4a9"; ctx.fillRect(bx+1,by+1,(bw-2)*pct,5);
-    ctx.strokeStyle="rgba(255,255,255,.55)"; ctx.lineWidth=1; ctx.strokeRect(bx,by,bw,7);
-    ctx.fillStyle="#cfe6ff"; ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText(Math.round(pct*100)+"% CLEAR", w/2, by+17); ctx.textAlign="left";
-  }
   // wave-transition banner \u2014 pops in, holds, fades, so a new wave actually reads as an event.
   // the golden-bird heads-up reuses the exact same treatment, just gold instead of red, so the
   // two read as one consistent "big event" idiom rather than two different UI languages
@@ -3170,8 +3200,9 @@ function pkPadDraw(t){
       if(rc){ ctx.fillStyle="#f22"; ctx.font="6px 'Press Start 2P',monospace"; ctx.fillText("\u2b25 "+rc.name, 10, 46); }
     }
     // sub-friends' health lives directly under BONES' own bar, smaller \u2014 he's their leader.
-    // only squirrel/cat carry HP at all (the bird flock is never itself a target)
-    let ppy=by+bh2+8;
+    // only squirrel/cat carry HP at all (the bird flock is never itself a target). Pushed down
+    // past BONES' own hp/maxhp number (drawn just above) so the two stop colliding.
+    let ppy=by+bh2+24;
     for(const kind of ["sq","cat"]){
       const p=PK.pals.find(q=>q.k===kind);
       if(!p) continue;
@@ -3188,6 +3219,30 @@ function pkPadDraw(t){
     }
   }
   ctx.textAlign="left";
+  if(!PK.shop && !PK.joy && !PK.friendsOpen && !PK.convertOpen){
+    // the current wave's objective + clear progress — moved down here from the top of the main
+    // play view so the gameplay canvas itself stays clear of overlaid chrome
+    const pct=pkWavePct();
+    const goal = PK.wave===APE_WAVE ? "CLEAR THE APES" : pkWaveName(PK.wave);
+    ctx.textAlign="center"; ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle="#fff";
+    const maxGW=w*0.86;
+    const gwords=DN(goal).split(" "); const glines=[]; let gcur="";
+    for(const gw of gwords){
+      const trial=gcur?gcur+" "+gw:gw;
+      if(ctx.measureText(trial).width>maxGW && gcur){ glines.push(gcur); gcur=gw; } else gcur=trial;
+    }
+    if(gcur) glines.push(gcur);
+    const gy0=94, shown=glines.slice(0,2);
+    shown.forEach((ln,i)=>ctx.fillText(ln, w/2, gy0+i*10));
+    const gby=gy0+shown.length*10-2;
+    const gbw=Math.min(220,w*0.7), gbx=w/2-gbw/2;
+    ctx.fillStyle="rgba(0,0,0,.55)"; ctx.fillRect(gbx,gby,gbw,8);
+    ctx.fillStyle="#4a9"; ctx.fillRect(gbx+1,gby+1,(gbw-2)*pct,6);
+    ctx.strokeStyle="rgba(255,255,255,.55)"; ctx.lineWidth=1; ctx.strokeRect(gbx,gby,gbw,8);
+    ctx.fillStyle="#cfe6ff"; ctx.font="6px 'Press Start 2P',monospace";
+    ctx.fillText(Math.round(pct*100)+"% CLEAR", w/2, gby+17);
+    ctx.textAlign="left";
+  }
   if(PK.zoomT>0){
     const bw=Math.min(170,w*0.62), bx=w/2-bw/2;
     ctx.fillStyle="rgba(255,217,74,.18)"; ctx.fillRect(bx,44,bw,18);
@@ -3212,7 +3267,7 @@ function pkPadDraw(t){
     ctx.globalAlpha=1;
   }
   if(PK.convertOpen){
-    ctx.strokeStyle="#fff"; ctx.lineWidth=3; ctx.strokeRect(w*0.06,h*0.07,w*0.88,h*0.55);
+    ctx.strokeStyle="#fff"; ctx.lineWidth=3; ctx.strokeRect(w*0.06,h*0.07,w*0.88,h*0.74);
     ctx.fillStyle="#fff"; ctx.font="10px 'Press Start 2P',monospace"; ctx.textAlign="center";
     ctx.fillText("EXCHANGE BONES", w/2, h*0.135);
     const wbW=w*0.5, wbX=w/2-wbW/2, wbY=h*0.165, wbH=h*0.065;
@@ -3224,7 +3279,8 @@ function pkPadDraw(t){
     const cRowStep=h*0.10, cCardH=h*0.075, cRow0=h*0.33;
     BONES_EXCHANGE.forEach((o,i)=>{
       const y=cRow0+i*cRowStep, top=y-cCardH*0.5;
-      const spent = o.label==="XP" && pkXPLeft()<=0;
+      const owned = o.label==="COMPASS" && PK.compass;
+      const spent = (o.label==="XP" && pkXPLeft()<=0) || owned;
       const afford=PK.bones>=o.cost && !spent;
       ctx.strokeStyle = spent?"#334":(afford?"#fff":"#663333"); ctx.lineWidth=2;
       ctx.strokeRect(w*0.10, top, w*0.80, cCardH);
@@ -3232,13 +3288,13 @@ function pkPadDraw(t){
       ctx.fillStyle = spent?"#556":(afford?"#fff":"#a55");
       ctx.fillText(o.label, w*0.145, y-1);
       ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle = spent?"#445":"#999";
-      ctx.fillText(spent?"XP CAP REACHED THIS RUN":o.sub, w*0.145, y+11);
+      ctx.fillText(owned?"ALREADY OWNED THIS RUN":spent?"XP CAP REACHED THIS RUN":o.sub, w*0.145, y+11);
       ctx.textAlign="right"; ctx.font="7px 'Press Start 2P',monospace";
       ctx.fillStyle = afford?"#fff":"#f22";
       ctx.fillText(o.cost+"◆", w*0.855, y+2);
       ctx.textAlign="left";
     });
-    const doneY=cRow0+3*cRowStep, doneH=h*0.05;
+    const doneY=cRow0+BONES_EXCHANGE.length*cRowStep, doneH=h*0.05;
     ctx.strokeStyle="#666"; ctx.lineWidth=2;
     ctx.strokeRect(w*0.30,doneY-doneH*0.5,w*0.40,doneH);
     ctx.fillStyle="#888"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
@@ -3314,16 +3370,17 @@ function pkPadDraw(t){
     if(PK.convertOpen){
       const yF=(e.clientY-r.top)/r.height;
       const cRowStep=0.10, cCardH=0.075, cRow0=0.33, tolF=cCardH/2;
-      for(let i=0;i<3;i++){
+      for(let i=0;i<BONES_EXCHANGE.length;i++){
         if(Math.abs(yF-(cRow0+i*cRowStep))<tolF){
           const o=BONES_EXCHANGE[i];
           if(o.label==="XP" && pkXPLeft()<=0){ beep(150,.1); toast("XP CAP REACHED FOR THIS RUN",1); }
+          else if(o.label==="COMPASS" && PK.compass){ beep(150,.1); toast("ALREADY OWNED THIS RUN",1); }
           else if(PK.bones>=o.cost){ PK.bones-=o.cost; o.f(); beep(700,.06); toast(o.sub+" — DONE"); }
           else beep(150,.1);
           return;
         }
       }
-      if(Math.abs(yF-(cRow0+3*cRowStep))<0.04){ PK.convertOpen=false; beep(400,.05); }
+      if(Math.abs(yF-(cRow0+BONES_EXCHANGE.length*cRowStep))<0.04){ PK.convertOpen=false; beep(400,.05); }
       return;
     }
     if(PK.friendsOpen){
