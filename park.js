@@ -972,7 +972,7 @@ function pkHitR(e){
 function pkBark(){
   PK.barkCd = PK.zoomT>0 ? 0 : PK.barkMax;   // mid-zoomies there is no cooldown at all
   PK.pulse=0.35;
-  beep(190,.1,"square",.06);
+  bark(0.82);
   let hits=0;
   for(let i=PK.en.length-1;i>=0;i--){
     const e=PK.en[i];

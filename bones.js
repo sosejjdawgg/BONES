@@ -15,6 +15,132 @@ function beep(f=440,d=.06,type="square",g=.04){
     o.start(); o.stop(AC.currentTime+d);
   }catch(e){}
 }
+// a short burst of filtered noise — the breathy "chuff" texture layered under bark() and
+// other percussive hits, so they don't read as pure tone
+function noiseBurst(dur,freq,q,gain,t0){
+  const buf=AC.createBuffer(1, Math.max(1,Math.floor(AC.sampleRate*dur)), AC.sampleRate);
+  const d=buf.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*(1-i/d.length);
+  const src=AC.createBufferSource(); src.buffer=buf;
+  const f=AC.createBiquadFilter(); f.type="bandpass"; f.frequency.value=freq; f.Q.value=q;
+  const g=AC.createGain(); g.gain.setValueAtTime(gain,t0); g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+  src.connect(f); f.connect(g); g.connect(AC.destination);
+  src.start(t0);
+}
+// a real synthesised woof — a fast downward sawtooth sweep (the tonal body) layered with a
+// bandpassed noise burst (the breathy chuff) — instead of a flat beep standing in for a bark.
+// strength scales pitch + noise brightness so DOGPARK's rapid-fire barks can read a little
+// smaller/tighter than Bones' full home-screen woof.
+function bark(strength=1){
+  if(!SETTINGS.sound) return;
+  try{
+    AC = AC || new (window.AudioContext||window.webkitAudioContext)();
+    const t0=AC.currentTime;
+    const o=AC.createOscillator(), og=AC.createGain();
+    o.type="sawtooth";
+    o.frequency.setValueAtTime(360*strength,t0);
+    o.frequency.exponentialRampToValueAtTime(115*strength,t0+0.11);
+    og.gain.setValueAtTime(0.0001,t0);
+    og.gain.exponentialRampToValueAtTime(0.24,t0+0.012);
+    og.gain.exponentialRampToValueAtTime(0.0001,t0+0.15);
+    o.connect(og); og.connect(AC.destination);
+    o.start(t0); o.stop(t0+0.17);
+    noiseBurst(0.1, 950*strength, 0.9, 0.14, t0);
+  }catch(e){}
+}
+function sfxLevelUp(){
+  if(!SETTINGS.sound) return;
+  try{
+    AC = AC || new (window.AudioContext||window.webkitAudioContext)();
+    const t0=AC.currentTime;
+    const notes=[523.25,659.25,783.99,1046.5];   // C5 E5 G5 C6 — a clean major fanfare
+    notes.forEach((f,i)=>{
+      const t=t0+i*0.09, last=i===notes.length-1;
+      const o=AC.createOscillator(), g=AC.createGain();
+      o.type = last ? "triangle" : "square";
+      o.frequency.value=f;
+      g.gain.setValueAtTime(0.0001,t);
+      g.gain.exponentialRampToValueAtTime(0.09,t+0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001,t+(last?0.35:0.13));
+      o.connect(g); g.connect(AC.destination);
+      o.start(t); o.stop(t+(last?0.38:0.16));
+    });
+  }catch(e){}
+}
+function sfxSick(){
+  if(!SETTINGS.sound) return;
+  try{
+    AC = AC || new (window.AudioContext||window.webkitAudioContext)();
+    const t0=AC.currentTime;
+    const o=AC.createOscillator(), g=AC.createGain();
+    o.type="sawtooth";
+    o.frequency.setValueAtTime(220,t0);
+    o.frequency.exponentialRampToValueAtTime(70,t0+0.55);
+    g.gain.setValueAtTime(0.0001,t0);
+    g.gain.exponentialRampToValueAtTime(0.1,t0+0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001,t0+0.6);
+    o.connect(g); g.connect(AC.destination);
+    o.start(t0); o.stop(t0+0.62);
+  }catch(e){}
+}
+function sfxBetter(){
+  if(!SETTINGS.sound) return;
+  try{
+    AC = AC || new (window.AudioContext||window.webkitAudioContext)();
+    const t0=AC.currentTime;
+    [520,700,900].forEach((f,i)=>{
+      const t=t0+i*0.07;
+      const o=AC.createOscillator(), g=AC.createGain();
+      o.type="triangle"; o.frequency.value=f;
+      g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.08,t+0.01); g.gain.exponentialRampToValueAtTime(0.0001,t+0.14);
+      o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t+0.16);
+    });
+  }catch(e){}
+}
+// the one moment in the whole game that should feel heaviest — a slow, solemn descent instead
+// of the usual bright arcade beeps
+function sfxGoodbye(){
+  if(!SETTINGS.sound) return;
+  try{
+    AC = AC || new (window.AudioContext||window.webkitAudioContext)();
+    const t0=AC.currentTime;
+    const notes=[392,349.23,293.66,261.63];   // G4 F4 D4 C4 — a slow, solemn descent
+    notes.forEach((f,i)=>{
+      const t=t0+i*0.55;
+      const o=AC.createOscillator(), g=AC.createGain();
+      o.type="sine"; o.frequency.value=f;
+      g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.1,t+0.08); g.gain.exponentialRampToValueAtTime(0.0001,t+0.9);
+      o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t+0.95);
+    });
+  }catch(e){}
+}
+function haptic(pattern){
+  try{ if(navigator.vibrate) navigator.vibrate(pattern); }catch(e){}
+}
+/* ---------- background music: a small looping chiptune bed, purely procedural ---------- */
+const MUSIC_BASS=[110,110,98,110, 87.31,87.31,98,110];        // A2 A2 G2 A2 F2 F2 G2 A2
+const MUSIC_ARP=[220,277.18,329.63,440];                       // A3 C#4 E4 A4
+let musicTimer=null, musicStep=0;
+function musicTick(){
+  if(!SETTINGS.music || !SETTINGS.sound) return;
+  try{
+    AC = AC || new (window.AudioContext||window.webkitAudioContext)();
+    const t0=AC.currentTime;
+    const bo=AC.createOscillator(), bg=AC.createGain();
+    bo.type="triangle"; bo.frequency.value=MUSIC_BASS[musicStep%MUSIC_BASS.length];
+    bg.gain.setValueAtTime(0.0001,t0); bg.gain.exponentialRampToValueAtTime(0.05,t0+0.02); bg.gain.exponentialRampToValueAtTime(0.0001,t0+0.34);
+    bo.connect(bg); bg.connect(AC.destination); bo.start(t0); bo.stop(t0+0.36);
+
+    const ao=AC.createOscillator(), ag=AC.createGain();
+    ao.type="square"; ao.frequency.value=MUSIC_ARP[musicStep%MUSIC_ARP.length];
+    ag.gain.setValueAtTime(0.0001,t0); ag.gain.exponentialRampToValueAtTime(0.022,t0+0.01); ag.gain.exponentialRampToValueAtTime(0.0001,t0+0.16);
+    ao.connect(ag); ag.connect(AC.destination); ao.start(t0); ao.stop(t0+0.18);
+
+    musicStep++;
+  }catch(e){}
+}
+function startMusic(){ if(!musicTimer) musicTimer=setInterval(musicTick,380); }
+function stopMusic(){ if(musicTimer){ clearInterval(musicTimer); musicTimer=null; } }
 
 /* ---------- toast ---------- */
 let toastT=0;
@@ -43,7 +169,7 @@ const S = {
   lvl:1, xp:0, gen:1, senior:false, seniorDays:0, lifePathChosen:false, litter:false, memorialSrc:null, pendingStage:[],
   lastSaveAt:null, lastSaveDay:0, lastSaveH:0, dogParkPlusUnlocked:false
 };
-const SETTINGS = { sound:true, reduceMotion:false };
+const SETTINGS = { sound:true, reduceMotion:false, music:true };
 const CHARMS = [
   {id:"spike", name:"SPIKED COLLAR", cost:15, unlock:2,   fx:"+15% SPEED / -10% JUMP",            mod:{spd:1.15,jmp:0.90}},
   {id:"band",  name:"RED BANDANA",   cost:10, unlock:5,   fx:"+15% JUMP",                          mod:{jmp:1.15}},
@@ -140,8 +266,8 @@ function tickStats(dt, force){
   // 24h game clock: 10 real seconds = 1 game hour (1 day = 4 min)
   // sickness: sustained severe neglect makes him properly ill
   if(avgStat()<20){ S.sickTimer+=dt; S.wellTimer=0; } else { S.wellTimer+=dt; }
-  if(!S.sick && S.sickTimer>75){ S.sick=true; toast("BONES IS SICK. HE NEEDS CARE \u2014 NO RUNS UNTIL HE RECOVERS.",1); beep(100,.4,"sawtooth"); }
-  if(S.sick && S.wellTimer>25){ S.sick=false; S.sickTimer=0; S.dead=false; toast("BONES IS FEELING BETTER."); beep(700,.1); }
+  if(!S.sick && S.sickTimer>75){ S.sick=true; toast("BONES IS SICK. HE NEEDS CARE \u2014 NO RUNS UNTIL HE RECOVERS.",1); sfxSick(); haptic([50,60,50]); }
+  if(S.sick && S.wellTimer>25){ S.sick=false; S.sickTimer=0; S.dead=false; toast("BONES IS FEELING BETTER."); sfxBetter(); }
   if(avgStat()<25) S.dayNeglected=true;
   CLK.h += dt*WORK_FF/10;
   if(CLK.h>=24){
@@ -264,7 +390,7 @@ function addXP(n){
     S.xp-=xpNeed(S.lvl); S.lvl++;
     LVLFX=1.2;
     if(S.lvl===15) tickTodo("lvl5");
-    beep(660,.07); setTimeout(()=>beep(880,.07),90); setTimeout(()=>beep(1170,.1),180);
+    sfxLevelUp(); haptic(40);
     toast("LEVEL "+S.lvl+"!"+(LVLREWARDS[S.lvl]?" "+LVLREWARDS[S.lvl]:""));
     if(S.lvl===5) S.pendingStage.push(5);
     if(S.lvl===10) S.pendingStage.push(10);
@@ -303,6 +429,7 @@ function openLifeChoice(){
     "STAY PRIME FOREVER",()=>{ S.lifePathChosen=true; XPLOCK=false; toast("BONES STAYS IN HIS PRIME. FOREVER."); });
 }
 function startGoodbye(){
+  sfxGoodbye(); haptic([80,100,80,100,150]);
   openChoice("GOODBYE, BONES",
     "AFTER A GOOD, LONG LIFE, BONES PASSED<br>PEACEFULLY IN HIS SLEEP.<br><br>HIS PHOTO NOW HANGS ON THE WALL.<br>HE LEAVES A LEGACY TAG"+(S.litter?"<br>\u2014 AND A PUP WHO'S BEEN WAITING.":"<br>FOR THE PUPPY WHO COMES NEXT."),
     "CONTINUE", successor);
@@ -319,6 +446,7 @@ function successor(){
 }
 function triggerDeath(){
   beep(60,.9,"sawtooth",.04);
+  haptic([100,50,100,50,200]);
   if(PK.active){ PK.active=false; showScreen("home"); }
   if(R.active){ R.active=false; showScreen("home"); }
   OUTING.active=false;
@@ -1391,6 +1519,7 @@ function camBehavior(dt){
         BALL.y=0.795; BALL.vx=0; BALL.vy=0; BALL.cool=2;
         S.fun=clamp(S.fun+12,0,100); S.mood=clamp(S.mood+6,0,100); heartsBurst(3);
         toast("BONES DROPS THE BALL! +FUN"); beep(880,.07); setTimeout(()=>beep(1100,.07),90);
+        bark(1); setTimeout(()=>bark(0.9),150);
         CAM.state="bark"; CAM.woof=1.8; CAM.t=0; CAM.until=1.8; CAM.fi=0; CAM.fetchPhase=0;
       }
     }
@@ -1467,7 +1596,7 @@ function camBehavior(dt){
         toast("SCRUB BONES WITH YOUR FINGER!");
       } else {
         CAM.state="bark"; CAM.t=0; CAM.until=1.6; CAM.woof=1.6; CAM.cameCalled=true; CAM.fi=0;
-        beep(260,.09); setTimeout(()=>beep(260,.09),150);
+        bark(1); setTimeout(()=>bark(0.95),150);
         if(CAM.needCheck){ CAM.needCheck=false; setTimeout(showLowestNeed,900); }
       }
     }
@@ -1599,7 +1728,7 @@ function camBehavior(dt){
     }
     else if(CAM.state==="walk"){
       const r=Math.random();
-      if(S.fun<30 && r<0.45){ CAM.state="bark"; CAM.until=2.4; CAM.woof=2.4; beep(240,.09); setTimeout(()=>beep(240,.09),160); }
+      if(S.fun<30 && r<0.45){ CAM.state="bark"; CAM.until=2.4; CAM.woof=2.4; bark(0.75); setTimeout(()=>bark(0.7),160); }
       else if(r<0.15){ CAM.state="shake"; CAM.until=1.3; }
       else if(r<0.65){ CAM.state="sniff"; CAM.until=2+Math.random()*2.5; }
       else { CAM.state="idle"; CAM.until=1.2+Math.random()*1.5; }
@@ -3172,6 +3301,7 @@ function renderSaveCard(){
 }
 function renderSettings(){
   $("#setSound").textContent = SETTINGS.sound ? "ON" : "OFF";
+  $("#setMusic").textContent = SETTINGS.music ? "ON" : "OFF";
   $("#setMotion").textContent = SETTINGS.reduceMotion ? "ON" : "OFF";
   $("#mReplayTutorial").style.display = S.pbTutorialDone ? "" : "none";
 }
@@ -3183,6 +3313,11 @@ $("#settingsClose").onclick=()=>$("#settingsPanel").classList.remove("show");
 $("#setSound").onclick=()=>{
   SETTINGS.sound=!SETTINGS.sound; renderSettings();
   if(SETTINGS.sound) beep(500,.05);
+};
+$("#setMusic").onclick=()=>{
+  SETTINGS.music=!SETTINGS.music;
+  if(SETTINGS.music) startMusic(); else stopMusic();
+  renderSettings(); beep(500,.05);
 };
 $("#setMotion").onclick=()=>{
   SETTINGS.reduceMotion=!SETTINGS.reduceMotion;
@@ -3453,6 +3588,7 @@ document.body.classList.toggle("reduce-motion", SETTINGS.reduceMotion);
 $("#startDog").src = PORTRAITS.happy;
 if(!STORAGE_OK) addMail("storage","PROGRESS CAN'T BE SAVED","STORAGE IS BLOCKED ON THIS DEVICE — "+NAME().toUpperCase()+"'S PROGRESS WON'T PERSIST BETWEEN VISITS.");
 buildMeters(); renderMeters(); renderShop(); renderTodo(); renderDogSel(); renderMailBadge();
+if(SETTINGS.music) startMusic();
 let nagNext = performance.now()/1000 + 45;
 let last=performance.now(), meterAcc=0;
 function loop(now){

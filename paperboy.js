@@ -146,6 +146,7 @@ function pbApplyResult(h,zone,power){
       // SKILLSHOT — bonus pay, a delighted customer, and often a tip on the doorstep
       PB.stats.skillshot++;
       h.happyT=3.5;
+      haptic([20,30,20]);
       if(Math.random()<PB_TIP_CHANCE){
         h.tip=PB_TIP_MIN+Math.floor(Math.random()*(PB_TIP_MAX-PB_TIP_MIN+1));
         PB.stats.tips+=h.tip;
