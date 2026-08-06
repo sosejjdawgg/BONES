@@ -6,6 +6,10 @@
 // the path IS the aiming guide, and it's drawn exactly as wide as the doormat tolerance, so
 // "throw while the van is over the path" is literally the rule for a perfect delivery.
 const PB_ROUTE_LEN=12, PB_HOUSE_GAP=250;
+// the street has far more addressed houses than parcels today — PB_STREET_LEN houses total,
+// laid out UK-style (odd numbers up one side, even up the other, each side incrementing by 2),
+// with only PB_ROUTE_LEN of them actually due a delivery.
+const PB_STREET_LEN=PB_ROUTE_LEN*3;
 const PB_SPEED0=95, PB_SPEED_MAX=155, PB_SPEED_RAMP=0.7;
 const PB_TOL={doormat:11, house:27, window:50};
 const PB_CHARGE_TIME=3.0, PB_TAP_MAX=0.22, PB_SWIPE_MIN=26;
@@ -24,7 +28,7 @@ const PB_HOUSE_DEPTH=64, PB_HOUSE_W=94;
 const PB_WALL_H=60, PB_ROOF_H=32;
 
 const PB={
-  active:false, run:false,
+  active:false, run:false, tutorial:false,
   dist:0, speed:0, houses:[], decoys:[], nextIdx:0,
   pressing:false, pressSide:null, pressT:0,
   charging:null, fx:[], shake:0,
@@ -32,24 +36,31 @@ const PB={
   stats:{perfect:0, house:0, destruction:0, miss:0, skillshot:0, tips:0}
 };
 
+/* ---------- tutorial: two houses, van stops at each, teaches swipe-throw then hold-skillshot ---------- */
+const PBTUT_STEP={DRIVE_TO_1:0, TEACH_SWIPE:1, CELEBRATE_1:2, DRIVE_TO_2:3, TEACH_CHARGE:4, CELEBRATE_2:5, COMPLETE:6};
+const PBTUT={step:0, stepT:0, arrowPulse:0, waitingInput:false, bannerT:0, houseIdx:0, target:0};
+
 function pbNewRoute(){
-  const houses=[];
+  // one continuous, correctly-numbered street: side flips every house in lockstep with doorNum
+  // incrementing by 1, so every house on one side always shares the same parity — real UK-style
+  // odd-one-side/even-other-side numbering, not two independently-numbered arrays.
+  const street=[];
   const doorStart=20+Math.floor(Math.random()*70);
   let side=Math.random()<0.5?"L":"R";
-  for(let i=0;i<PB_ROUTE_LEN;i++){
-    houses.push({doorNum:doorStart+i, side, worldDist:PB_HOUSE_GAP*(i+1), thrown:false, zone:null, angryT:0, happyT:0, tip:0});
+  for(let i=0;i<PB_STREET_LEN;i++){
+    street.push({doorNum:doorStart+i, side, worldDist:PB_HOUSE_GAP*(i+1)});
     side = side==="L" ? "R" : "L";
   }
-  // decoys: houses on the street that just aren't due a delivery — pure scenery, never a throw
-  // target, never touched by pbThrow/updatePaperboy's nextIdx logic. Inspired by the original
-  // Paperboy's non-subscriber houses: they fill in the gaps so the street doesn't read as an
-  // empty runway between every delivery.
-  const decoys=[];
-  let decoyDoor=doorStart+PB_ROUTE_LEN+3;
-  for(let i=0;i<PB_ROUTE_LEN-1;i++){
-    const mid=PB_HOUSE_GAP*(i+1.5);
-    decoys.push({worldDist:mid+(Math.random()-0.5)*PB_HOUSE_GAP*0.3, side:Math.random()<0.5?"L":"R", doorNum:decoyDoor, zone:null});
-    decoyDoor+=1+Math.floor(Math.random()*2);
+  // not everyone on the street is expecting a parcel today — pick PB_ROUTE_LEN of the street's
+  // houses as due, one per even-sized bucket so they're spread out rather than clustered.
+  const bucket=PB_STREET_LEN/PB_ROUTE_LEN;
+  const dueIdx=new Set();
+  for(let b=0;b<PB_ROUTE_LEN;b++) dueIdx.add(b*bucket+Math.floor(Math.random()*bucket));
+  const houses=[], decoys=[];
+  for(let i=0;i<street.length;i++){
+    const st=street[i];
+    if(dueIdx.has(i)) houses.push({doorNum:st.doorNum, side:st.side, worldDist:st.worldDist, thrown:false, zone:null, angryT:0, happyT:0, tip:0});
+    else decoys.push({doorNum:st.doorNum, side:st.side, worldDist:st.worldDist, zone:null});
   }
   Object.assign(PB,{
     houses, decoys, nextIdx:0, dist:0, speed:PB_SPEED0,
@@ -58,6 +69,7 @@ function pbNewRoute(){
   });
 }
 function enterPaperboy(){
+  if(!S.pbTutorialDone){ enterPaperboyTutorial(); return; }
   hidePortrait(); closeStatus();
   transition("STARTING THE ROUTE",()=>{
     showScreen("paperboy");
@@ -67,14 +79,25 @@ function enterPaperboy(){
     beep(500,.06); setTimeout(()=>beep(700,.07),110);
   });
 }
+function enterPaperboyTutorial(){
+  hidePortrait(); closeStatus();
+  transition("DELIVERY TRAINING",()=>{
+    showScreen("paperboy");
+    pbTutorialStart();
+    toast("LET'S LEARN THE ROUTE",1);
+    beep(500,.06); setTimeout(()=>beep(700,.07),110);
+  });
+}
 function pbSideY(side){ return side==="L" ? 1 : -1; }   // L = down-left of road, R = up-right
 function pbPressStart(side){
-  if(!PB.run || PB.pressing) return;
+  if((!PB.run && !PB.tutorial) || PB.pressing) return;
+  if(PB.tutorial && !PBTUT.waitingInput) return;
   PB.pressing=true; PB.pressSide=side; PB.pressT=0;
 }
 function pbPressEnd(side){
   if(!PB.pressing || PB.pressSide!==side) return;
   PB.pressing=false;
+  if(PB.tutorial){ pbTutorialThrow(side,false); return; }
   if(PB.charging){
     PB.charging=null;
     beep(200,.08,"sawtooth");
@@ -87,9 +110,10 @@ function pbPressEnd(side){
 // full power and waits for the swipe to tell it which way to launch. A swipe always throws:
 // fully charged it's a SKILLSHOT, otherwise it's an ordinary throw.
 function pbLaunch(side){
-  if(!PB.run) return;
+  if(!PB.run && !PB.tutorial) return;
   const power = !!(PB.charging && PB.charging.t>=PB_CHARGE_TIME);
   PB.charging=null; PB.pressing=false; PB.pressSide=null;
+  if(PB.tutorial){ pbTutorialThrow(side,power); return; }
   pbThrow(side,power);
 }
 function pbSpawnParcelFX(house,kind){
@@ -198,6 +222,7 @@ function pbFinish(){
   beep(700,.1); setTimeout(()=>beep(950,.1),120);
 }
 function updatePaperboy(dt){
+  if(PB.tutorial){ pbTutorialUpdate(dt); return; }
   if(!PB.run) return;
   PB.shake=Math.max(0,PB.shake-dt);
   for(let i=PB.fx.length-1;i>=0;i--){
@@ -426,7 +451,7 @@ function pbDrawHUD(ctx,w,h){
 // dot tracks the van's live position along the same strip.
 function pbDrawMinimap(ctx,w,h){
   const x0=14, barW=w-28, y0=h-26, barH=14;
-  const domainMax=PB_HOUSE_GAP*(PB_ROUTE_LEN+1);
+  const domainMax=PB_HOUSE_GAP*(PB_STREET_LEN+1);
   const xAt = d => x0 + barW*clamp(d/domainMax,0,1);
   ctx.fillStyle="rgba(0,0,0,.55)"; ctx.fillRect(x0-6,y0-4,barW+12,barH+8);
   ctx.strokeStyle="rgba(255,255,255,.25)"; ctx.lineWidth=1;
@@ -450,11 +475,154 @@ function pbDrawMinimap(ctx,w,h){
     ctx.beginPath(); ctx.arc(x,y0+barH/2,4,0,7); ctx.fill();
   }
 }
+// The tutorial reuses the real house/van/parcel renderer and the real pbThrow/pbApplyResult
+// scoring path — the van is simply eased to a dead stop exactly on each house's worldDist, so
+// every throw resolves as a genuine doormat hit by construction, not by faking the result.
+function pbTutorialStart(){
+  const doorStart=20+Math.floor(Math.random()*70);
+  const side1=Math.random()<0.5?"L":"R", side2=side1==="L"?"R":"L";
+  const h1={doorNum:doorStart, side:side1, worldDist:PB_HOUSE_GAP*1, thrown:false, zone:null, angryT:0, happyT:0, tip:0};
+  const h2={doorNum:doorStart+1, side:side2, worldDist:PB_HOUSE_GAP*2, thrown:false, zone:null, angryT:0, happyT:0, tip:0};
+  Object.assign(PB,{
+    houses:[h1,h2], decoys:[], nextIdx:0, dist:0, speed:0,
+    pressing:false, pressSide:null, pressT:0, charging:null, fx:[], shake:0, swipe:null,
+    stats:{perfect:0, house:0, destruction:0, miss:0, skillshot:0, tips:0},
+    tutorial:true, active:true, run:false
+  });
+  Object.assign(PBTUT,{step:PBTUT_STEP.DRIVE_TO_1, stepT:0, arrowPulse:0, waitingInput:false, bannerT:0, houseIdx:0, target:h1.worldDist});
+}
+function pbTutorialThrow(side,power){
+  const S_=PBTUT_STEP;
+  if(PBTUT.step!==S_.TEACH_SWIPE && PBTUT.step!==S_.TEACH_CHARGE) return;
+  const h=PB.houses[PBTUT.houseIdx];
+  if(!h) return;
+  if(side!==h.side){
+    beep(300,.08);
+    toast(h.side==="L"?"SWIPE LEFT, TOWARD THE HOUSE":"SWIPE RIGHT, TOWARD THE HOUSE",1);
+    PB.charging=null; PB.pressing=false;
+    return;
+  }
+  if(PBTUT.step===S_.TEACH_CHARGE && !power){
+    toast("HOLD IT A LITTLE LONGER, THEN SWIPE",1);
+    return;
+  }
+  pbThrow(side,power);   // off===0 at a dead stop, so this always lands the doormat
+  PBTUT.waitingInput=false;
+  PBTUT.step = PBTUT.houseIdx===0 ? S_.CELEBRATE_1 : S_.CELEBRATE_2;
+  PBTUT.stepT=0;
+}
+function pbTutorialUpdate(dt){
+  PB.shake=Math.max(0,PB.shake-dt);
+  for(let i=PB.fx.length-1;i>=0;i--){
+    const f=PB.fx[i];
+    if(f.t==="parcel"){ f.p=Math.min(1,f.p+dt/f.dur); if(f.p>=1) PB.fx.splice(i,1); }
+  }
+  for(const hh of PB.houses){
+    if(hh.angryT>0) hh.angryT=Math.max(0,hh.angryT-dt);
+    if(hh.happyT>0) hh.happyT=Math.max(0,hh.happyT-dt);
+  }
+  const S_=PBTUT_STEP, st=PBTUT.step;
+  if(st===S_.DRIVE_TO_1 || st===S_.DRIVE_TO_2){
+    PBTUT.stepT+=dt;
+    PB.dist += (PBTUT.target-PB.dist)*Math.min(1,dt*2.2);
+    if(Math.abs(PBTUT.target-PB.dist)<0.6 || PBTUT.stepT>4){
+      PB.dist=PBTUT.target;
+      PBTUT.step = st===S_.DRIVE_TO_1 ? S_.TEACH_SWIPE : S_.TEACH_CHARGE;
+      PBTUT.stepT=0; PBTUT.waitingInput=true;
+    }
+  } else if(st===S_.TEACH_SWIPE || st===S_.TEACH_CHARGE){
+    PBTUT.arrowPulse+=dt;
+    // same tap-vs-hold conversion the real route uses, so the muscle memory transfers directly
+    if(PB.pressing && !PB.charging){
+      PB.pressT+=dt;
+      if(PB.pressT>=PB_TAP_MAX){ PB.charging={side:PB.pressSide, t:0}; beep(90,.4,"sawtooth",.1); }
+    }
+    if(PB.charging){
+      PB.charging.t=Math.min(PB_CHARGE_TIME,PB.charging.t+dt);
+      PB.shake=0.5;
+      if(PB.charging.t>=PB_CHARGE_TIME){
+        const side=PB.charging.side;
+        if(side){ PB.charging=null; PB.pressing=false; pbTutorialThrow(side,true); }
+        else if(!PB.charging.rang){ PB.charging.rang=true; beep(1200,.09); }
+      }
+    }
+  } else if(st===S_.CELEBRATE_1){
+    PBTUT.stepT+=dt;
+    if(PBTUT.stepT>1.2){ PBTUT.step=S_.DRIVE_TO_2; PBTUT.stepT=0; PBTUT.houseIdx=1; PBTUT.target=PB.houses[1].worldDist; }
+  } else if(st===S_.CELEBRATE_2){
+    PBTUT.stepT+=dt;
+    if(PBTUT.stepT>1.2){ PBTUT.step=S_.COMPLETE; PBTUT.stepT=0; PBTUT.bannerT=0; }
+  } else if(st===S_.COMPLETE){
+    PBTUT.bannerT+=dt;
+    if(PBTUT.bannerT>2.0){
+      S.pbTutorialDone=true; PB.tutorial=false;
+      pbNewRoute(); PB.active=true; PB.run=true;
+      toast("SWIPE OR TAP TO THROW AS THE VAN CROSSES THE PATH — HOLD TO CHARGE A SKILLSHOT",1);
+      beep(500,.06); setTimeout(()=>beep(700,.07),110);
+    }
+  }
+}
+function pbTutorialDraw(ctx,w,h,t){
+  const S_=PBTUT_STEP, st=PBTUT.step;
+  pbDrawRoad(ctx);
+  for(let i=0;i<PB.houses.length;i++) pbDrawGround(ctx,PB.houses[i],i===PBTUT.houseIdx);
+  const drawables=[];
+  for(const hh of PB.houses){
+    const yhi=Math.max(pbSideY(hh.side)*PB_HOUSE_Y0, pbSideY(hh.side)*(PB_HOUSE_Y0+PB_HOUSE_DEPTH));
+    drawables.push({d:hh.worldDist+yhi, f:()=>pbDrawHouse(ctx,hh,t)});
+  }
+  drawables.push({d:PB.dist+10, f:()=>pbDrawVan(ctx,t)});
+  drawables.sort((a,b)=>a.d-b.d);
+  for(const dd of drawables) dd.f();
+  for(const f of PB.fx){ if(f.t==="parcel") pbDrawParcelFX(ctx,f); }
+
+  const h0=PB.houses[PBTUT.houseIdx];
+  let title="", sub="";
+  if(st===S_.DRIVE_TO_1||st===S_.DRIVE_TO_2) title="DRIVING TO THE NEXT HOUSE...";
+  else if(st===S_.TEACH_SWIPE){ title="YOUR FIRST DELIVERY"; sub="SWIPE "+(h0.side==="L"?"LEFT":"RIGHT")+" TO THROW THE PARCEL"; }
+  else if(st===S_.CELEBRATE_1) title="PERFECT!";
+  else if(st===S_.TEACH_CHARGE){ title="THE SKILLSHOT"; sub="HOLD, THEN SWIPE "+(h0.side==="L"?"LEFT":"RIGHT")+" FOR A POWER THROW"; }
+  else if(st===S_.CELEBRATE_2) title="SKILLSHOT!";
+  else if(st===S_.COMPLETE) title="TUTORIAL COMPLETE";
+
+  ctx.textAlign="center";
+  if(st!==S_.COMPLETE){
+    ctx.fillStyle="rgba(0,0,0,.72)"; ctx.fillRect(w*0.06,10,w*0.88,sub?54:34);
+    ctx.fillStyle="#fff"; ctx.font="11px 'Press Start 2P',monospace";
+    ctx.fillText(title, w/2, 30);
+    if(sub){ ctx.fillStyle="#ffd94a"; ctx.font="8px 'Press Start 2P',monospace"; ctx.fillText(sub, w/2, 50); }
+  } else {
+    const a=Math.min(1,PBTUT.bannerT*2);
+    ctx.globalAlpha=a;
+    ctx.fillStyle="rgba(0,0,0,.85)"; ctx.fillRect(w*0.1,h*0.4,w*0.8,60);
+    ctx.strokeStyle="#ffd94a"; ctx.lineWidth=3; ctx.strokeRect(w*0.1,h*0.4,w*0.8,60);
+    ctx.fillStyle="#ffd94a"; ctx.font="14px 'Press Start 2P',monospace";
+    ctx.fillText(title, w/2, h*0.4+38);
+    ctx.globalAlpha=1;
+  }
+  ctx.textAlign="left";
+
+  if(PBTUT.waitingInput && (st===S_.TEACH_SWIPE||st===S_.TEACH_CHARGE)){
+    const dir = h0.side==="L" ? -1 : 1;
+    const pulse=0.85+0.15*Math.sin(PBTUT.arrowPulse*5);
+    const cx=w/2+dir*w*0.16, cy=h*0.5;
+    ctx.save();
+    ctx.translate(cx,cy); ctx.scale(pulse*dir,pulse);
+    pbQuad(ctx,[[-20,-8],[6,-8],[6,-20],[30,0],[6,20],[6,8],[-20,8]],"#ffd94a",null);
+    ctx.restore();
+    if(st===S_.TEACH_CHARGE && PB.charging){
+      const p=clamp(PB.charging.t/PB_CHARGE_TIME,0,1);
+      ctx.strokeStyle="#f22"; ctx.lineWidth=4;
+      ctx.beginPath(); ctx.arc(cx,cy,34,-Math.PI/2,-Math.PI/2+p*6.283); ctx.stroke();
+    }
+  }
+}
 function drawPaperboy(t){
   const [ctx,w,h]=fit($("#paperboycv"));
   ctx.fillStyle="#000"; ctx.fillRect(0,0,w,h);
   PB.camX = w*0.36 + (Math.random()-0.5)*PB.shake*7;
   PB.camY = h*0.26 + (Math.random()-0.5)*PB.shake*7;
+  if(PB.tutorial){ pbTutorialDraw(ctx,w,h,t); return; }
   pbDrawRoad(ctx);
   // ground layer first, so every path/doormat sits under every building. Decoys render exactly
   // like real houses but are never "next", so their path/doormat never highlights.
@@ -495,14 +663,14 @@ function drawPaperboy(t){
   // hold still first to wind up a SKILLSHOT, then flick to launch it.
   const cv=$("#paperboycv");
   cv.addEventListener("pointerdown",e=>{
-    if(!PB.run) return;
+    if(!PB.run && !PB.tutorial) return;
     e.preventDefault();
     PB.swipe={x:e.clientX, y:e.clientY, fired:false};
     pbPressStart(null);
     try{cv.setPointerCapture(e.pointerId);}catch(_){}
   });
   cv.addEventListener("pointermove",e=>{
-    if(!PB.run || !PB.swipe || PB.swipe.fired) return;
+    if((!PB.run && !PB.tutorial) || !PB.swipe || PB.swipe.fired) return;
     const dx=e.clientX-PB.swipe.x;
     if(Math.abs(dx)>=PB_SWIPE_MIN){
       PB.swipe.fired=true;

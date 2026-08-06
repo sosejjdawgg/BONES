@@ -38,7 +38,7 @@ const S = {
   kibble:3, snacks:2, beach:false, compsToday:0,
   jWave3:false, jCollar:false, jTrick:false,
   dHappy:false, dNour:false, dBall:false, dPark:false, dClean:false, dWater:false, dFood:false,
-  hoopOwned:false, ballOwned:false, brushOwned:false, shampooOwned:false, shampooPct:0, firstWater:false, firstFood:false, bedHinted:false,
+  hoopOwned:false, ballOwned:false, brushOwned:false, shampooOwned:false, shampooPct:0, firstWater:false, firstFood:false, bedHinted:false, pbTutorialDone:false,
   bedTier:0, todoWork:false, todoLvl5:false, todoBed:false, todoPark:false, todoBall:false, todoBowls:false, twW:false, twF:false, todoHide:false, outTimer:0,
   lvl:1, xp:0, gen:1, senior:false, seniorDays:0, lifePathChosen:false, litter:false, memorialSrc:null, pendingStage:[],
   lastSaveAt:null, lastSaveDay:0, lastSaveH:0, dogParkPlusUnlocked:false
@@ -3131,6 +3131,7 @@ function dayClock(day,h){ return "DAY "+day+" "+String(Math.floor(h)).padStart(2
 function renderSettings(){
   $("#setSound").textContent = SETTINGS.sound ? "ON" : "OFF";
   $("#setMotion").textContent = SETTINGS.reduceMotion ? "ON" : "OFF";
+  $("#mReplayTutorial").style.display = S.pbTutorialDone ? "" : "none";
   $("#saveName").textContent = NAME();
   $("#saveLvl").textContent = "LV. "+S.lvl;
   $("#saveMoney").textContent = "$"+S.money;
@@ -3151,6 +3152,10 @@ $("#setMotion").onclick=()=>{
   SETTINGS.reduceMotion=!SETTINGS.reduceMotion;
   document.body.classList.toggle("reduce-motion",SETTINGS.reduceMotion);
   renderSettings(); beep(500,.05);
+};
+$("#mReplayTutorial").onclick=()=>{
+  $("#settingsPanel").classList.remove("show");
+  enterPaperboyTutorial();
 };
 // Pok\u00e9mon-style save: nothing persists until this is pressed \u2014 a short "saving, don't turn off
 // the power" beat, then the card updates to show exactly when/what got saved.
