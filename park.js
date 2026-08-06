@@ -206,7 +206,7 @@ function pkOfferGardenBury(biscuits){
   if(pay<=0){
     // offering a choice worth nothing is worse than not offering it
     toast("HE'S LEARNED ALL HE CAN TODAY — THE BONES KEEP.",1);
-    showScreen("home"); renderMeters(); renderShop();
+    returnHomeFromActivity();
     return;
   }
   const note = pay<biscuits ? "<br><br>HE'S NEARLY FULL — ONLY +"+pay+" XP LEFT IN HIM TODAY." : "";
@@ -215,9 +215,9 @@ function pkOfferGardenBury(biscuits){
     "BURY THEM — +"+pay+" XP", ()=>{
       const got=pkAwardXP(biscuits); beep(700,.08); setTimeout(()=>beep(950,.09),100);
       toast("+"+got+" XP FROM THE GARDEN.");
-      showScreen("home"); renderMeters(); renderShop();
+      returnHomeFromActivity();
     },
-    "LEAVE THEM", ()=>{ showScreen("home"); renderMeters(); renderShop(); });
+    "LEAVE THEM", ()=>{ returnHomeFromActivity(); });
 }
 let PARKGHOST=null;
 const FRIENDIMG = FRIENDFRAMES.map(u=>{ const i=new Image(); i.src=u; return i; });

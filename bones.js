@@ -38,7 +38,7 @@ const S = {
   kibble:3, snacks:2, beach:false, compsToday:0,
   jWave3:false, jCollar:false, jTrick:false,
   dHappy:false, dNour:false, dBall:false, dPark:false, dClean:false, dWater:false, dFood:false,
-  hoopOwned:false, ballOwned:false, brushOwned:false, shampooOwned:false, shampooPct:0, firstWater:false, firstFood:false, bedHinted:false, pbTutorialDone:false,
+  hoopOwned:false, ballOwned:false, brushOwned:false, shampooOwned:false, shampooPct:0, firstWater:false, firstFood:false, bedHinted:false, pbTutorialDone:false, mail:[],
   bedTier:0, todoWork:false, todoLvl5:false, todoBed:false, todoPark:false, todoBall:false, todoBowls:false, twW:false, twF:false, todoHide:false, outTimer:0,
   lvl:1, xp:0, gen:1, senior:false, seniorDays:0, lifePathChosen:false, litter:false, memorialSrc:null, pendingStage:[],
   lastSaveAt:null, lastSaveDay:0, lastSaveH:0, dogParkPlusUnlocked:false
@@ -150,12 +150,20 @@ function tickStats(dt, force){
     if(!S.dayNeglected){
       S.streak++; S.money+=5; addXP(25);
       toast("GOOD CARE STREAK: "+S.streak+" DAY"+(S.streak>1?"S":"")+" \u2014 +$5"); beep(760,.08); setTimeout(()=>beep(980,.08),100);
-    } else { if(S.streak>0) toast("STREAK BROKEN \u2014 BONES WAS NEGLECTED"); S.streak=0; }
+    } else {
+      if(S.streak>0) toast("STREAK BROKEN \u2014 BONES WAS NEGLECTED");
+      S.streak=0;
+      addMail("neglect","A ROUGH NIGHT", NAME().toUpperCase()+" WAS NEGLECTED OVERNIGHT \u2014 HIS CARE NEEDS ATTENTION TODAY.");
+    }
     S.dayNeglected=false;
     S.compsToday=0;
     for(const k of ["dHappy","dNour","dBall","dPark","dClean","dWater","dFood","pFeed","pPlay","pPet"]) S[k]=false;
     TODO_NEW=TODO_NEW.filter(k=>!k.startsWith("d_"));   // unclaimed daily rewards expire
     renderTodo();
+    addMail("newday","A NEW DAY HAS BEGUN","FRESH TO-DOS ARE WAITING FOR "+NAME().toUpperCase()+" \u2014 CHECK THE LIST.");
+    if(CLK.day-(S.lastSaveDay||0)>=2){
+      addMail("save","DON'T FORGET TO SAVE","IT'S BEEN "+(CLK.day-(S.lastSaveDay||0))+" DAYS SINCE YOUR LAST SAVE \u2014 YOU COULD LOSE "+NAME().toUpperCase()+"'S PROGRESS.");
+    }
     if(S.senior){ S.seniorDays++; if(S.seniorDays===5) setTimeout(startGoodbye,800); }
     if((CLK.day-1)%7===0){ // every 7 days the bills land
       const why=["RENT","BILLS","INSURANCE","VET FUND","BOILER REPAIR"][Math.floor(Math.random()*5)];
@@ -525,6 +533,22 @@ function renderTodo(){
     '<div class="prow" style="opacity:.35;border-color:#444"><span class="nm">\u2611 '+m[2]+'</span></div>').join("");
   if(done) html+=sect("COMPLETED")+done;
   list.innerHTML=html;
+}
+/* ---------- MAIL: a small inbox of reminders from us to the owner, separate from the to-do list ---------- */
+// Keyed by "kind" so a re-triggered reminder (e.g. another day passes unsaved) replaces the
+// stale copy instead of piling up duplicates — at most one live notice per kind at a time.
+function addMail(kind,title,body){
+  S.mail=S.mail.filter(m=>m.kind!==kind);
+  S.mail.push({id:"m"+Date.now()+"_"+Math.floor(Math.random()*1000), kind, title, body});
+  renderMailBadge();
+}
+function renderMailBadge(){ $("#mailBtn").classList.toggle("pulse", S.mail.length>0); }
+function renderMail(){
+  const list=$("#mailList");
+  list.innerHTML = S.mail.length
+    ? S.mail.map(m=>'<div class="prow" data-id="'+m.id+'" style="cursor:pointer"><span class="nm">✉ '+m.title+'<br><span class="tiny">'+m.body+'</span></span></div>').join("")
+    : '<div class="tiny" style="color:#555;padding:6px 0">NO NEW ALERTS.</div>';
+  renderMailBadge();
 }
 function petStroke(amt){
   const take=Math.min(amt, PET.left);
@@ -2417,7 +2441,7 @@ function enterWork(){
 }
 function leaveWork(){
   W.run=false;
-  transition("DRIVING HOME",()=>{ showScreen("home"); renderMeters(); renderShop(); });
+  transition("DRIVING HOME",()=>{ returnHomeFromActivity(); });
 }
 
 /* ---------- bedtime: forced nightly sleep at midnight ---------- */
@@ -2681,7 +2705,7 @@ $("#bResHome").onclick=()=>{
     return;
   }
   $("#result").classList.remove("show");
-  showScreen("home"); renderMeters(); renderShop();
+  returnHomeFromActivity();
 };
 
 function jump(){
@@ -3123,24 +3147,36 @@ $("#goClose").onclick=()=>$("#goout").classList.remove("show");
 $("#shopClose").onclick=()=>$("#shopPanel").classList.remove("show");
 $("#camstate").onclick=openStatus;
 $("#needAlert").onclick=openStatus;
-$("#bMenu").onclick=()=>{ $("#menuPanel").classList.add("show"); beep(500,.05); };
+$("#bMenu").onclick=()=>{
+  $("#menuPanel").classList.add("show"); renderSaveCard();
+  $("#saveStatus").textContent="PROGRESS ONLY PERSISTS WHEN YOU SAVE.";
+  beep(500,.05);
+};
 $("#menuClose").onclick=()=>$("#menuPanel").classList.remove("show");
 $("#mCare").onclick=()=>{ $("#menuPanel").classList.remove("show"); $("#careGuidePanel").classList.add("show"); beep(500,.05); };
 $("#careClose").onclick=()=>$("#careGuidePanel").classList.remove("show");
+$("#mailBtn").onclick=()=>{ renderMail(); $("#mailPanel").classList.add("show"); beep(500,.05); };
+$("#mailClose").onclick=()=>$("#mailPanel").classList.remove("show");
+$("#mailList").addEventListener("click",e=>{
+  const row=e.target.closest(".prow"); if(!row) return;
+  S.mail=S.mail.filter(m=>m.id!==row.dataset.id);
+  renderMail();
+});
 function dayClock(day,h){ return "DAY "+day+" "+String(Math.floor(h)).padStart(2,"0")+":00"; }
-function renderSettings(){
-  $("#setSound").textContent = SETTINGS.sound ? "ON" : "OFF";
-  $("#setMotion").textContent = SETTINGS.reduceMotion ? "ON" : "OFF";
-  $("#mReplayTutorial").style.display = S.pbTutorialDone ? "" : "none";
+function renderSaveCard(){
   $("#saveName").textContent = NAME();
   $("#saveLvl").textContent = "LV. "+S.lvl;
   $("#saveMoney").textContent = "$"+S.money;
   $("#saveDay").textContent = dayClock(CLK.day,CLK.h);
   $("#saveLast").textContent = S.lastSaveAt ? dayClock(S.lastSaveDay,S.lastSaveH) : "\u2014 NEVER \u2014";
 }
+function renderSettings(){
+  $("#setSound").textContent = SETTINGS.sound ? "ON" : "OFF";
+  $("#setMotion").textContent = SETTINGS.reduceMotion ? "ON" : "OFF";
+  $("#mReplayTutorial").style.display = S.pbTutorialDone ? "" : "none";
+}
 $("#mSettings").onclick=()=>{
   $("#menuPanel").classList.remove("show"); renderSettings();
-  $("#saveStatus").textContent="PROGRESS ONLY PERSISTS WHEN YOU SAVE.";
   $("#settingsPanel").classList.add("show"); beep(500,.05);
 };
 $("#settingsClose").onclick=()=>$("#settingsPanel").classList.remove("show");
@@ -3159,21 +3195,45 @@ $("#mReplayTutorial").onclick=()=>{
 };
 // Pok\u00e9mon-style save: nothing persists until this is pressed \u2014 a short "saving, don't turn off
 // the power" beat, then the card updates to show exactly when/what got saved.
+// the actual write, shared by the deliberate menu save and the quick post-activity prompt
+function performSave(){
+  if(!STORAGE_OK) return false;
+  S.lastSaveAt=Date.now(); S.lastSaveDay=CLK.day; S.lastSaveH=CLK.h;
+  return saveGame(true);
+}
 $("#mSaveGame").onclick=()=>{
   if(!STORAGE_OK){ beep(150,.15); toast("SAVE UNAVAILABLE \u2014 STORAGE IS BLOCKED ON THIS DEVICE.",1); return; }
   $("#mSaveGame").disabled=true;
   $("#saveStatus").textContent="SAVING... DON'T CLOSE THE APP.";
   beep(400,.05);
   setTimeout(()=>{
-    S.lastSaveAt=Date.now(); S.lastSaveDay=CLK.day; S.lastSaveH=CLK.h;
-    const ok=saveGame(true);
+    const ok=performSave();
     $("#saveStatus").textContent = ok ? "SAVED!" : "SAVE FAILED \u2014 STORAGE MAY BE FULL.";
-    renderSettings();
+    renderSaveCard();
     $("#mSaveGame").disabled=false;
     if(ok){ beep(700,.06); setTimeout(()=>beep(950,.08),100); }
     else beep(150,.15);
   }, 500);
 };
+// a quieter version for the post-activity save prompt \u2014 no "saving..." pause, just a toast
+function quickSave(){
+  const ok=performSave();
+  toast(ok?"SAVED!":"SAVE FAILED \u2014 STORAGE MAY BE FULL.",1);
+  if(ok){ beep(700,.06); setTimeout(()=>beep(950,.08),100); } else beep(150,.15);
+}
+// prompted once whenever the player lands back home from DOGPARK, a job, or a run \u2014 those are
+// exactly the moments real progress (money, XP, bones) was just earned and is still unsaved
+function maybeAskSave(){
+  if(!STORAGE_OK) return;
+  openChoice("SAVE YOUR PROGRESS?",
+    "LOCK IN WHAT YOU JUST EARNED SO IT ISN'T LOST IF THE APP CLOSES.",
+    "SAVE NOW", ()=>quickSave(),
+    "NOT NOW", null);
+}
+function returnHomeFromActivity(){
+  showScreen("home"); renderMeters(); renderShop();
+  maybeAskSave();
+}
 function startNewGame(){
   try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
   location.reload();
@@ -3391,7 +3451,8 @@ if(RESTORED){
 }
 document.body.classList.toggle("reduce-motion", SETTINGS.reduceMotion);
 $("#startDog").src = PORTRAITS.happy;
-buildMeters(); renderMeters(); renderShop(); renderTodo(); renderDogSel();
+if(!STORAGE_OK) addMail("storage","PROGRESS CAN'T BE SAVED","STORAGE IS BLOCKED ON THIS DEVICE — "+NAME().toUpperCase()+"'S PROGRESS WON'T PERSIST BETWEEN VISITS.");
+buildMeters(); renderMeters(); renderShop(); renderTodo(); renderDogSel(); renderMailBadge();
 let nagNext = performance.now()/1000 + 45;
 let last=performance.now(), meterAcc=0;
 function loop(now){

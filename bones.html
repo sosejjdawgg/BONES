@@ -102,7 +102,8 @@ button.red:active{background:#f22;color:#000}
 #tdBanner{border:3px solid #f22;color:#fff;font-size:10px;text-align:center;padding:12px;animation:tdpop .3s ease}
 @keyframes tdpop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
 .pclose{position:absolute;top:8px;left:8px;font-size:6px;padding:4px 6px;margin:0}
-#todoPanel,#supplies,#menuPanel,#careGuidePanel,#settingsPanel,#shopPanel,#nourish{justify-content:flex-start;padding-top:46px}
+#todoPanel,#supplies,#menuPanel,#careGuidePanel,#settingsPanel,#shopPanel,#nourish,#mailPanel{justify-content:flex-start;padding-top:46px}
+#mailBtn.pulse{border-color:#f22;color:#f22;animation:blink .6s steps(2) infinite}
 .overpanel .prow{padding:11px 11px;line-height:1.9;border-width:2px}
 .overpanel .prow button{border-color:#e8c14a;color:#e8c14a}
 .overpanel .prow button:disabled{border-color:#555;color:#555}
@@ -296,7 +297,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.145a</span>
+          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.146a</span>
         </div>
       </div>
 
@@ -332,8 +333,16 @@ body.reduce-motion *{animation:none!important}
       <!-- TO-DO -->
       <div id="todoPanel" class="overpanel">
         <button class="tiny pclose" id="todoClose">&#10005; CLOSE</button>
+        <button class="tiny pclose" id="mailBtn" style="left:auto;right:8px" title="ALERTS">&#9993;</button>
         <h2>TO-DO</h2>
         <div id="todoList" style="display:flex;flex-direction:column;gap:8px;width:88%;max-height:66%;overflow-y:auto"></div>
+      </div>
+
+      <!-- MAIL / ALERTS -->
+      <div id="mailPanel" class="overpanel">
+        <button class="tiny pclose" id="mailClose">&#10005; CLOSE</button>
+        <h2>&#9993; ALERTS</h2>
+        <div id="mailList" style="display:flex;flex-direction:column;gap:8px;width:88%;max-height:66%;overflow-y:auto"></div>
       </div>
 
       <!-- SUPPLIES -->
@@ -362,6 +371,16 @@ body.reduce-motion *{animation:none!important}
       <div id="menuPanel" class="overpanel">
         <button class="tiny pclose" id="menuClose">&#10005; CLOSE</button>
         <h2>&#9776; MENU</h2>
+        <div id="saveCard" style="border:3px solid #fff;padding:12px 14px;width:82%;font-size:7px;line-height:2.1;text-align:left;box-sizing:border-box">
+          <div style="display:flex;justify-content:space-between"><span id="saveName">BONES</span><span id="saveLvl">LV. 1</span></div>
+          <div style="display:flex;justify-content:space-between"><span>MONEY</span><span id="saveMoney">$0</span></div>
+          <div style="display:flex;justify-content:space-between"><span>NOW</span><span id="saveDay">DAY 1 08:00</span></div>
+          <div style="border-top:1px solid #444;margin-top:6px;padding-top:6px;color:#8a8a8a;display:flex;justify-content:space-between">
+            <span>LAST SAVED</span><span id="saveLast" style="color:#8a8a8a">— NEVER —</span>
+          </div>
+        </div>
+        <button class="menurow" id="mSaveGame" style="width:82%">&#9635; SAVE GAME</button>
+        <div id="saveStatus" style="font-size:7px;color:#8a8a8a;min-height:10px;width:82%;text-align:center">PROGRESS ONLY PERSISTS WHEN YOU SAVE.</div>
         <div style="display:flex;flex-direction:column;gap:10px;width:82%">
           <button class="menurow" id="mCare">&#9829; CARE GUIDE</button>
           <button class="menurow" id="mSettings">&#9670; SETTINGS</button>
@@ -407,16 +426,6 @@ body.reduce-motion *{animation:none!important}
           <div class="settingrow"><span>REDUCE MOTION</span><button class="tiny" id="setMotion">OFF</button></div>
         </div>
         <button class="menurow" id="mReplayTutorial" style="width:82%">&#9635; REPLAY DELIVERY TUTORIAL</button>
-        <div id="saveCard" style="border:3px solid #fff;padding:12px 14px;width:82%;font-size:7px;line-height:2.1;text-align:left;box-sizing:border-box">
-          <div style="display:flex;justify-content:space-between"><span id="saveName">BONES</span><span id="saveLvl">LV. 1</span></div>
-          <div style="display:flex;justify-content:space-between"><span>MONEY</span><span id="saveMoney">$0</span></div>
-          <div style="display:flex;justify-content:space-between"><span>NOW</span><span id="saveDay">DAY 1 08:00</span></div>
-          <div style="border-top:1px solid #444;margin-top:6px;padding-top:6px;color:#8a8a8a;display:flex;justify-content:space-between">
-            <span>LAST SAVED</span><span id="saveLast" style="color:#8a8a8a">— NEVER —</span>
-          </div>
-        </div>
-        <button class="menurow" id="mSaveGame" style="width:82%">&#9635; SAVE GAME</button>
-        <div id="saveStatus" style="font-size:7px;color:#8a8a8a;min-height:10px;width:82%;text-align:center">PROGRESS ONLY PERSISTS WHEN YOU SAVE.</div>
       </div>
 
       <!-- CHARM SHOP -->
