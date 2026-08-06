@@ -67,6 +67,18 @@ out = html.replace(placeholder, "<script>\n" + js + "\n</script>")
 dist_path.parent.mkdir(exist_ok=True)
 dist_path.write_text(out)
 print("  wrote %s (%d bytes)" % (dist_path, len(out)))
+
+# ---- stamp the version into the service worker so every bump gets a clean cache ----
+sw_path = pathlib.Path("sw.js")
+sw_out_path = pathlib.Path("dist/sw.js")
+sw = sw_path.read_text().replace("%%VERSION%%", new_ver.lstrip("v"))
+sw_out_path.write_text(sw)
+print("  wrote %s (version %s)" % (sw_out_path, new_ver))
 PYEOF
+
+echo "==> copying manifest + icons into dist/"
+cp manifest.json dist/manifest.json
+mkdir -p dist/icons
+cp icons/*.png dist/icons/
 
 echo "==> done"
