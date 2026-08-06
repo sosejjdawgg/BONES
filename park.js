@@ -304,7 +304,7 @@ function startPark(plus){
     chain:0, chainT:0, inv:0, fx:[],
     x:0,y:0,vx:0,vy:0, joy:null,
     en:[], fr:[], gate:{}, gateArm:true, gateAsk:false, started:false, shop:null, biscuits:[], drops:[], pendingBury:0, nuts:[],
-    powerups:[], zoomT:0, over:0, regenT:0, regenAcc:0, hurtT:0, hpSeen:0, zoom:1, sniffLvl:0,
+    powerups:[], zoomT:0, over:0, regenT:0, regenAcc:0, hurtT:0, hpSeen:0, zoom:1, zoomFromBark:0, zoomFromPark:0, sniffLvl:0, w2Stage:0,
     trees:[], scorch:[], embers:[],
     plusMode:!!plus, mixTypes:null, mixLabel:null, swoopT:0,
     pals:[], palEyes:false, friendsOpen:false, friendsArm:false, npc:{x:.5,y:.5}
@@ -380,18 +380,22 @@ function pkSpawnGoldenBird(){
 // fly clean off the engagement area, it rubber-bands its heading back toward the fray instead
 // of leaving, so the flock keeps looping through until every last one is knocked down.
 function pkSpawnFlock(){
+  const remaining=Math.max(1, PK.waveQuota-PK.waveSpawned);
+  PK.w2Stage=(PK.w2Stage||0)+1;
+  if(PK.w2Stage<=2) return pkSpawnBirdRow(Math.min(2*pkPlusMult(),remaining));
+  if(PK.w2Stage===3) return pkSpawnBirdCircle(Math.min(3*pkPlusMult(),remaining));
+  return pkSpawnBirdV(remaining);   // whatever's left dives in as the V — always finishes the wave
+}
+function pkSpawnBirdRow(n){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
-  const remaining=Math.max(1, PK.waveQuota-PK.waveSpawned);
-  // +25% count and +25% speed over the original baseline — more of them, and meaningfully faster
-  const n=Math.min(Math.round((12+Math.floor(Math.random()*9))*1.25)*pkPlusMult(), remaining);
   const diagonals=[Math.PI*0.25, Math.PI*0.75, Math.PI*1.25, Math.PI*1.75];
   const ang=diagonals[Math.floor(Math.random()*4)], perp=ang+Math.PI/2;
   const R=Math.max(w,h)*0.85;
   const cx=PK.x-Math.cos(ang)*R, cy=PK.y-Math.sin(ang)*R;   // upstream of the flight path
-  const sp=(90+Math.random()*20)*1.25;
+  const sp=90+Math.random()*20;
   for(let i=0;i<n;i++){
-    const off=(i-(n-1)/2)*15+(Math.random()-0.5)*8;         // staggered wedge formation
+    const off=(i-(n-1)/2)*15+(Math.random()-0.5)*8;         // a row, one after another
     const sxo=cx+Math.cos(perp)*off, syo=cy+Math.sin(perp)*off;
     PK.en.push({t:"bird", flock:true, x:(sxo+WW)%WW, y:(syo+WH)%WH,
       hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp, vx:Math.cos(ang)*sp, vy:Math.sin(ang)*sp,
@@ -400,6 +404,42 @@ function pkSpawnFlock(){
   if(Math.random()<STALK_CHANCE) pkSpawnStalkCat(PK.x+(Math.random()-0.5)*80, PK.y+(Math.random()-0.5)*80, 1+Math.floor(Math.random()*2));
   toast(n+" BIRDS INBOUND \u2014 BACKUP ARRIVES!",1);
   beep(520,.09,"square",.05); setTimeout(()=>beep(680,.09,"square",.05),90);
+  return n;
+}
+// they've stopped just flying past — now they circle him, angry, looking for an opening
+function pkSpawnBirdCircle(n){
+  const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
+  const WW=PK.WW||w*2, WH=PK.WH||h*2;
+  const R=Math.max(w,h)*0.5, baseAng=Math.random()*6.283;
+  for(let i=0;i<n;i++){
+    const a=baseAng+(6.283*i/n);
+    const x=(PK.x+Math.cos(a)*R+WW)%WW, y=(PK.y+Math.sin(a)*R+WH)%WH;
+    PK.en.push({t:"bird", circleForm:true, angry:true, x, y, orbitAng:a, orbitR:R,
+      hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:130, vx:0, vy:0,
+      ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
+  }
+  toast("THEY'RE CIRCLING \u2014 WATCH YOUR BACK",1);
+  beep(300,.1,"sawtooth",.05); setTimeout(()=>beep(260,.1,"sawtooth",.05),90);
+  return n;
+}
+// the flying V: a real assault, homing straight at BONES instead of flying a fixed line
+function pkSpawnBirdV(n){
+  const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
+  const WW=PK.WW||w*2, WH=PK.WH||h*2;
+  const ang=Math.random()*6.283, perp=ang+Math.PI/2;
+  const R=Math.max(w,h)*0.9;
+  const cx=PK.x-Math.cos(ang)*R, cy=PK.y-Math.sin(ang)*R;
+  const sp=150;
+  for(let i=0;i<n;i++){
+    const side=i%2===0?1:-1, rank=Math.ceil(i/2);
+    const off=side*rank*22, back=rank*18;   // wingmen trail behind the leader — a real V shape
+    const sxo=cx+Math.cos(perp)*off-Math.cos(ang)*back, syo=cy+Math.sin(perp)*off-Math.sin(ang)*back;
+    PK.en.push({t:"bird", vForm:true, angry:true, x:(sxo+WW)%WW, y:(syo+WH)%WH,
+      hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp, vx:Math.cos(ang)*sp, vy:Math.sin(ang)*sp,
+      ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
+  }
+  toast("INCOMING \u2014 FLYING V!",1);
+  beep(200,.14,"sawtooth",.06); setTimeout(()=>beep(160,.16,"sawtooth",.06),110);
   return n;
 }
 const LASER_WIDTH=13;
@@ -888,16 +928,16 @@ function pkPickMixTypes(){
   const b=pool.splice(Math.floor(Math.random()*pool.length),1)[0];
   return [a,b];
 }
-// waves 6+: the interval between bursts, and how wide a burst fans out — both climb with the
-// wave, or by wave 10-11 the player is just walking around waiting for the next trickle instead
-// of being run ragged. Fixed at wave 6's original pace, ramps from there.
-function pkMixInterval(wv){ return Math.max(0.9, 3.5-Math.max(0,wv-6)*0.35); }
+// waves 6+: by now BONES is a nuisance and they want him gone — enemies pour in from the start
+// of wave 6 rather than easing into it, and both the burst interval and the burst size keep
+// climbing hard from there. He isn't leaving the dogpark either way.
+function pkMixInterval(wv){ return Math.max(0.7, 2.6-Math.max(0,wv-6)*0.25); }
 function pkSpawnMixBurst(types){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
   const remaining=Math.max(1, PK.waveQuota-PK.waveSpawned);
   const climb=Math.max(0,PK.wave-6);
-  const n=Math.min(((1+Math.floor(Math.random()*3))+Math.floor(climb/2))*pkPlusMult(), remaining);
+  const n=Math.min(((2+Math.floor(Math.random()*3))+Math.floor(climb/1.5))*pkPlusMult(), remaining);
   const ang=Math.random()*6.283, R=Math.max(w,h)*0.62;
   const spread=Math.min(6.283, 0.9+climb*0.15);   // fans out wider each wave — surrounded, not funneled
   for(let i=0;i<n;i++){
@@ -914,7 +954,7 @@ function pkSpawnMixBurst(types){
 // how many enemies a wave needs cleared \u2014 hand-set to match the redesigned wave-by-wave
 // spec. waves beyond 10 keep extending the mix pattern with a gently rising quota.
 function pkWaveQuota(wv){
-  if(wv===1) return 1;    // literally one bird
+  if(wv===1) return 2;    // catch 2 birds
   if(wv===2) return 10;   // the birds are upset
   if(wv===3) return 10;   // attack of the cats
   if(wv===4) return 15;   // watch out, nuts
@@ -923,8 +963,8 @@ function pkWaveQuota(wv){
 }
 // what each wave is called. 6 onwards is the same escalating joke, told straight.
 const WNAME={
-  1:"CATCH A BIRD",
-  2:"THE BIRDS ARE UPSET — DEFEND YOURSELF!",
+  1:"CATCH 2 BIRDS",
+  2:"CLEAR 10 BIRDS",
   3:"ATTACK OF THE CATS",
   4:"WATCH OUT — NUTS!",
   5:"THEY'RE COMING OUT OF THE GOD DAMNED TREES!",
@@ -1018,10 +1058,17 @@ const BARK_LVL_CAP=4;
 const AGI_LVL_CAP=3, AGI_CD_BASE=20, AGI_CD_STEP=4, AGI_HEAL_BASE=0.05, AGI_HEAL_STEP=0.03;
 function pkAgiCd(){   return Math.max(6, AGI_CD_BASE - AGI_CD_STEP*(PK.agiLvl||0)); }
 function pkAgiHeal(){ return AGI_HEAL_BASE + AGI_HEAL_STEP*(PK.agiLvl||0); }
+// the camera pulls back a little every time BONES gets stronger — a bigger bark or a bigger
+// park both mean more happening on screen at once, so the view widens to show it. The two
+// sources share one 25%-out ceiling rather than stacking without limit.
+function pkApplyZoom(){
+  PK.zoom=1-Math.min(0.25,(PK.zoomFromBark||0)+(PK.zoomFromPark||0));
+}
 function pkExpandPark(){
   PK.worldMult=Math.min(8,PK.worldMult+0.5);
   if(Math.random()<0.5 && PK.groves<3){ PK.groves++; toast("THE PARK GREW — AND SO DID THE TREES."); }
-  PK.zoom=Math.max(0.76,1-(PK.worldMult-4)*0.06);   // zoom out a touch as the park grows, for a wider view
+  PK.zoomFromPark=Math.min(0.25,(PK.zoomFromPark||0)+0.10);
+  pkApplyZoom();
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   PK.WW=w*PK.worldMult; PK.WH=h*PK.worldMult;
   pkBuildBG(PK.WW,PK.WH);
@@ -1352,8 +1399,8 @@ function pkPalDamage(dt,WW,WH){
 }
 function pkShopOpen(){
   const statAll=[
-    {n:"BIGGER BARK", ic:"bark",  fx:"+10 BARK RADIUS",    c:12, capKey:"barkBigLvl",  f:()=>{PK.barkR=Math.min(BARK_CAP,PK.barkR+10); PK.barkBigLvl++;}},
-    {n:"FASTER BARK", ic:"fast",  fx:"-0.35s COOLDOWN",     c:14, capKey:"barkFastLvl",f:()=>{PK.barkMax=Math.max(0.8,PK.barkMax-0.35); PK.barkFastLvl++;}},
+    {n:"BIGGER BARK", ic:"bark",  fx:"+10 BARK RADIUS",    c:12, capKey:"barkBigLvl",  f:()=>{PK.barkR=Math.min(BARK_CAP,PK.barkR+10); PK.barkBigLvl++; PK.zoomFromBark=Math.min(0.25,(PK.zoomFromBark||0)+0.025); pkApplyZoom();}},
+    {n:"FASTER BARK", ic:"fast",  fx:"-0.35s COOLDOWN",     c:14, capKey:"barkFastLvl",f:()=>{PK.barkMax=Math.max(0.8,PK.barkMax-0.35); PK.barkFastLvl++; PK.zoomFromBark=Math.min(0.25,(PK.zoomFromBark||0)+0.025); pkApplyZoom();}},
     {n:"MIGHTY KNOCKBACK", ic:"knock", fx:"+70 KNOCKBACK", c:10, f:()=>PK.knock+=70},
     {n:"SNACK", ic:"heal",        fx:"HEAL 30 HP",          c:8,  f:()=>PK.hp=Math.min(PK.maxhp,PK.hp+30)},
     {n:"ZOOMIES", ic:"speed",     fx:"+10% SPEED",          c:12, f:()=>PK.spd*=1.1},
@@ -1957,6 +2004,43 @@ function parkUpdate(dt){
       }
       continue;
     }
+    if(e.circleForm){
+      // orbits BONES at a fixed radius, fast and frantic — looking for an opening rather than
+      // just crossing past like a normal flyby
+      e.orbitAng+=2.2*dt;
+      const tx=PK.x+Math.cos(e.orbitAng)*e.orbitR, ty=PK.y+Math.sin(e.orbitAng)*e.orbitR*0.6;
+      e.vx=(tx-e.x)*3; e.vy=(ty-e.y)*3;
+      e.dir = e.vx<0 ? -1 : 1;
+      e.ph+=dt*10;
+      e.ft+=dt; if(e.ft>0.1){ e.ft=0; e.fi++; }
+      e.x=(e.x+(e.vx+e.kx)*dt+WW)%WW;
+      e.y=(e.y+(e.vy+e.ky)*dt+WH)%WH;
+      const dxw2=wd(PK.x-e.x,WW), dyw2=wd(PK.y-e.y,WH), d2=Math.hypot(dxw2,dyw2)||1;
+      if(d2<14 && PK.inv<=0 && !pkInvuln()){
+        pkHurt(10); PK.inv=0.6;
+        e.kx=-dxw2/d2*220; e.ky=-dyw2/d2*220;
+        beep(110,.12,"sawtooth");
+        if(PK.hp<=0) return pkDeath();
+      }
+      continue;
+    }
+    if(e.vForm){
+      // a real dive: homes on BONES instead of flying a fixed line, closing fast — the assault
+      const dxw2=wd(PK.x-e.x,WW), dyw2=wd(PK.y-e.y,WH), d2=Math.hypot(dxw2,dyw2)||1;
+      e.vx=dxw2/d2*e.sp; e.vy=dyw2/d2*e.sp;
+      e.dir=e.vx<0?-1:1;
+      e.ph+=dt*10;
+      e.ft+=dt; if(e.ft>0.1){ e.ft=0; e.fi++; }
+      e.x=(e.x+(e.vx+e.kx)*dt+WW)%WW;
+      e.y=(e.y+(e.vy+e.ky)*dt+WH)%WH;
+      if(d2<14 && PK.inv<=0 && !pkInvuln()){
+        pkHurt(12); PK.inv=0.6;
+        e.kx=-dxw2/d2*220; e.ky=-dyw2/d2*220;
+        beep(110,.12,"sawtooth");
+        if(PK.hp<=0) return pkDeath();
+      }
+      continue;
+    }
     const dxw=wd(PK.x-e.x,WW), dyw=wd(PK.y-e.y,WH);
     const d=Math.hypot(dxw,dyw)||1;
     let sx=dxw/d*e.sp, sy=dyw/d*e.sp;
@@ -2540,6 +2624,8 @@ function drawEnemy(ctx,e,sx,sy){
   }
   // mad squirrels glow red the whole time they're charging or sweeping their beam
   const madGlow = e.madsq && (e.laserState==="charge" || e.laserState==="sweep");
+  // wave 2's circling/V-formation birds are out for blood — same red glow reused for "angry"
+  const angryGlow = !!e.angry;
   const frames = ENEMYIMG[e.t];
   const img = frames && frames[e.fi % frames.length];
   if(!img || !img.complete || !img.naturalWidth){ drawEnemyVector(ctx,e,sx,sy); if(e.madsqExplode) drawMadsqExplosion(ctx,sx,sy,e.explodeT); ctx.restore(); return; }
@@ -2552,13 +2638,13 @@ function drawEnemy(ctx,e,sx,sy){
     ctx.beginPath(); ctx.ellipse(sx, sy-eh*0.45, ew*0.62, eh*0.6, 0, 0, 7); ctx.stroke();
     ctx.globalAlpha=1;
   }
-  if(madGlow){
+  if(madGlow||angryGlow){
     ctx.save(); ctx.globalAlpha=0.4+0.3*Math.sin(performance.now()/70); ctx.fillStyle="#f22";
     ctx.beginPath(); ctx.ellipse(sx, sy-eh*0.5, ew*0.65, eh*0.65, 0, 0, 7); ctx.fill();
     ctx.restore();
   }
   ctx.save(); ctx.imageSmoothingEnabled=false;
-  if(madGlow) ctx.filter="sepia(1) saturate(8) hue-rotate(-50deg) brightness(1.1)";
+  if(madGlow||angryGlow) ctx.filter="sepia(1) saturate(8) hue-rotate(-50deg) brightness(1.1)";
   if(e.dir<0){ ctx.translate(sx*2,0); ctx.scale(-1,1); }
   ctx.drawImage(img, sx-ew/2, sy-eh, ew, eh);
   ctx.restore();
