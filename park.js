@@ -300,7 +300,7 @@ function startPark(plus){
     barkMax:Math.max(1.2,3-0.06*S.lvl), barkCd:1, pulse:0,
     barkR:21*(0.8+0.4*S.hunger/100), knock:150*(0.85+0.3*S.mood/100),
     bones:0, kills:0, xpFromRun:0, sideDone:0, relic:null, waveBanner:null, shopFlash:null, apeKills:0, apeWaveT:0, idleT:0,
-    worldMult:4, groves:1, groveCenters:[], leaves:[], barkBigLvl:0, barkFastLvl:0, agiLvl:0, speedBonus:null, shopSel:null,
+    worldMult:4, groves:1, groveCenters:[], woodsDir:null, woodsOff:0, leaves:[], barkBigLvl:0, barkFastLvl:0, agiLvl:0, speedBonus:null, shopSel:null,
     chain:0, chainT:0, inv:0, fx:[],
     x:0,y:0,vx:0,vy:0, joy:null,
     en:[], fr:[], gate:{}, gateArm:true, gateAsk:false, started:false, shop:null, biscuits:[], drops:[], pendingBury:0, nuts:[],
@@ -410,7 +410,10 @@ function pkSpawnBirdRow(n){
 function pkSpawnBirdCircle(n){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
-  const R=Math.max(w,h)*0.5, baseAng=Math.random()*6.283;
+  // starts just outside a typical bark radius and tightens every frame (see the circleForm
+  // movement branch) — a fixed wide orbit like the old Math.max(w,h)*0.5 radius sat permanently
+  // outside bark range, so the flock just circled forever, never reachable and never attacking
+  const R=Math.min(Math.max(w,h)*0.5, PK.barkR+70), baseAng=Math.random()*6.283;
   for(let i=0;i<n;i++){
     const a=baseAng+(6.283*i/n);
     const x=(PK.x+Math.cos(a)*R+WW)%WW, y=(PK.y+Math.sin(a)*R+WH)%WH;
@@ -461,15 +464,21 @@ function pkBlastSfx(){
   setTimeout(()=>beep(52,.45,"sawtooth",.08),120);
 }
 function pkBuildTrees(){
-  PK.trees=[];
-  const n=Math.round(6*(PK.worldMult/2)*(PK.worldMult/2));
-  const npc=PK.npc||{x:.78,y:.18};
-  for(let i=0;i<n;i++){
-    // never plant one on top of the bandana dog: a trunk over him puts his shop behind collision
-    let x,y,tries=0;
-    do{ x=Math.random()*PK.WW; y=Math.random()*PK.WH; tries++; }
-    while(tries<24 && Math.hypot(wd(x-npc.x*PK.WW,PK.WW),wd(y-npc.y*PK.WH,PK.WH))<72);
-    PK.trees.push({ x, y, state:"ok", fireT:0, spawned:0, spawnT:0, sway:Math.random()*6.283 });
+  // only scatter (and only wipe) the ambient trees the very first time — a park-size purchase
+  // used to call this again from scratch on every single upgrade, deleting and re-rolling every
+  // tree on the map including the main grove, which silently dragged the friend dog's whole
+  // grove to a brand new random spot (sometimes right on top of the player) every purchase.
+  if(PK.groveCenters.length===0){
+    PK.trees=[];
+    const n=Math.round(6*(PK.worldMult/2)*(PK.worldMult/2));
+    const npc=PK.npc||{x:.78,y:.18};
+    for(let i=0;i<n;i++){
+      // never plant one on top of the bandana dog: a trunk over him puts his shop behind collision
+      let x,y,tries=0;
+      do{ x=Math.random()*PK.WW; y=Math.random()*PK.WH; tries++; }
+      while(tries<24 && Math.hypot(wd(x-npc.x*PK.WW,PK.WW),wd(y-npc.y*PK.WH,PK.WH))<72);
+      PK.trees.push({ x, y, state:"ok", fireT:0, spawned:0, spawnT:0, sway:Math.random()*6.283 });
+    }
   }
   pkBuildWoods(PK.groves||1);
 }
@@ -550,11 +559,18 @@ function pkBuildGrove(cx, cy, withNPC){
 // which way to head to find it; further groves (from expanding the park) land in whichever
 // quarter is still empty, so they never stack on top of each other or the first one
 function pkBuildWoods(n){
-  PK.groveCenters=[];
-  const cx=PK.WW*0.5, dir=Math.random()<0.5?1:-1, off=Math.min(PK.WH*0.30, pkGroveOuterR()*2.6);
-  pkBuildGrove(cx, PK.WH*0.5+dir*off, true);
+  // the main grove (and the friend dog at its centre) must only ever be placed once — buying a
+  // park-size upgrade used to wipe groveCenters and re-roll it from scratch every single time,
+  // relocating the whole grove (and the player's mental map of where it is) on every purchase.
+  // Now expansion only ever adds new groves for newly-unlocked slots; anything already built stays put.
+  if(PK.groveCenters.length===0){
+    const dir=Math.random()<0.5?1:-1, off=Math.min(PK.WH*0.30, pkGroveOuterR()*2.6);
+    PK.woodsDir=dir; PK.woodsOff=off;
+    pkBuildGrove(PK.WW*0.5, PK.WH*0.5+dir*off, true);
+  }
+  const dir=PK.woodsDir||1, off=PK.woodsOff||0;
   const extraSlots=[[0.5,0.5-dir*off*2.1/PK.WH], [0.18,0.22],[0.82,0.78],[0.18,0.78],[0.82,0.22]];
-  for(let i=1;i<n;i++){
+  for(let i=PK.groveCenters.length;i<n;i++){
     const s=extraSlots[i]||[0.15+Math.random()*0.7,0.15+Math.random()*0.7];
     pkBuildGrove(PK.WW*s[0], PK.WH*s[1], false);
   }
@@ -2005,8 +2021,10 @@ function parkUpdate(dt){
       continue;
     }
     if(e.circleForm){
-      // orbits BONES at a fixed radius, fast and frantic — looking for an opening rather than
-      // just crossing past like a normal flyby
+      // orbits BONES fast and frantic, tightening in every frame — the circle actually closes,
+      // so "looking for an opening" resolves into either a hit or a bark within a few seconds
+      // instead of an orbit that never comes back into range
+      e.orbitR=Math.max(16, e.orbitR-24*dt);
       e.orbitAng+=2.2*dt;
       const tx=PK.x+Math.cos(e.orbitAng)*e.orbitR, ty=PK.y+Math.sin(e.orbitAng)*e.orbitR*0.6;
       e.vx=(tx-e.x)*3; e.vy=(ty-e.y)*3;
