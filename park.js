@@ -383,7 +383,7 @@ function pkSpawnFlock(){
   const remaining=Math.max(1, PK.waveQuota-PK.waveSpawned);
   PK.w2Stage=(PK.w2Stage||0)+1;
   if(PK.w2Stage<=2) return pkSpawnBirdRow(Math.min(2*pkPlusMult(),remaining));
-  if(PK.w2Stage===3) return pkSpawnBirdCircle(Math.min(3*pkPlusMult(),remaining));
+  if(PK.w2Stage===3) return pkSpawnBirdStorm(Math.min(3*pkPlusMult(),remaining));
   return pkSpawnBirdV(remaining);   // whatever's left dives in as the V — always finishes the wave
 }
 function pkSpawnBirdRow(n){
@@ -406,23 +406,25 @@ function pkSpawnBirdRow(n){
   beep(520,.09,"square",.05); setTimeout(()=>beep(680,.09,"square",.05),90);
   return n;
 }
-// they've stopped just flying past — now they circle him, angry, looking for an opening
-function pkSpawnBirdCircle(n){
+// no more flat red-glowing aggro ring — instead a loose, chaotic swirl overhead (mostly ambient,
+// no threat while swirling) with one or two birds at a time peeling off to actually swoop and
+// dive at BONES. A miss or a survived hit sends the diver back up to rejoin the swirl for
+// another pass later, so the whole flock cycles through real attacks instead of just circling.
+const STORM_SWIRL_MAX_ACTIVE=2;
+function pkSpawnBirdStorm(n){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
-  // starts just outside a typical bark radius and tightens every frame (see the circleForm
-  // movement branch) — a fixed wide orbit like the old Math.max(w,h)*0.5 radius sat permanently
-  // outside bark range, so the flock just circled forever, never reachable and never attacking
-  const R=Math.min(Math.max(w,h)*0.5, PK.barkR+70), baseAng=Math.random()*6.283;
+  const R=Math.max(w,h)*0.42, baseAng=Math.random()*6.283;
   for(let i=0;i<n;i++){
-    const a=baseAng+(6.283*i/n);
-    const x=(PK.x+Math.cos(a)*R+WW)%WW, y=(PK.y+Math.sin(a)*R+WH)%WH;
-    PK.en.push({t:"bird", circleForm:true, angry:true, x, y, orbitAng:a, orbitR:R,
-      hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:130, vx:0, vy:0,
+    const a=baseAng+(6.283*i/n)+(Math.random()-0.5)*0.5;
+    const r=R*(0.7+Math.random()*0.55);
+    const x=(PK.x+Math.cos(a)*r+WW)%WW, y=(PK.y+Math.sin(a)*r+WH)%WH;
+    PK.en.push({t:"bird", stormForm:true, swoop:false, x, y, orbitAng:a, orbitR:r, orbitSpd:1.4+Math.random()*0.8,
+      swoopCd:1.2+Math.random()*2.6, hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:150, vx:0, vy:0,
       ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
   }
-  toast("THEY'RE CIRCLING \u2014 WATCH YOUR BACK",1);
-  beep(300,.1,"sawtooth",.05); setTimeout(()=>beep(260,.1,"sawtooth",.05),90);
+  toast("A STORM OF BIRDS \u2014 THEY'RE CIRCLING OVERHEAD",1);
+  beep(260,.12,"sawtooth",.04); setTimeout(()=>beep(220,.12,"sawtooth",.04),120);
   return n;
 }
 // the flying V: a real assault, homing straight at BONES instead of flying a fixed line
@@ -1441,6 +1443,15 @@ function pkShopOpen(){
     pool.push({n:"EXPAND THE PARK", ic:"expand", fx:"GROW WORLD TO "+next+"\u00d7"+next, c:Math.round(14+(PK.worldMult-4)*16), expand:true,
       f:()=>pkExpandPark()});
   }
+  // a cheap taste of it early: the compass shows up in the shop itself (not just the anytime
+  // exchange panel) for the first few rounds, well under its normal 100-bone price
+  if(PK.wave>=2 && PK.wave<=4 && !PK.compass){
+    pool.push({n:"COMPASS", ic:"compass", fx:"FIND FRIENDS & SECRETS", c:50, compassBuy:true,
+      f:()=>{ PK.compass=true; }});
+  }
+  // wave 1's shop is everyone's first taste of it \u2014 a flat, cheap price on everything so a new
+  // run always has enough bones banked to actually buy something after the very first clear
+  if(PK.wave===2) pool.forEach(o=>o.c=10);
   PK.shop = pool.sort(()=>Math.random()-0.5).slice(0,3);
   PK.shopSel = null;      // nothing is bought until it has been confirmed
   PK.joy=null;
@@ -2020,25 +2031,43 @@ function parkUpdate(dt){
       }
       continue;
     }
-    if(e.circleForm){
-      // orbits BONES fast and frantic, tightening in every frame — the circle actually closes,
-      // so "looking for an opening" resolves into either a hit or a bark within a few seconds
-      // instead of an orbit that never comes back into range
-      e.orbitR=Math.max(16, e.orbitR-24*dt);
-      e.orbitAng+=2.2*dt;
-      const tx=PK.x+Math.cos(e.orbitAng)*e.orbitR, ty=PK.y+Math.sin(e.orbitAng)*e.orbitR*0.6;
-      e.vx=(tx-e.x)*3; e.vy=(ty-e.y)*3;
-      e.dir = e.vx<0 ? -1 : 1;
-      e.ph+=dt*10;
-      e.ft+=dt; if(e.ft>0.1){ e.ft=0; e.fi++; }
+    if(e.stormForm){
+      if(!e.swoop){
+        // just swirling — ambient, no threat at all — until its cooldown is up and fewer than
+        // STORM_SWIRL_MAX_ACTIVE birds are already mid-dive
+        e.swoopCd-=dt;
+        e.orbitAng+=e.orbitSpd*dt;
+        const tx=PK.x+Math.cos(e.orbitAng)*e.orbitR, ty=PK.y+Math.sin(e.orbitAng)*e.orbitR*0.6;
+        e.vx=(tx-e.x)*2; e.vy=(ty-e.y)*2;
+        e.dir=e.vx<0?-1:1;
+        e.ph+=dt*5;
+        e.ft+=dt; if(e.ft>0.14){ e.ft=0; e.fi++; }
+        e.x=(e.x+e.vx*dt+WW)%WW; e.y=(e.y+e.vy*dt+WH)%WH;
+        if(e.swoopCd<=0){
+          const activeSwoops=PK.en.reduce((a,o)=>a+(o.stormForm&&o.swoop?1:0),0);
+          if(activeSwoops<STORM_SWIRL_MAX_ACTIVE){ e.swoop=true; beep(240,.08,"sawtooth",.05); }
+          else e.swoopCd=0.5+Math.random()*0.7;
+        }
+        continue;
+      }
+      // swooping: a real dive, homing on BONES — dangerous, and barkable, for the length of the dive
+      const dxw2=wd(PK.x-e.x,WW), dyw2=wd(PK.y-e.y,WH), d2=Math.hypot(dxw2,dyw2)||1;
+      e.vx=dxw2/d2*e.sp; e.vy=dyw2/d2*e.sp;
+      e.dir=e.vx<0?-1:1;
+      e.ph+=dt*12;
+      e.ft+=dt; if(e.ft>0.08){ e.ft=0; e.fi++; }
       e.x=(e.x+(e.vx+e.kx)*dt+WW)%WW;
       e.y=(e.y+(e.vy+e.ky)*dt+WH)%WH;
-      const dxw2=wd(PK.x-e.x,WW), dyw2=wd(PK.y-e.y,WH), d2=Math.hypot(dxw2,dyw2)||1;
+      const maxR=Math.max(w,h)*0.95;
       if(d2<14 && PK.inv<=0 && !pkInvuln()){
         pkHurt(10); PK.inv=0.6;
-        e.kx=-dxw2/d2*220; e.ky=-dyw2/d2*220;
-        beep(110,.12,"sawtooth");
+        e.kx=-dxw2/d2*350; e.ky=-dyw2/d2*350;   // a hard shove — he flinches and bolts from the dive
+        beep(130,.14,"sawtooth"); toast("A BIRD DIVES — BONES BOLTS!",1);
         if(PK.hp<=0) return pkDeath();
+        e.swoop=false; e.swoopCd=2+Math.random()*3; e.orbitAng=Math.atan2(e.y-PK.y,e.x-PK.x); e.orbitR=maxR*0.44;
+      } else if(d2>maxR){
+        // flew clean past — rejoin the swirl for another pass rather than vanishing off-map
+        e.swoop=false; e.swoopCd=1.2+Math.random()*2; e.orbitAng=Math.atan2(e.y-PK.y,e.x-PK.x); e.orbitR=maxR*0.44;
       }
       continue;
     }
@@ -3105,6 +3134,7 @@ function pkShopIcon(ctx,x,y,s2,key,col){
     ctx.fillRect(-8,1,2,7); ctx.fillRect(6,1,2,7);
     ctx.beginPath(); ctx.moveTo(-4,-4); ctx.lineTo(0,-9); ctx.lineTo(4,-4); ctx.stroke(); }
   else if(key==="expand"){ ctx.strokeRect(-8,-8,16,16); ctx.beginPath(); ctx.moveTo(0,-8); ctx.lineTo(0,8); ctx.moveTo(-8,0); ctx.lineTo(8,0); ctx.stroke(); }
+  else if(key==="compass"){ ctx.beginPath(); ctx.arc(0,0,8,0,7); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0,-6); ctx.lineTo(2.4,0); ctx.lineTo(0,6); ctx.lineTo(-2.4,0); ctx.closePath(); ctx.fill(); }
   else { ctx.beginPath(); ctx.arc(0,0,6,0,7); ctx.stroke(); }
   ctx.restore();
 }
