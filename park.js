@@ -902,7 +902,7 @@ function pkSpawnRangerSquad(){
     const a2=ang+(Math.random()-0.5)*0.9;
     PK.en.push({t:"sq", ranger:true, x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
       hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:RANGER_APPROACH_SPD, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
-      atkState:"approach", atkCd:0.6+Math.random()*0.8});
+      atkState:"approach", atkCd:0.6+Math.random()*0.8, strafeDir:Math.random()<0.5?1:-1});
   }
   return n;
 }
@@ -918,7 +918,7 @@ function pkSpawnMadSquad(){
   for(let i=0;i<n;i++){
     const a2=ang+(Math.random()-0.5)*0.9;
     PK.en.push({t:"sq", madsq:true, x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
-      hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:44, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
+      hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:78, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
       laserState:"seek", chargeT:0, aimAng:0, sweepT:0, cd:0.6+Math.random()*0.8});
   }
   return n;
@@ -964,8 +964,8 @@ function pkSpawnMixBurst(types){
     const x=(PK.x+Math.cos(a2)*R+WW)%WW, y=(PK.y+Math.sin(a2)*R+WH)%WH;
     if(type==="bird") PK.en.push({t:"bird", x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:106.25, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0});   // +25% over the original 85
     else if(type==="cat") PK.en.push({t:"cat", x,y, hp:pkEnemyHp(2),hpMax:pkEnemyHp(2), sp:48, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0});
-    else if(type==="ranger") PK.en.push({t:"sq", ranger:true, x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:RANGER_APPROACH_SPD, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0, atkState:"approach", atkCd:0.6+Math.random()*0.8});
-    else if(type==="madsq") PK.en.push({t:"sq", madsq:true, x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:44, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0, laserState:"seek", chargeT:0, aimAng:0, sweepT:0, cd:0.6+Math.random()*0.8});
+    else if(type==="ranger") PK.en.push({t:"sq", ranger:true, x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:RANGER_APPROACH_SPD, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0, atkState:"approach", atkCd:0.6+Math.random()*0.8, strafeDir:Math.random()<0.5?1:-1});
+    else if(type==="madsq") PK.en.push({t:"sq", madsq:true, x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:78, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0, laserState:"seek", chargeT:0, aimAng:0, sweepT:0, cd:0.6+Math.random()*0.8});
   }
   return n;
 }
@@ -1756,6 +1756,11 @@ function parkUpdate(dt){
           e.dir = sx<0 ? -1 : 1;
           e.x=(e.x+(sx+e.kx)*dt+WW)%WW; e.y=(e.y+(sy+e.ky)*dt+WH)%WH;
         } else {
+          // in range — keeps circling him at that range instead of freezing on the spot the
+          // instant it's close enough to throw, so it reads as actively hunting, not planted
+          const perpx=-dyw/d, perpy=dxw/d, strafe=e.sp*0.55;
+          e.x=(e.x+perpx*strafe*(e.strafeDir||1)*dt+WW)%WW;
+          e.y=(e.y+perpy*strafe*(e.strafeDir||1)*dt+WH)%WH;
           e.dir = dxw<0 ? -1 : 1;
           e.atkCd-=dt;
           if(e.atkCd<=0){ e.atkState="windup"; e.windT=RANGER_WINDUP; }
