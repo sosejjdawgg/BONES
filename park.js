@@ -411,6 +411,13 @@ function pkSpawnBirdRow(n){
 // dive at BONES. A miss or a survived hit sends the diver back up to rejoin the swirl for
 // another pass later, so the whole flock cycles through real attacks instead of just circling.
 const STORM_SWIRL_MAX_ACTIVE=2;
+// how far a circling/diving storm bird's presence reaches into the grove, and how hard that
+// makes the nearest trees flutter — purely visual, cinematic weight for the swarm overhead
+const STORM_TREE_R=140, STORM_SWAY_MULT=5;
+// the beat between a bird locking onto BONES and the real, fast dive actually launching — this
+// is the player's whole reaction window, telegraphed on-screen by the same red windup dot every
+// other windup attack in the park already flashes
+const STORM_SWOOP_WINDUP=0.55;
 function pkSpawnBirdStorm(n){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
@@ -419,7 +426,7 @@ function pkSpawnBirdStorm(n){
     const a=baseAng+(6.283*i/n)+(Math.random()-0.5)*0.5;
     const r=R*(0.7+Math.random()*0.55);
     const x=(PK.x+Math.cos(a)*r+WW)%WW, y=(PK.y+Math.sin(a)*r+WH)%WH;
-    PK.en.push({t:"bird", stormForm:true, swoop:false, x, y, orbitAng:a, orbitR:r, orbitSpd:1.4+Math.random()*0.8,
+    PK.en.push({t:"bird", stormForm:true, swoop:false, swoopWindT:0, x, y, orbitAng:a, orbitR:r, orbitSpd:1.4+Math.random()*0.8,
       swoopCd:1.2+Math.random()*2.6, hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:150, vx:0, vy:0,
       ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
   }
@@ -586,22 +593,55 @@ function pkTreeClusterCount(tr){
   }
   return n;
 }
-const FIRE_CAP=5;   // at most this many trees burning at once — a whole ring alight would be unplayable
+// a lone beam-lit tree still caps out small (isolated, quickly barked out) — but once it's
+// actually spreading tree-to-tree, the whole grove is fair game for a proper wildfire
+const FIRE_CAP=5, GROVE_FIRE_CAP=24;
 function pkFireCount(){ let n=0; for(const t of PK.trees) if(t.state==="fire") n++; return n; }
-function pkIgniteTree(tr){
+function pkIgniteTree(tr, quiet){
   if(!tr || tr.state!=="ok") return;
-  if(pkFireCount()>=FIRE_CAP) return;   // the beam still stops here (pkBeamBlocker), it just won't catch
+  // a spread-caused catch answers to the much bigger grove-wide ceiling; a fresh, isolated
+  // beam strike still answers to the tight original cap so a stray shot can't detonate the cap
+  if(pkFireCount()>=(quiet?GROVE_FIRE_CAP:FIRE_CAP)) return;
   tr.state="fire"; tr.fireT=0; tr.spawnT=0.25;
   // solo tree, cornered and panicking: the full 15. Packed shoulder-to-shoulder in the ring,
   // there's nowhere for that many to have been living — down to as few as 3.
   tr.spawnMax=clamp(15-pkTreeClusterCount(tr)*1.4, 3, 15);
-  toast("THE TREE'S ALIGHT — THEY'RE POURING OUT!",1);
-  beep(90,.45,"sawtooth",.09); setTimeout(()=>beep(140,.35,"sawtooth",.07),110);
+  // every ignited tree gets its own one-shot chance to catch its neighbours later in its burn —
+  // this is what turns a single strike into a cascade through the whole grove over time
+  tr.spread=false; tr.spreadAt=1.1+Math.random()*2.4;
+  if(!quiet){
+    toast("THE TREE'S ALIGHT — THEY'RE POURING OUT!",1);
+    beep(90,.45,"sawtooth",.09); setTimeout(()=>beep(140,.35,"sawtooth",.07),110);
+  }
   // this tree is somebody's home — a small chance something much bigger evacuates while it's
   // still burning (not after: a stump is useless to it). Wave 8 has its own dedicated, far more
   // frequent ape assault, so this rare roll sits out that wave.
   if(PK.wave!==APE_WAVE && pkApeCount()<APE_CAP && Math.random()<0.05){
     tr.quakeT=APE_TELL_TIME; tr.quakeMax=APE_TELL_TIME;
+  }
+}
+// once a burning tree's own spread timer is up, it takes a run at catching 3-6 more trees —
+// nearest first, but pulled from a wide enough pool that the fire can genuinely reach across
+// the whole grove rather than just its own immediate neighbours, exactly like the real thing
+function pkSpreadFireFrom(tr){
+  if(pkFireCount()>=GROVE_FIRE_CAP) return;
+  const budget=Math.min(3+Math.floor(Math.random()*4), GROVE_FIRE_CAP-pkFireCount());
+  if(budget<=0) return;
+  const candidates=PK.trees.filter(o=>o!==tr && o.state==="ok")
+    .map(o=>({o, d:Math.hypot(wd(o.x-tr.x,PK.WW),wd(o.y-tr.y,PK.WH))}))
+    .sort((a,b)=>a.d-b.d);
+  let lit=0;
+  for(const c of candidates.slice(0, Math.max(budget*3,10))){
+    if(lit>=budget) break;
+    if(Math.random()<0.6){ pkIgniteTree(c.o, true); lit++; }
+  }
+  for(const c of candidates){   // top up with strict-nearest if the random pass came up short
+    if(lit>=budget) break;
+    if(c.o.state==="ok"){ pkIgniteTree(c.o, true); lit++; }
+  }
+  if(lit>0){
+    toast("FIRE'S SPREADING THROUGH THE GROVE!",1);
+    beep(85,.4,"sawtooth",.08); setTimeout(()=>beep(60,.5,"sawtooth",.07),130);
   }
 }
 function pkSpawnApeRaw(x,y,hpBase){
@@ -661,6 +701,11 @@ function pkTreeCollide(px,py){
   return [px,py];
 }
 function pkTickTrees(dt){
+  // wave 2's circling/diving storm reaches into the grove: any tree near a swirling or diving
+  // bird flutters hard, cycling through its sway-phase sprites fast enough to read as the
+  // swarm's wind whipping the canopy — cheap since it's the same discrete sprite cache, just
+  // stepped through quicker, and it only bothers looking for storm birds when any exist
+  const stormBirds = PK.en.length ? PK.en.filter(e=>e.stormForm) : [];
   for(let ti=PK.trees.length-1;ti>=0;ti--){
     const tr=PK.trees[ti];
     // smashed by an ape's landing: flying outward, tumbling, and gone the instant it lands —
@@ -680,7 +725,21 @@ function pkTickTrees(dt){
         continue;
       }
     }
-    tr.sway+=dt*(tr.state==="fire"?5:1.1);
+    let stormBoost=0;
+    for(const b of stormBirds){
+      const dx=wd(tr.x-b.x,PK.WW), dy=wd(tr.y-b.y,PK.WH), d=Math.hypot(dx,dy);
+      if(d<STORM_TREE_R){
+        const p=1-d/STORM_TREE_R;
+        stormBoost=Math.max(stormBoost, b.swoop?p*1.6:p);   // a bird actually diving overhead rattles it harder than one lazily circling
+      }
+    }
+    tr.sway+=dt*(tr.state==="fire"?5:1.1)*(1+stormBoost*STORM_SWAY_MULT);
+    if(stormBoost>0.3 && tr.state==="ok" && PK.leaves.length<40 && Math.random()<stormBoost*dt*5){
+      // cinematic flourish: close enough to the swarm that leaves are actually getting kicked loose
+      const a=Math.random()*6.283, r=Math.random()*TREE_R*1.3;
+      PK.leaves.push({x:tr.x+Math.cos(a)*r, y:tr.y-30+Math.sin(a)*r*0.6,
+        vy:16+Math.random()*16, t:Math.random()*6, ph:Math.random()*6.283, life:1.1+Math.random()*0.8});
+    }
     // a tree that rolled the rare ape spawn trembles and glows on top of its own flames for a
     // beat before the ape actually bursts out — it has to still be burning when this happens
     // (a stump is useless to it), so the roll and the whole tell run entirely inside "fire" state,
@@ -715,6 +774,7 @@ function pkTickTrees(dt){
     if(tr.state!=="fire") continue;
     tr.fireT+=dt;
     tr.spawnT-=dt;
+    if(!tr.spread && tr.fireT>=tr.spreadAt){ tr.spread=true; pkSpreadFireFrom(tr); }
     if(tr.spawnT<=0 && tr.spawned<(tr.spawnMax||TREE_SPAWN_MAX)){   // a burning nest keeps disgorging squirrels
       tr.spawnT=TREE_SPAWN_EVERY;
       tr.spawned++;
@@ -800,6 +860,10 @@ const APE_CAP=1, APE_HP=44, APE_SPD=190,
 // player who suddenly changes direction and having to wheel back around is a real, visible
 // thing that happens, not just a chase that always glues on perfectly
 const APE_ACCEL=260, APE_TURN_RATE=2.4, APE_AIM_LAG=0.4;
+// the run frames' bounding-gait art doesn't reach as far down its own canvas as the idle/jump
+// frames do, so drawn at the same anchor it visibly floats above its own shadow while ambling —
+// this nudges the run pose down to actually meet the ground line it's supposed to stand on
+const APE_RUN_GROUND_FIX=7;
 const APE_TELL_TIME=1.8;   // how long the stump trembles/glows before the ape actually bursts out
 function pkApeCount(){ let n=0; for(const e of PK.en) if(e.t==="ape" && !e.fleeing) n++; return n; }
 // WAVE 8 — apes start dropping out of the trees themselves, in couples, far more often than
@@ -1119,6 +1183,9 @@ const PAL_CAT_HP_T   = [14,  17,  20,  22];
 const PAL_BIRD_N_T   = [4,   6,   8,   10];
 const PAL_BIRD_EVT   = [14,  10,  8,   7];
 const PAL_BIRD_DMG_T = [1,   1,   1,   2];
+// the ape friend is a single, one-shot hire — no tiers, no upgrades, just 500 bones of muscle
+const PAL_APE_HP=60, PAL_APE_SPEED=150, PAL_APE_SEEK_R=90, PAL_APE_ORBIT_R=54, PAL_APE_ORBIT_SPD=1.1,
+      PAL_APE_LEASH=230, PAL_APE_DMG=6;
 function pkSqCd(t)    { return PAL_SQ_CD_T[t-1]; }
 function pkSqRange(t) { return PAL_SQ_RANGE_T[t-1]; }
 function pkSqDmg(t)   { return PAL_SQ_DMG_T[t-1]; }
@@ -1130,34 +1197,39 @@ function pkBirdN(t)   { return PAL_BIRD_N_T[t-1]; }
 function pkBirdEvery(t){ return PAL_BIRD_EVT[t-1]; }
 function pkBirdDmg(t) { return PAL_BIRD_DMG_T[t-1]; }
 // shop rows: one per companion kind; each row shows the next purchasable tier
-const PAL_KINDS=["sq","bird","cat"];
+const PAL_KINDS=["sq","bird","cat","ape"];
+// how many tiers each kind actually has — sq/bird/cat upgrade through 4, the ape is bought once
+const PAL_MAXTIER={sq:4, bird:4, cat:4, ape:1};
 const PAL_TIERS={
   sq:[
-    {n:"SQUIRREL PAL", fx:"FOLLOWS YOU, THROWS NUTS (SLOW)", c:10},
-    {n:"SQUIRREL PAL", fx:"FASTER FIRE, MORE DAMAGE",        c:18},
-    {n:"SQUIRREL PAL", fx:"FASTER STILL, HEAVIER HITS",      c:26},
-    {n:"SQUIRREL PAL", fx:"T4: LASER EYES UNLOCKED",         c:38},
+    {n:"SQUIRREL PAL", fx:"FOLLOWS YOU, THROWS NUTS (SLOW)", c:15},
+    {n:"SQUIRREL PAL", fx:"FASTER FIRE, MORE DAMAGE",        c:27},
+    {n:"SQUIRREL PAL", fx:"FASTER STILL, HEAVIER HITS",      c:39},
+    {n:"SQUIRREL PAL", fx:"T4: LASER EYES UNLOCKED",         c:57},
   ],
   bird:[
-    {n:"BIRD FLOCK",   fx:"4 BIRDS, EVERY 14 SEC",           c:13},
-    {n:"BIRD FLOCK",   fx:"6 BIRDS, EVERY 10 SEC",           c:21},
-    {n:"BIRD FLOCK",   fx:"8 BIRDS, EVERY 8 SEC",            c:31},
-    {n:"BIRD FLOCK",   fx:"10 BIRDS, EVERY 7 SEC — DOUBLE DAMAGE",c:44},
+    {n:"BIRD FLOCK",   fx:"4 BIRDS, EVERY 14 SEC",           c:20},
+    {n:"BIRD FLOCK",   fx:"6 BIRDS, EVERY 10 SEC",           c:32},
+    {n:"BIRD FLOCK",   fx:"8 BIRDS, EVERY 8 SEC",            c:47},
+    {n:"BIRD FLOCK",   fx:"10 BIRDS, EVERY 7 SEC — DOUBLE DAMAGE",c:66},
   ],
   cat:[
-    {n:"CAT FRIEND",   fx:"SHORT RANGE, SLOW POUNCE",        c:12},
-    {n:"CAT FRIEND",   fx:"WIDER PATROL, FASTER",            c:20},
-    {n:"CAT FRIEND",   fx:"QUICK AND AGGRESSIVE",            c:30},
-    {n:"CAT FRIEND",   fx:"T4: FULL POWER, POUNCES ANYTHING",c:38},
+    {n:"CAT FRIEND",   fx:"SHORT RANGE, SLOW POUNCE",        c:18},
+    {n:"CAT FRIEND",   fx:"WIDER PATROL, FASTER",            c:30},
+    {n:"CAT FRIEND",   fx:"QUICK AND AGGRESSIVE",            c:45},
+    {n:"CAT FRIEND",   fx:"T4: FULL POWER, POUNCES ANYTHING",c:57},
+  ],
+  ape:[
+    {n:"APE FRIEND",   fx:"HEAVY HITTER, SHRUGS OFF DAMAGE",  c:500},
   ]
 };
 function pkPalTier(k){ const p=PK.pals.find(q=>q.k===k); return p?p.tier:0; }
-function pkPalBuyableK(k){ return pkPalTier(k)<4; }
-function pkNextTierData(k){ const t=pkPalTier(k)+1; return t<=4?PAL_TIERS[k][t-1]:null; }
+function pkPalBuyableK(k){ return pkPalTier(k)<(PAL_MAXTIER[k]||4); }
+function pkNextTierData(k){ const t=pkPalTier(k)+1, max=PAL_MAXTIER[k]||4; return t<=max?PAL_TIERS[k][t-1]:null; }
 function pkBuyPal(k){
   const existing=PK.pals.find(p=>p.k===k);
   const tier=(existing?existing.tier:0)+1;
-  if(tier>4) return;
+  if(tier>(PAL_MAXTIER[k]||4)) return;
   if(existing){
     // upgrade: update stats in place, keep position and motion
     existing.tier=tier;
@@ -1177,6 +1249,10 @@ function pkBuyPal(k){
                                orbitAng:Math.random()*6.283, state:"orbit", tgt:null, recall:false,
                                dir:1, fi:0, ft:0, kx:0, ky:0, palBurnT:0, contactT:0});
   if(k==="bird") PK.pals.push({k:"bird", tier:1, passT:1.2, birds:[]});
+  if(k==="ape")  PK.pals.push({k:"ape", tier:1, x:(px+40)%PK.WW, y:(py+18)%PK.WH,
+                               hp:PAL_APE_HP, hpMax:PAL_APE_HP,
+                               orbitAng:Math.random()*6.283, state:"orbit", tgt:null, recall:false,
+                               dir:1, fi:0, ft:0, kx:0, ky:0, palBurnT:0, contactT:0});
 }
 // one shared kill path for everything a companion does, so a friend's hit resolves exactly like
 // a bark: a bone drops, they look shocked, then they scuttle off under their own steam
@@ -1361,6 +1437,39 @@ function pkPalsUpdate(dt,WW,WH){
           if(d<16){
             pkPalHit(tg,1,dx/d,dy/d);
             beep(320,.05,"square",.04);
+            p.state="orbit"; p.tgt=null;
+          }
+        }
+      }
+    } else if(p.k==="ape"){
+      // same orbit/pounce shape as the cat, just bigger, slower, and it hits like a truck
+      if(p.state==="orbit"){
+        p.orbitAng+=PAL_APE_ORBIT_SPD*dt;
+        const tx=PK.x+Math.cos(p.orbitAng)*PAL_APE_ORBIT_R, ty=PK.y+Math.sin(p.orbitAng)*PAL_APE_ORBIT_R*0.6;
+        const dx=wd(tx-p.x,WW), dy=wd(ty-p.y,WH), d=Math.hypot(dx,dy)||1;
+        const sp=Math.min(PAL_APE_SPEED, 45+d*3);
+        p.x=(p.x+dx/d*sp*dt+WW)%WW; p.y=(p.y+dy/d*sp*dt+WH)%WH;
+        p.dir = dx<0 ? -1 : 1;
+        if(p.recall && Math.hypot(wd(p.x-PK.x,WW),wd(p.y-PK.y,WH))<PAL_APE_ORBIT_R*1.6) p.recall=false;
+        if(!p.recall){
+          const tgt=pkNearestEnemy(p.x,p.y,PAL_APE_SEEK_R);
+          if(tgt){ p.state="pounce"; p.tgt=tgt; }
+        }
+      } else {
+        const tg=p.tgt;
+        const leash=Math.hypot(wd(p.x-PK.x,WW),wd(p.y-PK.y,WH));
+        if(!tg || tg.fleeing || tg.hp<=0 || leash>PAL_APE_LEASH){
+          if(leash>PAL_APE_LEASH) p.recall=true;
+          p.state="orbit"; p.tgt=null;
+        }
+        else {
+          const dx=wd(tg.x-p.x,WW), dy=wd(tg.y-p.y,WH), d=Math.hypot(dx,dy)||1;
+          p.x=(p.x+dx/d*PAL_APE_SPEED*dt+WW)%WW; p.y=(p.y+dy/d*PAL_APE_SPEED*dt+WH)%WH;
+          p.dir = dx<0 ? -1 : 1;
+          if(d<20){
+            pkPalHit(tg,PAL_APE_DMG,dx/d,dy/d);
+            for(let s=0;s<5;s++) SPARKS.push({x:tg.x, y:tg.y-6, vx:(Math.random()-0.5)*90, vy:-50-Math.random()*40, life:0.35});
+            beep(150,.08,"square",.06);
             p.state="orbit"; p.tgt=null;
           }
         }
@@ -1557,10 +1666,6 @@ function parkUpdate(dt){
       S.dogParkPlusUnlocked=true;
       setTimeout(()=>pkFanfare(null,true,"🏆 DOGPARK+ UNLOCKED!"),300);
     }
-    // the roost that just satisfied this wave's quota, and any stalking cats that came with it,
-    // have done their job — clear them out so they don't linger as bird-shaped red herrings the
-    // player can keep "catching" with zero effect on the next wave's actual goal
-    PK.en=PK.en.filter(e=>!((e.roost && e.roost.killed>=e.roost.need) || e.stalk || e.stalkAggro));
     tickStats(2.5, true);   // a cleared wave is 15 game minutes — the only time the park spends
     PK.waveT=0; PK.wave++;
     if(PK.wave>=3) tickTodo("j_wave3");
@@ -1572,9 +1677,20 @@ function parkUpdate(dt){
     else PK.goldenDone=false;
     PK.goldenAt=3+Math.random()*8; PK.goldenWarned=false;
     if(PK.wave===6) pkSpawnAlphaSquad();
-    // from wave 6 the types come mixed \u2014 that is the point of "you're on your own"
+    // from wave 6 the types come mixed — that is the point of "you're on your own"
     if(PK.wave>=6){ PK.mixTypes=pkPickMixTypes(); PK.mixLabel=MIX_NAME[PK.mixTypes[0]]+" & "+MIX_NAME[PK.mixTypes[1]]; }
     if(PK.wave===APE_WAVE){ PK.apeKills=0; PK.apeWaveT=2.5; }
+    // the roost that just satisfied the PREVIOUS wave's quota, and any stalking cats that came
+    // with it, have done their job — clear them out UNLESS the new wave we just landed on
+    // shares that same goal type, in which case leaving them be costs nothing (pkSideHazard
+    // already excludes them from a quota) and saves the player fighting the same animal twice
+    const nextHasBird = PK.wave===1 || PK.wave===2 || (PK.wave>=6 && PK.mixTypes && PK.mixTypes.includes("bird"));
+    const nextHasCat  = PK.wave===3 || (PK.wave>=6 && PK.mixTypes && PK.mixTypes.includes("cat"));
+    PK.en=PK.en.filter(e=>{
+      if(e.roost && e.roost.killed>=e.roost.need) return nextHasBird;
+      if(e.stalk || e.stalkAggro) return nextHasCat;
+      return true;
+    });
     PK.waveBanner={text:"WAVE "+PK.wave, sub:pkWaveName(PK.wave), life:3.2, max:3.2};
     beep(500,.08);
     pkShopOpen();
@@ -2037,9 +2153,23 @@ function parkUpdate(dt){
       continue;
     }
     if(e.stormForm){
+      if(e.swoopWindT>0){
+        // locked onto BONES and about to dive: it hangs almost in place, shuddering — the red
+        // flash (drawn generically off e.swoopWindT>0, same as any other windup) plus this beat
+        // of near-stillness IS the player's reaction window before the real, fast dive begins
+        e.swoopWindT-=dt;
+        e.orbitAng+=e.orbitSpd*dt*2.4;
+        e.vx=Math.sin(performance.now()/45+e.ph)*26; e.vy=Math.cos(performance.now()/55+e.ph)*16;
+        e.dir = wd(PK.x-e.x,WW)<0 ? -1 : 1;
+        e.ph+=dt*14;
+        e.ft+=dt; if(e.ft>0.07){ e.ft=0; e.fi++; }
+        e.x=(e.x+e.vx*dt+WW)%WW; e.y=(e.y+e.vy*dt+WH)%WH;
+        if(e.swoopWindT<=0){ e.swoop=true; PK.shake=Math.max(PK.shake||0,0.14); beep(300,.07,"sawtooth",.05); }
+        continue;
+      }
       if(!e.swoop){
         // just swirling — ambient, no threat at all — until its cooldown is up and fewer than
-        // STORM_SWIRL_MAX_ACTIVE birds are already mid-dive
+        // STORM_SWIRL_MAX_ACTIVE birds are already mid-dive or already telegraphing one
         e.swoopCd-=dt;
         e.orbitAng+=e.orbitSpd*dt;
         const tx=PK.x+Math.cos(e.orbitAng)*e.orbitR, ty=PK.y+Math.sin(e.orbitAng)*e.orbitR*0.6;
@@ -2049,8 +2179,8 @@ function parkUpdate(dt){
         e.ft+=dt; if(e.ft>0.14){ e.ft=0; e.fi++; }
         e.x=(e.x+e.vx*dt+WW)%WW; e.y=(e.y+e.vy*dt+WH)%WH;
         if(e.swoopCd<=0){
-          const activeSwoops=PK.en.reduce((a,o)=>a+(o.stormForm&&o.swoop?1:0),0);
-          if(activeSwoops<STORM_SWIRL_MAX_ACTIVE){ e.swoop=true; beep(240,.08,"sawtooth",.05); }
+          const activeSwoops=PK.en.reduce((a,o)=>a+(o.stormForm&&(o.swoop||o.swoopWindT>0)?1:0),0);
+          if(activeSwoops<STORM_SWIRL_MAX_ACTIVE){ e.swoopWindT=STORM_SWOOP_WINDUP; e.swoopCd=99; }
           else e.swoopCd=0.5+Math.random()*0.7;
         }
         continue;
@@ -2622,15 +2752,15 @@ function drawApe(ctx,e,sx,sy){
     ctx.beginPath(); ctx.arc(sx, sy, APE_SLAM_R*Math.max(0.05,p), 0, 7); ctx.stroke();
     ctx.restore();
   }
-  let img;
+  let img, running=false;
   if(e.introT>0) img = APEIMG.idle[0];
   else if(e.leapState==="windup") img = APEIMG.jump[0];
   else if(e.leapState==="leap") img = prog<0.4 ? APEIMG.jump[0] : APEIMG.jump[1];
   else if(e.landT>0) img = APEIMG.jump[2];
-  else img = APEIMG.run[Math.floor(e.fi)%APEIMG.run.length];
+  else { img = APEIMG.run[Math.floor(e.fi)%APEIMG.run.length]; running=true; }
   if(!img || !img.complete || !img.naturalWidth){ ctx.restore(); return; }
   const eh=38, ew=eh*img.naturalWidth/img.naturalHeight;
-  const dy=sy-lift;
+  const dy=sy-lift+(running?APE_RUN_GROUND_FIX:0);
   if(lift>1){
     // a small ground contact shadow keeps drifting under it while it's lifted, distinct from
     // the big dark landing-zone ellipse already drawn above at the true impact point
@@ -2671,7 +2801,7 @@ function drawEnemy(ctx,e,sx,sy){
     ctx.fillStyle="#fff"; ctx.font="bold 13px 'Press Start 2P',monospace"; ctx.textAlign="center";
     ctx.fillText("!", sx, sy-24); ctx.textAlign="left";
   }
-  if((e.atkState==="windup" || e.leapState==="windup") && Math.floor(performance.now()/80)%2){
+  if((e.atkState==="windup" || e.leapState==="windup" || e.swoopWindT>0) && Math.floor(performance.now()/80)%2){
     ctx.fillStyle="#f22"; ctx.beginPath(); ctx.arc(sx, sy-26, 2.4, 0, 7); ctx.fill();
   }
   // mad squirrels glow red the whole time they're charging or sweeping their beam
@@ -2745,9 +2875,11 @@ function drawPal(ctx,p,sx,sy,t){
   ctx.fillStyle="rgba(0,0,0,.25)";
   ctx.beginPath(); ctx.ellipse(sx,sy+2,9,3,0,0,7); ctx.fill();
   if(p.k==="sq" && p.tier>=4) drawPalLaserFX(ctx,p,sx,sy);
-  const frames=ENEMYIMG[p.k];
+  // the ape friend shares the enemy ape's own frame set (a separate idle/run/jump object,
+  // not the flat per-kind ENEMYIMG table everything else here comes from)
+  const frames = p.k==="ape" ? (p.state==="pounce" ? APEIMG.run : APEIMG.idle) : ENEMYIMG[p.k];
   const img=frames && frames[p.fi%frames.length];
-  const eh = p.k==="cat" ? 22 : 16;
+  const eh = p.k==="cat" ? 22 : p.k==="ape" ? 30 : 16;
   if(!img || !img.complete || !img.naturalWidth){
     ctx.fillStyle="#6cf"; ctx.beginPath(); ctx.arc(sx,sy-eh*0.5,eh*0.4,0,7); ctx.fill();
   } else {
@@ -3342,7 +3474,7 @@ function pkPadDraw(t){
     // only squirrel/cat carry HP at all (the bird flock is never itself a target). Pushed down
     // past BONES' own hp/maxhp number (drawn just above) so the two stop colliding.
     let ppy=by+bh2+24;
-    for(const kind of ["sq","cat"]){
+    for(const kind of ["sq","cat","ape"]){
       const p=PK.pals.find(q=>q.k===kind);
       if(!p) continue;
       const pw=86, ph2=8, pbx=bx+bw2-pw;
@@ -3352,7 +3484,7 @@ function pkPadDraw(t){
       ctx.fillStyle = pfrac<0.35 ? "#f22" : "#6cf";
       ctx.fillRect(pbx+1,ppy+1,(pw-2)*pfrac,ph2-2);
       ctx.fillStyle="#6cf"; ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="right";
-      ctx.fillText(kind==="sq"?"SQUIRREL":"CAT", pbx-4, ppy+ph2-1);
+      ctx.fillText(kind==="sq"?"SQUIRREL":kind==="cat"?"CAT":"APE", pbx-4, ppy+ph2-1);
       ctx.textAlign="left";
       ppy+=ph2+5;
     }
@@ -3452,7 +3584,7 @@ function pkPadDraw(t){
     ctx.fillStyle="#e8c14a"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
     ctx.fillText(PK.bones+" BONES", w/2-18, wbY+wbH*0.65);
     PAL_KINDS.forEach((k,i)=>{
-      const tier=pkPalTier(k), buyable=pkPalBuyableK(k);
+      const tier=pkPalTier(k), buyable=pkPalBuyableK(k), maxTier=PAL_MAXTIER[k]||4;
       const td=pkNextTierData(k);
       const cost=td?td.c:0, afford=PK.bones>=cost;
       const ok=buyable&&afford;
@@ -3462,17 +3594,17 @@ function pkPadDraw(t){
       // name + action
       const label = buyable
         ? (tier===0 ? td.n : "UPGRADE "+td.n)
-        : PAL_TIERS[k][3].n+" \u2014 MAXED";
+        : PAL_TIERS[k][maxTier-1].n+" \u2014 "+(maxTier>1?"MAXED":"HIRED");
       ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="left";
       ctx.fillStyle = !buyable ? "#556" : (afford?"#fff":"#a55");
       ctx.fillText(label, w*0.145, y-1);
       // description or maxed note
       ctx.font="6px 'Press Start 2P',monospace";
       ctx.fillStyle = buyable?"#999":"#445";
-      ctx.fillText(buyable ? td.fx : "ALL 4 TIERS UNLOCKED", w*0.145, y+11);
+      ctx.fillText(buyable ? td.fx : (maxTier>1?"ALL "+maxTier+" TIERS UNLOCKED":"ONE OF A KIND \u2014 ALREADY YOURS"), w*0.145, y+11);
       // tier pips: \u25A0 owned, \u25A1 not yet, shown on right above cost
       ctx.textAlign="right"; ctx.font="7px 'Press Start 2P',monospace";
-      const pips="\u25A0".repeat(tier)+"\u25A1".repeat(4-tier);
+      const pips="\u25A0".repeat(tier)+"\u25A1".repeat(maxTier-tier);
       ctx.fillStyle = tier>0?"#f6a":"#556";
       ctx.fillText(pips, w*0.855, y-1);
       // cost
