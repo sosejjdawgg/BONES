@@ -169,7 +169,7 @@ const S = {
   lvl:1, xp:0, gen:1, senior:false, seniorDays:0, lifePathChosen:false, litter:false, memorialSrc:null, pendingStage:[],
   lastSaveAt:null, lastSaveDay:0, lastSaveH:0, dogParkPlusUnlocked:false
 };
-const SETTINGS = { sound:true, reduceMotion:false, music:true };
+const SETTINGS = { sound:true, reduceMotion:false, music:false };
 const CHARMS = [
   {id:"spike", name:"SPIKED COLLAR", cost:15, unlock:2,   fx:"+15% SPEED / -10% JUMP",            mod:{spd:1.15,jmp:0.90}},
   {id:"band",  name:"RED BANDANA",   cost:10, unlock:5,   fx:"+15% JUMP",                          mod:{jmp:1.15}},
