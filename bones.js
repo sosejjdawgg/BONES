@@ -3070,9 +3070,15 @@ $("#rSnack").onclick=()=>{ if(S.money<3) return toast("NO MONEY",1);
   S.money-=3; S.hunger=clamp(S.hunger+22,0,100); beep(520); toast("REMOTE BONE DISPENSED"); renderMeters(); };
 $("#rWalk").onclick=()=>{ if(S.money<5) return toast("NO MONEY",1);
   S.money-=5; S.mood=clamp(S.mood+18,0,100); S.clean=clamp(S.clean-4,0,100); beep(640); toast("DOGWALKER BOOKED"); renderMeters(); };
-$("#bWalk").onclick=()=>{
-  if(S.lvl<5) return toast("THE DOGPARK UNLOCKS AT LV.5",1);
-  if(S.sick) return toast("BONES IS TOO SICK FOR THE PARK",1);
+// DOGPARK performance leans on energy and mood (see startPark's spd formula) — a dog running on
+// empty is visibly slower out there, so warn before he wastes a run being sluggish rather than
+// let the player find out mid-wave. Whichever of energy/hunger/mood is worst picks the wording.
+function pkFitnessWarning(){
+  const cands=[{v:S.energy,word:"TIRED"},{v:S.hunger,word:"HUNGRY"},{v:S.mood,word:"DOWN"}];
+  cands.sort((a,b)=>a.v-b.v);
+  return cands[0].v<40 ? cands[0].word : null;
+}
+function reallyEnterDogpark(){
   if(S.dogParkPlusUnlocked){
     openChoice("CHOOSE YOUR PARK",
       "DOGPARK+ REPEATS THE SAME 10 WAVES WITH DOUBLE THE ENEMIES ON SCREEN AT ONCE.",
@@ -3082,6 +3088,19 @@ $("#bWalk").onclick=()=>{
   }
   toast("SURVIVE THE WAVES, BANK BIG XP. IF BONES GETS CAUGHT, YOU LOSE IT ALL \u2620\ufe0f",1);
   startPark(false);
+}
+$("#bWalk").onclick=()=>{
+  if(S.lvl<5) return toast("THE DOGPARK UNLOCKS AT LV.5",1);
+  if(S.sick) return toast("BONES IS TOO SICK FOR THE PARK",1);
+  const warnWord=pkFitnessWarning();
+  if(warnWord){
+    openChoice("BONES LOOKS "+warnWord,
+      "HE WON'T BE AT HIS BEST OUT THERE LIKE THIS \u2014 SLOWER THAN USUAL IN THE PARK.<br><br>ARE YOU SURE YOU WANT TO GO?",
+      "GO ANYWAY", reallyEnterDogpark,
+      "TAKE CARE OF HIM FIRST", null);
+    return;
+  }
+  reallyEnterDogpark();
 };
 function openSupplies(){ renderSupplies(); $("#supplies").classList.add("show"); }
 function renderSupplies(){
