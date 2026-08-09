@@ -2070,18 +2070,18 @@ function pkBuyPal(k){
   const px=PK.x, py=PK.y;
   if(k==="sq")   PK.pals.push({k:"sq", tier:1, x:(px+30)%PK.WW, y:py, stay:false,
                                hp:pkSqHp(1), hpMax:pkSqHp(1), cd:pkSqCd(1),
-                               dir:1, fi:0, ft:0, kx:0, ky:0, palBurnT:0, contactT:0,
+                               dir:1, fi:0, ft:0, kx:0, ky:0, palBurnT:0, contactT:0, invulnT:0,
                                laserCd:PAL_LASER_CD*0.4, laserState:"idle", chargeT:0, sweepT:0, aimAng:0, aimBase:0, beamLen:0});
   if(k==="cat")  PK.pals.push({k:"cat", tier:1, x:(px-30+PK.WW)%PK.WW, y:py, stay:false,
                                hp:pkCatHp(1), hpMax:pkCatHp(1),
                                orbitAng:Math.random()*6.283, state:"orbit", tgt:null, recall:false,
-                               dir:1, fi:0, ft:0, kx:0, ky:0, palBurnT:0, contactT:0});
+                               dir:1, fi:0, ft:0, kx:0, ky:0, palBurnT:0, contactT:0, invulnT:0});
   if(k==="bird") PK.pals.push({k:"bird", tier:1, passT:1.2, birds:[]});
   if(k==="ape")  PK.pals.push({k:"ape", tier:1, x:(px+40)%PK.WW, y:(py+18)%PK.WH, stay:false,
                                hp:PAL_APE_HP, hpMax:PAL_APE_HP,
                                state:"rest", cd:pkApePalCd(1), windT:0, airT:0, landT:0,
                                sx0:0, sy0:0, sdx:0, sdy:0, tgt:null,
-                               dir:1, fi:0, ft:0, kx:0, ky:0, palBurnT:0, contactT:0});
+                               dir:1, fi:0, ft:0, kx:0, ky:0, palBurnT:0, contactT:0, invulnT:0});
 }
 // one shared kill path for everything a companion does, so a friend's hit resolves exactly like
 // a bark: a bone drops, they look shocked, then they scuttle off under their own steam
@@ -2332,6 +2332,7 @@ function pkPalsUpdate(dt,WW,WH){
       continue;
     }
     p.kx*=0.88; p.ky*=0.88;
+    if(p.invulnT>0) p.invulnT=Math.max(0,p.invulnT-dt);
     p.x=(p.x+p.kx*dt+WW)%WW; p.y=(p.y+p.ky*dt+WH)%WH;
     p.ft+=dt; if(p.ft>0.14){ p.ft=0; p.fi++; }
     if(p.k==="sq"){
@@ -2505,9 +2506,17 @@ function pkPalDamage(dt,WW,WH){
         touching=true;
         p.contactT+=dt;
         if(p.contactT>0.5){
-          p.contactT=0; p.hp-=e.alpha?6:2;
-          p.kx=-dx/d*160; p.ky=-dy/d*160;
-          beep(210,.05,"square",.03,{prio:0});
+          p.contactT=0;
+          // a friend that just got hit is untouchable for a couple of seconds — long enough to
+          // actually get clear of the pile that hit it in the first place — and re-triggers the
+          // instant that window runs out, so it's never a one-time thing
+          if(!(p.invulnT>0)){
+            p.hp-=e.alpha?6:2;
+            const kf=220+Math.random()*60;
+            p.kx=-dx/d*kf; p.ky=-dy/d*kf;
+            p.invulnT=2.0;
+            beep(210,.05,"square",.03,{prio:0});
+          }
         }
         break;
       }
@@ -2521,9 +2530,14 @@ function pkPalDamage(dt,WW,WH){
       if(al>0 && al<(e.beamLen||pkLaserRange()) && pe<MADSQ_WIDTH){
         p.palBurnT+=dt;   // its own timer: sharing burnT would let a doubly-lit enemy steal ticks
         if(p.palBurnT>0.28){
-          p.palBurnT=0; p.hp-=4;
-          p.kx=ux*180; p.ky=uy*180;
-          PK.embers.push({x:p.x, y:p.y, vx:(Math.random()-0.5)*60, vy:-40, life:0.5});
+          p.palBurnT=0;
+          if(!(p.invulnT>0)){
+            p.hp-=4;
+            const kf=220+Math.random()*60;
+            p.kx=ux*kf; p.ky=uy*kf;
+            p.invulnT=2.0;
+            PK.embers.push({x:p.x, y:p.y, vx:(Math.random()-0.5)*60, vy:-40, life:0.5});
+          }
         }
       }
     }
@@ -4062,8 +4076,17 @@ function drawPal(ctx,p,sx,sy,t){
     ctx.drawImage(pkTinted(img,"pal","saturate(0.5) hue-rotate(150deg) brightness(1.15)"), sx-ew/2, sy-eh, ew, eh);
     ctx.restore();
   }
-  // no ring, no floating HP bar out here anymore — a pal's health lives on the control screen
-  // now, stacked under BONES' own bar (see pkPadDraw), so the DOGPARK world itself stays clean
+  // no floating HP bar out here anymore — a pal's health lives on the control screen now,
+  // stacked under BONES' own bar (see pkPadDraw), so the DOGPARK world itself stays clean.
+  // the shield ring is the one exception: it's telling you something is happening RIGHT HERE,
+  // not a status the HUD could show just as well from a distance
+  if(p.invulnT>0){
+    const ir = p.k==="ape" ? 20 : 14;
+    const pulse = SETTINGS.reduceMotion ? 0.6 : 0.4+0.4*Math.abs(Math.sin(t*10));
+    ctx.save(); ctx.globalAlpha*=pulse; ctx.strokeStyle="#6cf"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.ellipse(sx,sy-ir*0.55,ir,ir*0.8,0,0,7); ctx.stroke();
+    ctx.restore();
+  }
 }
 // while the flock is up at altitude only its shadow shows on the grass; the bird itself is drawn
 // once it has committed to a dive

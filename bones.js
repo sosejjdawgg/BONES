@@ -3688,6 +3688,11 @@ $("#pkDevHealerNow").onclick=()=>{
   if(!PK.active) return;
   pkSpawnHealer(); toast("HEALER SPAWNED (DEV)");
 };
+$("#pkDevInvuln").onclick=()=>{
+  if(!PK.active) return;
+  for(const p of PK.pals){ if(p.k!=="bird") p.invulnT=2.0; }
+  toast("FRIENDS INVULNERABLE 2s (DEV)");
+};
 $("#pkDevBones").onclick=()=>{
   if(!PK.active) return;
   PK.bones+=50; toast("+50 BONES (DEV)");
