@@ -9,7 +9,8 @@ if [[ "${1:-}" == "--no-bump" ]]; then BUMP=0; fi
 
 echo "==> concatenating sources into combined.js"
 cat jumpslide.js enemyframes.js apeframes.js megaframes.js parktiles.js statport.js hearts.js \
-    dogframes2.js dogframes3.js runframes.js frames.js portraits.js bones.js park.js paperboy.js \
+    dogframes2.js dogframes3.js runframes.js frames.js portraits.js music_goodmood.js \
+    bones.js park.js paperboy.js \
     > combined.js
 
 echo "==> node --check combined.js"

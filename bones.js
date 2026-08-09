@@ -221,6 +221,31 @@ function musicTick(){
 function startMusic(){ if(!musicTimer) musicTimer=setInterval(musicTick,380); }
 function stopMusic(){ if(musicTimer){ clearInterval(musicTimer); musicTimer=null; } }
 
+/* ---------- DOGCAM ambient loop: a real track for when things are good ----------
+   The procedural bed above is the fallback for everywhere a mood-specific track doesn't exist
+   yet (DOGPARK, bad mood/sick — both planned). This is the first real one: a relaxed chiptune
+   loop for hanging out with BONES on the home screen while he's actually doing well. */
+const MOOD_AUDIO = new Audio(MUSIC_GOODMOOD);
+MOOD_AUDIO.loop = true; MOOD_AUDIO.volume = 0.42; MOOD_AUDIO.preload = "auto";
+let moodMusicOn = false;
+function pkGoodMoodMusic(){ return MODE==="home" && !S.sick && dogMoodState()!=="sad"; }
+// idempotent by design — always computes the state both music systems should be in right now,
+// rather than only acting on a change, so it's safe to call from anywhere (boot, a screen
+// switch, the settings toggle, or just the periodic meter refresh) with no ordering assumptions
+function syncMoodMusic(){
+  const want = SETTINGS.music && SETTINGS.sound && !document.hidden && pkGoodMoodMusic();
+  if(want){
+    if(!moodMusicOn){
+      moodMusicOn=true;
+      stopMusic();                        // the real track replaces the procedural bed, never layers under it
+      MOOD_AUDIO.play().catch(()=>{});    // blocked until a real gesture happens — retried on the next sync
+    }
+  } else {
+    if(moodMusicOn){ moodMusicOn=false; MOOD_AUDIO.pause(); }
+    if(SETTINGS.music && SETTINGS.sound) startMusic(); else stopMusic();
+  }
+}
+
 /* ---------- toast ---------- */
 let toastT=0;
 function toast(msg,red){
@@ -302,6 +327,7 @@ function renderMeters(){
   na.classList.toggle("crit", minv<40);
   const neg=S.money<0, mstr=(neg?"-$":"$")+Math.abs(S.money);
   for(const id of ["money1","money2","money3"]){ const el=$("#"+id); if(el){ el.textContent=mstr; el.style.color=neg?"#f22":"#fff"; } }
+  syncMoodMusic();   // cheap and idempotent — this is where a drifting mood/sickness gets noticed
   if(PARK_HDR) return;              // the park owns the header; don't stamp the clock over it
   $("#clock").textContent = "DAY "+CLK.day+" "+String(Math.floor(CLK.h)).padStart(2,"0")+":00"+(atWorkNow()?" ▶▶":"");
   $("#bests").textContent = "STREAK "+S.streak+"d";
@@ -2637,6 +2663,7 @@ function showScreen(id){
     next.classList.remove("screen-in");
     void next.offsetWidth;   // restart the animation even if the same screen is re-entered quickly
     next.classList.add("screen-in");
+    syncMoodMusic();         // the ambient DOGCAM loop only ever plays on the home screen
   }
 }
 function transition(label,cb){
@@ -2896,6 +2923,7 @@ function endRun(success,msg){
 }
 let hiddenAt=0;
 document.addEventListener("visibilitychange",()=>{
+  syncMoodMusic();   // pause the ambient loop when the tab isn't visible, resume when it is
   if(document.hidden){ hiddenAt=Date.now(); return; }
   if(!hiddenAt) return;
   const gap=(Date.now()-hiddenAt)/1000; hiddenAt=0;
@@ -3424,7 +3452,7 @@ $("#setSound").onclick=()=>{
 };
 $("#setMusic").onclick=()=>{
   SETTINGS.music=!SETTINGS.music;
-  if(SETTINGS.music) startMusic(); else stopMusic();
+  syncMoodMusic();
   renderSettings(); beep(500,.05);
 };
 $("#setMotion").onclick=()=>{
@@ -3730,7 +3758,7 @@ document.body.classList.toggle("reduce-motion", SETTINGS.reduceMotion);
 $("#startDog").src = PORTRAITS.happy;
 if(!STORAGE_OK) addMail("storage","PROGRESS CAN'T BE SAVED","STORAGE IS BLOCKED ON THIS DEVICE — "+NAME().toUpperCase()+"'S PROGRESS WON'T PERSIST BETWEEN VISITS.");
 buildMeters(); renderMeters(); renderShop(); renderTodo(); renderDogSel(); renderMailBadge();
-if(SETTINGS.music) startMusic();
+syncMoodMusic();
 let nagNext = performance.now()/1000 + 45;
 let last=performance.now(), meterAcc=0;
 function loop(now){
