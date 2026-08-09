@@ -49,12 +49,17 @@ function pkInvuln(){ return PK.godMode || PK.zoomT>0; }   // the golden bone: zo
    planted sword's own bolt-strike visual language (a jagged white core with a thicker glow
    underneath), just white/red instead of white/cyan so it reads as BONES' own move rather than
    the sword site's ambient hazard. ---------- */
+// three times the old runtime and staged like a real set-piece: a hard flash + slow-mo drop on
+// the wind-up, then a sustained barrage the world crawls through, then an easing release —
+// the golden-axe-superpower cadence, not just "the same move but slower"
+const JUDGMENT_DUR=3.3, JUDGMENT_WINDUP=0.35, JUDGMENT_TAIL=0.5;
 function pkHeavenlyJudgment(){
   if(PK.rage<100) return;
   PK.rage=0;
-  const boltN=8+Math.floor(Math.random()*7);   // 8-14
+  const boltN=16+Math.floor(Math.random()*11);   // 16-26 — a real barrage, not the old spread thinned over 3x the time
   const live=PK.en.filter(e=>!e.fleeing);
   const bolts=[];
+  const spread=JUDGMENT_DUR-JUDGMENT_WINDUP-JUDGMENT_TAIL;
   for(let i=0;i<boltN;i++){
     let tx,ty;
     if(live.length){
@@ -64,20 +69,22 @@ function pkHeavenlyJudgment(){
       const a=Math.random()*6.283, r2=60+Math.random()*160;
       tx=PK.x+Math.cos(a)*r2; ty=PK.y+Math.sin(a)*r2;
     }
-    bolts.push({x:tx, y:ty, t:i*(0.95/boltN)+Math.random()*0.08, done:false, flashT:0});
+    bolts.push({x:tx, y:ty, t:JUDGMENT_WINDUP+i*(spread/boltN)+Math.random()*0.09, done:false, flashT:0});
   }
-  PK.judgment={t:0, dur:1.1, bolts};
-  PK.shake=Math.max(PK.shake||0,0.6);
-  PK.zoomFromBark=Math.min(0.25,(PK.zoomFromBark||0)+0.15); pkApplyZoom();
+  PK.judgment={t:0, dur:JUDGMENT_DUR, bolts};
+  PK.judgmentFlashT=JUDGMENT_WINDUP;      // the screen-wide wind-up flash, screen-space
+  PK.zoomFromJudgment=0.22;               // temporary, uncapped pull-back — see pkApplyZoom
+  pkApplyZoom();
+  PK.shake=Math.max(PK.shake||0,0.75);
   toast("★ HEAVENLY JUDGMENT ★",1);
-  beep(60,.4,"sawtooth",.1,{prio:2});
+  beep(50,.55,"sawtooth",.13,{prio:2});
 }
 function pkJudgmentBoltLand(b){
   const R=44;
-  PK.scorch.push({x:b.x, y:b.y, r:16+Math.random()*8});
-  for(let i=0;i<10;i++){
-    const a=Math.random()*6.283, sp=50+Math.random()*140;
-    SPARKS.push({x:b.x, y:b.y-10, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp-50, life:0.35+Math.random()*0.3});
+  PK.scorch.push({x:b.x, y:b.y, r:18+Math.random()*10});
+  for(let i=0;i<14;i++){
+    const a=Math.random()*6.283, sp=60+Math.random()*160;
+    SPARKS.push({x:b.x, y:b.y-10, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp-60, life:0.4+Math.random()*0.35});
   }
   pkEnemiesNear(b.x,b.y,R+20,e=>{
     if(e.fleeing) return;
@@ -95,40 +102,89 @@ function pkJudgmentBoltLand(b){
       }
     }
   });
+  // every bolt keeps the screen alive with impact instead of just the one hit up front fading
+  // out a third of the way through a 3.3s sequence
+  PK.shake=Math.max(PK.shake||0,0.24);
   beep(180+Math.random()*260,.08,"square",.05,{prio:1});
 }
-function pkJudgmentUpdate(dt){
+// the eased time-dilation curve for the whole sequence — mirrors pkOutroSlow's own shape
+// (hard drop, long hold, gentle release) so it reads as the same "cinematic beat" language
+function pkJudgmentSlow(){
+  const j=PK.judgment; if(!j) return 1;
+  const p=clamp(j.t/j.dur,0,1);
+  if(p<0.05) return 1-(1-0.4)*(p/0.05);
+  if(p<0.88) return 0.4;
+  return 0.4+(1-0.4)*((p-0.88)/0.12);
+}
+// bolt scheduling advances on the real (unslowed) frame time — same trick pkOutroSlow's own
+// caller uses — so "16-26 bolts over ~2.4s" stays true regardless of how slow the world feels
+function pkJudgmentAdvance(dt){
+  if(!PK.judgment) return;
+  PK.judgment.t+=dt;
+  const p=clamp(PK.judgment.t/PK.judgment.dur,0,1);
+  const zTarget = p<0.9 ? 0.22 : 0.22*(1-(p-0.9)/0.1);
+  PK.zoomFromJudgment=zTarget; pkApplyZoom();
+  if(PK.judgmentFlashT>0) PK.judgmentFlashT=Math.max(0,PK.judgmentFlashT-dt);
+}
+// bolt landings + their flash decay run on the (already slowed) simulation dt, so each strike
+// visibly crackles in the same slow motion as everything else — called later in parkUpdate,
+// after pkJudgmentAdvance has already scaled dt down for the rest of the frame
+function pkJudgmentBoltsCheck(dt){
   if(!PK.judgment) return;
   const j=PK.judgment;
-  j.t+=dt;
   let anyFlash=false;
   for(const b of j.bolts){
-    if(!b.done && j.t>=b.t){ b.done=true; b.flashT=0.35; pkJudgmentBoltLand(b); }
+    if(!b.done && j.t>=b.t){ b.done=true; b.flashT=0.4; pkJudgmentBoltLand(b); }
     else if(b.flashT>0) b.flashT=Math.max(0,b.flashT-dt);
     if(b.flashT>0) anyFlash=true;
   }
-  if(j.t>=j.dur && !anyFlash) PK.judgment=null;
+  if(j.t>=j.dur && !anyFlash){
+    PK.judgment=null;
+    PK.zoomFromJudgment=0; pkApplyZoom();   // hard release in case the eased curve didn't quite land on 0
+  }
 }
 function pkDrawJudgmentBolts(ctx,SC,w,h){
   if(!PK.judgment) return;
   for(const b of PK.judgment.bolts){
     if(!(b.flashT>0)) continue;
     const [sx,sy]=SC(b.x,b.y);
-    if(sx<-60||sx>w+60||sy<-60||sy>h+60) continue;
-    const f=b.flashT/0.35;
+    if(sx<-70||sx>w+70||sy<-70||sy>h+70) continue;
+    const f=b.flashT/0.4;
     ctx.save(); ctx.globalAlpha=f;
-    ctx.strokeStyle="#fff"; ctx.lineWidth=4;
+    ctx.strokeStyle="#fff"; ctx.lineWidth=5;
     ctx.beginPath();
     let bx=sx;
     ctx.moveTo(bx,-20);
-    for(let i=0;i<6;i++){ bx=sx+(Math.random()-0.5)*24; const by=-20+(sy+20)*(i+1)/6; ctx.lineTo(bx,by); }
+    for(let i=0;i<6;i++){ bx=sx+(Math.random()-0.5)*30; const by=-20+(sy+20)*(i+1)/6; ctx.lineTo(bx,by); }
     ctx.lineTo(sx,sy); ctx.stroke();
-    ctx.globalAlpha=f*0.55; ctx.strokeStyle="#f22"; ctx.lineWidth=9;
+    ctx.globalAlpha=f*0.55; ctx.strokeStyle="#f22"; ctx.lineWidth=11;
     ctx.stroke();
-    ctx.globalAlpha=f*0.4; ctx.fillStyle="#fff";
-    ctx.beginPath(); ctx.arc(sx,sy,36,0,7); ctx.fill();
+    ctx.globalAlpha=f*0.45; ctx.fillStyle="#fff";
+    ctx.beginPath(); ctx.arc(sx,sy,46,0,7); ctx.fill();
     ctx.restore();
   }
+}
+// screen-space, drawn after the world transform is already closed: a hard white wind-up flash
+// on the call-in, then a warm gold vignette that pulses at the screen's edges for the rest of
+// the sequence — the "something enormous is happening" cue Golden Axe's own magic spells use
+function pkDrawJudgmentFlash(ctx,w,h,t){
+  if(PK.judgmentFlashT>0){
+    ctx.save();
+    ctx.globalAlpha=clamp(PK.judgmentFlashT/JUDGMENT_WINDUP,0,1)*0.9;
+    ctx.fillStyle="#fff"; ctx.fillRect(0,0,w,h);
+    ctx.restore();
+  }
+  if(!PK.judgment) return;
+  const p=clamp(PK.judgment.t/PK.judgment.dur,0,1);
+  const envelope = p<0.06 ? p/0.06 : p>0.9 ? Math.max(0,1-(p-0.9)/0.1) : 1;
+  if(envelope<=0) return;
+  const pulse=0.65+0.35*Math.abs(Math.sin(t*7));
+  ctx.save();
+  const g=ctx.createRadialGradient(w/2,h/2,Math.min(w,h)*0.32,w/2,h/2,Math.max(w,h)*0.75);
+  g.addColorStop(0,"rgba(255,214,110,0)");
+  g.addColorStop(1,"rgba(255,60,40,"+(0.34*envelope*pulse).toFixed(3)+")");
+  ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+  ctx.restore();
 }
 const XP_PER_KILL=0.4, XP_PER_SIDE=2;
 // a long run with a full crew can rack up well over a thousand downed enemies once companions and
@@ -418,7 +474,7 @@ function startPark(plus){
     armor:0, armorUnlocked:false, armorFeedCount:0,
     exitNagT:0, exitNagFlashT:0,
     swordSpinCd:0, whirlwindT:0, whirlwindR:0, spinLastAng:null, spinAngAccum:0, spinT:0,
-    rage:0, judgment:null
+    rage:0, judgment:null, judgmentFlashT:0, zoomFromJudgment:0
   });
   PK.hp=PK.maxhp;
   PK.healerT=pkHealerGap();
@@ -1305,7 +1361,7 @@ function pkSwordUpgrade(){
    with the blade in a wide circle. DOGPARK+ only, and only once the sword is actually held —
    this is a payoff for having the blade, not a separate weapon. Long cooldown, so it's a panic
    button / crowd-clearer, not something to lean on every fight. ---------- */
-const SWORD_SPIN_CD=20, SWORD_SPIN_WINDOW=0.45;
+const SWORD_SPIN_CD=5, SWORD_SPIN_WINDOW=0.45;
 function pkWhirlwindReady(){ return PK.plusMode && pkSwordTier()>=1 && PK.swordSpinCd<=0; }
 function pkSwordSpinUpdate(dt){
   PK.swordSpinCd=Math.max(0,PK.swordSpinCd-dt);
@@ -1332,10 +1388,11 @@ function pkSwordSpinUpdate(dt){
 }
 function pkWhirlwindSlash(){
   PK.swordSpinCd=SWORD_SPIN_CD;
-  const R=70+pkSwordTier()*4;   // 74..90 across the 5 tiers
+  const R=100+pkSwordTier()*8;   // 108..140 across the 5 tiers — noticeably wider than the old 74..90
   const dmg=18+Math.random()*4+pkSwordTier()*1.5;
   const sweep=[];
-  pkEnemiesNear(PK.x,PK.y,R+20,e=>sweep.push(e));
+  const nearMissR=R*1.5;
+  pkEnemiesNear(PK.x,PK.y,nearMissR+20,e=>sweep.push(e));
   for(const e of sweep){
     if(e.fleeing) continue;
     const dxw=wd(e.x-PK.x,PK.WW), dyw=wd(e.y-PK.y,PK.WH), d=Math.hypot(dxw,dyw)||1;
@@ -1346,6 +1403,12 @@ function pkWhirlwindSlash(){
         e.kx=dxw/d*PK.knock*2.8; e.ky=dyw/d*PK.knock*2.8;   // the whole point — this is the one attack that actually clears the ring
         e.hitT=0.3; pkHitMark(e.x,e.y,false);
       }
+    } else if(d<nearMissR+pkHitR(e) && !(e.startledT>0)){
+      // just outside the blade's actual reach: not hit, but close enough that the whoosh of it
+      // rattles them — a beat of hesitation rather than a free hit
+      e.startledT=0.7;
+      PK.fx.push({x:e.x, y:e.y-20, txt:"!", life:0.9});
+      beep(900,.05,"square",.04,{prio:0});
     }
   }
   PK.whirlwindT=0.5;
@@ -2001,7 +2064,7 @@ function pkHuntPlayer(dt,WW,WH){
   }
   const starved = near===0;
   for(const e of PK.en){
-    if(e.fleeing || e.decor || e.swoop) continue;
+    if(e.fleeing || e.decor || e.swoop || e.startledT>0) continue;
     const dx=wd(PK.x-e.x,WW), dy=wd(PK.y-e.y,WH), d=Math.hypot(dx,dy)||1;
     if(d<engage*0.75){ e.hunting=false; continue; }
     // a roost that nobody can find is just scenery — once the field is empty they get up
@@ -2087,7 +2150,10 @@ function pkAgiHeal(){ return AGI_HEAL_BASE + AGI_HEAL_STEP*(PK.agiLvl||0); }
 // park both mean more happening on screen at once, so the view widens to show it. The two
 // sources share one 25%-out ceiling rather than stacking without limit.
 function pkApplyZoom(){
-  PK.zoom=1-Math.min(0.25,(PK.zoomFromBark||0)+(PK.zoomFromPark||0));
+  // the permanent bark/park pull-back stays capped at 25% total, but Heavenly Judgment's own
+  // temporary pull-back is a rare, deliberate cinematic beat — it stacks on top, uncapped, and
+  // decays back to 0 on its own once the sequence ends (see pkJudgmentAdvance)
+  PK.zoom=1-Math.min(0.25,(PK.zoomFromBark||0)+(PK.zoomFromPark||0))-(PK.zoomFromJudgment||0);
 }
 // removes any tree within r of (x,y) — used after every expansion to guarantee a real clearing
 // around anything BONES actually needs to reach, rather than hoping the random scatter missed it
@@ -2767,6 +2833,7 @@ function parkUpdate(dt){
   if(PK.swordCine){ pkSwordCineUpdate(dt); return; }
   // the wave-ending send-off runs its own real-time clock while the world it is showing slows
   if(PK.waveOutro){ PK.waveOutro.t+=dt; dt*=pkOutroSlow(); }
+  if(PK.judgment){ pkJudgmentAdvance(dt); dt*=pkJudgmentSlow(); }
   // exercise costs him something: DOGPARK deliberately sits outside the day/night clock
   // (tickStats no-ops while PK.active — see its own comment), so this is a small, self-contained
   // drain instead of unblocking that whole system mid-run. A real session leaves him noticeably
@@ -2999,6 +3066,16 @@ function parkUpdate(dt){
   for(let i=PK.en.length-1;i>=0;i--){
     const e=PK.en[i];
     e.kx*=0.88; e.ky*=0.88;
+    // a near-miss from the Whirlwind Slash startles rather than hits: frozen for a beat (still
+    // takes knockback drift, still gets downed if something else lands on it) instead of pressing
+    // its own attack — reads as a flinch, not a stun the player has to fight through
+    if(e.startledT>0){
+      e.startledT=Math.max(0,e.startledT-dt);
+      if(!e.fleeing){
+        e.x=(e.x+e.kx*dt+WW)%WW; e.y=(e.y+e.ky*dt+WH)%WH;
+        continue;
+      }
+    }
     if(e.fleeing){
       e.shockT=Math.max(0,e.shockT-dt);
       if(e.explodeT!==undefined) e.explodeT=Math.max(0,e.explodeT-dt);
@@ -3474,7 +3551,7 @@ function parkUpdate(dt){
   if(PK.sword && PK.sword.state==="planted") pkSwordPlantedUpdate(dt);
   else if(PK.sword && PK.sword.state==="held") pkSwordHeldUpdate(dt);
   pkSwordSpinUpdate(dt);
-  pkJudgmentUpdate(dt);
+  pkJudgmentBoltsCheck(dt);
   if(PK.hell) pkHellUpdate(dt);
   // the bandana dog: stand near him to shop, and you have to actually walk away before he'll
   // talk again — the world is frozen while the panel is up, so a bare radius test would reopen
@@ -4646,6 +4723,7 @@ function parkDraw(t){
   ctx.restore();   // exit the world zoom transform before any fixed-to-screen overlay
   pkDrawHellOverlay(ctx,w,h,t);
   pkDrawWaveOutro(ctx,w,h,t);
+  pkDrawJudgmentFlash(ctx,w,h,t);
   pkDrawSwordCineOverlay(ctx,w,h,t);
   if(PK.shop){
     ctx.fillStyle="rgba(0,0,0,.6)"; ctx.fillRect(0,0,w,h);
