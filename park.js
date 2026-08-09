@@ -898,7 +898,12 @@ const SWORD_COST=250, SWORD_UP_COST=100, SWORD_MAX_TIER=5, SWORD_WAVE=2;
 const SWORD_DMG_T   = [7, 9, 11, 13, 15];
 const SWORD_SCALE_T = [1, 1.15, 1.3, 1.45, 1.6];
 const SWORD_CUT_CD=0.3;      // no meter on screen, but it physically cannot cut faster than this
-const SWORD_BLADE=34;        // blade length at tier 1, in world px
+const SWORD_BLADE=44;        // blade length at tier 1, in world px — long and slim
+// he carries it the way a dog actually carries a sword: jaws closed around the grip, pommel
+// poking out one side, the whole blade jutting straight out the other. GRIP_MID is where the
+// middle of the grip sits in the shape's own coordinates, so his teeth can be put exactly there.
+const SWORD_GRIP_MID=-8.6;
+const SWORD_MOUTH_X=15, SWORD_MOUTH_Y=3;   // mouth offset from his centre — jaw height, below the head
 const SWORD_TAKE_R=34;       // walk this close to the planted blade to claim it
 function pkSwordTier(){ return PK.sword && PK.sword.state==="held" ? PK.sword.tier : 0; }
 function pkSwordScale(){ return SWORD_SCALE_T[clamp(pkSwordTier()-1,0,SWORD_MAX_TIER-1)]||1; }
@@ -1052,9 +1057,12 @@ function pkSwordHeldUpdate(dt){
   if(s.cutCd>0) return;
   const face=PK.vx<0?-1:1;
   const sc=pkSwordScale();
-  const mx=PK.x+face*15, my=PK.y-2;                 // the mouth
-  const len=SWORD_BLADE*sc;
-  const tipx=mx+face*len;
+  // the cutting edge is the blade only, which starts just past the crossguard — a little ahead
+  // of his teeth, since the grip itself is what he's holding
+  const my=PK.y+SWORD_MOUTH_Y;
+  const guardX=PK.x+face*(SWORD_MOUTH_X-SWORD_GRIP_MID*sc);
+  const mx=guardX+face*2*sc;
+  const tipx=guardX+face*SWORD_BLADE*sc;
   let cut=0;
   for(const e of PK.en){
     if(e.fleeing) continue;
@@ -1063,7 +1071,7 @@ function pkSwordHeldUpdate(dt){
     const lo=Math.min(mx,tipx), hi=Math.max(mx,tipx);
     const cx=clamp(ex,lo,hi);
     const d=Math.hypot(ex-cx, ey-my);
-    if(d < 9*sc + pkHitR(e)){
+    if(d < 7*sc + pkHitR(e)){
       const ux=face, uy=0;
       pkPalHit(e, pkSwordDmg(), ux, uy);
       e.hitT=0.3;
@@ -1100,69 +1108,61 @@ function pkSwordUpgrade(){
 // drawn pointing along +X with the origin at the middle of the crossguard, so the same shape
 // serves the spinning drop, the planted blade and the one in his mouth
 function pkDrawSwordShape(ctx,s,gleamP){
-  const bl=SWORD_BLADE*s, bw=4.6*s;
+  const bl=SWORD_BLADE*s, bw=2.7*s;              // long and slim, not a slab
   ctx.lineJoin="miter";
-  // ---- blade
-  ctx.fillStyle="#b9c4cf";
+  // ---- blade: parallel edges most of the way, then a long tapering point
+  ctx.fillStyle="#c2ccd6";
   ctx.beginPath();
-  ctx.moveTo(3*s,-bw); ctx.lineTo(bl-9*s,-bw*0.8); ctx.lineTo(bl,0); ctx.lineTo(bl-9*s,bw*0.8); ctx.lineTo(3*s,bw);
+  ctx.moveTo(2*s,-bw); ctx.lineTo(bl-11*s,-bw); ctx.lineTo(bl,0); ctx.lineTo(bl-11*s,bw); ctx.lineTo(2*s,bw);
   ctx.closePath(); ctx.fill();
-  ctx.fillStyle="#f2f6fa";                       // lit upper bevel
+  ctx.fillStyle="#f4f8fc";                       // lit upper bevel
   ctx.beginPath();
-  ctx.moveTo(3*s,-bw*0.92); ctx.lineTo(bl-9*s,-bw*0.52); ctx.lineTo(bl-2*s,-bw*0.06); ctx.lineTo(3*s,-bw*0.06);
+  ctx.moveTo(2*s,-bw); ctx.lineTo(bl-11*s,-bw); ctx.lineTo(bl-3*s,-bw*0.12); ctx.lineTo(2*s,-bw*0.12);
   ctx.closePath(); ctx.fill();
-  ctx.strokeStyle="#78838e"; ctx.lineWidth=Math.max(0.8,1.1*s);   // the fuller
-  ctx.beginPath(); ctx.moveTo(6*s,0); ctx.lineTo(bl-8*s,0); ctx.stroke();
-  ctx.strokeStyle="#4a535c"; ctx.lineWidth=Math.max(0.8,1.2*s);
+  ctx.strokeStyle="#7d8892"; ctx.lineWidth=Math.max(0.6,0.8*s);   // the fuller
+  ctx.beginPath(); ctx.moveTo(5*s,0); ctx.lineTo(bl-12*s,0); ctx.stroke();
+  ctx.strokeStyle="#4a535c"; ctx.lineWidth=Math.max(0.7,0.9*s);
   ctx.beginPath();
-  ctx.moveTo(3*s,-bw); ctx.lineTo(bl-9*s,-bw*0.8); ctx.lineTo(bl,0); ctx.lineTo(bl-9*s,bw*0.8); ctx.lineTo(3*s,bw);
+  ctx.moveTo(2*s,-bw); ctx.lineTo(bl-11*s,-bw); ctx.lineTo(bl,0); ctx.lineTo(bl-11*s,bw); ctx.lineTo(2*s,bw);
   ctx.closePath(); ctx.stroke();
-  // ---- crossguard
-  const gh=11*s;
-  ctx.fillStyle="#1d2740";
-  ctx.fillRect(-2.6*s,-gh,6*s,gh*2);
+  // ---- crossguard: a slim swept bar, no medallion at this size
+  const gh=6.4*s;
   ctx.fillStyle="#d9a441";
-  ctx.fillRect(-3.4*s,-gh,1.9*s,gh*2);
-  ctx.fillRect(2.6*s,-gh,1.9*s,gh*2);
-  ctx.beginPath(); ctx.moveTo(-3.4*s,-gh); ctx.lineTo(4.5*s,-gh); ctx.lineTo(1.6*s,-gh-3.2*s); ctx.lineTo(-1.4*s,-gh-3.2*s); ctx.closePath(); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(-3.4*s, gh); ctx.lineTo(4.5*s, gh); ctx.lineTo(1.6*s, gh+3.2*s); ctx.lineTo(-1.4*s, gh+3.2*s); ctx.closePath(); ctx.fill();
-  ctx.fillStyle="#222d49";                       // the medallion, with its bone
-  ctx.beginPath(); ctx.arc(0.4*s,0,5.2*s,0,7); ctx.fill();
-  ctx.strokeStyle="#d9a441"; ctx.lineWidth=Math.max(0.9,1.3*s);
-  ctx.beginPath(); ctx.arc(0.4*s,0,5.2*s,0,7); ctx.stroke();
-  if(s>0.55) drawBone(ctx,0.4*s,0,0.42*s,"#f4f0e6");
-  // ---- grip
+  ctx.beginPath();
+  ctx.moveTo(-1.6*s,-gh); ctx.lineTo(2.4*s,-gh*0.72); ctx.lineTo(2.4*s,gh*0.72); ctx.lineTo(-1.6*s,gh);
+  ctx.lineTo(-3.2*s,gh*0.8); ctx.lineTo(-3.2*s,-gh*0.8);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle="#8a6420"; ctx.lineWidth=Math.max(0.5,0.7*s); ctx.stroke();
+  // ---- grip: what his teeth are actually closed around
   ctx.fillStyle="#1b2338";
-  ctx.fillRect(-17*s,-3.4*s,14.5*s,6.8*s);
-  ctx.strokeStyle="#c8973a"; ctx.lineWidth=Math.max(0.7,0.9*s);
-  for(let i=0;i<4;i++){
-    const gx=-16*s+i*3.6*s;
-    ctx.beginPath(); ctx.moveTo(gx,-3.4*s); ctx.lineTo(gx+3.2*s,3.4*s); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(gx+3.2*s,-3.4*s); ctx.lineTo(gx,3.4*s); ctx.stroke();
+  ctx.fillRect(-14*s,-1.9*s,10.8*s,3.8*s);
+  ctx.strokeStyle="#c8973a"; ctx.lineWidth=Math.max(0.5,0.6*s);
+  for(let i=0;i<3;i++){
+    const gx=-13.2*s+i*3.4*s;
+    ctx.beginPath(); ctx.moveTo(gx,-1.9*s); ctx.lineTo(gx+3*s,1.9*s); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(gx+3*s,-1.9*s); ctx.lineTo(gx,1.9*s); ctx.stroke();
   }
   ctx.fillStyle="#d9a441";
-  ctx.fillRect(-3.4*s,-4.4*s,2.2*s,8.8*s);       // ferrule against the guard
-  ctx.fillRect(-18.6*s,-4.4*s,2.2*s,8.8*s);      // and at the pommel end
+  ctx.fillRect(-3.6*s,-2.6*s,1.5*s,5.2*s);       // ferrule against the guard
   // ---- pommel
-  ctx.fillStyle="#222d49";
+  ctx.fillStyle="#d9a441";
   ctx.beginPath();
-  ctx.moveTo(-19*s,0); ctx.lineTo(-23.5*s,-5.4*s); ctx.lineTo(-28*s,0); ctx.lineTo(-23.5*s,5.4*s);
+  ctx.moveTo(-14.2*s,0); ctx.lineTo(-16.6*s,-3*s); ctx.lineTo(-19.4*s,0); ctx.lineTo(-16.6*s,3*s);
   ctx.closePath(); ctx.fill();
-  ctx.strokeStyle="#d9a441"; ctx.lineWidth=Math.max(0.9,1.3*s); ctx.stroke();
-  if(s>0.55) drawBone(ctx,-23.5*s,0,0.38*s,"#f4f0e6");
+  ctx.strokeStyle="#8a6420"; ctx.lineWidth=Math.max(0.5,0.7*s); ctx.stroke();
   // ---- the gleam: a hard white band running out along the blade to the tip
   if(gleamP!=null && gleamP>=0 && gleamP<=1){
-    const gx=3*s+(bl-3*s)*gleamP;
+    const gx=2*s+(bl-2*s)*gleamP;
     ctx.save();
     ctx.beginPath();
-    ctx.moveTo(3*s,-bw); ctx.lineTo(bl-9*s,-bw*0.8); ctx.lineTo(bl,0); ctx.lineTo(bl-9*s,bw*0.8); ctx.lineTo(3*s,bw);
+    ctx.moveTo(2*s,-bw); ctx.lineTo(bl-11*s,-bw); ctx.lineTo(bl,0); ctx.lineTo(bl-11*s,bw); ctx.lineTo(2*s,bw);
     ctx.closePath(); ctx.clip();
-    const grd=ctx.createLinearGradient(gx-9*s,0,gx+9*s,0);
+    const grd=ctx.createLinearGradient(gx-10*s,0,gx+10*s,0);
     grd.addColorStop(0,"rgba(255,255,255,0)");
     grd.addColorStop(0.5,"rgba(255,255,255,0.95)");
     grd.addColorStop(1,"rgba(255,255,255,0)");
     ctx.fillStyle=grd;
-    ctx.fillRect(gx-9*s,-bw*1.2,18*s,bw*2.4);
+    ctx.fillRect(gx-10*s,-bw*1.4,20*s,bw*2.8);
     ctx.restore();
   }
 }
@@ -1231,22 +1231,28 @@ function pkDrawWorldSword(ctx,sx,sy,t){
     ctx.beginPath(); ctx.arc(sx,y-14,40,0,7); ctx.fill();
     ctx.restore();
   }
-  // buried: rotate so the blade points straight down into the dirt
-  ctx.save(); ctx.translate(sx,y+14); ctx.rotate(Math.PI/2);
+  // buried: rotated so the blade points straight down, and clipped at the dirt line so it really
+  // ends in the ground instead of lying across it
+  const groundY=y+5;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(sx-60, y-120, 120, (groundY)-(y-120)); ctx.clip();
+  ctx.translate(sx,y-26); ctx.rotate(Math.PI/2);
   pkDrawSwordShape(ctx,s2,null);
   ctx.restore();
-  // dirt piled at the entry point, hiding the join
+  // dirt thrown up around where it went in
   ctx.fillStyle="#2e2519";
-  ctx.beginPath(); ctx.ellipse(sx,y+16,15,5,0,0,7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(sx,groundY+1,16,5.5,0,0,7); ctx.fill();
+  ctx.fillStyle="#4a3c26";
+  ctx.beginPath(); ctx.ellipse(sx,groundY-1,10,3,0,0,7); ctx.fill();
   if(!ph){
     ctx.save();
     ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
     const afford=PK.bones>=SWORD_COST;
     ctx.fillStyle=afford?"#ffe98a":"#e08a8a";
     ctx.globalAlpha=0.75+0.25*Math.sin(t*4);
-    ctx.fillText(SWORD_COST+" BONES", sx, y-58);
+    ctx.fillText(SWORD_COST+" BONES", sx, y-84);
     ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle="#cfd6dd"; ctx.globalAlpha=0.7;
-    ctx.fillText(afford?"WALK UP TO TAKE IT":"NOT ENOUGH YET", sx, y-48);
+    ctx.fillText(afford?"WALK UP TO TAKE IT":"NOT ENOUGH YET", sx, y-74);
     ctx.restore(); ctx.textAlign="left";
   }
 }
@@ -1261,8 +1267,9 @@ function pkDrawHeldSword(ctx,DX,DY,t){
     sc*=1+Math.sin(p*Math.PI)*0.32*(1-p*0.35);
   }
   ctx.save();
-  ctx.translate(DX+face*15, DY-2);
+  ctx.translate(DX+face*SWORD_MOUTH_X, DY+SWORD_MOUTH_Y);
   if(face<0) ctx.scale(-1,1);
+  ctx.translate(-SWORD_GRIP_MID*sc, 0);   // put the middle of the grip in his teeth
   if(s.growT>0){
     ctx.save(); ctx.globalAlpha=(s.growT/0.5)*0.8;
     ctx.shadowColor="#fff"; ctx.shadowBlur=26;
@@ -1278,20 +1285,23 @@ function pkDrawFloatingSword(ctx,SC,DX,DY,t){
   const c=PK.swordCine, s=PK.sword;
   if(!c || !s || (c.ph!=="float" && c.ph!=="gleam")) return;
   const [gx,gy]=SC(s.x,s.y);
+  // it comes to rest exactly where the held sword lives, so the handover is seamless
+  const sc=1.15;
+  const restX=DX+SWORD_MOUTH_X-SWORD_GRIP_MID*sc, restY=DY+SWORD_MOUTH_Y;
   if(c.ph==="float"){
     const p=clamp(c.t/SW_FLOAT,0,1), e=p<0.5?2*p*p:1-Math.pow(-2*p+2,2)/2;
-    const x=gx+(DX+15-gx)*e, y=(gy-30)+((DY-2)-(gy-30))*e;
-    ctx.save(); ctx.translate(x,y); ctx.rotate((1-e)*(-Math.PI/2)+Math.sin(p*6.283)*0.12);
+    const x=gx+(restX-gx)*e, y=(gy-30)+(restY-(gy-30))*e;
+    ctx.save(); ctx.translate(x,y); ctx.rotate((1-e)*(Math.PI/2)+Math.sin(p*6.283)*0.12);
     ctx.save(); ctx.globalAlpha=0.6; ctx.shadowColor="#fff"; ctx.shadowBlur=20;
-    pkDrawSwordShape(ctx,1.15,null); ctx.restore();
-    pkDrawSwordShape(ctx,1.15,null);
+    pkDrawSwordShape(ctx,sc,null); ctx.restore();
+    pkDrawSwordShape(ctx,sc,null);
     ctx.restore();
   } else {
     const p=clamp(c.t/SW_GLEAM,0,1);
-    ctx.save(); ctx.translate(DX+15,DY-2);
+    ctx.save(); ctx.translate(restX,restY);
     ctx.save(); ctx.globalAlpha=0.5*(1-p); ctx.shadowColor="#fff"; ctx.shadowBlur=24;
-    pkDrawSwordShape(ctx,1.15,null); ctx.restore();
-    pkDrawSwordShape(ctx,1.15,p);
+    pkDrawSwordShape(ctx,sc,null); ctx.restore();
+    pkDrawSwordShape(ctx,sc,p);
     ctx.restore();
   }
 }
