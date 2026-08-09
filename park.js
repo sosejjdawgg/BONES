@@ -2047,16 +2047,16 @@ function pkBuyPal(k){
   }
   // first purchase: spawn beside BONES
   const px=PK.x, py=PK.y;
-  if(k==="sq")   PK.pals.push({k:"sq", tier:1, x:(px+30)%PK.WW, y:py,
+  if(k==="sq")   PK.pals.push({k:"sq", tier:1, x:(px+30)%PK.WW, y:py, stay:false,
                                hp:pkSqHp(1), hpMax:pkSqHp(1), cd:pkSqCd(1),
                                dir:1, fi:0, ft:0, kx:0, ky:0, palBurnT:0, contactT:0,
                                laserCd:PAL_LASER_CD*0.4, laserState:"idle", chargeT:0, sweepT:0, aimAng:0, aimBase:0, beamLen:0});
-  if(k==="cat")  PK.pals.push({k:"cat", tier:1, x:(px-30+PK.WW)%PK.WW, y:py,
+  if(k==="cat")  PK.pals.push({k:"cat", tier:1, x:(px-30+PK.WW)%PK.WW, y:py, stay:false,
                                hp:pkCatHp(1), hpMax:pkCatHp(1),
                                orbitAng:Math.random()*6.283, state:"orbit", tgt:null, recall:false,
                                dir:1, fi:0, ft:0, kx:0, ky:0, palBurnT:0, contactT:0});
   if(k==="bird") PK.pals.push({k:"bird", tier:1, passT:1.2, birds:[]});
-  if(k==="ape")  PK.pals.push({k:"ape", tier:1, x:(px+40)%PK.WW, y:(py+18)%PK.WH,
+  if(k==="ape")  PK.pals.push({k:"ape", tier:1, x:(px+40)%PK.WW, y:(py+18)%PK.WH, stay:false,
                                hp:PAL_APE_HP, hpMax:PAL_APE_HP,
                                state:"rest", cd:pkApePalCd(1), windT:0, airT:0, landT:0,
                                sx0:0, sy0:0, sdx:0, sdy:0, tgt:null,
@@ -2316,7 +2316,7 @@ function pkPalsUpdate(dt,WW,WH){
     if(p.k==="sq"){
       const tdx=wd(PK.x-p.x,WW), tdy=wd(PK.y-p.y,WH), td=Math.hypot(tdx,tdy)||1;
       if(p.laserState==="idle"){
-        if(td>PAL_SQ_FOLLOW){
+        if(td>PAL_SQ_FOLLOW && !p.stay){
           const sp=Math.min(PK.spd*1.25, 55+td*1.7);
           p.x=(p.x+tdx/td*sp*dt+WW)%WW; p.y=(p.y+tdy/td*sp*dt+WH)%WH;
           p.dir = tdx<0 ? -1 : 1;
@@ -2376,7 +2376,10 @@ function pkPalsUpdate(dt,WW,WH){
       }
     } else if(p.k==="cat"){
       const catSpd=pkCatSpeed(p.tier), catSeek=pkCatSeekR(p.tier);
-      if(p.state==="orbit"){
+      if(p.stay){
+        // locked in place: drop whatever chase was in progress and just hold position
+        if(p.state!=="orbit"){ p.state="orbit"; p.tgt=null; }
+      } else if(p.state==="orbit"){
         p.orbitAng+=PAL_CAT_ORBIT_SPD*dt;
         const tx=PK.x+Math.cos(p.orbitAng)*PAL_CAT_ORBIT_R, ty=PK.y+Math.sin(p.orbitAng)*PAL_CAT_ORBIT_R*0.6;
         const dx=wd(tx-p.x,WW), dy=wd(ty-p.y,WH), d=Math.hypot(dx,dy)||1;
@@ -2422,7 +2425,9 @@ function pkPalsUpdate(dt,WW,WH){
           PK.embers.push({x:p.x+(Math.random()-0.5)*14, y:p.y+6,
             vx:(Math.random()-0.5)*22, vy:-12-Math.random()*16, life:0.3+Math.random()*0.2, dust:true});
         }
-        if(p.cd<=0){
+        // locked in place: never winds up a new smash, just stands guard where he was told to stay
+        if(p.cd<=0 && p.stay){ p.cd=0.35; }
+        else if(p.cd<=0){
           // somewhere worth landing: a target if there is one, otherwise back to BONES' side
           const tgt=pkNearestEnemy(p.x,p.y,PAL_APE_SEEK_R);
           const leash=Math.hypot(wd(p.x-PK.x,WW),wd(p.y-PK.y,WH));
@@ -4745,6 +4750,28 @@ function pkDrawFixedSlot(ctx,r,ic,label,owned,cost,col){
     }
   });
 })();
+// one shared geometry for every alive sq/cat/ape pal's HP bar + STAY/FOLLOW buttons — used by
+// both the draw call below and the pad's pointerdown hit-test, so they can never drift apart.
+// Pure function of PK state (no animation terms), so it's safe to call from either place.
+function pkPalHudRows(w){
+  const bx=w-140, bw2=128;
+  const by=14, bh2=14;
+  const armorH = PK.armorUnlocked ? 30 : 0;
+  let ppy = by+bh2+(armorH>0?armorH+10:30);
+  const rows=[];
+  for(const kind of ["sq","cat","ape"]){
+    const p=PK.pals.find(q=>q.k===kind);
+    if(!p) continue;
+    const pw=86, ph2=8, pbx=bx+bw2-pw;
+    const btnW=41, btnH=16, btnY=ppy+ph2+3;
+    rows.push({ p, kind,
+      bar:{x:pbx,y:ppy,w:pw,h:ph2},
+      stay:{x:pbx, y:btnY, w:btnW, h:btnH},
+      follow:{x:pbx+pw-btnW, y:btnY, w:btnW, h:btnH} });
+    ppy = btnY+btnH+9;
+  }
+  return rows;
+}
 function pkPadDraw(t){
   const [ctx,w,h]=fit($("#parkcv"));
   ctx.fillStyle="#000"; ctx.fillRect(0,0,w,h);
@@ -4810,25 +4837,38 @@ function pkPadDraw(t){
       if(rc){ ctx.fillStyle="#f22"; ctx.font="6px 'Press Start 2P',monospace"; ctx.fillText("\u2b25 "+rc.name, 10, 46); }
     }
     // sub-friends' health lives directly under BONES' own bar, smaller \u2014 he's their leader.
-    // only squirrel/cat carry HP at all (the bird flock is never itself a target). Pushed down
-    // past BONES' own hp/maxhp number (drawn just above), and past the armour bar if it's showing,
-    // so nothing collides.
-    let ppy=by+bh2+(armorH>0?armorH+10:30);
-    for(const kind of ["sq","cat","ape"]){
-      const p=PK.pals.find(q=>q.k===kind);
-      if(!p) continue;
-      const pw=86, ph2=8, pbx=bx+bw2-pw;
+    // only squirrel/cat/ape carry HP at all (the bird flock is never itself a target). Pushed
+    // down past BONES' own hp/maxhp number (drawn just above), and past the armour bar if it's
+    // showing, so nothing collides. Each bar gets its own STAY/FOLLOW pair right underneath \u2014
+    // STAY freezes the pal's AI in place, FOLLOW lets it resume its normal behaviour.
+    const palRows=pkPalHudRows(w);
+    for(const row of palRows){
+      const {p,kind,bar,stay,follow}=row;
       const pfrac=clamp(p.hp/p.hpMax,0,1);
-      ctx.fillStyle="rgba(0,0,0,.55)"; ctx.fillRect(pbx-1,ppy-1,pw+2,ph2+2);
-      ctx.strokeStyle="#6cf"; ctx.lineWidth=1; ctx.strokeRect(pbx+0.5,ppy+0.5,pw-1,ph2-1);
+      ctx.fillStyle="rgba(0,0,0,.55)"; ctx.fillRect(bar.x-1,bar.y-1,bar.w+2,bar.h+2);
+      ctx.strokeStyle="#6cf"; ctx.lineWidth=1; ctx.strokeRect(bar.x+0.5,bar.y+0.5,bar.w-1,bar.h-1);
       ctx.fillStyle = pfrac<0.35 ? "#f22" : "#6cf";
-      ctx.fillRect(pbx+1,ppy+1,(pw-2)*pfrac,ph2-2);
+      ctx.fillRect(bar.x+1,bar.y+1,(bar.w-2)*pfrac,bar.h-2);
       ctx.fillStyle="#6cf"; ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="right";
-      ctx.fillText(kind==="sq"?"SQUIRREL":kind==="cat"?"CAT":"APE", pbx-4, ppy+ph2-1);
+      ctx.fillText(kind==="sq"?"SQUIRREL":kind==="cat"?"CAT":"APE", bar.x-4, bar.y+bar.h-1);
+      ctx.textAlign="center"; ctx.font="6px 'Press Start 2P',monospace";
+      const activeStay=!!p.stay;
+      ctx.fillStyle="rgba(0,0,0,.7)"; ctx.fillRect(stay.x,stay.y,stay.w,stay.h);
+      ctx.strokeStyle = activeStay ? "#f22" : "#555"; ctx.lineWidth=2;
+      ctx.strokeRect(stay.x,stay.y,stay.w,stay.h);
+      ctx.fillStyle = activeStay ? "#f22" : "#888";
+      ctx.fillText("STAY", stay.x+stay.w/2, stay.y+stay.h*0.68);
+      ctx.fillStyle="rgba(0,0,0,.7)"; ctx.fillRect(follow.x,follow.y,follow.w,follow.h);
+      ctx.strokeStyle = !activeStay ? "#3fdc7a" : "#555"; ctx.lineWidth=2;
+      ctx.strokeRect(follow.x,follow.y,follow.w,follow.h);
+      ctx.fillStyle = !activeStay ? "#3fdc7a" : "#888";
+      pkFitText(ctx, "FOLLOW", follow.x+follow.w/2, follow.y+follow.h*0.68, follow.w-4, 6);
       ctx.textAlign="left";
-      ppy+=ph2+9;
     }
-    hudBottomY=Math.max(hudBottomY, ppy+8);
+    if(palRows.length){
+      const last=palRows[palRows.length-1];
+      hudBottomY=Math.max(hudBottomY, last.stay.y+last.stay.h+8);
+    } else hudBottomY=Math.max(hudBottomY, by+bh2+(armorH>0?armorH+10:30)+8);
   }
   ctx.textAlign="left";
   // zoomies / regen pills and the wave-goal block below all key off pillY, which starts at
@@ -5026,6 +5066,17 @@ function pkPadDraw(t){
     }
     const px=e.clientX-r.left, py=e.clientY-r.top;
     if(px>8 && px<118 && py>10 && py<40){ PK.convertOpen=true; beep(500,.05); return; }
+    const hit2=(rx,ry,rw,rh)=>px>=rx&&px<=rx+rw&&py>=ry&&py<=ry+rh;
+    for(const row of pkPalHudRows(r.width)){
+      if(hit2(row.stay.x,row.stay.y,row.stay.w,row.stay.h)){
+        if(!row.p.stay){ row.p.stay=true; beep(300,.06); }
+        return;
+      }
+      if(hit2(row.follow.x,row.follow.y,row.follow.w,row.follow.h)){
+        if(row.p.stay){ row.p.stay=false; beep(500,.06); }
+        return;
+      }
+    }
     PK.joy={ox:e.clientX-r.left,oy:e.clientY-r.top,dx:0,dy:0};
     try{cv.setPointerCapture(e.pointerId);}catch(_){}
   });
