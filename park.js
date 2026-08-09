@@ -375,16 +375,17 @@ function pkSpawnGoldenBird(){
   toast("A GOLDEN BIRD FLIES BY — CATCH IT!",1);
   beep(900,.05); setTimeout(()=>beep(1200,.06),70);
 }
-// WAVE 2 \u2014 BIRD BACKUP: long formations of birds fly in diagonally from either side (NE/NW/
-// SW/SE bearings only), holding a staggered wedge. 1-hit kill like every other bird. If it'd
-// fly clean off the engagement area, it rubber-bands its heading back toward the fray instead
-// of leaving, so the flock keeps looping through until every last one is knocked down.
+// WAVE 2 \u2014 BIRD BACKUP: a quick opening pass of birds crossing the screen in lines, then
+// the real event: a single huge storm fills the sky at once (see pkSpawnBirdStorm) rather than
+// trickling in three at a time. 1-hit kill like every other bird. If it'd fly clean off the
+// engagement area, it rubber-bands its heading back toward the fray instead of leaving, so the
+// flock keeps looping through until every last one is knocked down.
 function pkSpawnFlock(){
   const remaining=Math.max(1, PK.waveQuota-PK.waveSpawned);
   PK.w2Stage=(PK.w2Stage||0)+1;
-  if(PK.w2Stage<=2) return pkSpawnBirdRow(Math.min(2*pkPlusMult(),remaining));
-  if(PK.w2Stage===3) return pkSpawnBirdStorm(Math.min(3*pkPlusMult(),remaining));
-  return pkSpawnBirdV(remaining);   // whatever's left dives in as the V — always finishes the wave
+  if(PK.w2Stage===1) return pkSpawnBirdRow(Math.min(3*pkPlusMult(),remaining));
+  if(PK.w2Stage===2) return pkSpawnBirdStorm(Math.min(Math.round(18*pkPlusMult()),remaining));
+  return pkSpawnBirdV(remaining);   // whatever's left dives in as the V \u2014 always finishes the wave
 }
 function pkSpawnBirdRow(n){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
@@ -410,7 +411,7 @@ function pkSpawnBirdRow(n){
 // no threat while swirling) with one or two birds at a time peeling off to actually swoop and
 // dive at BONES. A miss or a survived hit sends the diver back up to rejoin the swirl for
 // another pass later, so the whole flock cycles through real attacks instead of just circling.
-const STORM_SWIRL_MAX_ACTIVE=2;
+const STORM_SWIRL_MAX_ACTIVE=3;   // bumped for the bigger swarm — still telegraphed, just a bit busier
 // how far a circling/diving storm bird's presence reaches into the grove, and how hard that
 // makes the nearest trees flutter — purely visual, cinematic weight for the swarm overhead
 const STORM_TREE_R=140, STORM_SWAY_MULT=5;
@@ -1037,7 +1038,7 @@ function pkSpawnMixBurst(types){
 // spec. waves beyond 10 keep extending the mix pattern with a gently rising quota.
 function pkWaveQuota(wv){
   if(wv===1) return 2;    // catch 2 birds
-  if(wv===2) return 10;   // the birds are upset
+  if(wv===2) return 24;   // the birds are upset — a real, sky-filling swarm this time
   if(wv===3) return 10;   // attack of the cats
   if(wv===4) return 15;   // watch out, nuts
   if(wv===5) return 15;   // coming out of the trees
@@ -1046,7 +1047,7 @@ function pkWaveQuota(wv){
 // what each wave is called. 6 onwards is the same escalating joke, told straight.
 const WNAME={
   1:"CATCH 2 BIRDS",
-  2:"CLEAR 10 BIRDS",
+  2:"CLEAR 24 BIRDS",
   3:"ATTACK OF THE CATS",
   4:"WATCH OUT — NUTS!",
   5:"THEY'RE COMING OUT OF THE GOD DAMNED TREES!",
@@ -1068,13 +1069,28 @@ function pkEnemyHp(base){ return base + Math.floor(((PK.wave||1)-1)/4.5); }
 const BARK_CAP=62;   // hard ceiling: the bark used to reach ~90 and trivialised whole waves
 // enemies that never block a wave clearing and never count toward "N LEFT" — side hazards
 // the player opted into (a burning tree's squirrels) or ambient extras (stalking cats, the
-// decorative wave-3 swoop bird), as opposed to the wave's actual, fixed quota
-function pkSideHazard(e){ return e.stalk || e.stalkAggro || e.swoop || e.fromTree || e.decor || e.boss || (e.roost && e.roost.killed>=e.roost.need); }
+// decorative wave-3 swoop bird), as opposed to the wave's actual, fixed quota.
+// NOTE: storm-form birds (wave 2) reuse e.swoop for their own "currently mid-dive" sub-state —
+// that must NOT be confused with the decorative wave-3 bird's permanent e.swoop flag, or a
+// storm bird stops counting toward the wave's own goal the instant it begins its attack run
+function pkSideHazard(e){ return e.stalk || e.stalkAggro || (e.swoop && !e.stormForm) || e.fromTree || e.decor || e.boss || (e.roost && e.roost.killed>=e.roost.need); }
 // shared by both "N LEFT" displays (the pad and the camera header) — wave 8 tracks ape kills
 // instead of the usual mixed quota, since that's this stage's actual objective
 function pkLeftCount(){
   if(PK.wave===APE_WAVE) return Math.max(0, APE_WAVE_QUOTA-(PK.apeKills||0));
-  return Math.max(0,PK.waveQuota-PK.waveSpawned)+PK.en.filter(e=>!e.fleeing && !pkSideHazard(e)).length;
+  // a roost ticket is shared by a whole flock of standing decoys (see pkSpawnBirdGroup) — only
+  // `need` of them are ever "real"; counting every alive bird in the roost inflated "N LEFT" to
+  // the full flock size (e.g. 36) instead of the handful of kills actually required to clear it
+  const seenRoosts=new Set();
+  let roostLeft=0;
+  for(const e of PK.en){
+    if(e.roost && !seenRoosts.has(e.roost)){
+      seenRoosts.add(e.roost);
+      roostLeft += Math.max(0, e.roost.need-e.roost.killed);
+    }
+  }
+  const otherLeft=PK.en.filter(e=>!e.fleeing && !e.roost && !pkSideHazard(e)).length;
+  return Math.max(0,PK.waveQuota-PK.waveSpawned)+roostLeft+otherLeft;
 }
 function pkWavePct(){
   if(PK.wave===APE_WAVE) return clamp((PK.apeKills||0)/APE_WAVE_QUOTA,0,1);
