@@ -1158,6 +1158,9 @@ const SWORD_BLADE=44;        // blade length at tier 1, in world px — long and
 // middle of the grip sits in the shape's own coordinates, so his teeth can be put exactly there.
 const SWORD_GRIP_MID=-8.6;
 const SWORD_MOUTH_X=15, SWORD_MOUTH_Y=3;   // mouth offset from his centre — jaw height, below the head
+// clamped in his teeth at a natural carrying angle, not dead level — tilted back so the blade
+// clears the ground and juts up and out past his snout, the way a dog actually carries a stick
+const SWORD_HOLD_TILT=-Math.PI/4;
 const SWORD_TAKE_R=34;       // walk this close to the planted blade to claim it
 // the actual sword art — a real drawn asset, laid on its side (tip on the right, pommel on the
 // left) so it drops straight into the shape-space every draw call already uses. The transform
@@ -1554,6 +1557,7 @@ function pkDrawHeldSword(ctx,DX,DY,t){
   ctx.save();
   ctx.translate(DX+face*SWORD_MOUTH_X, DY+SWORD_MOUTH_Y);
   if(face<0) ctx.scale(-1,1);
+  ctx.rotate(SWORD_HOLD_TILT);             // tilted in his teeth — pivots around the grip below
   ctx.translate(-SWORD_GRIP_MID*sc, 0);   // put the middle of the grip in his teeth
   if(PK.whirlwindT>0){
     // two fast full turns over the half-second, around the grip he's holding it by
@@ -1581,14 +1585,19 @@ function pkDrawFloatingSword(ctx,SC,DX,DY,t){
   if(c.ph==="float"){
     const p=clamp(c.t/SW_FLOAT,0,1), e=p<0.5?2*p*p:1-Math.pow(-2*p+2,2)/2;
     const x=gx+(restX-gx)*e, y=(gy-30)+(restY-(gy-30))*e;
-    ctx.save(); ctx.translate(x,y); ctx.rotate((1-e)*(Math.PI/2)+Math.sin(p*6.283)*0.12);
+    ctx.save(); ctx.translate(x,y); ctx.rotate((1-e)*(Math.PI/2)+SWORD_HOLD_TILT*e+Math.sin(p*6.283)*0.12);
     ctx.save(); ctx.globalAlpha=0.6; ctx.shadowColor="#fff"; ctx.shadowBlur=20;
     pkDrawSwordShape(ctx,sc,null); ctx.restore();
     pkDrawSwordShape(ctx,sc,null);
     ctx.restore();
   } else {
     const p=clamp(c.t/SW_GLEAM,0,1);
-    ctx.save(); ctx.translate(restX,restY);
+    // same mouth-pivot decomposition pkDrawHeldSword uses, so the grip lands exactly in his teeth
+    // at the same tilt it'll hold the instant this cutscene hands off to the real held sword
+    ctx.save();
+    ctx.translate(DX+SWORD_MOUTH_X, DY+SWORD_MOUTH_Y);
+    ctx.rotate(SWORD_HOLD_TILT);
+    ctx.translate(-SWORD_GRIP_MID*sc, 0);
     ctx.save(); ctx.globalAlpha=0.5*(1-p); ctx.shadowColor="#fff"; ctx.shadowBlur=24;
     pkDrawSwordShape(ctx,sc,null); ctx.restore();
     pkDrawSwordShape(ctx,sc,p);
