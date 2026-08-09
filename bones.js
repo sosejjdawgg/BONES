@@ -2624,10 +2624,20 @@ function renderShop(){
 /* ---------- mode switching ---------- */
 let MODE="home";
 function showScreen(id){
+  const prevId=MODE;
+  // the hidden/unhidden state itself changes exactly when it always has — nothing downstream
+  // that depends on the new screen already being in the DOM the instant this returns has to
+  // wait on an animation. The fade-in is a purely cosmetic class added on top of that.
   for(const s of ["home","work","run","park","paperboy"]) $("#"+s).classList.toggle("hidden", s!==id);
   MODE=id;
   $("#rSnack").classList.toggle("hidden", id!=="work");
   $("#rWalk").classList.toggle("hidden", id!=="work");
+  if(prevId!==id){
+    const next=$("#"+id);
+    next.classList.remove("screen-in");
+    void next.offsetWidth;   // restart the animation even if the same screen is re-entered quickly
+    next.classList.add("screen-in");
+  }
 }
 function transition(label,cb){
   $("#transLabel").textContent=label;

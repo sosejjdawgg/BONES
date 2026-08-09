@@ -13,6 +13,12 @@ const OVER_DRAIN=1.6;        // HP/sec at an empty shield
 const OVER_DRAIN_SCALE=7.0;  // ...rising to this much more at a full one
 const OVER_SPEED=1.16;       // the kick you get for having any left
 function pkOverCap(){ return PK.maxhp*OVER_FRAC; }
+// Full Armour. A dedicated shop purchase — a second bar worth a full max HP, bought outright
+// rather than banked passively like the shield above. It never drains on its own; only taking
+// a hit spends it. It sits behind the shield in the order damage is paid from: the shield is
+// already ticking away on its own clock, so a hit may as well spend that first and leave the
+// armour, which will happily wait, for later.
+function pkArmorCap(){ return PK.maxhp; }
 function pkHurt(n){
   if(PK.over>0){                       // the shield eats it first
     const ate=Math.min(PK.over,n);
@@ -21,6 +27,14 @@ function pkHurt(n){
     beep(540,.06,"square",.045);
     for(let i=0;i<5;i++){ const a2=Math.random()*6.283, sp=40+Math.random()*50;
       SPARKS.push({x:PK.x,y:PK.y-12,vx:Math.cos(a2)*sp,vy:Math.sin(a2)*sp-25,life:0.3,gold:true}); }
+  }
+  if(n>0 && PK.armor>0){
+    const ate=Math.min(PK.armor,n);
+    PK.armor-=ate; n-=ate;
+    PK.shake=Math.max(PK.shake||0,0.14);
+    beep(420,.07,"square",.04);
+    for(let i=0;i<5;i++){ const a2=Math.random()*6.283, sp=40+Math.random()*50;
+      SPARKS.push({x:PK.x,y:PK.y-12,vx:Math.cos(a2)*sp,vy:Math.sin(a2)*sp-25,life:0.3,steel:true}); }
   }
   if(n>0) PK.hp-=n;
 }
@@ -309,7 +323,8 @@ function startPark(plus){
     plusMode:!!plus, mixTypes:null, mixLabel:null, swoopT:0,
     pals:[], palEyes:false, friendsOpen:false, friendsArm:false, npc:{x:.5,y:.5},
     sword:null, swordCine:null, swordSite:null, swordDone:false, swordNagT:0,
-    hell:false, hellT:0, hellSpreadT:0, hellHurtT:0
+    hell:false, hellT:0, hellSpreadT:0, hellHurtT:0,
+    armor:0, armorUnlocked:false, armorFeedCount:0
   });
   PK.hp=PK.maxhp;
   PK.healerT=pkHealerGap();
@@ -2523,12 +2538,8 @@ function pkShopOpen(){
     pool.push({n:"EXPAND THE PARK", ic:"expand", fx:"GROW WORLD TO "+next+"\u00d7"+next, c:Math.round(14+(PK.worldMult-4)*16), expand:true,
       f:()=>pkExpandPark()});
   }
-  // a cheap taste of it early: the compass shows up in the shop itself (not just the anytime
-  // exchange panel) for the first few rounds, well under its normal 100-bone price
-  if(PK.wave>=2 && PK.wave<=4 && !PK.compass){
-    pool.push({n:"COMPASS", ic:"compass", fx:"FIND FRIENDS & SECRETS", c:50, compassBuy:true,
-      f:()=>{ PK.compass=true; }});
-  }
+  // the compass and Full Armour aren't in this rolled pool at all any more \u2014 see pkShopRows,
+  // where they're two fixed slots flanking SKIP, visible in every shop from wave 1 on
   // wave 1's shop is everyone's first taste of it \u2014 a flat, cheap price on everything so a new
   // run always has enough bones banked to actually buy something after the very first clear
   if(PK.wave===2) pool.forEach(o=>o.c=10);
@@ -3336,14 +3347,25 @@ function parkUpdate(dt){
       a.cd=pkAgiCd(); PK.sideDone++;
       const heal=Math.max(1,Math.round(PK.maxhp*pkAgiHeal()));
       const before=PK.hp; PK.hp=Math.min(PK.maxhp,PK.hp+heal);
-      let got=Math.round(PK.hp-before), over=0;
+      let got=Math.round(PK.hp-before), over=0, arm=0;
       if(heal-got>0.5){                   // already full: the rest banks as a shield
-        const spill=heal-(PK.hp-before);
-        const ob=PK.over; PK.over=Math.min(pkOverCap(), PK.over+spill);
-        over=Math.round(PK.over-ob);
+        let spill=heal-(PK.hp-before);
+        // if he's bought Full Armour, the same overflow tops that up first — but each hit of
+        // the course is worth a little less to it than the last, so it can't just be farmed
+        // for infinite armour; whatever the diminishing rate doesn't use falls through to the
+        // ordinary shield exactly as before
+        if(PK.armorUnlocked && PK.armor<pkArmorCap()){
+          const rate=Math.max(0.15, 1-(PK.armorFeedCount||0)*0.15);
+          const feed=Math.min(pkArmorCap()-PK.armor, spill*rate);
+          if(feed>0.05){ PK.armor+=feed; PK.armorFeedCount=(PK.armorFeedCount||0)+1; arm=Math.round(feed); spill-=feed; }
+        }
+        if(spill>0.5){
+          const ob=PK.over; PK.over=Math.min(pkOverCap(), PK.over+spill);
+          over=Math.round(PK.over-ob);
+        }
       }
       PK.fx.push({x:a.x*WW, y:a.y*WH-16,
-                  txt: over>0 ? "+"+over+" SHIELD" : got>0 ? "+"+got+" HP" : "FULL", life:1.2});
+                  txt: arm>0 ? "+"+arm+" ARMOUR" : over>0 ? "+"+over+" SHIELD" : got>0 ? "+"+got+" HP" : "FULL", life:1.2});
       for(let k=0;k<8;k++){
         const ang=Math.random()*6.283, sp=30+Math.random()*50;
         SPARKS.push({x:a.x*WW,y:a.y*WH-8,vx:Math.cos(ang)*sp,vy:Math.sin(ang)*sp-20,life:0.5+Math.random()*0.4,heal:true});
@@ -4108,7 +4130,12 @@ function parkDraw(t){
     }
   }
   if(PK.compass){
+    // four fixed points, always on: the exit, the bandana dog's FRIENDS shop, the wandering
+    // healer (drawn from PK.fr — she's the only non-golden entry that ever lands in it, so this
+    // was already finding her, just mislabelled as a generic "FRIEND"), and the nearest loose
+    // health pickup
     pkDrawCompassArrow(ctx,w,h,DX,DY,SC,t,PK.gate.x,PK.gate.y,"EXIT","#f22");
+    pkDrawCompassArrow(ctx,w,h,DX,DY,SC,t,PK.npc.x*WW,PK.npc.y*WH,"FRIENDS","#6cf");
     let nearestHeal=null, bestHD=Infinity;
     for(const p of PK.powerups){
       if(p.type!=="regen") continue;
@@ -4116,13 +4143,13 @@ function parkDraw(t){
       if(d<bestHD){ bestHD=d; nearestHeal=p; }
     }
     if(nearestHeal) pkDrawCompassArrow(ctx,w,h,DX,DY,SC,t,nearestHeal.x,nearestHeal.y,"HEALTH","#3fdc7a");
-    let nearestFriend=null, bestFD=Infinity;
+    let nearestHealer=null, bestFD=Infinity;
     for(const f2 of PK.fr){
       if(f2.golden) continue;
       const d=Math.hypot(wd(f2.x-PK.x,WW),wd(f2.y-PK.y,WH));
-      if(d<bestFD){ bestFD=d; nearestFriend=f2; }
+      if(d<bestFD){ bestFD=d; nearestHealer=f2; }
     }
-    if(nearestFriend) pkDrawCompassArrow(ctx,w,h,DX,DY,SC,t,nearestFriend.x,nearestFriend.y,"FRIEND","#f6a");
+    if(nearestHealer) pkDrawCompassArrow(ctx,w,h,DX,DY,SC,t,nearestHealer.x,nearestHealer.y,"HEALER","#f6a");
   }
   for(const f of PK.fr){
     const [fx2,fy2]=SC(f.x,f.y);
@@ -4357,7 +4384,7 @@ function parkDraw(t){
   for(const s of SPARKS){
     const sx=DX+wd(s.x-PK.x,WW), sy=DY+wd(s.y-PK.y,WH);
     ctx.globalAlpha=Math.max(0,s.life);
-    ctx.fillStyle=s.heal?"#3fdc7a":s.gold?"#e8c14a":"#fff";
+    ctx.fillStyle=s.heal?"#3fdc7a":s.gold?"#e8c14a":s.steel?"#6cf":"#fff";
     ctx.fillRect(sx-2,sy-2,4,4);
     ctx.globalAlpha=1;
   }
@@ -4447,16 +4474,41 @@ function pkShopIcon(ctx,x,y,s2,key,col){
   else if(key==="sword"){ ctx.beginPath(); ctx.moveTo(0,-9); ctx.lineTo(2.2,-5); ctx.lineTo(2.2,3); ctx.lineTo(-2.2,3); ctx.lineTo(-2.2,-5); ctx.closePath(); ctx.fill();
     ctx.beginPath(); ctx.moveTo(-6,3.4); ctx.lineTo(6,3.4); ctx.stroke();
     ctx.fillRect(-1.2,4,2.4,4); ctx.beginPath(); ctx.arc(0,9,1.8,0,7); ctx.stroke(); }
+  else if(key==="armour"){ ctx.beginPath(); ctx.moveTo(0,-9); ctx.lineTo(7,-5); ctx.lineTo(7,2); ctx.lineTo(0,9); ctx.lineTo(-7,2); ctx.lineTo(-7,-5); ctx.closePath(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,-5); ctx.lineTo(0,5); ctx.moveTo(-3.6,-1.5); ctx.lineTo(3.6,-1.5); ctx.stroke(); }
+  else if(key==="sqpal"){ ctx.beginPath(); ctx.ellipse(-2,2,5,3.6,0.25,0,7); ctx.fill();
+    ctx.beginPath(); ctx.arc(3,2.5,4.5,0.15,4.6); ctx.stroke(); }
+  else if(key==="birdpal"){ ctx.beginPath(); ctx.moveTo(-8,2); ctx.quadraticCurveTo(-2,-7,0,0); ctx.quadraticCurveTo(2,-7,8,2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0,0,2,0,7); ctx.fill(); }
+  else if(key==="catpal"){ ctx.beginPath(); ctx.arc(0,1.5,6,0,7); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-6,-2); ctx.lineTo(-3,-8.5); ctx.lineTo(-1,-2); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(6,-2); ctx.lineTo(3,-8.5); ctx.lineTo(1,-2); ctx.closePath(); ctx.fill(); }
+  else if(key==="apepal"){ ctx.beginPath(); ctx.arc(0,0,7,0,7); ctx.stroke();
+    ctx.fillRect(-5,-2.2,10,2.6); ctx.beginPath(); ctx.arc(-3,2.4,1.3,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(3,2.4,1.3,0,7); ctx.fill(); }
   else { ctx.beginPath(); ctx.arc(0,0,6,0,7); ctx.stroke(); }
   ctx.restore();
 }
+const PAL_ICON={sq:"sqpal", bird:"birdpal", cat:"catpal", ape:"apepal"};
+// shrinks the font until the text actually fits maxW, instead of letting a long line run over
+// the row border or collide with whatever's drawn to its right — the failure mode this replaces
+function pkFitText(ctx,text,x,y,maxW,size){
+  let s=size;
+  ctx.font=s+"px 'Press Start 2P',monospace";
+  while(s>4.4 && ctx.measureText(text).width>maxW){ s-=0.4; ctx.font=s.toFixed(1)+"px 'Press Start 2P',monospace"; }
+  ctx.fillText(text,x,y);
+}
 // one shared row geometry, used by both the draw and the hit test so they can never drift
+const ARMOR_COST=40, COMPASS_COST=50;
 function pkShopRows(w,h){
   const rows=[];
   const cardH=h*0.125, step=h*0.135, top0=h*0.225;
   for(let i=0;i<3;i++) rows.push({x:w*0.07, y:top0+i*step, w:w*0.86, h:cardH, kind:"offer", idx:i});
   rows.push({x:w*0.07, y:h*0.635, w:w*0.86, h:cardH, kind:"charm", idx:0});
   rows.push({x:w*0.32, y:h*0.80,  w:w*0.36, h:h*0.10, kind:"skip", idx:0});
+  // two fixed slots, never rolled and never replaced by the pool above — armour on the left,
+  // compass on the right, visible in every shop from wave 1 on
+  rows.push({x:w*0.06, y:h*0.80, w:w*0.22, h:h*0.10, kind:"armour"});
+  rows.push({x:w*0.72, y:h*0.80, w:w*0.22, h:h*0.10, kind:"compass"});
   return rows;
 }
 function pkShopCard(ctx,r,o,col,dim,afford){
@@ -4465,10 +4517,11 @@ function pkShopCard(ctx,r,o,col,dim,afford){
   ctx.globalAlpha=dim;
   ctx.strokeStyle=col; ctx.lineWidth=2; ctx.strokeRect(r.x,r.y,r.w,r.h);
   pkShopIcon(ctx, r.x+r.h*0.52, r.y+r.h*0.5, r.h/26, o.ic, col);
-  ctx.textAlign="left"; ctx.font="8px 'Press Start 2P',monospace"; ctx.fillStyle=col;
-  ctx.fillText(o.n, r.x+r.h*1.05, r.y+r.h*0.42);
-  ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle="#9a9a9a";
-  ctx.fillText(o.fx, r.x+r.h*1.05, r.y+r.h*0.75);
+  ctx.textAlign="left"; ctx.fillStyle=col;
+  const textX=r.x+r.h*1.05, textW=r.w*0.62-r.h*1.05;
+  pkFitText(ctx, o.n, textX, r.y+r.h*0.42, textW, 8);
+  ctx.fillStyle="#9a9a9a";
+  pkFitText(ctx, o.fx, textX, r.y+r.h*0.75, textW, 6);
   ctx.textAlign="right"; ctx.font="8px 'Press Start 2P',monospace";
   ctx.fillStyle = afford ? col : "#f22";
   ctx.fillText(o.c+"◆", r.x+r.w-8, r.y+r.h*0.60);
@@ -4554,7 +4607,24 @@ function pkDrawShop(ctx,w,h,t){
   ctx.strokeStyle="#666"; ctx.lineWidth=2; ctx.strokeRect(sk.x,sk.y,sk.w,sk.h);
   ctx.fillStyle="#999"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
   ctx.fillText("SKIP", sk.x+sk.w/2, sk.y+sk.h*0.64);
-  ctx.textAlign="left"; ctx.restore();
+  ctx.textAlign="left";
+  // the two fixed slots — drawn small and plain when done, lit and priced while there's still
+  // something to buy, so at a glance the row reads "spent" vs "available" without extra text
+  const armorFull=PK.armor>=pkArmorCap();
+  pkDrawFixedSlot(ctx, rows[5], "armour", "ARMOUR", armorFull, ARMOR_COST, "#6cf");
+  pkDrawFixedSlot(ctx, rows[6], "compass", "COMPASS", PK.compass, COMPASS_COST, "#f6a");
+  ctx.restore();
+}
+function pkDrawFixedSlot(ctx,r,ic,label,owned,cost,col){
+  const afford=PK.bones>=cost;
+  ctx.fillStyle="rgba(0,0,0,.7)"; ctx.fillRect(r.x,r.y,r.w,r.h);
+  ctx.strokeStyle = owned ? "#444" : (afford?col:"#663333"); ctx.lineWidth=2;
+  ctx.strokeRect(r.x,r.y,r.w,r.h);
+  pkShopIcon(ctx, r.x+r.h*0.5, r.y+r.h*0.36, r.h/30, ic, owned?"#556":col);
+  ctx.textAlign="center"; ctx.font="6px 'Press Start 2P',monospace";
+  ctx.fillStyle = owned ? "#556" : (afford?col:"#a55");
+  ctx.fillText(owned?label:cost+"◆", r.x+r.w/2, r.y+r.h*0.86);
+  ctx.textAlign="left";
 }
 // shop taps live on the park screen. Registered here rather than in the #dogcv handler in
 // bones.js, which bails out early for the whole of a park run.
@@ -4593,6 +4663,24 @@ function pkDrawShop(ctx,w,h,t){
           PK.shopSel={kind:"charm", item:Object.assign({}, sb.charm, {n:"★ "+sb.charm.name, c:sb.charm.cost, ic:"relic", fx:sb.charm.fx})};
           beep(760,.05);
         } else beep(150,.08);
+        return;
+      }
+      // the two fixed slots buy immediately, no confirm step — same one-tap weight as SKIP,
+      // since neither is a choice between three rolled options
+      if(row.kind==="armour"){
+        if(PK.armor>=pkArmorCap()){ beep(150,.08); return; }
+        if(PK.bones<ARMOR_COST){ beep(150,.1); return; }
+        PK.bones-=ARMOR_COST; PK.armorUnlocked=true; PK.armor=pkArmorCap();
+        pkFanfare("FULL ARMOUR",true); beep(700,.08); setTimeout(()=>beep(950,.08),90);
+        PK.shop=null; PK.shopSel=null;
+        return;
+      }
+      if(row.kind==="compass"){
+        if(PK.compass){ beep(150,.08); return; }
+        if(PK.bones<COMPASS_COST){ beep(150,.1); return; }
+        PK.bones-=COMPASS_COST; PK.compass=true;
+        pkFanfare("COMPASS",true); beep(700,.08); setTimeout(()=>beep(1050,.1),90);
+        PK.shop=null; PK.shopSel=null;
         return;
       }
     }
@@ -4641,14 +4729,28 @@ function pkPadDraw(t){
     ctx.fillStyle=PK.over>0?"#ffd94a":"#fff"; ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="right";
     ctx.fillText((PK.over>0?"+"+Math.ceil(PK.over)+"  ":"")+Math.max(0,Math.ceil(PK.hp))+"/"+PK.maxhp, bx+bw2, by+bh2+10);
     ctx.textAlign="left"; ctx.lineWidth=2;
+    // Full Armour: a whole second bar of its own rather than a tint on the first \u2014 it was bought
+    // outright, and it reads as its own asset, not a temporary bonus riding the HP bar
+    let armorH=0;
+    if(PK.armorUnlocked){
+      const ay=by+bh2+4, ah=8, afrac=clamp(PK.armor/Math.max(1,pkArmorCap()),0,1);
+      armorH=ah+8;
+      ctx.fillStyle="rgba(0,0,0,.6)"; ctx.fillRect(bx,ay,bw2,ah);
+      ctx.strokeStyle="#6cf"; ctx.lineWidth=2; ctx.strokeRect(bx,ay,bw2,ah);
+      ctx.fillStyle="#6cf"; ctx.fillRect(bx+2,ay+2,(bw2-4)*afrac,ah-4);
+      ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle="#6cf"; ctx.textAlign="right";
+      ctx.fillText("ARMOUR "+Math.ceil(PK.armor), bx+bw2, ay+ah+8);
+      ctx.textAlign="left";
+    }
     if(PK.relic){
       const rc=PK_CHARMS.find(c=>c.id===PK.relic);
       if(rc){ ctx.fillStyle="#f22"; ctx.font="6px 'Press Start 2P',monospace"; ctx.fillText("\u2b25 "+rc.name, 10, 46); }
     }
     // sub-friends' health lives directly under BONES' own bar, smaller \u2014 he's their leader.
     // only squirrel/cat carry HP at all (the bird flock is never itself a target). Pushed down
-    // past BONES' own hp/maxhp number (drawn just above) so the two stop colliding.
-    let ppy=by+bh2+24;
+    // past BONES' own hp/maxhp number (drawn just above), and past the armour bar if it's showing,
+    // so nothing collides.
+    let ppy=by+bh2+24+armorH;
     for(const kind of ["sq","cat","ape"]){
       const p=PK.pals.find(q=>q.k===kind);
       if(!p) continue;
@@ -4764,28 +4866,31 @@ function pkPadDraw(t){
       const cost=td?td.c:0, afford=PK.bones>=cost;
       const ok=buyable&&afford;
       const y=h*pkRowYF(i), cardH=h*PANEL_CARDH, top=y-cardH*0.5;
+      const rowX=w*0.10, rowW=w*0.80;
       ctx.strokeStyle = !buyable ? "#334" : (afford?"#f6a":"#663333"); ctx.lineWidth=2;
-      ctx.strokeRect(w*0.10, top, w*0.80, cardH);
-      // name + action
+      ctx.strokeRect(rowX, top, rowW, cardH);
+      // a small icon per companion, same grammar as the wave shop's own cards
+      pkShopIcon(ctx, rowX+cardH*0.55, y, cardH/24, PAL_ICON[k], !buyable?"#556":"#f6a");
+      // name + action \u2014 shrunk to fit rather than left to run over the pips/cost column
+      const textX=rowX+cardH*1.15, textMaxW=rowX+rowW*0.68-textX;
       const label = buyable
         ? (tier===0 ? td.n : "UPGRADE "+td.n)
         : PAL_TIERS[k][maxTier-1].n+" \u2014 "+(maxTier>1?"MAXED":"HIRED");
-      ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="left";
+      ctx.textAlign="left";
       ctx.fillStyle = !buyable ? "#556" : (afford?"#fff":"#a55");
-      ctx.fillText(label, w*0.145, y-1);
+      pkFitText(ctx, label, textX, y-1, textMaxW, 7);
       // description or maxed note
-      ctx.font="6px 'Press Start 2P',monospace";
       ctx.fillStyle = buyable?"#999":"#445";
-      ctx.fillText(buyable ? td.fx : (maxTier>1?"ALL "+maxTier+" TIERS UNLOCKED":"ONE OF A KIND \u2014 ALREADY YOURS"), w*0.145, y+11);
+      pkFitText(ctx, buyable ? td.fx : (maxTier>1?"ALL "+maxTier+" TIERS UNLOCKED":"ONE OF A KIND \u2014 ALREADY YOURS"), textX, y+11, textMaxW, 6);
       // tier pips: \u25A0 owned, \u25A1 not yet, shown on right above cost
       ctx.textAlign="right"; ctx.font="7px 'Press Start 2P',monospace";
       const pips="\u25A0".repeat(tier)+"\u25A1".repeat(maxTier-tier);
       ctx.fillStyle = tier>0?"#f6a":"#556";
-      ctx.fillText(pips, w*0.855, y-1);
+      ctx.fillText(pips, rowX+rowW*0.97, y-1);
       // cost
       ctx.font="7px 'Press Start 2P',monospace";
       ctx.fillStyle = !buyable?"#445":(ok?"#fff":"#f22");
-      ctx.fillText(buyable?(cost+"\u25C6"):"", w*0.855, y+11);
+      ctx.fillText(buyable?(cost+"\u25C6"):"", rowX+rowW*0.97, y+11);
       ctx.textAlign="left";
     });
     const doneY=h*pkRowYF(PAL_KINDS.length), doneH=h*0.055;

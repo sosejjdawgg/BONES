@@ -187,6 +187,11 @@ button.red:active{background:#f22;color:#000}
 /* PANEL */
 #panel{flex:1;position:relative;overflow:hidden;background:#000}
 .screen{position:absolute;inset:0;display:flex;flex-direction:column}
+/* the one moment a mode switch (home/work/run/park/paperboy) actually reads as a transition
+   rather than an instant cut — a quick fade+settle on whatever screen just became active */
+@keyframes screenIn{from{opacity:0;transform:scale(1.025)}to{opacity:1;transform:scale(1)}}
+.screen.screen-in{animation:screenIn .22s ease}
+body.reduce-motion .screen.screen-in{animation:none}
 #hud{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:3px solid #fff;font-size:9px}
 #hud .money{font-size:12px}
 #home .body{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:12px}
@@ -216,8 +221,18 @@ button.red:active{background:#f22;color:#000}
 
 
 /* PRE-RUN + RESULT */
-.overpanel{position:absolute;inset:0;background:#000;z-index:6;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:20px}
-.overpanel.show{display:flex}
+/* every overpanel (shop/mail/todo/settings/result/choice/bedtime/welcome-back/etc.) fades and
+   scales in and out the same way — one rule, applied everywhere, instead of an instant pop.
+   display stays flex the whole time; opacity+visibility carry the actual show/hide so the
+   transition has something to animate, and pointer-events keeps a fading-out panel from
+   swallowing taps meant for what's underneath it. */
+.overpanel{position:absolute;inset:0;background:#000;z-index:6;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:20px;
+  opacity:0;visibility:hidden;pointer-events:none;transform:scale(.96);
+  transition:opacity .16s ease,transform .16s ease,visibility 0s linear .16s}
+.overpanel.show{opacity:1;visibility:visible;pointer-events:auto;transform:scale(1);
+  transition:opacity .18s ease,transform .18s ease,visibility 0s linear 0s}
+body.reduce-motion .overpanel{transition:opacity .12s linear,visibility 0s linear .12s;transform:none}
+body.reduce-motion .overpanel.show{transition:opacity .12s linear,visibility 0s linear 0s;transform:none}
 .overpanel h2{font-size:15px;letter-spacing:2px}
 .overpanel .lines{font-size:8px;line-height:2.2;color:#ccc}
 .overpanel .big{font-size:22px;color:#fff}
@@ -314,7 +329,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.183a</span>
+          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.184a</span>
         </div>
       </div>
 
