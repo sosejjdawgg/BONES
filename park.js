@@ -5188,6 +5188,9 @@ function pkPadDraw(t){
     ctx.globalAlpha=1;
   }
   if(PK.convertOpen){
+    // a solid backdrop first — this used to just stroke the border and leave BONES' own HP/armour
+    // bars (drawn earlier this same frame) bleeding straight through underneath the panel
+    ctx.fillStyle="rgba(0,0,0,.92)"; ctx.fillRect(w*0.06,h*0.07,w*0.88,h*0.74);
     ctx.strokeStyle="#fff"; ctx.lineWidth=3; ctx.strokeRect(w*0.06,h*0.07,w*0.88,h*0.74);
     ctx.fillStyle="#fff"; ctx.font="10px 'Press Start 2P',monospace"; ctx.textAlign="center";
     ctx.fillText("EXCHANGE BONES", w/2, h*0.135);
@@ -5223,6 +5226,9 @@ function pkPadDraw(t){
     ctx.textAlign="left";
   }
   if(PK.friendsOpen){
+    // same backdrop fix as the exchange panel above — without it the HP/armour/pal bars and the
+    // "drag anywhere" hint (all drawn earlier this frame) showed straight through the panel
+    ctx.fillStyle="rgba(0,0,0,.92)"; ctx.fillRect(w*0.06,h*0.07,w*0.88,h*0.80);
     ctx.strokeStyle="#f6a"; ctx.lineWidth=3; ctx.strokeRect(w*0.06,h*0.07,w*0.88,h*0.80);
     ctx.fillStyle="#f6a"; ctx.font="10px 'Press Start 2P',monospace"; ctx.textAlign="center";
     ctx.fillText("FRIENDS", w/2, h*0.135);
