@@ -3440,6 +3440,14 @@ function renderSettings(){
   $("#setMusic").textContent = SETTINGS.music ? "ON" : "OFF";
   $("#setMotion").textContent = SETTINGS.reduceMotion ? "ON" : "OFF";
   $("#mReplayTutorial").style.display = S.pbTutorialDone ? "" : "none";
+  renderGlobalMusicBtn();
+}
+// kept separate from renderSettings() so the corner button can refresh on its own
+// (boot, toggling from the button itself) without needing the settings panel involved
+function renderGlobalMusicBtn(){
+  const btn=$("#globalMusicBtn");
+  btn.classList.toggle("muted", !SETTINGS.music);
+  btn.title = SETTINGS.music ? "MUSIC: ON" : "MUSIC: OFF";
 }
 $("#mSettings").onclick=()=>{
   $("#menuPanel").classList.remove("show"); renderSettings();
@@ -3454,6 +3462,12 @@ $("#setMusic").onclick=()=>{
   SETTINGS.music=!SETTINGS.music;
   syncMoodMusic();
   renderSettings(); beep(500,.05);
+};
+$("#globalMusicBtn").onclick=()=>{
+  SETTINGS.music=!SETTINGS.music;
+  syncMoodMusic();
+  renderGlobalMusicBtn();
+  if(SETTINGS.music) beep(500,.05);
 };
 $("#setMotion").onclick=()=>{
   SETTINGS.reduceMotion=!SETTINGS.reduceMotion;
@@ -3759,6 +3773,7 @@ $("#startDog").src = PORTRAITS.happy;
 if(!STORAGE_OK) addMail("storage","PROGRESS CAN'T BE SAVED","STORAGE IS BLOCKED ON THIS DEVICE — "+NAME().toUpperCase()+"'S PROGRESS WON'T PERSIST BETWEEN VISITS.");
 buildMeters(); renderMeters(); renderShop(); renderTodo(); renderDogSel(); renderMailBadge();
 syncMoodMusic();
+renderGlobalMusicBtn();
 let nagNext = performance.now()/1000 + 45;
 let last=performance.now(), meterAcc=0;
 function loop(now){

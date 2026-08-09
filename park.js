@@ -324,7 +324,8 @@ function startPark(plus){
     pals:[], palEyes:false, friendsOpen:false, friendsArm:false, npc:{x:.5,y:.5},
     sword:null, swordCine:null, swordSite:null, swordDone:false, swordNagT:0,
     hell:false, hellT:0, hellSpreadT:0, hellHurtT:0,
-    armor:0, armorUnlocked:false, armorFeedCount:0
+    armor:0, armorUnlocked:false, armorFeedCount:0,
+    exitNagT:0, exitNagFlashT:0
   });
   PK.hp=PK.maxhp;
   PK.healerT=pkHealerGap();
@@ -2582,6 +2583,7 @@ function parkUpdate(dt){
     S.thirst=clamp(S.thirst-0.10*parkNm*dt,0,100);
   }
   PK.t+=dt; PK.waveT+=dt;
+  PK.exitNagT+=dt; PK.exitNagFlashT=Math.max(0,PK.exitNagFlashT-dt);
   PK.hurtT=Math.max(0,PK.hurtT-dt);
   if(PK.over>0){
     const f=clamp(PK.over/Math.max(1,pkOverCap()),0,1);
@@ -2683,6 +2685,7 @@ function parkUpdate(dt){
       setTimeout(()=>pkFanfare(null,true,"🏆 DOGPARK+ UNLOCKED!"),300);
     }
     tickStats(2.5, true);   // a cleared wave is 15 game minutes — the only time the park spends
+    if(PK.bones>0) PK.exitNagFlashT=2.4;   // a fresh wave is exactly when it's easy to forget what you're carrying
     PK.waveT=0; PK.wave++;
     if(PK.wave>=3) tickTodo("j_wave3");
     PK.barkMax=Math.max(0.85,PK.barkMax-0.16); PK.barkR=Math.min(BARK_CAP,PK.barkR+5.5); PK.knock+=12;
@@ -3447,7 +3450,8 @@ function pkDeath(){
   $("#resTitle").textContent="OVERRUN AT THE PARK"; $("#resTitle").style.color="#f22";
   $("#resPortrait").src=PORTRAITS.sad; $("#resPortraitWrap").classList.add("show");
   $("#resScore").textContent=kept+" BONES";
-  $("#resLines").innerHTML="90% OF HIS BONES ("+lost+") LIE WHERE HE FELL.<br>"+PK.kills+" DOWNED, "+PK.sideDone+" SIDE OBJECTIVES \u2014 "+earned+" XP MADE IT HOME.<br>NEXT VISIT: GO CLAIM THE REST \u2014 IF YOU DARE.";
+  const leftBehind = lost>0 ? "<br>YOU LEFT YOUR BONES BEHIND." : "";
+  $("#resLines").innerHTML="90% OF HIS BONES ("+lost+") LIE WHERE HE FELL.<br>"+PK.kills+" DOWNED, "+PK.sideDone+" SIDE OBJECTIVES \u2014 "+earned+" XP MADE IT HOME.<br>NEXT VISIT: GO CLAIM THE REST \u2014 IF YOU DARE."+leftBehind;
   $("#result").classList.add("show");
   beep(140,.3,"sawtooth");
   setTimeout(()=>pkReveal(kept,earned,"death"),400);
@@ -3577,6 +3581,29 @@ function pkDrawBanner(ctx,w,h,banner,color){
     lines.forEach((ln,i)=>ctx.fillText(ln, w/2, top+band*0.64+i*12));
   }
   ctx.textAlign="left";
+  ctx.restore();
+}
+// safe-exit reminder: a small non-blocking pill that nags whenever bones are actually at risk —
+// carrying some, and far enough from the gate that the BANK/STAY prompt (see parkUpdate's gate
+// check) isn't already up doing the same job. Gets a brighter, faster pulse right after a wave
+// clears (easiest moment to forget what you're holding) or once the pile gets big.
+function pkDrawExitNag(ctx,w,h){
+  if(!PK.active || PK.bones<=0 || PK.shop || PK.convertOpen || PK.friendsOpen || PK.gateAsk) return;
+  const gd=Math.hypot(wd(PK.gate.x-PK.x,PK.WW), wd(PK.gate.y-PK.y,PK.WH));
+  if(gd<180) return;
+  const urgent = PK.bones>=40 || PK.exitNagFlashT>0;
+  const period = urgent ? 2.0 : 4.5;
+  const pulse = 0.5+0.5*Math.sin(PK.exitNagT*(2*Math.PI/period));
+  const alpha = SETTINGS.reduceMotion ? 0.85 : 0.45+0.55*pulse;
+  const txt = "⚠ "+PK.bones+" BONES AT RISK — BANK AT THE EXIT";
+  ctx.save();
+  ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
+  const tw=ctx.measureText(txt).width, padX=10, pillW=tw+padX*2, pillH=18, px=w/2-pillW/2, py=8;
+  ctx.globalAlpha=alpha;
+  ctx.fillStyle="#000"; ctx.fillRect(px,py,pillW,pillH);
+  ctx.strokeStyle="#f22"; ctx.lineWidth=2; ctx.strokeRect(px,py,pillW,pillH);
+  ctx.fillStyle="#f22"; ctx.fillText(txt, w/2, py+pillH*0.68);
+  ctx.globalAlpha=1; ctx.textAlign="left";
   ctx.restore();
 }
 // COMPASS powerup: a small pulsing edge-arrow pointing at something off-screen. Once it's
@@ -4418,6 +4445,7 @@ function parkDraw(t){
   // two read as one consistent "big event" idiom rather than two different UI languages
   pkDrawBanner(ctx,w,h,PK.waveBanner,"#f22");
   pkDrawBanner(ctx,w,h,PK.goldenBanner,"#e8c14a");
+  pkDrawExitNag(ctx,w,h);
   pkDrawShop(ctx,w,h,t);
   // shop-purchase fanfare — a satisfying beat so spending bones actually feels like a reward
   if(PK.shopFlash){
