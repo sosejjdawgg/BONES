@@ -325,7 +325,8 @@ function startPark(plus){
     sword:null, swordCine:null, swordSite:null, swordDone:false, swordNagT:0,
     hell:false, hellT:0, hellSpreadT:0, hellHurtT:0,
     armor:0, armorUnlocked:false, armorFeedCount:0,
-    exitNagT:0, exitNagFlashT:0
+    exitNagT:0, exitNagFlashT:0,
+    swordSpinCd:0, whirlwindT:0, whirlwindR:0, spinLastAng:null, spinAngAccum:0, spinT:0
   });
   PK.hp=PK.maxhp;
   PK.healerT=pkHealerGap();
@@ -1208,6 +1209,60 @@ function pkSwordUpgrade(){
   setTimeout(()=>beep(950,.16,"square",.05),160);
   toast("THE BLADE GROWS — TIER "+s.tier+"/"+SWORD_MAX_TIER+", "+pkSwordDmg()+" DMG",1);
 }
+/* ---------- Whirlwind Slash: spin the joystick a full turn fast enough and BONES cuts loose
+   with the blade in a wide circle. DOGPARK+ only, and only once the sword is actually held —
+   this is a payoff for having the blade, not a separate weapon. Long cooldown, so it's a panic
+   button / crowd-clearer, not something to lean on every fight. ---------- */
+const SWORD_SPIN_CD=20, SWORD_SPIN_WINDOW=0.45;
+function pkWhirlwindReady(){ return PK.plusMode && pkSwordTier()>=1 && PK.swordSpinCd<=0; }
+function pkSwordSpinUpdate(dt){
+  PK.swordSpinCd=Math.max(0,PK.swordSpinCd-dt);
+  PK.whirlwindT=Math.max(0,PK.whirlwindT-dt);
+  if(!pkWhirlwindReady() || !PK.joy){ PK.spinLastAng=null; PK.spinAngAccum=0; PK.spinT=0; return; }
+  const mag=Math.hypot(PK.joy.dx,PK.joy.dy);
+  if(mag<0.6){ PK.spinLastAng=null; PK.spinAngAccum=0; PK.spinT=0; return; }
+  const ang=Math.atan2(PK.joy.dy,PK.joy.dx);
+  if(PK.spinLastAng==null){ PK.spinLastAng=ang; return; }
+  let d=ang-PK.spinLastAng;
+  while(d>Math.PI) d-=2*Math.PI;
+  while(d<-Math.PI) d+=2*Math.PI;
+  PK.spinLastAng=ang;
+  if(PK.spinAngAccum!==0 && Math.sign(d)!==Math.sign(PK.spinAngAccum)){
+    PK.spinAngAccum=d; PK.spinT=0;   // reversed direction — this attempt restarts from here
+  } else {
+    PK.spinAngAccum+=d; PK.spinT+=dt;
+  }
+  if(PK.spinT>SWORD_SPIN_WINDOW){ PK.spinAngAccum=0; PK.spinT=0; return; }   // too slow, window closed
+  if(Math.abs(PK.spinAngAccum)>=2*Math.PI-0.05){
+    pkWhirlwindSlash();
+    PK.spinAngAccum=0; PK.spinT=0;
+  }
+}
+function pkWhirlwindSlash(){
+  PK.swordSpinCd=SWORD_SPIN_CD;
+  const R=70+pkSwordTier()*4;   // 74..90 across the 5 tiers
+  const dmg=18+Math.random()*4+pkSwordTier()*1.5;
+  const sweep=[];
+  pkEnemiesNear(PK.x,PK.y,R+20,e=>sweep.push(e));
+  for(const e of sweep){
+    if(e.fleeing) continue;
+    const dxw=wd(e.x-PK.x,PK.WW), dyw=wd(e.y-PK.y,PK.WH), d=Math.hypot(dxw,dyw)||1;
+    if(d<R+pkHitR(e)){
+      e.hp-=dmg;
+      if(e.hp<=0){ pkDownEnemy(e,dxw/d,dyw/d); pkHitMark(e.x,e.y,true); }
+      else {
+        e.kx=dxw/d*PK.knock*2.8; e.ky=dyw/d*PK.knock*2.8;   // the whole point — this is the one attack that actually clears the ring
+        e.hitT=0.3; pkHitMark(e.x,e.y,false);
+      }
+    }
+  }
+  PK.whirlwindT=0.5;
+  PK.whirlwindR=R;
+  PK.shake=Math.max(PK.shake||0,0.45);
+  PK.zoomFromBark=Math.min(0.25,(PK.zoomFromBark||0)+0.12); pkApplyZoom();
+  beep(220,.12,"sawtooth",.08); setTimeout(()=>beep(880,.09,"square",.05),70);
+  toast("WHIRLWIND SLASH!",1);
+}
 /* ---------- drawing ---------- */
 // drawn pointing along +X with the origin at the middle of the crossguard, so the same shape
 // serves the spinning drop, the planted blade and the one in his mouth
@@ -1374,6 +1429,11 @@ function pkDrawHeldSword(ctx,DX,DY,t){
   ctx.translate(DX+face*SWORD_MOUTH_X, DY+SWORD_MOUTH_Y);
   if(face<0) ctx.scale(-1,1);
   ctx.translate(-SWORD_GRIP_MID*sc, 0);   // put the middle of the grip in his teeth
+  if(PK.whirlwindT>0){
+    // two fast full turns over the half-second, around the grip he's holding it by
+    const spinP=1-PK.whirlwindT/0.5;
+    ctx.rotate(spinP*Math.PI*4);
+  }
   if(s.growT>0){
     ctx.save(); ctx.globalAlpha=(s.growT/0.5)*0.8;
     ctx.shadowColor="#fff"; ctx.shadowBlur=26;
@@ -3321,6 +3381,7 @@ function parkUpdate(dt){
   pkPalDamage(dt,WW,WH);
   if(PK.sword && PK.sword.state==="planted") pkSwordPlantedUpdate(dt);
   else if(PK.sword && PK.sword.state==="held") pkSwordHeldUpdate(dt);
+  pkSwordSpinUpdate(dt);
   if(PK.hell) pkHellUpdate(dt);
   // the bandana dog: stand near him to shop, and you have to actually walk away before he'll
   // talk again — the world is frozen while the panel is up, so a bare radius test would reopen
@@ -4142,6 +4203,17 @@ function parkDraw(t){
   } else { ctx.fillStyle="#20261f"; ctx.fillRect(0,0,w,h); }
   pkDrawScorch(ctx,DX,DY,WW,WH,w,h);
   pkDrawSwordSite(ctx,SC,w,h,t);
+  if(PK.whirlwindT>0){
+    // an expanding white/red ring right where the hit actually lands — BONES is always drawn at
+    // screen centre, so this never needs its own position tracking
+    const p=1-PK.whirlwindT/0.5, r=PK.whirlwindR*(0.4+0.6*p), fade=1-p;
+    ctx.save(); ctx.globalAlpha=fade;
+    ctx.strokeStyle="#fff"; ctx.lineWidth=5;
+    ctx.beginPath(); ctx.arc(DX,DY,r,0,7); ctx.stroke();
+    ctx.strokeStyle="#f22"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(DX,DY,r*0.92,0,7); ctx.stroke();
+    ctx.restore();
+  }
   for(const a of PK.acts){
     const [ax,ay]=SC(a.x*WW,a.y*WH);
     if(ax<-70||ax>w+70||ay<-70||ay>h+70) continue;
@@ -4940,6 +5012,23 @@ function pkPadDraw(t){
     ctx.fillStyle="#3fdc7a"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
     ctx.fillText("✚ REGEN "+PK.regenT.toFixed(1)+"s", w/2, pillY+13);
     ctx.textAlign="left";
+    pillY+=18+10;
+  }
+  if(PK.plusMode && pkSwordTier()>=1){
+    // the one gesture-triggered attack gets its own always-visible status, same idiom as the
+    // other pills — a full turn of the joystick is a big ask, so the player needs to be able to
+    // glance down and see whether it's actually available right now
+    const ready=PK.swordSpinCd<=0;
+    const bw=Math.min(150,w*0.58), bx=w/2-bw/2;
+    const pulse=ready ? (SETTINGS.reduceMotion?0.85:0.6+0.4*Math.abs(Math.sin(t*4))) : 1;
+    ctx.save(); ctx.globalAlpha=pulse;
+    ctx.fillStyle = ready ? "rgba(255,255,255,.18)" : "rgba(120,120,120,.12)";
+    ctx.fillRect(bx,pillY,bw,18);
+    ctx.strokeStyle = ready ? "#fff" : "#666"; ctx.lineWidth=2; ctx.strokeRect(bx,pillY,bw,18);
+    ctx.fillStyle = ready ? "#fff" : "#888"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText(ready ? "⟳ SPIN READY" : "⟳ SPIN "+Math.ceil(PK.swordSpinCd)+"s", w/2, pillY+13);
+    ctx.textAlign="left";
+    ctx.restore();
     pillY+=18+10;
   }
   if(!PK.shop && !PK.joy && !PK.friendsOpen && !PK.convertOpen){

@@ -3693,6 +3693,12 @@ $("#pkDevInvuln").onclick=()=>{
   for(const p of PK.pals){ if(p.k!=="bird") p.invulnT=2.0; }
   toast("FRIENDS INVULNERABLE 2s (DEV)");
 };
+$("#pkDevSpin").onclick=()=>{
+  if(!PK.active) return;
+  if(!PK.plusMode || pkSwordTier()<1){ toast("NEEDS DOGPARK+ AND A HELD SWORD (DEV)",1); return; }
+  PK.swordSpinCd=0; pkWhirlwindSlash();
+  toast("WHIRLWIND SLASH TRIGGERED (DEV)");
+};
 $("#pkDevBones").onclick=()=>{
   if(!PK.active) return;
   PK.bones+=50; toast("+50 BONES (DEV)");
