@@ -474,7 +474,8 @@ function startPark(plus){
     armor:0, armorUnlocked:false, armorFeedCount:0,
     exitNagT:0, exitNagFlashT:0,
     swordSpinCd:0, whirlwindT:0, whirlwindR:0, spinLastAng:null, spinAngAccum:0, spinT:0,
-    rage:0, judgment:null, judgmentFlashT:0, zoomFromJudgment:0
+    rage:0, judgment:null, judgmentFlashT:0, zoomFromJudgment:0,
+    endRunAsk:false
   });
   PK.hp=PK.maxhp;
   PK.healerT=pkHealerGap();
@@ -2826,7 +2827,7 @@ function parkUpdate(dt){
   // health total across frames rather than by touching all nine.
   if(PK.hp<PK.hpSeen){ PK.hurtT=HURT_TIME; PK.shake=Math.max(PK.shake||0,0.22); }
   PK.hpSeen=PK.hp;
-  if(PK.shop || PK.convertOpen || PK.friendsOpen || PK.gateAsk) return;   // world pauses while a panel is up
+  if(PK.shop || PK.convertOpen || PK.friendsOpen || PK.gateAsk || PK.endRunAsk) return;   // world pauses while a panel is up
   // the sword's arrival and its collection each take the whole screen: nothing spawns, moves or
   // attacks until they finish, so the drop reads as an event rather than something happening in
   // the corner of a firefight
@@ -3731,6 +3732,24 @@ function pkDeath(){
   $("#result").classList.add("show");
   beep(140,.3,"sawtooth");
   setTimeout(()=>pkReveal(kept,earned,"death"),400);
+}
+// leaving on purpose, mid-run — harsher than dying: death still keeps 10% of the pile and half
+// the XP the run actually earned, but walking out deliberately with nothing banked means nothing
+// comes home at all. The confirm prompt (see the pad's END RUN button) is what makes this safe
+// to reach for by accident-proofing it, not this function going easy on the outcome.
+function pkForfeitRun(){
+  PK.active=false; syncMoodMusic();
+  PK.rage=0; PK.judgment=null;
+  const lost=PK.bones;
+  if(lost>0) PARKGHOST={x:PK.x,y:PK.y,bones:lost + (PARKGHOST?PARKGHOST.bones:0)};
+  pkExitCosts(); S.fun=clamp(S.fun-5,0,100);
+  $("#resTitle").textContent="LEFT EARLY"; $("#resTitle").style.color="#f22";
+  $("#resPortrait").src=PORTRAITS.sad; $("#resPortraitWrap").classList.add("show");
+  $("#resScore").textContent="0 BONES";
+  $("#resLines").innerHTML="YOU WALKED OUT WITH NOTHING"+(lost>0?" — "+lost+" BONES LEFT ON THE GROUND":"")+".<br>"+PK.kills+" DOWNED, "+PK.sideDone+" SIDE OBJECTIVES — NONE OF IT COUNTED.<br>NEXT VISIT: SEE IT THROUGH.";
+  $("#result").classList.add("show");
+  beep(120,.3,"sawtooth");
+  setTimeout(()=>pkReveal(0,0,"forfeit"),400);
 }
 function pkBank(){
   PK.active=false; syncMoodMusic();
@@ -5048,6 +5067,11 @@ function pkDrawFixedSlot(ctx,r,ic,label,owned,cost,col){
 // one shared geometry for every alive sq/cat/ape pal's HP bar + STAY/FOLLOW buttons — used by
 // both the draw call below and the pad's pointerdown hit-test, so they can never drift apart.
 // Pure function of PK state (no animation terms), so it's safe to call from either place.
+// one shared rect for the END RUN button — draw and hit-test read the same geometry, same
+// convention as pkPalHudRows below. Only depends on h (bottom-anchored), not w.
+function pkEndRunRect(h){
+  return {x:8, y:h-38, w:104, h:26};
+}
 function pkPalHudRows(w){
   const bx=w-140, bw2=128;
   const by=14, bh2=14;
@@ -5091,6 +5115,16 @@ function pkPadDraw(t){
   drawBone(ctx, 24, 26, 1, "#fff");
   ctx.fillStyle="#fff"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
   ctx.fillText(PK.bones+" BONES", 34, 29);
+  // bottom-left, always reachable — a deliberate way out that isn't "just die on purpose".
+  // Hidden behind whichever full-screen panel is currently up so it never fights for a tap.
+  if(!PK.shop && !PK.friendsOpen && !PK.convertOpen){
+    const er=pkEndRunRect(h);
+    ctx.strokeStyle="#f22"; ctx.lineWidth=2; ctx.fillStyle="rgba(0,0,0,.7)";
+    ctx.fillRect(er.x,er.y,er.w,er.h); ctx.strokeRect(er.x,er.y,er.w,er.h);
+    ctx.fillStyle="#f22"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText("⚑ END RUN", er.x+er.w/2, er.y+er.h*0.65);
+    ctx.textAlign="left";
+  }
   let hudBottomY=44;   // grows as the HP/armour/pal stack below actually uses space, so the wave
                        // goal block (drawn later) always clears it with real room instead of a guess
   {
@@ -5446,6 +5480,18 @@ function pkPadDraw(t){
     const px=e.clientX-r.left, py=e.clientY-r.top;
     if(px>8 && px<118 && py>10 && py<40){ PK.convertOpen=true; beep(500,.05); return; }
     const hit2=(rx,ry,rw,rh)=>px>=rx&&px<=rx+rw&&py>=ry&&py<=ry+rh;
+    {
+      const er=pkEndRunRect(r.height);
+      if(hit2(er.x,er.y,er.w,er.h)){
+        beep(300,.06);
+        PK.endRunAsk=true;
+        openChoice("LEAVE EARLY?",
+          "YOU'LL LOSE ALL "+PK.bones+" BONES AND ALL THE XP FROM<br>THIS RUN — NONE OF IT COMES HOME.<br><br>DO YOU REALLY WANT TO LEAVE EARLY?",
+          "YES, END RUN", ()=>{ PK.endRunAsk=false; pkForfeitRun(); },
+          "KEEP PLAYING", ()=>{ PK.endRunAsk=false; });
+        return;
+      }
+    }
     for(const row of pkPalHudRows(r.width)){
       if(hit2(row.stay.x,row.stay.y,row.stay.w,row.stay.h)){
         if(!row.p.stay){ row.p.stay=true; beep(300,.06); }
