@@ -283,7 +283,7 @@ const S = {
   kibble:3, snacks:2, beach:false, compsToday:0,
   jWave3:false, jCollar:false, jTrick:false,
   dHappy:false, dNour:false, dBall:false, dPark:false, dClean:false, dWater:false, dFood:false,
-  hoopOwned:false, ballOwned:false, brushOwned:false, shampooOwned:false, shampooPct:0, firstWater:false, firstFood:false, bedHinted:false, pbTutorialDone:false, mail:[],
+  hoopOwned:false, ballOwned:false, ballStock:0, brushOwned:false, shampooOwned:false, shampooPct:0, firstWater:false, firstFood:false, bedHinted:false, pbTutorialDone:false, mail:[],
   bedTier:0, todoWork:false, todoLvl5:false, todoBed:false, todoPark:false, todoBall:false, todoBowls:false, twW:false, twF:false, todoHide:false, outTimer:0,
   lvl:1, xp:0, gen:1, senior:false, seniorDays:0, lifePathChosen:false, litter:false, memorialSrc:null, pendingStage:[],
   lastSaveAt:null, lastSaveDay:0, lastSaveH:0, dogParkPlusUnlocked:false
@@ -719,6 +719,39 @@ function buyBiggerBed(){
   S.money-=45; S.bedTier=dogStageIdx();
   toast("A BIGGER BED \u2014 HE CAN STRETCH OUT NOW."); heartsBurst(2); beep(700,.08); setTimeout(()=>beep(950,.09),100);
   renderMeters(); renderSupplies(); renderShop();
+}
+// up to 5 balls total (one in play + spares in supplies) \u2014 the spares exist so a ball that's
+// truly gone for good (lost off-screen, or just worn out) never leaves the player stuck without
+// one. The first purchase places a ball immediately; every one after that banks as stock instead.
+const BALL_MAX=5;
+function ballTotalOwned(){ return (S.ballOwned?1:0)+S.ballStock; }
+function buyBall(){
+  if(S.lvl<2){ toast("A BALL UNLOCKS AT LV.2",1); return; }
+  if(ballTotalOwned()>=BALL_MAX){ toast("5 BALLS IS PLENTY \u2014 THAT'S THE MOST HE CAN KEEP.",1); return; }
+  if(S.money<5){ toast("NOT ENOUGH \u2014 A BALL IS $5",1); return; }
+  S.money-=5;
+  if(!S.ballOwned){
+    S.ballOwned=true;
+    BALL.x=0.28; BALL.y=0.795; BALL.vx=0; BALL.vy=0; BALL.off=false; BALL.carried=false; BALL.pcarried=false;
+    tickTodo("ball");
+    toast("A BALL! FLING IT \u2014 HE'LL BRING IT BACK.");
+  } else {
+    S.ballStock++;
+    toast("A SPARE BALL \u2014 "+S.ballStock+" WAITING IN SUPPLIES.");
+  }
+  beep(700,.07); setTimeout(()=>beep(950,.09),100);
+  renderMeters(); renderSupplies(); renderShop(); renderTodo();
+}
+// pulls one ball from supplies and sets it down fresh \u2014 the manual fix for a ball that's stuck,
+// lost, or just to swap the one currently rolling around for a new one
+function placeBallFromStock(){
+  if(S.ballStock<=0) return;
+  S.ballStock--;
+  BALL.x=clamp(CAM.x+CAMDWF*0.6,0.03,0.95); BALL.y=0.795; BALL.vx=0; BALL.vy=0;
+  BALL.off=false; BALL.carried=false; BALL.pcarried=false; BALL.cool=0.5;
+  toast("A FRESH BALL, SET DOWN.");
+  beep(700,.06); setTimeout(()=>beep(950,.07),90);
+  renderSupplies();
 }
 const TODO_META=[
   ["bowls","todoBowls",'REFILL BOTH OF HIS BOWLS<br><span class="tiny">WATER + FOOD \u2014 +$5</span>',"+$5"],
@@ -2646,7 +2679,7 @@ function renderShopSup(){
       : !bedAdequate()
         ? '<div class="prow" style="border-color:#f22"><span class="nm" style="color:#f22">'+icn("bed")+' BIGGER BED<br><span class="tiny">HE\'S OUTGROWN HIS BED</span></span><button data-sup="biggerbed" '+(S.money<45?"disabled":"")+'>BUY $45</button></div>'
         : "")},
-    {req:2, html:(S.ballOwned?"":'<div class="prow'+(S.lvl<2?" locked":"")+'"><span class="nm">'+icn("ball")+' RUBBER BALL<br><span class="tiny">'+(S.lvl<2?"UNLOCKS LV.2":"FETCH, TRICK SHOTS \u2014 ONE-TIME")+'</span></span><button data-sup="ball" '+(S.lvl<2||S.money<5?"disabled":"")+'>BUY $5</button></div>')},
+    {req:2, html:(ballTotalOwned()>=BALL_MAX?"":'<div class="prow'+(S.lvl<2?" locked":"")+'"><span class="nm">'+icn("ball")+' RUBBER BALL ('+ballTotalOwned()+'/'+BALL_MAX+')<br><span class="tiny">'+(S.lvl<2?"UNLOCKS LV.2":"FETCH, TRICK SHOTS \u2014 SPARES KEEP IN SUPPLIES")+'</span></span><button data-sup="ball" '+(S.lvl<2||S.money<5?"disabled":"")+'>BUY $5</button></div>')},
     {req:2, html:(S.brushOwned?"":'<div class="prow"><span class="nm">'+icn("brush")+' DOG BRUSH<br><span class="tiny">HANGS BY THE SPONGE \u2014 KEEPS HIS COAT RIGHT</span></span><button data-sup="brush" '+(S.money<18?"disabled":"")+'>BUY $18</button></div>')},
     {req:3, html:(S.hoopOwned?"":'<div class="prow"><span class="nm">'+icn("hoop")+' BASKETBALL HOOP<br><span class="tiny">TRICK SHOTS BY THE WINDOW \u2014 ONE-TIME</span></span><button data-sup="hoop" '+(S.money<40?"disabled":"")+'>BUY $40</button></div>')},
     {req:4, html:(S.owned.robot?"":'<div class="prow"><span class="nm">\ud83e\udd16 NOURISH-BOT<br><span class="tiny">FEEDS &amp; WATERS BONES WHILE AT WORK \u2014 ONE-TIME</span></span><button data-sup="robot" '+(S.money<350?"disabled":"")+'>BUY $350</button></div>')}
@@ -3250,14 +3283,17 @@ function renderSupplies(){
         : it(icn("bed"),"DOG BED ("+bedTierName(S.bedTier)+")","HE'S OUTGROWN IT \u2014 UPGRADE IN SHOP","bedbuy",false))+
     (S.shampooOwned ? it(pctIcon(S.shampooPct),"DOG SHAMPOO "+Math.round(S.shampooPct)+"%","BATHS USE IT UP \u2014 RESTOCK IN THE SHOP","shampooinfo") : "")+
     it(icn("kibble"),"KIBBLE x"+S.kibble,"RESTOCK IN THE SHOP","food")+
-    it(icn("snack"),"BONE TREATS x"+S.snacks,"GIVE ONE FROM NOURISH BONES","snack");
+    it(icn("snack"),"BONE TREATS x"+S.snacks,"GIVE ONE FROM NOURISH BONES","snack")+
+    (S.ballOwned ? '<div class="prow"><span class="nm">'+icn("ball")+' SPARE BALLS x'+S.ballStock
+      +'<br><span class="tiny">SET ONE DOWN IF HIS CURRENT ONE IS LOST OR STUCK</span></span>'
+      +'<button data-supact="ball" '+(S.ballStock<=0?"disabled":"")+'>SET DOWN</button></div>' : "");
 }
 $("#shopSup").addEventListener("click",e=>{
   const t=e.target.closest("button"); if(!t) return;
   if(t.dataset.sup==="kibble"&&S.money>=2){ S.money-=2; S.kibble++; beep(600,.05); }
   if(t.dataset.sup==="bed") buyBed();
   if(t.dataset.sup==="biggerbed") buyBiggerBed();
-  if(t.dataset.sup==="ball"&&S.money>=5&&!S.ballOwned){ S.money-=5; S.ballOwned=true; BALL.x=0.28; BALL.y=0.795; BALL.vx=0; BALL.vy=0; BALL.off=false; tickTodo("ball"); beep(700,.07); setTimeout(()=>beep(950,.09),100); toast("A BALL! FLING IT \u2014 HE'LL BRING IT BACK."); }
+  if(t.dataset.sup==="ball"){ buyBall(); }
   if(t.dataset.sup==="brush"&&S.money>=18&&!S.brushOwned){ S.money-=18; S.brushOwned=true; beep(660,.07); setTimeout(()=>beep(880,.09),100); toast("A DOG BRUSH. IT HANGS BY THE SPONGE."); }
   if(t.dataset.sup==="hoop"&&S.money>=40&&!S.hoopOwned){ S.money-=40; S.hoopOwned=true; beep(880,.08); setTimeout(()=>beep(1170,.1),100); toast("HOOP MOUNTED BY THE WINDOW. SWISH \u2014 +1 XP A BASKET."); }
   if(t.dataset.sup==="shampoo"&&S.money>=5&&S.shampooPct<100){ S.money-=5; S.shampooOwned=true; S.shampooPct=100; beep(700,.07); setTimeout(()=>beep(950,.09),100); toast("SHAMPOO TOPPED UP \u2014 TIME FOR A BATH!"); }
@@ -3266,6 +3302,8 @@ $("#shopSup").addEventListener("click",e=>{
   renderMeters(); renderShop();
 });
 $("#suppliesList").addEventListener("click",e=>{
+  const abtn=e.target.closest("button[data-supact]");
+  if(abtn){ if(abtn.dataset.supact==="ball") placeBallFromStock(); return; }
   const row=e.target.closest(".prow"); if(!row) return;
   const k=row.dataset.it;
   const info={
@@ -3366,11 +3404,7 @@ $("#todoList").addEventListener("click",e=>{
   const bt=e.target.closest("button");
   if(bt && bt.dataset.todo==="bed"){ buyBed(); renderTodo(); return; }
   if(bt && bt.dataset.todo==="ball"){
-    if(S.lvl<2){ toast("A BALL UNLOCKS AT LV.2",1); return; }
-    if(S.ballOwned || S.money<5) return;
-    S.money-=5; S.ballOwned=true; BALL.x=0.28; BALL.y=0.795; BALL.vx=0; BALL.vy=0; BALL.off=false;
-    tickTodo("ball"); toast("A BALL! FLING IT — HE'LL BRING IT BACK."); beep(700,.07); setTimeout(()=>beep(950,.09),100);
-    renderMeters(); renderSupplies(); renderTodo();
+    if(!S.ballOwned) buyBall();
     return;
   }
   const row=e.target.closest(".prow.claim");
@@ -3415,9 +3449,17 @@ $("#bFetch").onclick=()=>{
   if(WASH.active||WASH.pending||EVO.active) return;
   if(BALL.carried) return toast("HE'S ALREADY GOT IT.");
   if(BALL.pcarried) return toast(S.pup.name+" HAS IT \u2014 LET THE PUP FINISH!",1);
-  if(BALL.off) return toast("THE BALL ROLLED OUT OF SIGHT \u2014 HE'LL FIND IT.");
   if(CAM.state==="rest") toggleRest();
   CAM.bedTarget=false; hidePortrait();
+  if(BALL.off){
+    // it's actually out of the room \u2014 send him after it for real instead of just saying so.
+    // this used to just toast "he'll find it" and do nothing, which could leave the ball stuck
+    // off-screen forever if the automatic pickup (see the BALL.off check in the physics tick)
+    // never fired in the first place
+    CAM.state="fetch"; CAM.fetchPhase=1; CAM.t=0; CAM.until=99; CAM.fi=0;
+    beep(660,.07); toast("BONES GOES AFTER IT!");
+    return;
+  }
   CAM.state="fetch"; CAM.fetchPhase=5; CAM.t=0; CAM.until=99; CAM.fi=0;
   beep(660,.07); toast("FETCH!");
 };
