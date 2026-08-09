@@ -1159,6 +1159,14 @@ const SWORD_BLADE=44;        // blade length at tier 1, in world px — long and
 const SWORD_GRIP_MID=-8.6;
 const SWORD_MOUTH_X=15, SWORD_MOUTH_Y=3;   // mouth offset from his centre — jaw height, below the head
 const SWORD_TAKE_R=34;       // walk this close to the planted blade to claim it
+// the actual sword art — a real drawn asset, laid on its side (tip on the right, pommel on the
+// left) so it drops straight into the shape-space every draw call already uses. The transform
+// below was calibrated from the source image itself so two of its landmarks land exactly on the
+// existing gameplay anchors: the middle of its grip sits at SWORD_GRIP_MID, and its blade tip
+// sits at SWORD_BLADE — so the art changes but nothing about reach, mouth position or hitboxes does.
+const SWORD_IMG=new Image(); SWORD_IMG.src=SWORD_IMG_SRC;
+const SWORD_IMG_DX=-22.46, SWORD_IMG_DY=-9.28, SWORD_IMG_DW=66.70, SWORD_IMG_DH=18.55;
+const SWORD_IMG_BLADE_X=2.6;   // where the blade begins, in the same shape-space — clips the gleam to the blade only
 function pkSwordTier(){ return PK.sword && PK.sword.state==="held" ? PK.sword.tier : 0; }
 function pkSwordScale(){ return SWORD_SCALE_T[clamp(pkSwordTier()-1,0,SWORD_MAX_TIER-1)]||1; }
 function pkSwordDmg(){ return SWORD_DMG_T[clamp(pkSwordTier()-1,0,SWORD_MAX_TIER-1)]||0; }
@@ -1423,63 +1431,25 @@ function pkWhirlwindSlash(){
 // drawn pointing along +X with the origin at the middle of the crossguard, so the same shape
 // serves the spinning drop, the planted blade and the one in his mouth
 function pkDrawSwordShape(ctx,s,gleamP){
-  const bl=SWORD_BLADE*s, bw=2.7*s;              // long and slim, not a slab
-  ctx.lineJoin="miter";
-  // ---- blade: parallel edges most of the way, then a long tapering point
-  ctx.fillStyle="#c2ccd6";
-  ctx.beginPath();
-  ctx.moveTo(2*s,-bw); ctx.lineTo(bl-11*s,-bw); ctx.lineTo(bl,0); ctx.lineTo(bl-11*s,bw); ctx.lineTo(2*s,bw);
-  ctx.closePath(); ctx.fill();
-  ctx.fillStyle="#f4f8fc";                       // lit upper bevel
-  ctx.beginPath();
-  ctx.moveTo(2*s,-bw); ctx.lineTo(bl-11*s,-bw); ctx.lineTo(bl-3*s,-bw*0.12); ctx.lineTo(2*s,-bw*0.12);
-  ctx.closePath(); ctx.fill();
-  ctx.strokeStyle="#7d8892"; ctx.lineWidth=Math.max(0.6,0.8*s);   // the fuller
-  ctx.beginPath(); ctx.moveTo(5*s,0); ctx.lineTo(bl-12*s,0); ctx.stroke();
-  ctx.strokeStyle="#4a535c"; ctx.lineWidth=Math.max(0.7,0.9*s);
-  ctx.beginPath();
-  ctx.moveTo(2*s,-bw); ctx.lineTo(bl-11*s,-bw); ctx.lineTo(bl,0); ctx.lineTo(bl-11*s,bw); ctx.lineTo(2*s,bw);
-  ctx.closePath(); ctx.stroke();
-  // ---- crossguard: a slim swept bar, no medallion at this size
-  const gh=6.4*s;
-  ctx.fillStyle="#d9a441";
-  ctx.beginPath();
-  ctx.moveTo(-1.6*s,-gh); ctx.lineTo(2.4*s,-gh*0.72); ctx.lineTo(2.4*s,gh*0.72); ctx.lineTo(-1.6*s,gh);
-  ctx.lineTo(-3.2*s,gh*0.8); ctx.lineTo(-3.2*s,-gh*0.8);
-  ctx.closePath(); ctx.fill();
-  ctx.strokeStyle="#8a6420"; ctx.lineWidth=Math.max(0.5,0.7*s); ctx.stroke();
-  // ---- grip: what his teeth are actually closed around
-  ctx.fillStyle="#1b2338";
-  ctx.fillRect(-14*s,-1.9*s,10.8*s,3.8*s);
-  ctx.strokeStyle="#c8973a"; ctx.lineWidth=Math.max(0.5,0.6*s);
-  for(let i=0;i<3;i++){
-    const gx=-13.2*s+i*3.4*s;
-    ctx.beginPath(); ctx.moveTo(gx,-1.9*s); ctx.lineTo(gx+3*s,1.9*s); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(gx+3*s,-1.9*s); ctx.lineTo(gx,1.9*s); ctx.stroke();
-  }
-  ctx.fillStyle="#d9a441";
-  ctx.fillRect(-3.6*s,-2.6*s,1.5*s,5.2*s);       // ferrule against the guard
-  // ---- pommel
-  ctx.fillStyle="#d9a441";
-  ctx.beginPath();
-  ctx.moveTo(-14.2*s,0); ctx.lineTo(-16.6*s,-3*s); ctx.lineTo(-19.4*s,0); ctx.lineTo(-16.6*s,3*s);
-  ctx.closePath(); ctx.fill();
-  ctx.strokeStyle="#8a6420"; ctx.lineWidth=Math.max(0.5,0.7*s); ctx.stroke();
-  // ---- the gleam: a hard white band running out along the blade to the tip
+  ctx.save();
+  ctx.scale(s,s);
+  ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality="high";
+  if(SWORD_IMG.complete && SWORD_IMG.naturalWidth) ctx.drawImage(SWORD_IMG,SWORD_IMG_DX,SWORD_IMG_DY,SWORD_IMG_DW,SWORD_IMG_DH);
+  // ---- the gleam: a hard white band swept along the blade only
   if(gleamP!=null && gleamP>=0 && gleamP<=1){
-    const gx=2*s+(bl-2*s)*gleamP;
+    const lo=SWORD_IMG_BLADE_X, hi=SWORD_BLADE;
+    const gx=lo+(hi-lo)*gleamP;
     ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(2*s,-bw); ctx.lineTo(bl-11*s,-bw); ctx.lineTo(bl,0); ctx.lineTo(bl-11*s,bw); ctx.lineTo(2*s,bw);
-    ctx.closePath(); ctx.clip();
-    const grd=ctx.createLinearGradient(gx-10*s,0,gx+10*s,0);
+    ctx.beginPath(); ctx.rect(lo,SWORD_IMG_DY,hi-lo,SWORD_IMG_DH); ctx.clip();
+    const grd=ctx.createLinearGradient(gx-10,0,gx+10,0);
     grd.addColorStop(0,"rgba(255,255,255,0)");
     grd.addColorStop(0.5,"rgba(255,255,255,0.95)");
     grd.addColorStop(1,"rgba(255,255,255,0)");
     ctx.fillStyle=grd;
-    ctx.fillRect(gx-10*s,-bw*1.4,20*s,bw*2.8);
+    ctx.fillRect(gx-10,SWORD_IMG_DY,20,SWORD_IMG_DH);
     ctx.restore();
   }
+  ctx.restore();
 }
 // the falling / planted / being-plucked sword, drawn in world space. Screen coords come in
 // already projected so this never has to know about the camera.
