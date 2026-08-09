@@ -202,7 +202,7 @@ var PARK_HDR=false;
 function syncParkHeader(){
   $("#camlabel").textContent = PK.plusMode ? "DOGPARK+" : "DOGPARK";
   $("#clock").textContent    = "WAVE "+PK.wave;
-  $("#camstate").textContent = pkLeftCount()+" LEFT";
+  $("#camstate").textContent = pkLeftCount()+pkLeftLabel();
   $("#needAlert").classList.add("hidden");     // home needs are not the park's business
 }
 function restoreCamHeader(){

@@ -292,7 +292,7 @@ function startPark(plus){
   const moodMul=0.90+0.20*S.mood/100;          // mood 0 -> 0.90x, mood 100 -> 1.10x
   Object.assign(PK,{
     active:true,t:0,wave:1,waveT:0,spawnT:1,
-    waveQuota:pkWaveQuota(1), waveSpawned:0,
+    waveQuota:pkWaveQuota(1), waveSpawned:0, waveKills:0, lastDowned:null, waveOutro:null,
     goldenDone:false, goldenAt:3+Math.random()*8, goldenWarned:false, goldenBanner:null, goldenSkipNext:false,
     convertOpen:false, barkedTypes:{}, missionBarkAll:false, missionSurviveW1:false, compass:false,
     maxhp:Math.round(100+100*S.mood/100),
@@ -305,7 +305,7 @@ function startPark(plus){
     x:0,y:0,vx:0,vy:0, joy:null,
     en:[], fr:[], gate:{}, gateArm:true, gateAsk:false, started:false, shop:null, biscuits:[], drops:[], pendingBury:0, nuts:[],
     powerups:[], zoomT:0, over:0, regenT:0, regenAcc:0, hurtT:0, hpSeen:0, zoom:1, zoomFromBark:0, zoomFromPark:0, sniffLvl:0, w2Stage:0,
-    trees:[], scorch:[], embers:[],
+    trees:[], scorch:[], embers:[], treeGrid:null, treeGridDirty:true,
     plusMode:!!plus, mixTypes:null, mixLabel:null, swoopT:0,
     pals:[], palEyes:false, friendsOpen:false, friendsArm:false, npc:{x:.5,y:.5},
     sword:null, swordCine:null, swordSite:null, swordDone:false, swordNagT:0,
@@ -493,6 +493,7 @@ function pkBuildTrees(){
     }
   }
   pkBuildWoods(PK.groves||1);
+  PK.treeGridDirty=true;
 }
 // A grove is a circular stand of trees dense enough to block a straight line through, with
 // one path spiralling from a gap in the ring down to a clear centre — small enough on the map
@@ -565,6 +566,7 @@ function pkBuildGrove(cx, cy, withNPC){
   }
   if(withNPC) PK.npc={x:cx/PK.WW, y:cy/PK.WH};
   PK.groveCenters.push({x:cx,y:cy,r:outerR,entryAngle});
+  PK.treeGridDirty=true;
   return planted;
 }
 // the main grove always sits straight up or down from where BONES starts, so you always know
@@ -596,22 +598,56 @@ function pkTreeClusterCount(tr){
   }
   return n;
 }
-// a lone beam-lit tree still caps out small (isolated, quickly barked out) — but once it's
-// actually spreading tree-to-tree, the whole grove is fair game for a proper wildfire
-const FIRE_CAP=5, GROVE_FIRE_CAP=24;
+/* A grove is 900+ trees, and several hot paths used to walk every one of them every frame
+   (trunk collision, the mad squirrels' beam blocker, fire spread). At a couple of dozen
+   squirrels sweeping beams at once that is tens of thousands of distance checks a frame, which
+   is exactly where the onslaught started dropping frames. Trees never move, so they are indexed
+   into a coarse uniform grid once and looked up by neighbourhood instead. */
+const TREE_GRID=80;
+function pkBuildTreeGrid(){
+  const cols=Math.max(1,Math.ceil(PK.WW/TREE_GRID)), rows=Math.max(1,Math.ceil(PK.WH/TREE_GRID));
+  const buckets=new Array(cols*rows).fill(null);
+  for(const tr of PK.trees){
+    const cx=((Math.floor(tr.x/TREE_GRID)%cols)+cols)%cols;
+    const cy=((Math.floor(tr.y/TREE_GRID)%rows)+rows)%rows;
+    const k=cy*cols+cx;
+    (buckets[k]||(buckets[k]=[])).push(tr);
+  }
+  PK.treeGrid={cols,rows,buckets};
+  PK.treeGridDirty=false;
+}
+// visit every tree within roughly `r` of (x,y). Allocation-free, and it never touches the
+// hundreds of trees on the far side of the park.
+function pkTreesNear(x,y,r,cb){
+  const g=PK.treeGrid;
+  if(!g){ for(let i=0;i<PK.trees.length;i++) cb(PK.trees[i]); return; }
+  const span=Math.ceil(r/TREE_GRID);
+  if(span*2+1>=Math.min(g.cols,g.rows)){ for(let i=0;i<PK.trees.length;i++) cb(PK.trees[i]); return; }
+  const cx=Math.floor(x/TREE_GRID), cy=Math.floor(y/TREE_GRID);
+  for(let j=-span;j<=span;j++) for(let i=-span;i<=span;i++){
+    const gx=((cx+i)%g.cols+g.cols)%g.cols, gy=((cy+j)%g.rows+g.rows)%g.rows;
+    const b=g.buckets[gy*g.cols+gx];
+    if(b) for(let k=0;k<b.length;k++) cb(b[k]);
+  }
+}
+// one hard ceiling on trees alight at once, everywhere — beam strikes, spread and hell alike.
+// This is the main brake on the squirrel onslaught, since every burning tree is a squirrel tap.
+const FIRE_CAP=5;
+const FIRE_SPREAD_R=155;        // how far a catching tree can throw embers
+const FIRE_GEN_FALLOFF=0.45;    // and how much less willing each ring out from the strike is to catch
+const FIRE_SPREAD_EVERY=2.0;    // a burning tree keeps trying to pass it on for as long as it burns
 function pkFireCount(){ let n=0; for(const t of PK.trees) if(t.state==="fire") n++; return n; }
-function pkIgniteTree(tr, quiet){
-  if(!tr || tr.state!=="ok") return;
-  // a spread-caused catch answers to the much bigger grove-wide ceiling; a fresh, isolated
-  // beam strike still answers to the tight original cap so a stray shot can't detonate the cap
-  if(pkFireCount()>=(quiet?GROVE_FIRE_CAP:FIRE_CAP)) return;
+function pkIgniteTree(tr, quiet, gen){
+  if(!tr || tr.state!=="ok") return false;
+  if(pkFireCount()>=FIRE_CAP) return false;
   tr.state="fire"; tr.fireT=0; tr.spawnT=0.25;
-  // solo tree, cornered and panicking: the full 15. Packed shoulder-to-shoulder in the ring,
+  tr.fireGen=gen||0;
+  // solo tree, cornered and panicking: the full 12. Packed shoulder-to-shoulder in the ring,
   // there's nowhere for that many to have been living — down to as few as 3.
-  tr.spawnMax=clamp(15-pkTreeClusterCount(tr)*1.4, 3, 15);
-  // every ignited tree gets its own one-shot chance to catch its neighbours later in its burn —
-  // this is what turns a single strike into a cascade through the whole grove over time
-  tr.spread=false; tr.spreadAt=1.1+Math.random()*2.4;
+  tr.spawnMax=clamp(12-pkTreeClusterCount(tr)*1.2, 3, 12);
+  // it keeps trying to pass the fire on for as long as it burns — attempts that land while the
+  // cap is full simply fail, so the blaze rolls forward into slots as older trees burn out
+  tr.spreadAt=1.1+Math.random()*1.8;
   if(!quiet){
     toast("THE TREE'S ALIGHT — THEY'RE POURING OUT!",1);
     beep(90,.45,"sawtooth",.09); setTimeout(()=>beep(140,.35,"sawtooth",.07),110);
@@ -622,25 +658,30 @@ function pkIgniteTree(tr, quiet){
   if(PK.wave!==APE_WAVE && pkApeCount()<APE_CAP && Math.random()<0.05){
     tr.quakeT=APE_TELL_TIME; tr.quakeMax=APE_TELL_TIME;
   }
+  return true;
 }
-// once a burning tree's own spread timer is up, it takes a run at catching 3-6 more trees —
-// nearest first, but pulled from a wide enough pool that the fire can genuinely reach across
-// the whole grove rather than just its own immediate neighbours, exactly like the real thing
+/* Fire jumps to nearby trees, but every ring out from the original strike is markedly less
+   willing to catch than the one before it (FIRE_GEN_FALLOFF). Left alone, a fire therefore runs
+   out of reach and dies on its own after a few hops instead of eating the entire grove — and
+   with FIRE_CAP holding the concurrent count at 5 it can never flood the field with squirrels. */
 function pkSpreadFireFrom(tr){
-  if(pkFireCount()>=GROVE_FIRE_CAP) return;
-  const budget=Math.min(3+Math.floor(Math.random()*4), GROVE_FIRE_CAP-pkFireCount());
-  if(budget<=0) return;
-  const candidates=PK.trees.filter(o=>o!==tr && o.state==="ok")
-    .map(o=>({o, d:Math.hypot(wd(o.x-tr.x,PK.WW),wd(o.y-tr.y,PK.WH))}))
-    .sort((a,b)=>a.d-b.d);
+  const room=FIRE_CAP-pkFireCount();
+  if(room<=0) return;
+  const gen=(tr.fireGen||0)+1;
+  const chance=0.55*Math.pow(FIRE_GEN_FALLOFF,gen-1);
+  const budget=Math.min(1+Math.floor(Math.random()*3), room);
+  const near=[];
+  pkTreesNear(tr.x,tr.y,FIRE_SPREAD_R,o=>{
+    if(o===tr || o.state!=="ok") return;
+    const d=Math.hypot(wd(o.x-tr.x,PK.WW),wd(o.y-tr.y,PK.WH));
+    if(d<FIRE_SPREAD_R) near.push({o,d});
+  });
+  near.sort((a,b)=>a.d-b.d);
   let lit=0;
-  for(const c of candidates.slice(0, Math.max(budget*3,10))){
+  for(const c of near){
     if(lit>=budget) break;
-    if(Math.random()<0.6){ pkIgniteTree(c.o, true); lit++; }
-  }
-  for(const c of candidates){   // top up with strict-nearest if the random pass came up short
-    if(lit>=budget) break;
-    if(c.o.state==="ok"){ pkIgniteTree(c.o, true); lit++; }
+    // further away is also less likely, so it creeps outward rather than teleporting
+    if(Math.random()<chance*(1-0.55*c.d/FIRE_SPREAD_R) && pkIgniteTree(c.o,true,gen)) lit++;
   }
   if(lit>0){
     toast("FIRE'S SPREADING THROUGH THE GROVE!",1);
@@ -681,19 +722,25 @@ function pkSpawnApeCouple(){
 function pkBeamBlocker(ox,oy,ang,range){
   const ux=Math.cos(ang), uy=Math.sin(ang);
   let best=null, bestD=range;
-  for(const tr of PK.trees){
-    if(tr.state==="ash" || tr.knockT>0) continue;
+  // only the trees in a box around the beam itself can possibly block it — this is the single
+  // biggest saving during a mad-squirrel swarm, where every squirrel used to scan all 900+
+  pkTreesNear(ox+ux*range*0.5, oy+uy*range*0.5, range*0.5+TREE_R, tr=>{
+    if(tr.state==="ash" || tr.knockT>0) return;
     const dx=wd(tr.x-ox,PK.WW), dy=wd(tr.y-oy,PK.WH);
     const along=dx*ux+dy*uy;
-    if(along<=0 || along>=bestD) continue;
-    if(Math.abs(dx*uy-dy*ux)>TREE_R) continue;
+    if(along<=0 || along>=bestD) return;
+    if(Math.abs(dx*uy-dy*ux)>TREE_R) return;
     best=tr; bestD=along;
-  }
+  });
   return {tree:best, dist:bestD};
 }
 // keeps BONES out of a trunk — slides him around it rather than stopping him dead
+const PK_COLL_SCRATCH=[];
 function pkTreeCollide(px,py){
-  for(const tr of PK.trees){
+  // only the handful of trunks he could actually be standing in
+  PK_COLL_SCRATCH.length=0;
+  pkTreesNear(px,py,TREE_COLL_RX+TREE_GRID,tr=>PK_COLL_SCRATCH.push(tr));
+  for(const tr of PK_COLL_SCRATCH){
     if(tr.state==="ash" || tr.knockT>0) continue;
     const dx=wd(px-tr.x,PK.WW), dy=wd(py-tr.y,PK.WH);
     // elliptical footprint, squashed like every other ground shadow here, and wide enough to
@@ -711,9 +758,19 @@ function pkTickTrees(dt){
   // bird flutters hard, cycling through its sway-phase sprites fast enough to read as the
   // swarm's wind whipping the canopy — cheap since it's the same discrete sprite cache, just
   // stepped through quicker, and it only bothers looking for storm birds when any exist
+  if(PK.treeGridDirty) pkBuildTreeGrid();
   const stormBirds = PK.en.length ? PK.en.filter(e=>e.stormForm) : [];
+  /* Only trees anyone can actually see need their sway and storm-flutter advanced, and only
+     trees that are burning, quaking or airborne need anything else. Everything else in a 900-tree
+     grove is inert scenery, so it is skipped outright — the single cheapest way to keep a heavy
+     grove off the frame budget without changing how any of it looks. */
+  const _cv=$("#dogcv");
+  const viewRX=(_cv.clientWidth*0.5)/(PK.zoom||1)+90, viewRY=(_cv.clientHeight*0.5)/(PK.zoom||1)+110;
   for(let ti=PK.trees.length-1;ti>=0;ti--){
     const tr=PK.trees[ti];
+    const busy = tr.state==="fire" || tr.knockT>0 || tr.quakeT>0;
+    const onScreen = Math.abs(wd(tr.x-PK.x,PK.WW))<viewRX && Math.abs(wd(tr.y-PK.y,PK.WH))<viewRY;
+    if(!busy && !onScreen) continue;
     // smashed by an ape's landing: flying outward, tumbling, and gone the instant it lands —
     // ticks regardless of state, so this has to run ahead of the fire-only continue below
     if(tr.knockT>0){
@@ -727,19 +784,21 @@ function pkTickTrees(dt){
           PK.embers.push({x:lx, y:ly, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp-30, life:0.35+Math.random()*0.25, dust:true});
         }
         beep(85,.22,"square",.08);
-        PK.trees.splice(ti,1);
+        PK.trees.splice(ti,1); PK.treeGridDirty=true;
         continue;
       }
     }
     let stormBoost=0;
-    for(const b of stormBirds){
-      const dx=wd(tr.x-b.x,PK.WW), dy=wd(tr.y-b.y,PK.WH), d=Math.hypot(dx,dy);
-      if(d<STORM_TREE_R){
-        const p=1-d/STORM_TREE_R;
-        stormBoost=Math.max(stormBoost, b.swoop?p*1.6:p);   // a bird actually diving overhead rattles it harder than one lazily circling
+    if(onScreen){
+      for(const b of stormBirds){
+        const dx=wd(tr.x-b.x,PK.WW), dy=wd(tr.y-b.y,PK.WH), d=Math.hypot(dx,dy);
+        if(d<STORM_TREE_R){
+          const p=1-d/STORM_TREE_R;
+          stormBoost=Math.max(stormBoost, b.swoop?p*1.6:p);   // a bird actually diving overhead rattles it harder than one lazily circling
+        }
       }
+      tr.sway+=dt*(tr.state==="fire"?5:1.1)*(1+stormBoost*STORM_SWAY_MULT);
     }
-    tr.sway+=dt*(tr.state==="fire"?5:1.1)*(1+stormBoost*STORM_SWAY_MULT);
     if(stormBoost>0.3 && tr.state==="ok" && PK.leaves.length<40 && Math.random()<stormBoost*dt*5){
       // cinematic flourish: close enough to the swarm that leaves are actually getting kicked loose
       const a=Math.random()*6.283, r=Math.random()*TREE_R*1.3;
@@ -780,14 +839,17 @@ function pkTickTrees(dt){
     if(tr.state!=="fire") continue;
     tr.fireT+=dt;
     tr.spawnT-=dt;
-    if(!tr.spread && tr.fireT>=tr.spreadAt){ tr.spread=true; pkSpreadFireFrom(tr); }
-    if(tr.spawnT<=0 && tr.spawned<(tr.spawnMax||TREE_SPAWN_MAX)){   // a burning nest keeps disgorging squirrels
+    if(tr.fireT>=tr.spreadAt){ tr.spreadAt=tr.fireT+FIRE_SPREAD_EVERY*(0.75+Math.random()*0.6); pkSpreadFireFrom(tr); }
+    // a burning nest keeps disgorging squirrels — but never past a live ceiling, so the onslaught
+    // stays an onslaught without ever becoming a framerate problem. It resumes the moment the
+    // player thins them out, so nothing is lost, it just cannot run away.
+    if(tr.spawnT<=0 && tr.spawned<(tr.spawnMax||TREE_SPAWN_MAX) && pkTreeSqCount()<TREE_SQ_CAP){
       tr.spawnT=TREE_SPAWN_EVERY;
       tr.spawned++;
       const a=Math.random()*6.283;
       PK.en.push({t:"sq", madsq:true, fromTree:true,
         x:(tr.x+Math.cos(a)*TREE_R+PK.WW)%PK.WW, y:(tr.y+Math.sin(a)*TREE_R+PK.WH)%PK.WH,
-        hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:44, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
+        hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:78, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
         laserState:"seek", chargeT:0, aimAng:0, sweepT:0, cd:0.8+Math.random()*1.2});
       beep(320+Math.random()*160,.04,"square",.02);
     }
@@ -799,8 +861,6 @@ function pkTickTrees(dt){
           vx:(Math.random()-0.5)*18, vy:-30-Math.random()*40, life:0.7+Math.random()*0.7,
           dust:Math.random()<0.55});
       }
-      tr.fireT=Math.min(tr.fireT, TREE_BURN_TIME*0.55);
-      continue;
     }
     if(tr.fireT>=TREE_BURN_TIME){
       tr.state="ash";
@@ -856,7 +916,11 @@ function pkSteer(e,x,y,dx,dy){
   const l=Math.hypot(ax,ay)||1;
   return [ax/l, ay/l];
 }
-const TREE_R=15, TREE_BURN_TIME=10, TREE_SPAWN_MAX=15, TREE_SPAWN_EVERY=0.65;
+const TREE_R=15, TREE_BURN_TIME=10, TREE_SPAWN_MAX=12, TREE_SPAWN_EVERY=0.65;
+// how many tree-born squirrels may be on the field at once. The trees keep their appetite; they
+// simply queue behind this instead of all emptying at the same moment.
+const TREE_SQ_CAP=30;
+function pkTreeSqCount(){ let n=0; for(const e of PK.en) if(e.fromTree && !e.fleeing) n++; return n; }
 // how a tree caught in an ape's landing gets launched: flung outward, tumbling, gone for good
 // once it lands — a destructible payoff for a slam that connects near any cover
 const TREE_KNOCK_TIME=0.6, TREE_KNOCK_DIST=95, TREE_KNOCK_ARC=55;
@@ -1444,6 +1508,31 @@ function pkDrawHellOverlay(ctx,w,h,t){
   }
   ctx.restore();
 }
+// the send-off for the kill that ends a wave: the world darkens to a soft vignette, the words
+// land, and it all lifts again as the shop comes in — so the cut never feels like a jump
+function pkDrawWaveOutro(ctx,w,h,t){
+  const o=PK.waveOutro; if(!o) return;
+  const p=clamp(o.t/WAVE_OUTRO_DUR,0,1);
+  // in fast, out gently: peaks around the middle of the beat
+  const k = p<0.16 ? p/0.16 : p>0.72 ? Math.max(0,1-(p-0.72)/0.28) : 1;
+  ctx.save();
+  const g=ctx.createRadialGradient(w/2,h/2,Math.min(w,h)*0.14,w/2,h/2,Math.max(w,h)*0.72);
+  g.addColorStop(0,"rgba(0,0,0,0)");
+  g.addColorStop(1,"rgba(0,0,0,"+(0.62*k).toFixed(3)+")");
+  ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+  // a thin bar of light sweeping across on the beat, then the words
+  ctx.globalAlpha=k;
+  const txtY=h*0.30;
+  ctx.strokeStyle="rgba(255,255,255,"+(0.5*k).toFixed(3)+")"; ctx.lineWidth=1.5;
+  const barW=w*0.30*Math.min(1,p/0.3);
+  ctx.beginPath(); ctx.moveTo(w/2-barW,txtY+10); ctx.lineTo(w/2+barW,txtY+10); ctx.stroke();
+  const pop = p<0.2 ? 1+0.45*(1-p/0.2) : 1;
+  ctx.fillStyle="#fff"; ctx.font=Math.round(12*pop)+"px 'Press Start 2P',monospace"; ctx.textAlign="center";
+  ctx.fillText("WAVE "+PK.wave+" CLEAR", w/2, txtY);
+  ctx.font="7px 'Press Start 2P',monospace"; ctx.fillStyle="#cfd6dd"; ctx.globalAlpha=k*0.85;
+  ctx.fillText(pkWaveDone()+" DOWN", w/2, txtY+26);
+  ctx.restore(); ctx.textAlign="left";
+}
 // the cutscene's own letterbox and titles, so the drop and the taking both read as set pieces
 function pkDrawSwordCineOverlay(ctx,w,h,t){
   const c=PK.swordCine; if(!c) return;
@@ -1667,36 +1756,33 @@ function pkWaveName(wv){
 // else scales off its own base the same way
 function pkEnemyHp(base){ return base + Math.floor(((PK.wave||1)-1)/4.5); }
 const BARK_CAP=62;   // hard ceiling: the bark used to reach ~90 and trivialised whole waves
-// enemies that never block a wave clearing and never count toward "N LEFT" — side hazards
-// the player opted into (a burning tree's squirrels) or ambient extras (stalking cats, the
-// decorative wave-3 swoop bird), as opposed to the wave's actual, fixed quota.
-// NOTE: storm-form birds (wave 2) reuse e.swoop for their own "currently mid-dive" sub-state —
-// that must NOT be confused with the decorative wave-3 bird's permanent e.swoop flag, or a
-// storm bird stops counting toward the wave's own goal the instant it begins its attack run
-function pkSideHazard(e){ return e.stalk || e.stalkAggro || (e.swoop && !e.stormForm) || e.fromTree || e.decor || e.boss || (e.roost && e.roost.killed>=e.roost.need); }
-// shared by both "N LEFT" displays (the pad and the camera header) — wave 8 tracks ape kills
-// instead of the usual mixed quota, since that's this stage's actual objective
-function pkLeftCount(){
-  if(PK.wave===APE_WAVE) return Math.max(0, APE_WAVE_QUOTA-(PK.apeKills||0));
-  // a roost ticket is shared by a whole flock of standing decoys (see pkSpawnBirdGroup) — only
-  // `need` of them are ever "real"; counting every alive bird in the roost inflated "N LEFT" to
-  // the full flock size (e.g. 36) instead of the handful of kills actually required to clear it
-  const seenRoosts=new Set();
-  let roostLeft=0;
-  for(const e of PK.en){
-    if(e.roost && !seenRoosts.has(e.roost)){
-      seenRoosts.add(e.roost);
-      roostLeft += Math.max(0, e.roost.need-e.roost.killed);
-    }
-  }
-  const otherLeft=PK.en.filter(e=>!e.fleeing && !e.roost && !pkSideHazard(e)).length;
-  return Math.max(0,PK.waveQuota-PK.waveSpawned)+roostLeft+otherLeft;
-}
-function pkWavePct(){
-  if(PK.wave===APE_WAVE) return clamp((PK.apeKills||0)/APE_WAVE_QUOTA,0,1);
-  return clamp(1-pkLeftCount()/Math.max(1,PK.waveQuota),0,1);
-}
+/* The wave goal is now one number and one number only: how many enemies BONES has put down this
+   wave (PK.waveKills, incremented in the single pkDownEnemy path). The old model tried to derive
+   it from "quota still to spawn + qualifying enemies still alive", with a separate list of types
+   that were exempt from counting — which is why kills kept appearing not to register: downing a
+   burning-tree squirrel, a stalking cat, a spare roost bird or an ape advanced nothing. Display
+   and clear condition now read the exact same counter, so what the HUD promises is what ends the
+   wave, and no enemy anywhere is exempt. */
+function pkWaveGoal(){ return PK.wave===APE_WAVE ? APE_WAVE_QUOTA : PK.waveQuota; }
+function pkWaveDone(){ return PK.wave===APE_WAVE ? (PK.apeKills||0) : (PK.waveKills||0); }
+// wave 8 is the one wave with a typed objective, and it says so on the banner and in the HUD
+// ("N APES LEFT"), so there is never a question about what a given kill counts toward
+function pkLeftCount(){ return Math.max(0, pkWaveGoal()-pkWaveDone()); }
+function pkLeftLabel(){ return PK.wave===APE_WAVE ? " APES LEFT" : " LEFT"; }
+function pkWavePct(){ return clamp(pkWaveDone()/Math.max(1,pkWaveGoal()),0,1); }
+const SPARK_CAP=260, EMBER_CAP=300;
 const FLEE_SPEED=115, FLEE_TIME=2.2;   // how fast, and how long, a scared-off enemy scuttles before despawning
+/* The wave-ending kill: rather than cutting straight to the shop the instant the counter lands,
+   the whole world drops into slow motion for a beat while the last enemy tumbles away and fades.
+   The outro clock runs in REAL seconds while everything it is watching runs slowed, so the beat
+   is always the same length no matter how deep the slow motion goes. */
+const WAVE_OUTRO_DUR=1.75;
+function pkOutroSlow(){
+  const p=clamp((PK.waveOutro?PK.waveOutro.t:0)/WAVE_OUTRO_DUR,0,1);
+  if(p<0.10) return 1-(1-0.13)*(p/0.10);          // drop hard into it on the hit
+  if(p<0.74) return 0.13;                          // hold, so the tumble really reads
+  return 0.13+(0.55-0.13)*((p-0.74)/0.26);         // and start letting go before the shop lands
+}
 // bark hit-testing treats every enemy as a bare point at (x,y) — barkR alone made a visual touch
 // against a wide sprite (birds especially, whose art is wider than its anchor suggests) fail to
 // register. Padding the reach by each type's own rough footprint is what "touching it" actually
@@ -1729,15 +1815,7 @@ function pkBark(){
       if(e.hp<=0){
         // he doesn't kill anyone anymore: one bone drops where they were caught, they look
         // shocked, then scuttle off-screen on their own — pkEn's fleeing branch handles the rest
-        PK.drops.push({x:e.x, y:e.y, v:e.boss?8:1, gold:!!e.alpha||!!e.boss, life:25});
-        if(Math.random()<MAGNET_DROP_CHANCE) PK.powerups.push({type:"magnet", x:e.x, y:e.y+10, life:18});
-        if(Math.random()<REGEN_DROP_CHANCE) PK.powerups.push({type:"regen", x:e.x, y:e.y, life:18});
-        PK.kills++;
-        hits++;
-        if(e.roost) e.roost.killed++;
-        if(e.boss){ PK.apeKills=(PK.apeKills||0)+1; pkFanfare(null,false,"✓ THE APE IS DOWN — +8 BONES"); }
-        e.fleeing=true; e.shockT=0.35; e.fleeT=0; e.hitT=0.3;
-        e.fleeVx=-dxw/d*FLEE_SPEED; e.fleeVy=-dyw/d*FLEE_SPEED;
+        if(pkDownEnemy(e,-dxw/d,-dyw/d)) hits++;
         pkHitMark(e.x, e.y, true);
         beep(950,.08,"square",.04);
       }
@@ -1872,18 +1950,33 @@ function pkBuyPal(k){
 }
 // one shared kill path for everything a companion does, so a friend's hit resolves exactly like
 // a bark: a bone drops, they look shocked, then they scuttle off under their own steam
+/* THE one place an enemy leaves the field. Every damage path in the park funnels through here.
+   The wave goal is a plain count of these calls, so it is structurally impossible to take an
+   enemy down without it advancing the goal — whatever type it is, whatever killed it. Anything
+   that wants to skip the bookkeeping would have to skip the death itself. */
+function pkDownEnemy(e,ux,uy,o){
+  if(e.fleeing) return false;          // already down: never counted, or knocked out, twice
+  o=o||{};
+  const fs = o.fleeSpeed!=null ? o.fleeSpeed : FLEE_SPEED;
+  e.fleeing=true; e.fleeT=0;
+  e.shockT = o.shockT!=null ? o.shockT : 0.35;
+  e.hitT=0.3;
+  e.fleeVx=(ux||0)*fs; e.fleeVy=(uy||0)*fs;
+  PK.drops.push({x:e.x, y:e.y, v:e.boss?8:1, gold:!!e.alpha||!!e.boss, life:25});
+  if(Math.random()<MAGNET_DROP_CHANCE) PK.powerups.push({type:"magnet", x:e.x, y:e.y+10, life:18});
+  if(Math.random()<REGEN_DROP_CHANCE) PK.powerups.push({type:"regen", x:e.x, y:e.y, life:18});
+  PK.kills++;
+  PK.waveKills=(PK.waveKills||0)+1;    // <- the wave goal itself. Every single kind of enemy.
+  PK.lastDowned=e;                     // the wave-ending kill gets its own slow-motion send-off
+  if(e.roost) e.roost.killed++;
+  if(e.boss){ PK.apeKills=(PK.apeKills||0)+1; pkFanfare(null,false,"✓ THE APE IS DOWN — +8 BONES"); }
+  return true;
+}
 function pkPalHit(e,dmg,ux,uy){
   if(e.fleeing) return;
   e.hp-=dmg;
   if(e.hp<=0){
-    PK.drops.push({x:e.x, y:e.y, v:e.boss?8:1, gold:!!e.alpha||!!e.boss, life:25});
-    if(Math.random()<MAGNET_DROP_CHANCE) PK.powerups.push({type:"magnet", x:e.x, y:e.y+10, life:18});
-    if(Math.random()<REGEN_DROP_CHANCE) PK.powerups.push({type:"regen", x:e.x, y:e.y, life:18});
-    PK.kills++;
-    if(e.roost) e.roost.killed++;
-    if(e.boss){ PK.apeKills=(PK.apeKills||0)+1; pkFanfare(null,false,"✓ THE APE IS DOWN — +8 BONES"); }
-    e.fleeing=true; e.shockT=0.35; e.fleeT=0;
-    e.fleeVx=ux*FLEE_SPEED; e.fleeVy=uy*FLEE_SPEED;
+    pkDownEnemy(e,ux,uy);
     beep(950,.08,"square",.04);
   } else { e.kx=ux*PK.knock*0.7; e.ky=uy*PK.knock*0.7; }
 }
@@ -2203,6 +2296,8 @@ function parkUpdate(dt){
   // attacks until they finish, so the drop reads as an event rather than something happening in
   // the corner of a firefight
   if(PK.swordCine){ pkSwordCineUpdate(dt); return; }
+  // the wave-ending send-off runs its own real-time clock while the world it is showing slows
+  if(PK.waveOutro){ PK.waveOutro.t+=dt; dt*=pkOutroSlow(); }
   // exercise costs him something: DOGPARK deliberately sits outside the day/night clock
   // (tickStats no-ops while PK.active — see its own comment), so this is a small, self-contained
   // drain instead of unblocking that whole system mid-run. A real session leaves him noticeably
@@ -2258,6 +2353,11 @@ function parkUpdate(dt){
                      vy:10+Math.random()*8, t:Math.random()*6, ph:Math.random()*6.283, life:4+Math.random()*2});
   }
   if(PK.scorch.length>90) PK.scorch.splice(0, PK.scorch.length-90);
+  // hard ceilings on the particle pools. A burning grove full of squirrels can emit faster than
+  // they expire, and an unbounded pool is both a draw cost and steady GC pressure; the oldest
+  // motes are the ones already fading out, so dropping those is invisible.
+  if(SPARKS.length>SPARK_CAP) SPARKS.splice(0, SPARKS.length-SPARK_CAP);
+  if(PK.embers.length>EMBER_CAP) PK.embers.splice(0, PK.embers.length-EMBER_CAP);
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   if(!PK.started){
     PK.started=true;
@@ -2268,17 +2368,24 @@ function parkUpdate(dt){
     pkBuildTrees();
   }
   const WW=PK.WW, WH=PK.WH;
-  // a wave only ends once its full quota has spawned AND every last enemy is down (fleeing
-  // stragglers don't count \u2014 they're already defeated, just scuttling off in the background;
-  // spooked-but-alive roost birds that got away clean also don't block the clear)
-  // a startled bird is still very much alive — it only settles back down — so it has to block
-  // the clear like anything else. Only downed enemies and ambient extras are ignored here.
-  // WAVE 8 is the one exception: its objective is ape kills specifically, not the usual mixed
-  // quota (which the normal mix spawner still runs in the background the whole time)
-  const waveClear = PK.wave===APE_WAVE
-    ? (PK.apeKills||0)>=APE_WAVE_QUOTA
-    : (PK.waveSpawned>=PK.waveQuota && !PK.en.some(e=>!e.fleeing && !pkSideHazard(e)));
+  // one condition, reading the same counter the HUD shows: put the goal number of enemies down
+  const waveClear = pkWaveDone()>=pkWaveGoal();
+  // the kill that ends a wave earns a beat of its own — everything drops into slow motion and
+  // the last one down tumbles away and fades before the shop takes over (see pkOutroSlow)
+  if(waveClear && !PK.waveOutro){
+    PK.waveOutro={t:0, hero:PK.lastDowned&&PK.lastDowned.fleeing?PK.lastDowned:null};
+    if(PK.waveOutro.hero) PK.waveOutro.hero.heroOutro=true;
+    PK.shake=Math.max(PK.shake||0,0.35);
+    beep(1180,.1,"sine",.05);
+    setTimeout(()=>beep(1580,.16,"sine",.045),120);
+    setTimeout(()=>beep(880,.4,"sine",.04),300);
+  }
+  if(PK.waveOutro && PK.waveOutro.t<WAVE_OUTRO_DUR) return;   // hold the wave open for the send-off
   if(waveClear){
+    if(PK.waveOutro){
+      if(PK.waveOutro.hero) PK.waveOutro.hero.heroOutro=false;
+      PK.waveOutro=null;
+    }
     // survive the very first wave and it's a straight-up XP bonus
     if(PK.wave===1 && !PK.missionSurviveW1){
       PK.missionSurviveW1=true; pkAwardXP(10);
@@ -2300,7 +2407,7 @@ function parkUpdate(dt){
     PK.waveT=0; PK.wave++;
     if(PK.wave>=3) tickTodo("j_wave3");
     PK.barkMax=Math.max(1,PK.barkMax-0.12); PK.barkR=Math.min(BARK_CAP,PK.barkR+3.5);
-    PK.waveQuota=pkWaveQuota(PK.wave); PK.waveSpawned=0;
+    PK.waveQuota=pkWaveQuota(PK.wave); PK.waveSpawned=0; PK.waveKills=0; PK.lastDowned=null;
     // the golden bird visits every wave — except the one right after she was actually caught,
     // which sits out as her one wave of downtime before she's back
     if(PK.goldenSkipNext){ PK.goldenDone=true; PK.goldenSkipNext=false; }
@@ -2357,7 +2464,7 @@ function parkUpdate(dt){
     if(PK.apeWaveT<=0){ pkSpawnApeCouple(); PK.apeWaveT=7+Math.random()*3; }
   }
   PK.spawnT-=dt;
-  if(PK.spawnT<=0 && PK.waveSpawned<PK.waveQuota){
+  if(PK.spawnT<=0 && PK.waveSpawned<PK.waveQuota && !PK.waveOutro){
     const wv=PK.wave;
     if(wv===1){ PK.spawnT=5.5; PK.waveSpawned+=pkSpawnBirdGroup(); }             // CLEAR THE BIRDS: loose roosts, standing until disturbed
     else if(wv===2){ PK.spawnT=8; PK.waveSpawned+=pkSpawnFlock(); }              // BIRD BACKUP: long diagonal formations
@@ -2612,12 +2719,7 @@ function parkUpdate(dt){
               o.kx=ux*MADSQ_KNOCK*1.6; o.ky=uy*MADSQ_KNOCK*1.6;
               PK.embers.push({x:o.x, y:o.y, vx:(Math.random()-0.5)*60, vy:-40-Math.random()*40, life:0.5});
               if(o.hp<=0){
-                PK.drops.push({x:o.x, y:o.y, v:o.boss?8:1, gold:!!o.boss, life:25});
-                PK.kills++;
-                if(o.roost) o.roost.killed++;
-                if(o.boss){ PK.apeKills=(PK.apeKills||0)+1; pkFanfare(null,false,"✓ THE APE IS DOWN — +8 BONES"); }
-                o.fleeing=true; o.shockT=0.3; o.fleeT=0;
-                o.fleeVx=ux*FLEE_SPEED; o.fleeVy=uy*FLEE_SPEED;
+                pkDownEnemy(o,ux,uy,{shockT:0.3});
                 PK.scorch.push({x:o.x, y:o.y, r:12+Math.random()*6});
                 beep(120,.16,"sawtooth",.05);
               }
@@ -2625,11 +2727,9 @@ function parkUpdate(dt){
           }
         }
         if(e.sweepT>=MADSQ_SWEEP_TIME){
-          PK.drops.push({x:e.x, y:e.y, v:1, life:25});
-          if(Math.random()<MAGNET_DROP_CHANCE) PK.powerups.push({type:"magnet", x:e.x, y:e.y+10, life:18});
-          if(Math.random()<REGEN_DROP_CHANCE) PK.powerups.push({type:"regen", x:e.x, y:e.y, life:18});
-          PK.kills++;
-          e.fleeing=true; e.shockT=0; e.fleeT=0; e.fleeVx=0; e.fleeVy=0;
+          // it burns itself out finishing the sweep — still an enemy off the field, so it still
+          // counts, and a wave can never stall on one that killed itself
+          pkDownEnemy(e,0,0,{shockT:0, fleeSpeed:0});
           e.madsqExplode=true; e.explodeT=0.5;
           beep(90,.3,"sawtooth",.08);
           continue;
@@ -3367,7 +3467,9 @@ function drawEnemyHP(ctx,e,sx,sy,eh){
 // the fire boss uses its own frame set (idle/run/jump), not the generic cycle-through-every-
 // frame scheme drawEnemy uses for everything else, so it gets its own draw path entirely
 function drawApe(ctx,e,sx,sy){
-  const ghost = e.fleeing ? 0.34 : 1;
+  // the wave-ending kill stays at full strength through its send-off instead of instantly
+  // dimming to the usual scuttling-away ghost
+  const ghost = e.heroOutro ? 1 : (e.fleeing ? 0.34 : 1);
   ctx.save(); ctx.globalAlpha*=ghost;
   ctx.fillStyle="rgba(0,0,0,.32)";
   ctx.beginPath(); ctx.ellipse(sx, sy+5, 15.5, 4.5, 0, 0, 7); ctx.fill();
@@ -3460,7 +3562,9 @@ function drawEnemy(ctx,e,sx,sy){
   if(e.t==="ape") return drawApe(ctx,e,sx,sy);
   // an enemy that has been seen off is already out of the fight, so it fades right down —
   // at a glance you can tell what still needs barking at and what is just running away
-  const ghost = e.fleeing ? 0.34 : 1;
+  // the wave-ending kill stays at full strength through its send-off instead of instantly
+  // dimming to the usual scuttling-away ghost
+  const ghost = e.heroOutro ? 1 : (e.fleeing ? 0.34 : 1);
   ctx.save(); ctx.globalAlpha*=ghost;
   ctx.fillStyle="rgba(0,0,0,.25)";
   ctx.beginPath(); ctx.ellipse(sx, sy+2, 9, 3, 0, 0, 7); ctx.fill();
@@ -3752,14 +3856,38 @@ function parkDraw(t){
     ctx.beginPath(); ctx.ellipse(gcx,gcy,R,R*0.62,0,0,7); ctx.fill();
     ctx.restore();
   }
-  for(const tr of PK.trees){
-    const [tx2,ty2]=SC(tr.x,tr.y);
+  for(let i=0;i<PK.trees.length;i++){
+    const tr=PK.trees[i];
+    // projected inline rather than through SC(), which returns a fresh array — at 900+ trees a
+    // frame that allocation alone was a measurable share of the budget
+    const tx2=DX+wd(tr.x-PK.x,WW), ty2=DY+wd(tr.y-PK.y,WH);
     if(tx2<-70||tx2>w+70||ty2<-90||ty2>h+70) continue;
     pkDrawTree(ctx,tr,tx2,ty2,t);
   }
   for(const e of PK.en){
-    const [ex2,ey2]=SC(e.x,e.y);
+    const ex2=DX+wd(e.x-PK.x,WW), ey2=DY+wd(e.y-PK.y,WH);
     if(ex2<-40||ex2>w+40||ey2<-40||ey2>h+40) continue;
+    if(e.heroOutro && PK.waveOutro){
+      // the last one down: lit, spinning away from the blow, fading out as the beat ends
+      const p=clamp(PK.waveOutro.t/WAVE_OUTRO_DUR,0,1);
+      ctx.save();
+      ctx.globalAlpha=1-clamp((p-0.45)/0.55,0,1);
+      const halo=(1-p)*0.55;
+      if(halo>0.02){
+        // a soft bloom behind it rather than a disc over it, so the sprite stays readable
+        const hr=24+p*34;
+        const hg=ctx.createRadialGradient(ex2,ey2-8,0,ex2,ey2-8,hr);
+        hg.addColorStop(0,   "rgba(255,255,255,"+(0.34*halo).toFixed(3)+")");
+        hg.addColorStop(0.55,"rgba(255,246,214,"+(0.20*halo).toFixed(3)+")");
+        hg.addColorStop(1,   "rgba(255,232,160,0)");
+        ctx.save(); ctx.fillStyle=hg;
+        ctx.beginPath(); ctx.arc(ex2,ey2-8,hr,0,7); ctx.fill(); ctx.restore();
+      }
+      ctx.translate(ex2,ey2); ctx.rotate(p*p*3.4*(e.fleeVx<0?-1:1)); ctx.scale(1-p*0.25,1-p*0.25); ctx.translate(-ex2,-ey2);
+      drawEnemy(ctx,e,ex2,ey2);
+      ctx.restore();
+      continue;
+    }
     drawEnemy(ctx,e,ex2,ey2);
   }
   if(PK.sword && PK.sword.state!=="held"){
@@ -3902,6 +4030,7 @@ function parkDraw(t){
   pkDrawFloatingSword(ctx,SC,DX,DY,t);
   ctx.restore();   // exit the world zoom transform before any fixed-to-screen overlay
   pkDrawHellOverlay(ctx,w,h,t);
+  pkDrawWaveOutro(ctx,w,h,t);
   pkDrawSwordCineOverlay(ctx,w,h,t);
   if(PK.shop){
     ctx.fillStyle="rgba(0,0,0,.6)"; ctx.fillRect(0,0,w,h);
