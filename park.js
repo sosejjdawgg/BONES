@@ -499,12 +499,12 @@ function pkBuildTrees(){
   if(PK.groveCenters.length===0){
     PK.trees=[];
     const n=Math.round(6*(PK.worldMult/2)*(PK.worldMult/2));
-    const npc=PK.npc||{x:.78,y:.18};
+    const npc=PK.npc||{x:PK.WW*0.78, y:PK.WH*0.18};   // absolute coords — matches the real PK.npc's type
     for(let i=0;i<n;i++){
       // never plant one on top of the bandana dog: a trunk over him puts his shop behind collision
       let x,y,tries=0;
       do{ x=Math.random()*PK.WW; y=Math.random()*PK.WH; tries++; }
-      while(tries<24 && Math.hypot(wd(x-npc.x*PK.WW,PK.WW),wd(y-npc.y*PK.WH,PK.WH))<72);
+      while(tries<24 && Math.hypot(wd(x-npc.x,PK.WW),wd(y-npc.y,PK.WH))<72);
       PK.trees.push({ x, y, state:"ok", fireT:0, spawned:0, spawnT:0, sway:Math.random()*6.283 });
     }
   }
@@ -580,7 +580,9 @@ function pkBuildGrove(cx, cy, withNPC){
       PK.trees.push({ x, y, state:"ok", fireT:0, spawned:0, spawnT:0, sway:Math.random()*6.283 });
     }
   }
-  if(withNPC) PK.npc={x:cx/PK.WW, y:cy/PK.WH};
+  // absolute world coordinates, not a fraction of WW/WH — a fraction used to silently drift the
+  // NPC away from his own grove clearing every time the park grew and WW/WH changed underneath him
+  if(withNPC) PK.npc={x:cx, y:cy};
   PK.groveCenters.push({x:cx,y:cy,r:outerR,entryAngle});
   PK.treeGridDirty=true;
   return planted;
@@ -1935,6 +1937,24 @@ function pkAgiHeal(){ return AGI_HEAL_BASE + AGI_HEAL_STEP*(PK.agiLvl||0); }
 function pkApplyZoom(){
   PK.zoom=1-Math.min(0.25,(PK.zoomFromBark||0)+(PK.zoomFromPark||0));
 }
+// removes any tree within r of (x,y) — used after every expansion to guarantee a real clearing
+// around anything BONES actually needs to reach, rather than hoping the random scatter missed it
+function pkClearAround(x,y,r){
+  for(let i=PK.trees.length-1;i>=0;i--){
+    const tr=PK.trees[i];
+    if(Math.hypot(wd(tr.x-x,PK.WW),wd(tr.y-y,PK.WH))<r) PK.trees.splice(i,1);
+  }
+}
+// the NPC's shop, the exit gate, wherever BONES is standing right now, and any live power-up all
+// have to stay walkable — a freshly-added grove (from the extra slots in pkBuildWoods) can land
+// close enough to wall one of them in, since it doesn't know where any of them are when it's built
+function pkEnsureWalkable(){
+  if(PK.npc) pkClearAround(PK.npc.x, PK.npc.y, pkGroveOuterR()*0.4);
+  if(PK.gate && PK.gate.x!=null) pkClearAround(PK.gate.x, PK.gate.y, 76);
+  pkClearAround(PK.x, PK.y, 64);
+  for(const pu of PK.powerups) pkClearAround(pu.x, pu.y, 40);
+  PK.treeGridDirty=true;
+}
 function pkExpandPark(){
   PK.worldMult=Math.min(8,PK.worldMult+0.5);
   if(Math.random()<0.5 && PK.groves<3){ PK.groves++; toast("THE PARK GREW — AND SO DID THE TREES."); }
@@ -1944,6 +1964,7 @@ function pkExpandPark(){
   PK.WW=w*PK.worldMult; PK.WH=h*PK.worldMult;
   pkBuildBG(PK.WW,PK.WH);
   pkBuildTrees();
+  pkEnsureWalkable();
 }
 /* ---------- the bandana dog: a shop for friends who fight beside you ---------- */
 // he stands stock still in the middle of the carnage wearing a red bandana, utterly unbothered.
@@ -2649,6 +2670,7 @@ function parkUpdate(dt){
     PK.x=PK.WW*0.25; PK.y=PK.WH*0.5;
     pkBuildBG(PK.WW,PK.WH);
     pkBuildTrees();
+    pkEnsureWalkable();
   }
   const WW=PK.WW, WH=PK.WH;
   // one rebuild per frame, up front, so every neighbourhood query this frame reads the same
@@ -2778,7 +2800,7 @@ function parkUpdate(dt){
       PK.en.some(e=>!e.fleeing && Math.hypot(wd(e.x-PK.x,WW),wd(e.y-PK.y,WH))<presenceR) ||
       PK.fr.some(f=>Math.hypot(wd(f.x-PK.x,WW),wd(f.y-PK.y,WH))<presenceR) ||
       PK.powerups.some(pu=>Math.hypot(wd(pu.x-PK.x,WW),wd(pu.y-PK.y,WH))<presenceR) ||
-      Math.hypot(wd(PK.npc.x*WW-PK.x,WW),wd(PK.npc.y*WH-PK.y,WH))<presenceR;
+      Math.hypot(wd(PK.npc.x-PK.x,WW),wd(PK.npc.y-PK.y,WH))<presenceR;
     PK.idleT = hasPresence ? 0 : (PK.idleT||0)+dt;
     if(PK.idleT>=IDLE_GRACE && PK.waveSpawned<PK.waveQuota){
       const wv=PK.wave;
@@ -3287,7 +3309,7 @@ function parkUpdate(dt){
   // talk again — the world is frozen while the panel is up, so a bare radius test would reopen
   // it the instant it closed. Never while another panel owns the taps.
   {
-    const nx=PK.npc.x*WW, ny=PK.npc.y*WH;
+    const nx=PK.npc.x, ny=PK.npc.y;
     const nd=Math.hypot(wd(nx-PK.x,WW),wd(ny-PK.y,WH));
     if(nd>NPC_REARM_R) PK.friendsArm=true;
     if(nd<NPC_TALK_R && PK.friendsArm && !PK.shop && !PK.convertOpen && !PK.friendsOpen){
@@ -4167,7 +4189,7 @@ function parkDraw(t){
     // was already finding her, just mislabelled as a generic "FRIEND"), and the nearest loose
     // health pickup
     pkDrawCompassArrow(ctx,w,h,DX,DY,SC,t,PK.gate.x,PK.gate.y,"EXIT","#f22");
-    pkDrawCompassArrow(ctx,w,h,DX,DY,SC,t,PK.npc.x*WW,PK.npc.y*WH,"FRIENDS","#6cf");
+    pkDrawCompassArrow(ctx,w,h,DX,DY,SC,t,PK.npc.x,PK.npc.y,"FRIENDS","#6cf");
     let nearestHeal=null, bestHD=Infinity;
     for(const p of PK.powerups){
       if(p.type!=="regen") continue;
@@ -4295,7 +4317,7 @@ function parkDraw(t){
   }
   {
     // shown only where he actually is — finding him in the grove is the point, no arrow to spoil it
-    const [nx2,ny2]=SC(PK.npc.x*WW, PK.npc.y*WH);
+    const [nx2,ny2]=SC(PK.npc.x, PK.npc.y);
     if(nx2>-40&&nx2<w+40&&ny2>-50&&ny2<h+40) drawBandanaDog(ctx,nx2,ny2,t);
   }
   for(const p of PK.pals){
