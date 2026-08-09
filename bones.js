@@ -169,7 +169,7 @@ const S = {
   lvl:1, xp:0, gen:1, senior:false, seniorDays:0, lifePathChosen:false, litter:false, memorialSrc:null, pendingStage:[],
   lastSaveAt:null, lastSaveDay:0, lastSaveH:0, dogParkPlusUnlocked:false
 };
-const SETTINGS = { sound:true, reduceMotion:false, music:false };
+const SETTINGS = { sound:true, reduceMotion:false, music:false, musicDefaultMigrated:true };
 const CHARMS = [
   {id:"spike", name:"SPIKED COLLAR", cost:15, unlock:2,   fx:"+15% SPEED / -10% JUMP",            mod:{spd:1.15,jmp:0.90}},
   {id:"band",  name:"RED BANDANA",   cost:10, unlock:5,   fx:"+15% JUMP",                          mod:{jmp:1.15}},
@@ -3588,6 +3588,9 @@ function loadGame(){
     if(data.FBOWL) FBOWL.level=data.FBOWL.level;
     deepAssign(STAY,data.STAY); deepAssign(CLK,data.CLK);
     if(data.SETTINGS) deepAssign(SETTINGS,data.SETTINGS);
+    // saves made before music defaulted to off can still carry an old music:true — force the
+    // new default once per save; the player can always flip it back on from Settings after
+    if(!SETTINGS.musicDefaultMigrated){ SETTINGS.music=false; SETTINGS.musicDefaultMigrated=true; }
     if(Array.isArray(data.TODO_NEW)) TODO_NEW=data.TODO_NEW.slice();
     if(data.XPANIM) Object.assign(XPANIM,data.XPANIM);
     else { XPANIM.lvl=S.lvl; XPANIM.frac=clamp(S.xp/xpNeed(S.lvl),0,1); } // save predates XPANIM persistence
