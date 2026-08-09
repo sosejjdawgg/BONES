@@ -3,16 +3,95 @@ const $ = q => document.querySelector(q);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const DPR = Math.min(2, window.devicePixelRatio||1);
 
-/* ---------- audio ---------- */
-let AC=null;
-function beep(f=440,d=.06,type="square",g=.04){
+/* ---------- audio ----------
+   A burning grove full of squirrels can ask for dozens of sounds in the same handful of
+   milliseconds. Every voice used to be built raw and wired straight to the destination, which
+   caused three separate problems at once: the summed signal ran past full scale and crackled,
+   oscillators starting and stopping at full amplitude clicked, and the sounds that actually
+   matter (taking a hit, a wave ending, a purchase) were buried under incidental chatter.
+
+   The fix is the standard game-audio arrangement:
+     - one limiter on the master so stacked voices compress instead of clipping
+     - separate buses, so critical sounds can duck the busy layer rather than compete with it
+     - a polyphony ceiling, with the least important voices dropped first under load
+     - coalescing, so thirty identical chirps in one instant become one chirp
+     - a short attack/release on every voice, which is what removes the clicking
+   Priorities: 0 = incidental chatter, 1 = normal, 2 = critical (never dropped, always ducks). */
+let AC=null, MASTER=null, SFXBUS=null, PRIOBUS=null, MUSICBUS=null;
+const SFX_MAX_VOICES=16;     // hard polyphony ceiling
+const SFX_COALESCE=0.055;    // seconds — identical sounds inside this window collapse into one
+const SFX_LAST=Object.create(null);
+// Voices are tracked by when they finish on the audio clock rather than by a timer. A timer-based
+// release stops running the moment the main thread is busy — exactly when the park is at its
+// loudest — which would leak the voice count upward and silence the game until it caught up.
+const SFX_ENDS=[];
+function sfxActive(now){
+  while(SFX_ENDS.length && SFX_ENDS[0]<=now) SFX_ENDS.shift();
+  return SFX_ENDS.length;
+}
+function audioInit(){
+  if(AC) return AC;
+  AC = new (window.AudioContext||window.webkitAudioContext)();
+  MASTER=AC.createDynamicsCompressor();
+  // limiter-shaped: hard ratio, no knee, fast attack — catches transient stacks without pumping
+  MASTER.threshold.value=-10; MASTER.knee.value=0; MASTER.ratio.value=20;
+  MASTER.attack.value=0.003; MASTER.release.value=0.25;
+  MASTER.connect(AC.destination);
+  SFXBUS=AC.createGain();   SFXBUS.gain.value=1;   SFXBUS.connect(MASTER);
+  PRIOBUS=AC.createGain();  PRIOBUS.gain.value=1;  PRIOBUS.connect(MASTER);
+  MUSICBUS=AC.createGain(); MUSICBUS.gain.value=1; MUSICBUS.connect(MASTER);
+  return AC;
+}
+function sfxOut(prio){ return prio>=2 ? PRIOBUS : SFXBUS; }
+// a critical sound briefly pushes the busy layer down, so it cuts through a swarm instead of
+// being one more voice inside it
+function sfxDuck(){
+  if(!AC) return;
+  const t=AC.currentTime;
+  for(const [bus,to,back] of [[SFXBUS,0.38,0.34],[MUSICBUS,0.45,0.40]]){
+    bus.gain.cancelScheduledValues(t);
+    bus.gain.setValueAtTime(bus.gain.value,t);
+    bus.gain.linearRampToValueAtTime(to,t+0.02);
+    bus.gain.linearRampToValueAtTime(1,t+back);
+  }
+}
+function sfxAllow(key,prio,now){
+  const live=sfxActive(now);
+  if(prio>=2){ SFX_LAST[key]=now; return true; }        // critical always speaks
+  const last=SFX_LAST[key];
+  if(last!=null && now-last<SFX_COALESCE) return false;  // the same sound, the same instant
+  if(live>=SFX_MAX_VOICES) return false;
+  if(prio<=0 && live>=SFX_MAX_VOICES*0.55) return false;   // chatter yields first
+  SFX_LAST[key]=now;
+  return true;
+}
+function sfxVoice(endT){
+  SFX_ENDS.push(endT);
+  SFX_ENDS.sort((a,b)=>a-b);      // at most a handful of entries, so this stays trivial
+}
+function beep(f=440,d=.06,type="square",g=.04,opt){
   if(!SETTINGS.sound) return;
   try{
-    AC = AC || new (window.AudioContext||window.webkitAudioContext)();
+    audioInit();
+    const prio = opt && opt.prio!=null ? opt.prio : 1;
+    // sounds group by timbre and rough pitch, so near-identical chirps coalesce automatically
+    // without every one of the hundred call sites having to name itself
+    const key = (opt && opt.key) || (type+"|"+Math.round(f/60));
+    const now=AC.currentTime;
+    if(!sfxAllow(key,prio,now)) return;
+    if(prio>=2) sfxDuck();
     const o=AC.createOscillator(), gn=AC.createGain();
-    o.type=type; o.frequency.value=f; gn.gain.value=g;
-    o.connect(gn); gn.connect(AC.destination);
-    o.start(); o.stop(AC.currentTime+d);
+    o.type=type; o.frequency.value=f;
+    // a few ms of attack and release: a square wave switched on at full amplitude clicks, and
+    // thirty of those at once is most of what "harsh when it gets busy" actually was
+    const atk=Math.min(0.006,d*0.25), rel=Math.min(0.02,d*0.35);
+    gn.gain.setValueAtTime(0.0001,now);
+    gn.gain.linearRampToValueAtTime(g,now+atk);
+    gn.gain.setValueAtTime(g,now+Math.max(atk,d-rel));
+    gn.gain.linearRampToValueAtTime(0.0001,now+d);
+    o.connect(gn); gn.connect(sfxOut(prio));
+    o.start(now); o.stop(now+d+0.02);
+    sfxVoice(now+d+0.02);
   }catch(e){}
 }
 // a short burst of filtered noise — the breathy "chuff" texture layered under bark() and
@@ -24,7 +103,7 @@ function noiseBurst(dur,freq,q,gain,t0){
   const src=AC.createBufferSource(); src.buffer=buf;
   const f=AC.createBiquadFilter(); f.type="bandpass"; f.frequency.value=freq; f.Q.value=q;
   const g=AC.createGain(); g.gain.setValueAtTime(gain,t0); g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
-  src.connect(f); f.connect(g); g.connect(AC.destination);
+  src.connect(f); f.connect(g); g.connect(PRIOBUS);
   src.start(t0);
 }
 // a real synthesised woof — a fast downward sawtooth sweep (the tonal body) layered with a
@@ -34,7 +113,7 @@ function noiseBurst(dur,freq,q,gain,t0){
 function bark(strength=1){
   if(!SETTINGS.sound) return;
   try{
-    AC = AC || new (window.AudioContext||window.webkitAudioContext)();
+    audioInit();
     const t0=AC.currentTime;
     const o=AC.createOscillator(), og=AC.createGain();
     o.type="sawtooth";
@@ -43,7 +122,7 @@ function bark(strength=1){
     og.gain.setValueAtTime(0.0001,t0);
     og.gain.exponentialRampToValueAtTime(0.24,t0+0.012);
     og.gain.exponentialRampToValueAtTime(0.0001,t0+0.15);
-    o.connect(og); og.connect(AC.destination);
+    o.connect(og); og.connect(PRIOBUS);
     o.start(t0); o.stop(t0+0.17);
     noiseBurst(0.1, 950*strength, 0.9, 0.14, t0);
   }catch(e){}
@@ -51,7 +130,7 @@ function bark(strength=1){
 function sfxLevelUp(){
   if(!SETTINGS.sound) return;
   try{
-    AC = AC || new (window.AudioContext||window.webkitAudioContext)();
+    audioInit();
     const t0=AC.currentTime;
     const notes=[523.25,659.25,783.99,1046.5];   // C5 E5 G5 C6 — a clean major fanfare
     notes.forEach((f,i)=>{
@@ -62,7 +141,7 @@ function sfxLevelUp(){
       g.gain.setValueAtTime(0.0001,t);
       g.gain.exponentialRampToValueAtTime(0.09,t+0.015);
       g.gain.exponentialRampToValueAtTime(0.0001,t+(last?0.35:0.13));
-      o.connect(g); g.connect(AC.destination);
+      o.connect(g); g.connect(PRIOBUS);
       o.start(t); o.stop(t+(last?0.38:0.16));
     });
   }catch(e){}
@@ -70,7 +149,7 @@ function sfxLevelUp(){
 function sfxSick(){
   if(!SETTINGS.sound) return;
   try{
-    AC = AC || new (window.AudioContext||window.webkitAudioContext)();
+    audioInit();
     const t0=AC.currentTime;
     const o=AC.createOscillator(), g=AC.createGain();
     o.type="sawtooth";
@@ -79,21 +158,21 @@ function sfxSick(){
     g.gain.setValueAtTime(0.0001,t0);
     g.gain.exponentialRampToValueAtTime(0.1,t0+0.05);
     g.gain.exponentialRampToValueAtTime(0.0001,t0+0.6);
-    o.connect(g); g.connect(AC.destination);
+    o.connect(g); g.connect(PRIOBUS);
     o.start(t0); o.stop(t0+0.62);
   }catch(e){}
 }
 function sfxBetter(){
   if(!SETTINGS.sound) return;
   try{
-    AC = AC || new (window.AudioContext||window.webkitAudioContext)();
+    audioInit();
     const t0=AC.currentTime;
     [520,700,900].forEach((f,i)=>{
       const t=t0+i*0.07;
       const o=AC.createOscillator(), g=AC.createGain();
       o.type="triangle"; o.frequency.value=f;
       g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.08,t+0.01); g.gain.exponentialRampToValueAtTime(0.0001,t+0.14);
-      o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t+0.16);
+      o.connect(g); g.connect(PRIOBUS); o.start(t); o.stop(t+0.16);
     });
   }catch(e){}
 }
@@ -102,7 +181,7 @@ function sfxBetter(){
 function sfxGoodbye(){
   if(!SETTINGS.sound) return;
   try{
-    AC = AC || new (window.AudioContext||window.webkitAudioContext)();
+    audioInit();
     const t0=AC.currentTime;
     const notes=[392,349.23,293.66,261.63];   // G4 F4 D4 C4 — a slow, solemn descent
     notes.forEach((f,i)=>{
@@ -110,7 +189,7 @@ function sfxGoodbye(){
       const o=AC.createOscillator(), g=AC.createGain();
       o.type="sine"; o.frequency.value=f;
       g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.1,t+0.08); g.gain.exponentialRampToValueAtTime(0.0001,t+0.9);
-      o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t+0.95);
+      o.connect(g); g.connect(PRIOBUS); o.start(t); o.stop(t+0.95);
     });
   }catch(e){}
 }
@@ -124,17 +203,17 @@ let musicTimer=null, musicStep=0;
 function musicTick(){
   if(!SETTINGS.music || !SETTINGS.sound) return;
   try{
-    AC = AC || new (window.AudioContext||window.webkitAudioContext)();
+    audioInit();
     const t0=AC.currentTime;
     const bo=AC.createOscillator(), bg=AC.createGain();
     bo.type="triangle"; bo.frequency.value=MUSIC_BASS[musicStep%MUSIC_BASS.length];
     bg.gain.setValueAtTime(0.0001,t0); bg.gain.exponentialRampToValueAtTime(0.05,t0+0.02); bg.gain.exponentialRampToValueAtTime(0.0001,t0+0.34);
-    bo.connect(bg); bg.connect(AC.destination); bo.start(t0); bo.stop(t0+0.36);
+    bo.connect(bg); bg.connect(MUSICBUS); bo.start(t0); bo.stop(t0+0.36);
 
     const ao=AC.createOscillator(), ag=AC.createGain();
     ao.type="square"; ao.frequency.value=MUSIC_ARP[musicStep%MUSIC_ARP.length];
     ag.gain.setValueAtTime(0.0001,t0); ag.gain.exponentialRampToValueAtTime(0.022,t0+0.01); ag.gain.exponentialRampToValueAtTime(0.0001,t0+0.16);
-    ao.connect(ag); ag.connect(AC.destination); ao.start(t0); ao.stop(t0+0.18);
+    ao.connect(ag); ag.connect(MUSICBUS); ao.start(t0); ao.stop(t0+0.18);
 
     musicStep++;
   }catch(e){}
