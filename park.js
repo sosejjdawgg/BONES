@@ -4504,17 +4504,40 @@ function pkShopIcon(ctx,x,y,s2,key,col){
     ctx.fillRect(-1.2,4,2.4,4); ctx.beginPath(); ctx.arc(0,9,1.8,0,7); ctx.stroke(); }
   else if(key==="armour"){ ctx.beginPath(); ctx.moveTo(0,-9); ctx.lineTo(7,-5); ctx.lineTo(7,2); ctx.lineTo(0,9); ctx.lineTo(-7,2); ctx.lineTo(-7,-5); ctx.closePath(); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0,-5); ctx.lineTo(0,5); ctx.moveTo(-3.6,-1.5); ctx.lineTo(3.6,-1.5); ctx.stroke(); }
-  else if(key==="sqpal"){ ctx.beginPath(); ctx.ellipse(-2,2,5,3.6,0.25,0,7); ctx.fill();
-    ctx.beginPath(); ctx.arc(3,2.5,4.5,0.15,4.6); ctx.stroke(); }
-  else if(key==="birdpal"){ ctx.beginPath(); ctx.moveTo(-8,2); ctx.quadraticCurveTo(-2,-7,0,0); ctx.quadraticCurveTo(2,-7,8,2); ctx.stroke();
-    ctx.beginPath(); ctx.arc(0,0,2,0,7); ctx.fill(); }
-  else if(key==="catpal"){ ctx.beginPath(); ctx.arc(0,1.5,6,0,7); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(-6,-2); ctx.lineTo(-3,-8.5); ctx.lineTo(-1,-2); ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(6,-2); ctx.lineTo(3,-8.5); ctx.lineTo(1,-2); ctx.closePath(); ctx.fill(); }
-  else if(key==="apepal"){ ctx.beginPath(); ctx.arc(0,0,7,0,7); ctx.stroke();
-    ctx.fillRect(-5,-2.2,10,2.6); ctx.beginPath(); ctx.arc(-3,2.4,1.3,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(3,2.4,1.3,0,7); ctx.fill(); }
+  else if(key==="sqpal"||key==="birdpal"||key==="catpal"||key==="apepal"){
+    const kind = key==="sqpal"?"sq" : key==="birdpal"?"bird" : key==="catpal"?"cat" : "ape";
+    pkDrawPalIcon(ctx,kind,col);
+  }
   else { ctx.beginPath(); ctx.arc(0,0,6,0,7); ctx.stroke(); }
   ctx.restore();
+}
+// a real mini-portrait of the actual companion instead of a crude vector doodle — recolored to a
+// flat silhouette in whatever colour the caller is using (dim grey when unaffordable, bright pink/
+// magenta when available), so it reads exactly like the old icons did, just as the real animal
+const PK_ICON_TINT=new Map();
+function pkPalIconTint(img,color){
+  if(!img || !img.complete || !img.naturalWidth) return null;
+  let m=PK_ICON_TINT.get(img);
+  if(!m){ m=Object.create(null); PK_ICON_TINT.set(img,m); }
+  let c=m[color];
+  if(c) return c;
+  c=document.createElement("canvas");
+  c.width=img.naturalWidth; c.height=img.naturalHeight;
+  const g=c.getContext("2d");
+  g.imageSmoothingEnabled=false;
+  g.drawImage(img,0,0);
+  g.globalCompositeOperation="source-atop";
+  g.fillStyle=color;
+  g.fillRect(0,0,c.width,c.height);
+  m[color]=c;
+  return c;
+}
+function pkDrawPalIcon(ctx,kind,col){
+  const img = kind==="ape" ? (APEIMG.idle && APEIMG.idle[0]) : (ENEMYIMG[kind] && ENEMYIMG[kind][0]);
+  const tinted = pkPalIconTint(img,col);
+  if(!tinted){ ctx.beginPath(); ctx.arc(0,0,6,0,7); ctx.stroke(); return; }
+  const ih=16, iw=ih*tinted.width/tinted.height;
+  ctx.drawImage(tinted, -iw/2, -ih/2, iw, ih);
 }
 const PAL_ICON={sq:"sqpal", bird:"birdpal", cat:"catpal", ape:"apepal"};
 // shrinks the font until the text actually fits maxW, instead of letting a long line run over
@@ -4526,7 +4549,7 @@ function pkFitText(ctx,text,x,y,maxW,size){
   ctx.fillText(text,x,y);
 }
 // one shared row geometry, used by both the draw and the hit test so they can never drift
-const ARMOR_COST=40, COMPASS_COST=50;
+const ARMOR_COST=40, COMPASS_COST=10;
 function pkShopRows(w,h){
   const rows=[];
   const cardH=h*0.125, step=h*0.135, top0=h*0.225;
@@ -4535,8 +4558,8 @@ function pkShopRows(w,h){
   rows.push({x:w*0.32, y:h*0.80,  w:w*0.36, h:h*0.10, kind:"skip", idx:0});
   // two fixed slots, never rolled and never replaced by the pool above — armour on the left,
   // compass on the right, visible in every shop from wave 1 on
-  rows.push({x:w*0.06, y:h*0.80, w:w*0.22, h:h*0.10, kind:"armour"});
-  rows.push({x:w*0.72, y:h*0.80, w:w*0.22, h:h*0.10, kind:"compass"});
+  rows.push({x:w*0.04, y:h*0.80, w:w*0.27, h:h*0.10, kind:"armour"});
+  rows.push({x:w*0.69, y:h*0.80, w:w*0.27, h:h*0.10, kind:"compass"});
   return rows;
 }
 function pkShopCard(ctx,r,o,col,dim,afford){
@@ -4648,10 +4671,18 @@ function pkDrawFixedSlot(ctx,r,ic,label,owned,cost,col){
   ctx.fillStyle="rgba(0,0,0,.7)"; ctx.fillRect(r.x,r.y,r.w,r.h);
   ctx.strokeStyle = owned ? "#444" : (afford?col:"#663333"); ctx.lineWidth=2;
   ctx.strokeRect(r.x,r.y,r.w,r.h);
-  pkShopIcon(ctx, r.x+r.h*0.5, r.y+r.h*0.36, r.h/30, ic, owned?"#556":col);
-  ctx.textAlign="center"; ctx.font="6px 'Press Start 2P',monospace";
-  ctx.fillStyle = owned ? "#556" : (afford?col:"#a55");
-  ctx.fillText(owned?label:cost+"◆", r.x+r.w/2, r.y+r.h*0.86);
+  const padX=r.w*0.08, maxW=r.w-padX*2, cx=r.x+r.w/2;
+  pkShopIcon(ctx, cx, r.y+r.h*0.30, r.h/30, ic, owned?"#556":col);
+  ctx.textAlign="center";
+  if(owned){
+    ctx.font="7px 'Press Start 2P',monospace"; ctx.fillStyle="#556";
+    pkFitText(ctx, label, cx, r.y+r.h*0.82, maxW, 7);
+  } else {
+    ctx.fillStyle=col;
+    pkFitText(ctx, label, cx, r.y+r.h*0.60, maxW, 7);
+    ctx.fillStyle = afford ? "#fff" : "#f22";
+    pkFitText(ctx, cost+"◆", cx, r.y+r.h*0.90, maxW, 8);
+  }
   ctx.textAlign="left";
 }
 // shop taps live on the park screen. Registered here rather than in the #dogcv handler in
@@ -4726,6 +4757,8 @@ function pkPadDraw(t){
   drawBone(ctx, 24, 26, 1, "#fff");
   ctx.fillStyle="#fff"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
   ctx.fillText(PK.bones+" BONES", 34, 29);
+  let hudBottomY=44;   // grows as the HP/armour/pal stack below actually uses space, so the wave
+                       // goal block (drawn later) always clears it with real room instead of a guess
   {
     // BONES' health lives down here now — up top it sat straight on the wave meter
     const hzh=PK.hurtT>0 ? PK.hurtT/HURT_TIME : 0;
@@ -4758,11 +4791,13 @@ function pkPadDraw(t){
     ctx.fillText((PK.over>0?"+"+Math.ceil(PK.over)+"  ":"")+Math.max(0,Math.ceil(PK.hp))+"/"+PK.maxhp, bx+bw2, by+bh2+10);
     ctx.textAlign="left"; ctx.lineWidth=2;
     // Full Armour: a whole second bar of its own rather than a tint on the first \u2014 it was bought
-    // outright, and it reads as its own asset, not a temporary bonus riding the HP bar
+    // outright, and it reads as its own asset, not a temporary bonus riding the HP bar. Gaps below
+    // are deliberately generous (10px+) so the HP number, armour bar and pal bars never crowd \u2014
+    // this whole stack used to read as one jammed block.
     let armorH=0;
     if(PK.armorUnlocked){
-      const ay=by+bh2+4, ah=8, afrac=clamp(PK.armor/Math.max(1,pkArmorCap()),0,1);
-      armorH=ah+8;
+      const ay=by+bh2+12, ah=8, afrac=clamp(PK.armor/Math.max(1,pkArmorCap()),0,1);
+      armorH=ay-(by+bh2)+ah+10;
       ctx.fillStyle="rgba(0,0,0,.6)"; ctx.fillRect(bx,ay,bw2,ah);
       ctx.strokeStyle="#6cf"; ctx.lineWidth=2; ctx.strokeRect(bx,ay,bw2,ah);
       ctx.fillStyle="#6cf"; ctx.fillRect(bx+2,ay+2,(bw2-4)*afrac,ah-4);
@@ -4778,7 +4813,7 @@ function pkPadDraw(t){
     // only squirrel/cat carry HP at all (the bird flock is never itself a target). Pushed down
     // past BONES' own hp/maxhp number (drawn just above), and past the armour bar if it's showing,
     // so nothing collides.
-    let ppy=by+bh2+24+armorH;
+    let ppy=by+bh2+(armorH>0?armorH+10:30);
     for(const kind of ["sq","cat","ape"]){
       const p=PK.pals.find(q=>q.k===kind);
       if(!p) continue;
@@ -4791,10 +4826,34 @@ function pkPadDraw(t){
       ctx.fillStyle="#6cf"; ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="right";
       ctx.fillText(kind==="sq"?"SQUIRREL":kind==="cat"?"CAT":"APE", pbx-4, ppy+ph2-1);
       ctx.textAlign="left";
-      ppy+=ph2+5;
+      ppy+=ph2+9;
     }
+    hudBottomY=Math.max(hudBottomY, ppy+8);
   }
   ctx.textAlign="left";
+  // zoomies / regen pills and the wave-goal block below all key off pillY, which starts at
+  // hudBottomY (how much the HP/armour/pal-bar column above actually used) and grows as each
+  // pill claims its own space — so nothing here has a hardcoded height that only fits the
+  // no-armour, no-pal-bars case
+  let pillY=hudBottomY;
+  if(PK.zoomT>0){
+    const bw=Math.min(170,w*0.62), bx=w/2-bw/2;
+    ctx.fillStyle="rgba(255,217,74,.18)"; ctx.fillRect(bx,pillY,bw,18);
+    ctx.strokeStyle="#ffd94a"; ctx.lineWidth=2; ctx.strokeRect(bx,pillY,bw,18);
+    ctx.fillStyle="#ffd94a"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText("THE ZOOMIES "+PK.zoomT.toFixed(1)+"s", w/2, pillY+13);
+    ctx.textAlign="left";
+    pillY+=18+10;
+  }
+  if(PK.regenT>0){
+    const bw=Math.min(140,w*0.55), bx=w/2-bw/2;
+    ctx.fillStyle="rgba(63,220,122,.18)"; ctx.fillRect(bx,pillY,bw,18);
+    ctx.strokeStyle="#3fdc7a"; ctx.lineWidth=2; ctx.strokeRect(bx,pillY,bw,18);
+    ctx.fillStyle="#3fdc7a"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText("✚ REGEN "+PK.regenT.toFixed(1)+"s", w/2, pillY+13);
+    ctx.textAlign="left";
+    pillY+=18+10;
+  }
   if(!PK.shop && !PK.joy && !PK.friendsOpen && !PK.convertOpen){
     // the current wave's objective + clear progress — moved down here from the top of the main
     // play view so the gameplay canvas itself stays clear of overlaid chrome
@@ -4808,7 +4867,7 @@ function pkPadDraw(t){
       if(ctx.measureText(trial).width>maxGW && gcur){ glines.push(gcur); gcur=gw; } else gcur=trial;
     }
     if(gcur) glines.push(gcur);
-    const gy0=94, shown=glines.slice(0,2);
+    const gy0=Math.max(94,pillY+4), shown=glines.slice(0,2);
     shown.forEach((ln,i)=>ctx.fillText(ln, w/2, gy0+i*10));
     const gby=gy0+shown.length*10-2;
     const gbw=Math.min(220,w*0.7), gbx=w/2-gbw/2;
@@ -4817,22 +4876,6 @@ function pkPadDraw(t){
     ctx.strokeStyle="rgba(255,255,255,.55)"; ctx.lineWidth=1; ctx.strokeRect(gbx,gby,gbw,8);
     ctx.fillStyle="#cfe6ff"; ctx.font="6px 'Press Start 2P',monospace";
     ctx.fillText(Math.round(pct*100)+"% CLEAR", w/2, gby+17);
-    ctx.textAlign="left";
-  }
-  if(PK.zoomT>0){
-    const bw=Math.min(170,w*0.62), bx=w/2-bw/2;
-    ctx.fillStyle="rgba(255,217,74,.18)"; ctx.fillRect(bx,44,bw,18);
-    ctx.strokeStyle="#ffd94a"; ctx.lineWidth=2; ctx.strokeRect(bx,44,bw,18);
-    ctx.fillStyle="#ffd94a"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText("THE ZOOMIES "+PK.zoomT.toFixed(1)+"s", w/2, 57);
-    ctx.textAlign="left";
-  }
-  if(PK.regenT>0){
-    const bw=Math.min(140,w*0.55), bx=w/2-bw/2, by=PK.zoomT>0?66:44;
-    ctx.fillStyle="rgba(63,220,122,.18)"; ctx.fillRect(bx,by,bw,18);
-    ctx.strokeStyle="#3fdc7a"; ctx.lineWidth=2; ctx.strokeRect(bx,by,bw,18);
-    ctx.fillStyle="#3fdc7a"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText("\u271a REGEN "+PK.regenT.toFixed(1)+"s", w/2, by+13);
     ctx.textAlign="left";
   }
   if(PK.joy){
