@@ -342,7 +342,7 @@ function pkSpawn(w,h){
   const type = r<Math.max(0.2,0.55-wv*0.04)?"sq" : r<0.8?"bird":"cat";
   const ang=Math.random()*6.283, R=Math.max(w,h)*0.62;
   const hp0=pkEnemyHp(type==="cat"?2:1);
-  PK.en.push({t:type, x:(PK.x+Math.cos(ang)*R+WW)%WW, y:(PK.y+Math.sin(ang)*R+WH)%WH,
+  pkEnMake({t:type, x:(PK.x+Math.cos(ang)*R+WW)%WW, y:(PK.y+Math.sin(ang)*R+WH)%WH,
     hp:hp0, hpMax:hp0,
     sp:(type==="sq"?70:type==="bird"?85:45)*(1+wv*0.05),
     ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
@@ -400,7 +400,7 @@ function pkSpawnBirdRow(n){
   for(let i=0;i<n;i++){
     const off=(i-(n-1)/2)*15+(Math.random()-0.5)*8;         // a row, one after another
     const sxo=cx+Math.cos(perp)*off, syo=cy+Math.sin(perp)*off;
-    PK.en.push({t:"bird", flock:true, x:(sxo+WW)%WW, y:(syo+WH)%WH,
+    pkEnMake({t:"bird", flock:true, x:(sxo+WW)%WW, y:(syo+WH)%WH,
       hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp, vx:Math.cos(ang)*sp, vy:Math.sin(ang)*sp,
       ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
   }
@@ -429,7 +429,7 @@ function pkSpawnBirdStorm(n){
     const a=baseAng+(6.283*i/n)+(Math.random()-0.5)*0.5;
     const r=R*(0.7+Math.random()*0.55);
     const x=(PK.x+Math.cos(a)*r+WW)%WW, y=(PK.y+Math.sin(a)*r+WH)%WH;
-    PK.en.push({t:"bird", stormForm:true, diving:false, swoopWindT:0, x, y, orbitAng:a, orbitR:r, orbitSpd:1.4+Math.random()*0.8,
+    pkEnMake({t:"bird", stormForm:true, diving:false, swoopWindT:0, x, y, orbitAng:a, orbitR:r, orbitSpd:1.4+Math.random()*0.8,
       swoopCd:1.2+Math.random()*2.6, hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:150, vx:0, vy:0,
       ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
   }
@@ -449,7 +449,7 @@ function pkSpawnBirdV(n){
     const side=i%2===0?1:-1, rank=Math.ceil(i/2);
     const off=side*rank*22, back=rank*18;   // wingmen trail behind the leader — a real V shape
     const sxo=cx+Math.cos(perp)*off-Math.cos(ang)*back, syo=cy+Math.sin(perp)*off-Math.sin(ang)*back;
-    PK.en.push({t:"bird", vForm:true, angry:true, x:(sxo+WW)%WW, y:(syo+WH)%WH,
+    pkEnMake({t:"bird", vForm:true, angry:true, x:(sxo+WW)%WW, y:(syo+WH)%WH,
       hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp, vx:Math.cos(ang)*sp, vy:Math.sin(ang)*sp,
       ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
   }
@@ -688,12 +688,33 @@ function pkSpreadFireFrom(tr){
     beep(85,.4,"sawtooth",.08); setTimeout(()=>beep(60,.5,"sawtooth",.07),130);
   }
 }
+/* ---------- enemy object pool ----------
+   At horde density enemies are created and discarded constantly. Two things matter here, and the
+   second matters more than the first: recycling avoids the allocation churn, and resetting every
+   enemy through one canonical field list means every object in PK.en shares a single hidden
+   class. That keeps property access in the hot per-enemy loop monomorphic, and it makes it
+   impossible for a stale per-type flag (a recycled bird still believing it is a mad squirrel) to
+   survive into the next life. */
+const EN_FIELDS=["t","x","y","hp","hpMax","sp","vx","vy","kx","ky","dir","fi","ft","ph","life","side","alpha","big","boss","small","decor","angry","hellish","hunting","circling","flock","vForm","stormForm","diving","swoop","swoopCd","swoopWindT","orbitAng","orbitR","orbitSpd","roost","standing","spooked","spookT","spookVx","spookVy","stalk","stalkAggro","anchorX","anchorY","leapT","windT","leapAng","lvx","lvy","ranger","madsq","fromTree","atkState","atkCd","strafeDir","laserState","chargeT","aimAng","aimBase","aimErr","sweepT","beamLen","cd","burnT","palBeamT","madsqExplode","explodeT","heading","spdCur","introT","leapState","leapCd","leapWindT","leapActT","leapDur","leapStartX","leapStartY","leapDX","leapDY","landT","fleeing","fleeT","fleeVx","fleeVy","shockT","hitT","bounceT","bounceMax","bounceSpin","heroOutro"];
+const EN_BLANK={};
+for(const f of EN_FIELDS) EN_BLANK[f]=undefined;
+const EN_POOL=[], EN_POOL_MAX=420;
+function pkEnMake(props){
+  let e=EN_POOL.pop();
+  if(e) Object.assign(e,EN_BLANK); else e=Object.assign({},EN_BLANK);
+  Object.assign(e,props);
+  PK.en.push(e);
+  return e;
+}
+function pkEnRelease(e){ if(EN_POOL.length<EN_POOL_MAX){ e.fleeing=true; EN_POOL.push(e); } }
+// removes by index and hands the object back to the pool
+function pkEnRemove(i){ const e=PK.en[i]; PK.en.splice(i,1); pkEnRelease(e); }
 function pkSpawnApeRaw(x,y,hpBase){
   let hp=pkEnemyHp(hpBase);
   // anything born after the gates opened comes out already changed
   const hellish=!!PK.hell;
   if(hellish) hp=Math.round(hp*1.15);
-  PK.en.push({t:"ape", boss:true, x, y, hp, hpMax:hp, sp:APE_SPD, hellish,
+  pkEnMake({t:"ape", boss:true, x, y, hp, hpMax:hp, sp:APE_SPD, hellish,
     ph:0, kx:0, ky:0, dir:1, fi:0, ft:0, side:undefined,
     heading:Math.random()*6.283, spdCur:0,
     introT:APE_INTRO, leapState:null, leapCd:1, leapWindT:0, leapActT:0, landT:0});
@@ -843,11 +864,12 @@ function pkTickTrees(dt){
     // a burning nest keeps disgorging squirrels — but never past a live ceiling, so the onslaught
     // stays an onslaught without ever becoming a framerate problem. It resumes the moment the
     // player thins them out, so nothing is lost, it just cannot run away.
-    if(tr.spawnT<=0 && tr.spawned<(tr.spawnMax||TREE_SPAWN_MAX) && pkTreeSqCount()<TREE_SQ_CAP){
+    if(tr.spawnT<=0 && tr.spawned<(tr.spawnMax||TREE_SPAWN_MAX) && pkTreeSqCount()<TREE_SQ_CAP
+       && pkAliveCount()<pkMaxAlive()){   // the density ceiling is the ceiling, fire included
       tr.spawnT=TREE_SPAWN_EVERY;
       tr.spawned++;
       const a=Math.random()*6.283;
-      PK.en.push({t:"sq", madsq:true, fromTree:true,
+      pkEnMake({t:"sq", madsq:true, fromTree:true,
         x:(tr.x+Math.cos(a)*TREE_R+PK.WW)%PK.WW, y:(tr.y+Math.sin(a)*TREE_R+PK.WH)%PK.WH,
         hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:78, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
         laserState:"seek", chargeT:0, aimAng:0, sweepT:0, cd:0.8+Math.random()*1.2});
@@ -1598,7 +1620,7 @@ function pkSpawnBirdGroup(){
       const counted=(c===0 && i<n);   // only the very first cluster carries the "real" bird(s), cosmetically tighter
       const spread=counted?46:82, vspread=counted?34:58;
       const ox=(Math.random()-0.5)*spread, oy=(Math.random()-0.5)*vspread;
-      PK.en.push({t:"bird", standing:true, roost, x:(cx+ox+WW)%WW, y:(cy+oy+WH)%WH,
+      pkEnMake({t:"bird", standing:true, roost, x:(cx+ox+WW)%WW, y:(cy+oy+WH)%WH,
         hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:0, ph:Math.random()*6, kx:0, ky:0, dir:Math.random()<0.5?-1:1, fi:0, ft:0});
     }
     if(Math.random()<STALK_CHANCE) pkSpawnStalkCat(cx,cy, 1+Math.floor(Math.random()*2));
@@ -1615,7 +1637,7 @@ function pkSpawnStalkCat(ax, ay, count){
   const WW=PK.WW, WH=PK.WH;
   const n=Math.min(count, STALK_CAT_SOFTCAP-alive);
   for(let i=0;i<n;i++){
-    PK.en.push({t:"cat", stalk:true, x:(ax+WW)%WW, y:(ay+WH)%WH,
+    pkEnMake({t:"cat", stalk:true, x:(ax+WW)%WW, y:(ay+WH)%WH,
       hp:pkEnemyHp(2), hpMax:pkEnemyHp(2), sp:0, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
       anchorX:(ax+WW)%WW, anchorY:(ay+WH)%WH, orbitAng:Math.random()*6.283});
   }
@@ -1629,7 +1651,7 @@ function pkSpawnCatSquad(){
   const ang=Math.random()*6.283, R=Math.max(w,h)*0.62;
   for(let i=0;i<n;i++){
     const a2=ang+(Math.random()-0.5)*0.8;
-    PK.en.push({t:"cat", x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
+    pkEnMake({t:"cat", x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
       hp:pkEnemyHp(2), hpMax:pkEnemyHp(2), sp:48, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
   }
   return n;
@@ -1640,7 +1662,7 @@ function pkSpawnSwoopBird(){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
   const y=(PK.y+(Math.random()-0.5)*h*0.5+WH)%WH, sp=140+Math.random()*30;
-  PK.en.push({t:"bird", swoop:true, x:(PK.x-w*0.7+WW)%WW, y,
+  pkEnMake({t:"bird", swoop:true, x:(PK.x-w*0.7+WW)%WW, y,
     hp:1, hpMax:1, sp, vx:sp, vy:0, ph:0, kx:0, ky:0, dir:1, fi:0, ft:0, life:9});
 }
 // WAVE 4 — NUT THROWERS: weak, ranged squirrels. They approach to a comfortable distance,
@@ -1654,7 +1676,7 @@ function pkSpawnRangerSquad(){
   const ang=Math.random()*6.283, R=Math.max(w,h)*0.65;
   for(let i=0;i<n;i++){
     const a2=ang+(Math.random()-0.5)*0.9;
-    PK.en.push({t:"sq", ranger:true, x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
+    pkEnMake({t:"sq", ranger:true, x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
       hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:RANGER_APPROACH_SPD, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
       atkState:"approach", atkCd:0.6+Math.random()*0.8, strafeDir:Math.random()<0.5?1:-1});
   }
@@ -1671,7 +1693,7 @@ function pkSpawnMadSquad(){
   const ang=Math.random()*6.283, R=Math.max(w,h)*0.62;
   for(let i=0;i<n;i++){
     const a2=ang+(Math.random()-0.5)*0.9;
-    PK.en.push({t:"sq", madsq:true, x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
+    pkEnMake({t:"sq", madsq:true, x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
       hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:78, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
       laserState:"seek", chargeT:0, aimAng:0, sweepT:0, cd:0.6+Math.random()*0.8});
   }
@@ -1684,7 +1706,7 @@ function pkSpawnAlphaSquad(){
   const WW=PK.WW, WH=PK.WH;
   for(let i=0;i<2;i++){
     const ang=(i/2)*6.283+Math.random()*0.5, R=Math.max(w,h)*0.6;
-    PK.en.push({t:"cat", alpha:true, big:true, x:(PK.x+Math.cos(ang)*R+WW)%WW, y:(PK.y+Math.sin(ang)*R+WH)%WH,
+    pkEnMake({t:"cat", alpha:true, big:true, x:(PK.x+Math.cos(ang)*R+WW)%WW, y:(PK.y+Math.sin(ang)*R+WH)%WH,
       hp:pkEnemyHp(5), hpMax:pkEnemyHp(5), sp:ALPHA_APPROACH_SPD, ph:0, kx:0, ky:0, dir:1, fi:0, ft:0, leapCd:1.5+Math.random()});
   }
   toast("☠ THE ALPHAS HAVE ARRIVED",1);
@@ -1716,23 +1738,39 @@ function pkSpawnMixBurst(types){
     const type=types[Math.floor(Math.random()*types.length)];
     const a2=ang+(Math.random()-0.5)*spread;
     const x=(PK.x+Math.cos(a2)*R+WW)%WW, y=(PK.y+Math.sin(a2)*R+WH)%WH;
-    if(type==="bird") PK.en.push({t:"bird", x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:106.25, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0});   // +25% over the original 85
-    else if(type==="cat") PK.en.push({t:"cat", x,y, hp:pkEnemyHp(2),hpMax:pkEnemyHp(2), sp:48, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0});
-    else if(type==="ranger") PK.en.push({t:"sq", ranger:true, x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:RANGER_APPROACH_SPD, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0, atkState:"approach", atkCd:0.6+Math.random()*0.8, strafeDir:Math.random()<0.5?1:-1});
-    else if(type==="madsq") PK.en.push({t:"sq", madsq:true, x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:78, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0, laserState:"seek", chargeT:0, aimAng:0, sweepT:0, cd:0.6+Math.random()*0.8});
+    if(type==="bird") pkEnMake({t:"bird", x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:106.25, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0});   // +25% over the original 85
+    else if(type==="cat") pkEnMake({t:"cat", x,y, hp:pkEnemyHp(2),hpMax:pkEnemyHp(2), sp:48, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0});
+    else if(type==="ranger") pkEnMake({t:"sq", ranger:true, x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:RANGER_APPROACH_SPD, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0, atkState:"approach", atkCd:0.6+Math.random()*0.8, strafeDir:Math.random()<0.5?1:-1});
+    else if(type==="madsq") pkEnMake({t:"sq", madsq:true, x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:78, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0, laserState:"seek", chargeT:0, aimAng:0, sweepT:0, cd:0.6+Math.random()*0.8});
   }
   return n;
 }
 // how many enemies a wave needs cleared \u2014 hand-set to match the redesigned wave-by-wave
 // spec. waves beyond 10 keep extending the mix pattern with a gently rising quota.
 function pkWaveQuota(wv){
-  if(wv===1) return 2;    // catch 2 birds
-  if(wv===2) return 24;   // the birds are upset — a real, sky-filling swarm this time
+  if(wv===1) return 2;    // catch 2 birds — the introduction, deliberately tiny
+  if(wv===2) return 24;   // the birds are upset — a real, sky-filling swarm
   if(wv===3) return 10;   // attack of the cats
-  if(wv===4) return 15;   // watch out, nuts
-  if(wv===5) return 15;   // coming out of the trees
-  return Math.round(20*Math.pow(1.25, wv-6));   // 20, 25, 31, 39, 49, 61, 76...
+  // from wave 4 the park stops trickling and starts pouring. These are kill counts, not
+  // on-screen counts — pkMaxAlive is what actually governs how many are in front of you at once.
+  if(wv===4) return 35;   // watch out, nuts
+  if(wv===5) return 45;   // coming out of the trees
+  return Math.round(60*Math.pow(1.22, wv-6));   // 60, 73, 89, 109, 133, 162, 197...
 }
+/* ---------- horde density ----------
+   Borrowed from the survivors-likes: the wave says how many must go down, but a separate pair of
+   live-enemy bounds decides how many may be on the field at any moment. Below minAlive the
+   spawners are hurried along so the screen never goes quiet; at maxAlive ordinary spawning stops
+   dead and only scripted arrivals (the golden bird, the healer, a tree's ape, wave 8's couples)
+   may still appear. Raising a quota therefore makes a wave longer and busier, never unbounded. */
+function pkMaxAlive(){
+  const base = PK.plusMode ? 150 : 85;   // measured: ~60fps at this density, 52fps by ~290
+  // eased in over the opening waves so wave 1 stays the gentle thing it is
+  const ramp = clamp(0.30+(PK.wave-1)*0.17, 0.30, 1);
+  return Math.max(14, Math.round(base*ramp));
+}
+function pkMinAlive(){ return Math.round(pkMaxAlive()*0.34); }
+function pkAliveCount(){ let n=0; for(let i=0;i<PK.en.length;i++) if(!PK.en[i].fleeing) n++; return n; }
 // what each wave is called. 6 onwards is the same escalating joke, told straight.
 const WNAME={
   1:"CATCH 2 BIRDS",
@@ -1755,7 +1793,11 @@ function pkWaveName(wv){
 // enemies toughen as the waves climb: a bird takes 3 barks by wave 10, and everything
 // else scales off its own base the same way
 function pkEnemyHp(base){ return base + Math.floor(((PK.wave||1)-1)/4.5); }
-const BARK_CAP=62;   // hard ceiling: the bark used to reach ~90 and trivialised whole waves
+const BARK_CAP=62;   // hard ceiling on radius: the bark used to reach ~90 and trivialised waves
+/* With hordes on screen the bark has to keep up, so its bite grows with the waves even though its
+   reach stays capped. This is the main lever that keeps a dense screen clearable rather than
+   simply overwhelming — one bark should still meaningfully thin a crowd at wave 12. */
+function pkBarkDmg(){ return 1+Math.floor(Math.max(0,(PK.wave||1)-3)/3); }   // 1, then +1 every 3 waves from 4
 /* The wave goal is now one number and one number only: how many enemies BONES has put down this
    wave (PK.waveKills, incremented in the single pkDownEnemy path). The old model tried to derive
    it from "quota still to spawn + qualifying enemies still alive", with a separate list of types
@@ -1833,13 +1875,16 @@ function pkBark(){
   PK.pulse=0.35;
   bark(0.82);
   let hits=0;
-  for(let i=PK.en.length-1;i>=0;i--){
-    const e=PK.en[i];
+  const barkDmg=pkBarkDmg();
+  const sweep=[];
+  pkEnemiesNear(PK.x,PK.y,PK.barkR+20,e=>sweep.push(e));
+  for(let i=sweep.length-1;i>=0;i--){
+    const e=sweep[i];
     if(e.fleeing) continue;   // already scared off — can't be hit again
     const dxw=wd(e.x-PK.x,PK.WW), dyw=wd(e.y-PK.y,PK.WH);
     const d=Math.hypot(dxw,dyw)||1;
     if(d<PK.barkR+pkHitR(e)){
-      e.hp--;   // flat, regardless of how many others are in the circle with it — no falloff
+      e.hp-=barkDmg;   // flat, regardless of how many others are in the circle with it — no falloff
       // every enemy type barked at counts toward the "bark at everybody" side mission
       PK.barkedTypes[e.t]=true;
       if(!PK.missionBarkAll && PK.barkedTypes.sq && PK.barkedTypes.bird && PK.barkedTypes.cat){
@@ -2071,13 +2116,117 @@ function pkPalHit(e,dmg,ux,uy){
     beep(950,.08,"square",.04);
   } else { e.kx=ux*PK.knock*0.7; e.ky=uy*PK.knock*0.7; }
 }
+/* ---------- enemy spatial hash ----------
+   Same idea as the tree grid, but rebuilt every frame because enemies move. At horde density the
+   naive "test every enemy against every query" pattern is what falls over first: bark, the sword,
+   the ape's smash, every pal picking a target and the separation pass are all neighbourhood
+   questions, and none of them should be walking a list of 160+. Rebuilding costs one pass; every
+   query after that touches a couple of cells. */
+const EN_GRID=88;
+let ENG_COLS=0, ENG_ROWS=0, ENG=null;
+function pkBuildEnGrid(WW,WH){
+  const cols=Math.max(1,Math.ceil(WW/EN_GRID)), rows=Math.max(1,Math.ceil(WH/EN_GRID));
+  if(!ENG || cols!==ENG_COLS || rows!==ENG_ROWS){
+    ENG_COLS=cols; ENG_ROWS=rows; ENG=new Array(cols*rows);
+    for(let i=0;i<ENG.length;i++) ENG[i]=[];
+  } else {
+    for(let i=0;i<ENG.length;i++) if(ENG[i].length) ENG[i].length=0;
+  }
+  for(let i=0;i<PK.en.length;i++){
+    const e=PK.en[i];
+    // a single enemy with a broken position must never be able to take the whole frame down
+    if(e.fleeing || !Number.isFinite(e.x) || !Number.isFinite(e.y)) continue;
+    const cx=((Math.floor(e.x/EN_GRID)%ENG_COLS)+ENG_COLS)%ENG_COLS;
+    const cy=((Math.floor(e.y/EN_GRID)%ENG_ROWS)+ENG_ROWS)%ENG_ROWS;
+    const b=ENG[cy*ENG_COLS+cx];
+    if(b) b.push(e);
+  }
+}
+function pkEnemiesNear(x,y,r,cb){
+  const g=ENG;
+  const span=g ? Math.ceil(r/EN_GRID) : 0;
+  // fall back to a straight scan whenever the grid is missing, stale against a resized world
+  // (buying a park expansion changes PK.WW mid-run), or the query simply covers everything
+  if(!g || g.length!==ENG_COLS*ENG_ROWS || span*2+1>=Math.min(ENG_COLS,ENG_ROWS)){
+    for(let i=0;i<PK.en.length;i++){ const e=PK.en[i]; if(!e.fleeing) cb(e); }
+    return;
+  }
+  const cx=Math.floor(x/EN_GRID), cy=Math.floor(y/EN_GRID);
+  for(let j=-span;j<=span;j++) for(let i=-span;i<=span;i++){
+    const gx=((cx+i)%ENG_COLS+ENG_COLS)%ENG_COLS, gy=((cy+j)%ENG_ROWS+ENG_ROWS)%ENG_ROWS;
+    const b=g[gy*ENG_COLS+gx];
+    if(!b) continue;
+    for(let k=0;k<b.length;k++) cb(b[k]);
+  }
+}
+/* A horde that all walks the same line collapses into one enemy-shaped stack. A cheap shove
+   apart keeps the mass readable and spread across the screen without any real flocking cost:
+   each enemy only looks at its own cell neighbourhood, and the push is small enough that it
+   never fights the type's own movement. */
+const SEP_R=15, SEP_PUSH=54;
+function pkSeparate(dt,WW,WH){
+  const g=ENG;
+  if(!g || g.length!==ENG_COLS*ENG_ROWS) return;   // no grid this frame: skip rather than go O(n^2)
+  const R2=SEP_R*SEP_R;
+  for(let i=0;i<PK.en.length;i++){
+    const e=PK.en[i];
+    if(e.fleeing || e.standing || e.boss || e.stormForm || e.flock) continue;
+    if(!Number.isFinite(e.x) || !Number.isFinite(e.y)) continue;
+    // the cell walk is written out rather than going through pkEnemiesNear's callback: at this
+    // density that callback would mean one fresh closure per enemy per frame, which is precisely
+    // the sort of steady allocation that shows up later as a GC hitch
+    let sx=0, sy=0, n=0;
+    const cx=Math.floor(e.x/EN_GRID), cy=Math.floor(e.y/EN_GRID);
+    for(let j=-1;j<=1 && n<4;j++) for(let k=-1;k<=1 && n<4;k++){
+      const gx=((cx+k)%ENG_COLS+ENG_COLS)%ENG_COLS, gy=((cy+j)%ENG_ROWS+ENG_ROWS)%ENG_ROWS;
+      const b=g[gy*ENG_COLS+gx];
+      if(!b) continue;
+      for(let m=0;m<b.length && n<4;m++){
+        const o=b[m];
+        if(o===e || o.boss) continue;
+        const dx=wd(e.x-o.x,WW), dy=wd(e.y-o.y,WH);
+        const d2=dx*dx+dy*dy;
+        if(d2>0.01 && d2<R2){ const d=Math.sqrt(d2); sx+=dx/d; sy+=dy/d; n++; }
+      }
+    }
+    if(n){
+      const m2=Math.hypot(sx,sy)||1;
+      e.x=(e.x+(sx/m2)*SEP_PUSH*dt+WW)%WW;
+      e.y=(e.y+(sy/m2)*SEP_PUSH*dt+WH)%WH;
+    }
+  }
+}
+/* Anything ordinary that ends up miles behind the player is dead weight: it will never catch up,
+   it still costs a slot against the density cap, and it leaves a long tail trailing off the map.
+   Rather than despawning it (which would quietly shrink the wave), it is picked up and put back
+   down on the approach ring ahead of him — the same enemy, re-entering the fight. Bosses and
+   anything scripted are never moved. */
+const RECYCLE_R=1.9, RECYCLE_EVERY=0.5;
+function pkRecycleStragglers(dt,WW,WH){
+  PK.recycleT=(PK.recycleT||0)-dt;
+  if(PK.recycleT>0) return;
+  PK.recycleT=RECYCLE_EVERY;
+  const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
+  const far=Math.hypot(w,h)*RECYCLE_R, ring=Math.max(w,h)*0.62;
+  for(let i=0;i<PK.en.length;i++){
+    const e=PK.en[i];
+    if(e.fleeing || e.boss || e.roost || e.standing || e.spooked || e.decor || e.swoop) continue;
+    if(e.stormForm || e.flock || e.vForm) continue;          // formations own their own paths
+    const d=Math.hypot(wd(e.x-PK.x,WW),wd(e.y-PK.y,WH));
+    if(d<far) continue;
+    const a=Math.random()*6.283;
+    e.x=(PK.x+Math.cos(a)*ring+WW)%WW;
+    e.y=(PK.y+Math.sin(a)*ring+WH)%WH;
+    e.kx=0; e.ky=0; e.hunting=false;
+  }
+}
 function pkNearestEnemy(x,y,maxR){
   let best=null, bd=maxR;
-  for(const e of PK.en){
-    if(e.fleeing) continue;
+  pkEnemiesNear(x,y,maxR,e=>{
+    if(e.fleeing) return;
     const d=Math.hypot(wd(e.x-x,PK.WW),wd(e.y-y,PK.WH));
     if(d<bd){ bd=d; best=e; }
-  }
+  });
   return best;
 }
 // the laser pal must never, under any circumstances, catch BONES. Layer one: an angular exclusion
@@ -2484,6 +2633,9 @@ function parkUpdate(dt){
     pkBuildTrees();
   }
   const WW=PK.WW, WH=PK.WH;
+  // one rebuild per frame, up front, so every neighbourhood query this frame reads the same
+  // consistent snapshot — bark, the sword, pal targeting, separation and the smash all share it
+  pkBuildEnGrid(WW,WH);
   // one condition, reading the same counter the HUD shows: put the goal number of enemies down
   const waveClear = pkWaveDone()>=pkWaveGoal();
   // the kill that ends a wave earns a beat of its own — everything drops into slow motion and
@@ -2522,7 +2674,7 @@ function parkUpdate(dt){
     tickStats(2.5, true);   // a cleared wave is 15 game minutes — the only time the park spends
     PK.waveT=0; PK.wave++;
     if(PK.wave>=3) tickTodo("j_wave3");
-    PK.barkMax=Math.max(1,PK.barkMax-0.12); PK.barkR=Math.min(BARK_CAP,PK.barkR+3.5);
+    PK.barkMax=Math.max(0.85,PK.barkMax-0.16); PK.barkR=Math.min(BARK_CAP,PK.barkR+5.5); PK.knock+=12;
     PK.waveQuota=pkWaveQuota(PK.wave); PK.waveSpawned=0; PK.waveKills=0; PK.lastDowned=null;
     // the golden bird visits every wave — except the one right after she was actually caught,
     // which sits out as her one wave of downtime before she's back
@@ -2544,11 +2696,13 @@ function parkUpdate(dt){
     // already excludes them from a quota) and saves the player fighting the same animal twice
     const nextHasBird = PK.wave===1 || PK.wave===2 || (PK.wave>=6 && PK.mixTypes && PK.mixTypes.includes("bird"));
     const nextHasCat  = PK.wave===3 || (PK.wave>=6 && PK.mixTypes && PK.mixTypes.includes("cat"));
-    PK.en=PK.en.filter(e=>{
-      if(e.roost && e.roost.killed>=e.roost.need) return nextHasBird;
-      if(e.stalk || e.stalkAggro) return nextHasCat;
-      return true;
-    });
+    for(let i=PK.en.length-1;i>=0;i--){
+      const e=PK.en[i];
+      const keep = (e.roost && e.roost.killed>=e.roost.need) ? nextHasBird
+                 : (e.stalk || e.stalkAggro)                 ? nextHasCat
+                 : true;
+      if(!keep) pkEnRemove(i);      // back to the pool rather than dropped on the floor
+    }
     PK.waveBanner={text:"WAVE "+PK.wave, sub:pkWaveName(PK.wave), life:3.2, max:3.2};
     beep(500,.08);
     pkShopOpen();
@@ -2580,7 +2734,10 @@ function parkUpdate(dt){
     if(PK.apeWaveT<=0){ pkSpawnApeCouple(); PK.apeWaveT=7+Math.random()*3; }
   }
   PK.spawnT-=dt;
-  if(PK.spawnT<=0 && PK.waveSpawned<PK.waveQuota && !PK.waveOutro){
+  const aliveNow=pkAliveCount(), maxAlive=pkMaxAlive();
+  // starving: hurry the next batch along rather than waiting out the full interval
+  if(aliveNow<pkMinAlive() && PK.waveSpawned<PK.waveQuota) PK.spawnT=Math.min(PK.spawnT,0.3);
+  if(PK.spawnT<=0 && PK.waveSpawned<PK.waveQuota && !PK.waveOutro && aliveNow<maxAlive){
     const wv=PK.wave;
     if(wv===1){ PK.spawnT=5.5; PK.waveSpawned+=pkSpawnBirdGroup(); }             // CLEAR THE BIRDS: loose roosts, standing until disturbed
     else if(wv===2){ PK.spawnT=8; PK.waveSpawned+=pkSpawnFlock(); }              // BIRD BACKUP: long diagonal formations
@@ -2641,7 +2798,7 @@ function parkUpdate(dt){
         e.fleeT+=dt;
       }
       e.ft+=dt; if(e.ft>0.12){ e.ft=0; e.fi++; }
-      if(e.fleeT>FLEE_TIME) PK.en.splice(i,1);
+      if(e.fleeT>FLEE_TIME) pkEnRemove(i);
       continue;
     }
     // WAVE 1 — a roost bird standing dead still until BONES gets close, then it scatters
@@ -2720,7 +2877,7 @@ function parkUpdate(dt){
       e.x=(e.x+e.vx*dt+WW)%WW;
       e.life-=dt;
       e.ft+=dt; if(e.ft>0.12){ e.ft=0; e.fi++; }
-      if(e.life<=0){ PK.en.splice(i,1); }
+      if(e.life<=0){ pkEnRemove(i); }
       continue;
     }
     // WAVE 4 — NUT THROWERS: approach to a comfortable range, plant, wind up, then lob a nut
@@ -3099,7 +3256,9 @@ function parkUpdate(dt){
       if(PK.hp<=0) return pkDeath();
     }
   }
+  pkSeparate(dt,WW,WH);
   pkHuntPlayer(dt,WW,WH);
+  pkRecycleStragglers(dt,WW,WH);
   pkPalsUpdate(dt,WW,WH);
   pkPalDamage(dt,WW,WH);
   if(PK.sword && PK.sword.state==="planted") pkSwordPlantedUpdate(dt);
