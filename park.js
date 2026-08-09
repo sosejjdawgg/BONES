@@ -3442,7 +3442,7 @@ function pkExitCosts(){
   S.energy=clamp(S.energy-12,0,100); S.clean=clamp(S.clean-8,0,100);
 }
 function pkDeath(){
-  PK.active=false;
+  PK.active=false; syncMoodMusic();
   const lost=Math.round(PK.bones*0.9), kept=PK.bones-lost;
   if(lost>0) PARKGHOST={x:PK.x,y:PK.y,bones:lost + (PARKGHOST?PARKGHOST.bones:0)};
   const earned=pkAwardXP(Math.round(pkRunXP()*0.5));   // dying costs you half of what the run actually earned
@@ -3457,7 +3457,7 @@ function pkDeath(){
   setTimeout(()=>pkReveal(kept,earned,"death"),400);
 }
 function pkBank(){
-  PK.active=false;
+  PK.active=false; syncMoodMusic();
   const g=PK.bones;
   const earned=pkAwardXP(pkRunXP());
   LVLFX = earned>0 ? 1.2 : 0;

@@ -223,25 +223,40 @@ function stopMusic(){ if(musicTimer){ clearInterval(musicTimer); musicTimer=null
 
 /* ---------- DOGCAM ambient loop: a real track for when things are good ----------
    The procedural bed above is the fallback for everywhere a mood-specific track doesn't exist
-   yet (DOGPARK, bad mood/sick — both planned). This is the first real one: a relaxed chiptune
-   loop for hanging out with BONES on the home screen while he's actually doing well. */
+   yet (bad mood/sick — still planned). Two real ones exist now: a relaxed chiptune loop for
+   hanging out with BONES on the home screen while he's actually doing well, and a driving one
+   for DOGPARK runs. */
 const MOOD_AUDIO = new Audio(MUSIC_GOODMOOD);
 MOOD_AUDIO.loop = true; MOOD_AUDIO.volume = 0.42; MOOD_AUDIO.preload = "auto";
 let moodMusicOn = false;
+const MOOD_AUDIO_PARK = new Audio(MUSIC_DOGPARK);
+MOOD_AUDIO_PARK.loop = true; MOOD_AUDIO_PARK.volume = 0.42; MOOD_AUDIO_PARK.preload = "auto";
+let parkMusicOn = false;
 function pkGoodMoodMusic(){ return MODE==="home" && !S.sick && dogMoodState()!=="sad"; }
-// idempotent by design — always computes the state both music systems should be in right now,
+function pkParkMoodMusic(){ return MODE==="park" && PK.active; }
+// idempotent by design — always computes the state every music system should be in right now,
 // rather than only acting on a change, so it's safe to call from anywhere (boot, a screen
-// switch, the settings toggle, or just the periodic meter refresh) with no ordering assumptions
+// switch, the settings toggle, or just the periodic meter refresh) with no ordering assumptions.
+// MODE gates home vs park mutually exclusively, so at most one real track ever wants to play.
 function syncMoodMusic(){
-  const want = SETTINGS.music && SETTINGS.sound && !document.hidden && pkGoodMoodMusic();
-  if(want){
+  const base = SETTINGS.music && SETTINGS.sound && !document.hidden;
+  const wantHome = base && pkGoodMoodMusic();
+  const wantPark = base && pkParkMoodMusic();
+  if(wantHome){
     if(!moodMusicOn){
       moodMusicOn=true;
-      stopMusic();                        // the real track replaces the procedural bed, never layers under it
+      stopMusic();                        // a real track replaces the procedural bed, never layers under it
       MOOD_AUDIO.play().catch(()=>{});    // blocked until a real gesture happens — retried on the next sync
     }
-  } else {
-    if(moodMusicOn){ moodMusicOn=false; MOOD_AUDIO.pause(); }
+  } else if(moodMusicOn){ moodMusicOn=false; MOOD_AUDIO.pause(); }
+  if(wantPark){
+    if(!parkMusicOn){
+      parkMusicOn=true;
+      stopMusic();
+      MOOD_AUDIO_PARK.play().catch(()=>{});
+    }
+  } else if(parkMusicOn){ parkMusicOn=false; MOOD_AUDIO_PARK.pause(); }
+  if(!wantHome && !wantPark){
     if(SETTINGS.music && SETTINGS.sound) startMusic(); else stopMusic();
   }
 }
