@@ -83,6 +83,14 @@ button.red:active{background:#f22;color:#000}
 #resPileWrap{display:flex;flex-direction:column;align-items:center;gap:6px}
 #revealcv{border:3px solid #fff;background:#000;width:130px;height:130px;image-rendering:pixelated}
 #bedtimeImg{width:170px;height:170px;object-fit:cover;object-position:top;border:3px solid #fff;background:#000;image-rendering:pixelated}
+#wbImg{width:120px;height:120px;object-fit:cover;object-position:top;border:3px solid #fff;background:#000;image-rendering:pixelated}
+#wbGap{font-size:9px;letter-spacing:2px;color:#ccc}
+#wbMeters{display:flex;flex-direction:column;gap:5px}
+#wbMeters .mrow{font-size:7px}
+#wbMeters .bar{width:110px;height:9px}
+#wbMeters .bar.crit{animation:blink 1s steps(2) infinite}
+#wbLine{color:#fff;letter-spacing:1px}
+#wbLine.crit{color:#f22}
 #bedtimeBtns{display:flex;gap:10px;opacity:0;pointer-events:none;transition:opacity .5s}
 #bedtimeBtns.ready{opacity:1;pointer-events:auto}
 #bedtimeBtns button{font-size:9px;line-height:1.7}
@@ -306,7 +314,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.182a</span>
+          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.183a</span>
         </div>
       </div>
 
@@ -520,6 +528,16 @@ body.reduce-motion *{animation:none!important}
           <button id="bBedWork">GO TO WORK<br><span class="tiny">EARN CASH WHILE HE RESTS</span></button>
           <button id="bBedSkip">SKIP TO 06:00</button>
         </div>
+      </div>
+
+      <!-- WELCOME BACK -->
+      <div id="welcomeBack" class="overpanel">
+        <h2 id="wbTitle">YOU'RE HOME</h2>
+        <img id="wbImg" alt="BONES">
+        <div id="wbGap"></div>
+        <div id="wbMeters"></div>
+        <div class="lines" id="wbLine">HE WAITED.</div>
+        <button id="bWelcomeHome" style="font-size:11px;padding:12px 22px">I'M HOME</button>
       </div>
     </div>
   </div>

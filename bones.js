@@ -3679,11 +3679,42 @@ function loadGame(){
 // no autosave by design — progress only persists when SAVE GAME is pressed in Settings,
 // same as an old cartridge: forget to save and a closed tab loses the session's progress.
 
+/* ---------- welcome back: a real gap since the last save gets a proper panel instead of a
+   toast — quiet, responsible, matching "A DOG IS FOR LIFE" rather than a cute homecoming ---------- */
+const WELCOME_BACK_MS = 90*60*1000;   // 90 minutes of real time — quick tab switches skip this entirely
+function welcomeBackLine(){
+  if(S.sick)         return {text:"HE GOT SICK WHILE YOU WERE GONE.", crit:true};
+  if(S.thirst<25)    return {text:"THE WATER BOWL IS EMPTY.",         crit:true};
+  if(S.hunger<25)    return {text:"THE FOOD BOWL IS EMPTY.",          crit:true};
+  if(S.energy<25)    return {text:"HE'S EXHAUSTED.",                  crit:true};
+  if(S.mood<25)      return {text:"HE'S BEEN LONELY.",                crit:true};
+  if(avgStat()>=70)  return {text:"EVERYTHING IS FINE.",              crit:false};
+  return {text:"HE WAITED.", crit:false};
+}
+function showWelcomeBack(gapMs){
+  const hrs=gapMs/3600000;
+  $("#wbTitle").textContent = !S.sick && hrs>=48 ? "YOU'RE BACK" : !S.sick && hrs>=8 ? "GOOD MORNING" : "YOU'RE HOME";
+  if(hrs>=24){ const d=Math.max(1,Math.round(hrs/24)); $("#wbGap").textContent="IT'S BEEN "+d+" DAY"+(d===1?"":"S"); }
+  else { const h=Math.max(1,Math.round(hrs)); $("#wbGap").textContent="IT'S BEEN "+h+" HOUR"+(h===1?"":"S"); }
+  $("#wbImg").src = PORTRAITS[portraitState()];
+  $("#wbMeters").innerHTML = [["HUNGER","hunger"],["THIRST","thirst"],["ENERGY","energy"],["MOOD","mood"]].map(([lb,k])=>{
+    const v=S[k];
+    return '<div class="mrow"><span class="lb">'+lb+'</span><div class="bar'+(v<25?" crit":"")+'"><i style="width:'+v+'%"></i></div></div>';
+  }).join("");
+  const {text,crit}=welcomeBackLine();
+  $("#wbLine").textContent=text;
+  $("#wbLine").classList.toggle("crit",crit);
+  $("#welcomeBack").classList.add("show");
+}
+$("#bWelcomeHome").onclick=()=>{ $("#welcomeBack").classList.remove("show"); beep(500,.05); };
+
 /* ---------- main loop ---------- */
 const RESTORED = loadGame();
 if(RESTORED){
   $("#start").classList.add("hidden"); $("#game").classList.remove("hidden");
-  setTimeout(()=>toast(S.lastSaveAt ? "WELCOME BACK — LAST SAVED "+dayClock(S.lastSaveDay,S.lastSaveH) : "WELCOME BACK",1),500);
+  const gapMs = S.lastSaveAt ? Date.now()-S.lastSaveAt : 0;
+  if(gapMs>=WELCOME_BACK_MS) setTimeout(()=>showWelcomeBack(gapMs),500);
+  else setTimeout(()=>toast(S.lastSaveAt ? "WELCOME BACK — LAST SAVED "+dayClock(S.lastSaveDay,S.lastSaveH) : "WELCOME BACK",1),500);
 }
 document.body.classList.toggle("reduce-motion", SETTINGS.reduceMotion);
 $("#startDog").src = PORTRAITS.happy;
