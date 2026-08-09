@@ -36,9 +36,100 @@ function pkHurt(n){
     for(let i=0;i<5;i++){ const a2=Math.random()*6.283, sp=40+Math.random()*50;
       SPARKS.push({x:PK.x,y:PK.y-12,vx:Math.cos(a2)*sp,vy:Math.sin(a2)*sp-25,life:0.3,steel:true}); }
   }
-  if(n>0) PK.hp-=n;
+  if(n>0){
+    PK.hp-=n;
+    // rage only builds from damage that actually reached his HP — spending the overheal shield or
+    // Full Armour absorbing a hit earns nothing, so there's no way to farm it by tanking safely
+    PK.rage=clamp((PK.rage||0)+n*0.8,0,100);
+  }
 }
 function pkInvuln(){ return PK.godMode || PK.zoomT>0; }   // the golden bone: zoomies + untouchable
+/* ---------- Rage -> Heavenly Judgment (DOGPARK+): fills from real damage taken (see pkHurt),
+   and once full, a tap unleashes a volley of lightning bolts across the nearby fight. Reuses the
+   planted sword's own bolt-strike visual language (a jagged white core with a thicker glow
+   underneath), just white/red instead of white/cyan so it reads as BONES' own move rather than
+   the sword site's ambient hazard. ---------- */
+function pkHeavenlyJudgment(){
+  if(PK.rage<100) return;
+  PK.rage=0;
+  const boltN=8+Math.floor(Math.random()*7);   // 8-14
+  const live=PK.en.filter(e=>!e.fleeing);
+  const bolts=[];
+  for(let i=0;i<boltN;i++){
+    let tx,ty;
+    if(live.length){
+      const e=live[Math.floor(Math.random()*live.length)];
+      tx=e.x+(Math.random()-0.5)*24; ty=e.y+(Math.random()-0.5)*24;
+    } else {
+      const a=Math.random()*6.283, r2=60+Math.random()*160;
+      tx=PK.x+Math.cos(a)*r2; ty=PK.y+Math.sin(a)*r2;
+    }
+    bolts.push({x:tx, y:ty, t:i*(0.95/boltN)+Math.random()*0.08, done:false, flashT:0});
+  }
+  PK.judgment={t:0, dur:1.1, bolts};
+  PK.shake=Math.max(PK.shake||0,0.6);
+  PK.zoomFromBark=Math.min(0.25,(PK.zoomFromBark||0)+0.15); pkApplyZoom();
+  toast("★ HEAVENLY JUDGMENT ★",1);
+  beep(60,.4,"sawtooth",.1,{prio:2});
+}
+function pkJudgmentBoltLand(b){
+  const R=44;
+  PK.scorch.push({x:b.x, y:b.y, r:16+Math.random()*8});
+  for(let i=0;i<10;i++){
+    const a=Math.random()*6.283, sp=50+Math.random()*140;
+    SPARKS.push({x:b.x, y:b.y-10, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp-50, life:0.35+Math.random()*0.3});
+  }
+  pkEnemiesNear(b.x,b.y,R+20,e=>{
+    if(e.fleeing) return;
+    const dxw=wd(e.x-b.x,PK.WW), dyw=wd(e.y-b.y,PK.WH), d=Math.hypot(dxw,dyw)||1;
+    if(d<R+pkHitR(e)){
+      // meaningful against a boss, but this was never meant to solo him — everything else in
+      // range is meant to actually die or get shoved clean out of the fight
+      const dmg = e.boss ? 14+Math.random()*6 : 24+Math.random()*8;
+      e.hp-=dmg;
+      if(e.hp<=0){ pkDownEnemy(e,dxw/d,dyw/d); pkHitMark(e.x,e.y,true); }
+      else {
+        e.kx=dxw/d*PK.knock*2.2; e.ky=dyw/d*PK.knock*2.2;
+        e.hitT=0.6;   // stands in for a stun: knocked clear and flashing well past a normal hit
+        pkHitMark(e.x,e.y,false);
+      }
+    }
+  });
+  beep(180+Math.random()*260,.08,"square",.05,{prio:1});
+}
+function pkJudgmentUpdate(dt){
+  if(!PK.judgment) return;
+  const j=PK.judgment;
+  j.t+=dt;
+  let anyFlash=false;
+  for(const b of j.bolts){
+    if(!b.done && j.t>=b.t){ b.done=true; b.flashT=0.35; pkJudgmentBoltLand(b); }
+    else if(b.flashT>0) b.flashT=Math.max(0,b.flashT-dt);
+    if(b.flashT>0) anyFlash=true;
+  }
+  if(j.t>=j.dur && !anyFlash) PK.judgment=null;
+}
+function pkDrawJudgmentBolts(ctx,SC,w,h){
+  if(!PK.judgment) return;
+  for(const b of PK.judgment.bolts){
+    if(!(b.flashT>0)) continue;
+    const [sx,sy]=SC(b.x,b.y);
+    if(sx<-60||sx>w+60||sy<-60||sy>h+60) continue;
+    const f=b.flashT/0.35;
+    ctx.save(); ctx.globalAlpha=f;
+    ctx.strokeStyle="#fff"; ctx.lineWidth=4;
+    ctx.beginPath();
+    let bx=sx;
+    ctx.moveTo(bx,-20);
+    for(let i=0;i<6;i++){ bx=sx+(Math.random()-0.5)*24; const by=-20+(sy+20)*(i+1)/6; ctx.lineTo(bx,by); }
+    ctx.lineTo(sx,sy); ctx.stroke();
+    ctx.globalAlpha=f*0.55; ctx.strokeStyle="#f22"; ctx.lineWidth=9;
+    ctx.stroke();
+    ctx.globalAlpha=f*0.4; ctx.fillStyle="#fff";
+    ctx.beginPath(); ctx.arc(sx,sy,36,0,7); ctx.fill();
+    ctx.restore();
+  }
+}
 const XP_PER_KILL=0.4, XP_PER_SIDE=2;
 // a long run with a full crew can rack up well over a thousand downed enemies once companions and
 // burning trees start feeding the count, which was banking enough XP to jump several levels at
@@ -326,7 +417,8 @@ function startPark(plus){
     hell:false, hellT:0, hellSpreadT:0, hellHurtT:0,
     armor:0, armorUnlocked:false, armorFeedCount:0,
     exitNagT:0, exitNagFlashT:0,
-    swordSpinCd:0, whirlwindT:0, whirlwindR:0, spinLastAng:null, spinAngAccum:0, spinT:0
+    swordSpinCd:0, whirlwindT:0, whirlwindR:0, spinLastAng:null, spinAngAccum:0, spinT:0,
+    rage:0, judgment:null
   });
   PK.hp=PK.maxhp;
   PK.healerT=pkHealerGap();
@@ -3382,6 +3474,7 @@ function parkUpdate(dt){
   if(PK.sword && PK.sword.state==="planted") pkSwordPlantedUpdate(dt);
   else if(PK.sword && PK.sword.state==="held") pkSwordHeldUpdate(dt);
   pkSwordSpinUpdate(dt);
+  pkJudgmentUpdate(dt);
   if(PK.hell) pkHellUpdate(dt);
   // the bandana dog: stand near him to shop, and you have to actually walk away before he'll
   // talk again — the world is frozen while the panel is up, so a bare radius test would reopen
@@ -3548,6 +3641,7 @@ function pkExitCosts(){
 }
 function pkDeath(){
   PK.active=false; syncMoodMusic();
+  PK.rage=0; PK.judgment=null;   // no free lightning waiting for him on the next life
   const lost=Math.round(PK.bones*0.9), kept=PK.bones-lost;
   if(lost>0) PARKGHOST={x:PK.x,y:PK.y,bones:lost + (PARKGHOST?PARKGHOST.bones:0)};
   const earned=pkAwardXP(Math.round(pkRunXP()*0.5));   // dying costs you half of what the run actually earned
@@ -4564,6 +4658,7 @@ function parkDraw(t){
     ctx.fillText(f4.txt,px2,py2-(0.9-f4.life)*24);
     ctx.globalAlpha=1;
   }
+  pkDrawJudgmentBolts(ctx,SC,w,h);
   ctx.restore();   // back to screen space for the fixed HUD (banners, flashes, health bar)
   // wave-transition banner \u2014 pops in, holds, fades, so a new wave actually reads as an event.
   // the golden-bird heads-up reuses the exact same treatment, just gold instead of red, so the
@@ -4892,6 +4987,18 @@ function pkPalHudRows(w){
   }
   return rows;
 }
+// mirrors pkPadDraw's own pillY stacking (hp/armour/pal-bar stack, then zoomies, regen, and the
+// spin-cooldown pill) so the rage bar's tap hitbox always lands exactly where it was drawn —
+// same one-source-of-truth approach as pkPalHudRows above, just for a bar instead of buttons
+function pkRageBarY(w){
+  const rows=pkPalHudRows(w);
+  const armorH = PK.armorUnlocked ? 30 : 0;
+  let y = rows.length ? (rows[rows.length-1].stay.y+rows[rows.length-1].stay.h+8) : (14+14+(armorH>0?armorH+10:30)+8);
+  if(PK.zoomT>0) y+=28;
+  if(PK.regenT>0) y+=28;
+  if(PK.plusMode && pkSwordTier()>=1) y+=28;
+  return y;
+}
 function pkPadDraw(t){
   const [ctx,w,h]=fit($("#parkcv"));
   ctx.fillStyle="#000"; ctx.fillRect(0,0,w,h);
@@ -5030,6 +5137,24 @@ function pkPadDraw(t){
     ctx.textAlign="left";
     ctx.restore();
     pillY+=18+10;
+  }
+  if(PK.plusMode){
+    // a thick bar rather than a slim pill — this is the biggest swing in the run, it should never
+    // read as just another status line. Pulses once full, and IS the tap target at that point.
+    const full=PK.rage>=100;
+    const bw=Math.min(180,w*0.65), bx=w/2-bw/2, bh=22;
+    const pulse = full ? (SETTINGS.reduceMotion?0.85:0.55+0.45*Math.abs(Math.sin(t*8))) : 1;
+    ctx.save(); ctx.globalAlpha=pulse;
+    ctx.fillStyle="#000"; ctx.fillRect(bx,pillY,bw,bh);
+    ctx.strokeStyle="#f22"; ctx.lineWidth=3; ctx.strokeRect(bx,pillY,bw,bh);
+    ctx.fillStyle = full ? "#fff" : "#a22";
+    ctx.fillRect(bx+3,pillY+3,(bw-6)*clamp(PK.rage/100,0,1),bh-6);
+    ctx.fillStyle = full ? "#000" : "#fff";
+    ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText(full?"⚡ TAP FOR JUDGMENT":"RAGE "+Math.floor(PK.rage)+"%", w/2, pillY+bh*0.68);
+    ctx.textAlign="left";
+    ctx.restore();
+    pillY+=bh+10;
   }
   if(!PK.shop && !PK.joy && !PK.friendsOpen && !PK.convertOpen){
     // the current wave's objective + clear progress — moved down here from the top of the main
@@ -5244,6 +5369,10 @@ function pkPadDraw(t){
         if(row.p.stay){ row.p.stay=false; beep(500,.06); }
         return;
       }
+    }
+    if(PK.plusMode && PK.rage>=100){
+      const bw=Math.min(180,r.width*0.65), bx=r.width/2-bw/2, by2=pkRageBarY(r.width), bh=22;
+      if(hit2(bx,by2,bw,bh)){ pkHeavenlyJudgment(); return; }
     }
     PK.joy={ox:e.clientX-r.left,oy:e.clientY-r.top,dx:0,dy:0};
     try{cv.setPointerCapture(e.pointerId);}catch(_){}

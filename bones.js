@@ -3699,6 +3699,12 @@ $("#pkDevSpin").onclick=()=>{
   PK.swordSpinCd=0; pkWhirlwindSlash();
   toast("WHIRLWIND SLASH TRIGGERED (DEV)");
 };
+$("#pkDevRage").onclick=()=>{
+  if(!PK.active) return;
+  if(!PK.plusMode){ toast("NEEDS DOGPARK+ (DEV)",1); return; }
+  PK.rage=100;
+  toast("RAGE FULL — TAP THE BAR (DEV)");
+};
 $("#pkDevBones").onclick=()=>{
   if(!PK.active) return;
   PK.bones+=50; toast("+50 BONES (DEV)");
