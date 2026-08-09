@@ -2137,10 +2137,10 @@ const PAL_NUT_SPEED=210, PAL_NUT_DMG=1;
 const PAL_SQ_CD_T    = [4.0, 2.5, 1.5, 1.0];
 const PAL_SQ_RANGE_T = [100, 160, 200, 240];
 const PAL_SQ_DMG_T   = [1,   2,   3,   4];
-const PAL_SQ_HP_T    = [16,  20,  22,  26];
+const PAL_SQ_HP_T    = [20,  24,  28,  32];
 const PAL_CAT_SEEK_T = [50,  75,  95,  115];
 const PAL_CAT_SPD_T  = [120, 160, 195, 230];
-const PAL_CAT_HP_T   = [14,  17,  20,  22];
+const PAL_CAT_HP_T   = [18,  22,  26,  30];
 // double the flock size at every tier, and only the T4 dive itself hits twice as hard
 const PAL_BIRD_N_T   = [4,   6,   8,   10];
 const PAL_BIRD_EVT   = [14,  10,  8,   7];
@@ -2150,7 +2150,7 @@ const PAL_BIRD_DMG_T = [1,   1,   1,   2];
    damage is deliberately modest — he is crowd control, not a damage dealer — and every upgrade
    buys back cooldown rather than power, so a maxed ape is a far more frequent hammer, not a
    bigger one. */
-const PAL_APE_HP=60, PAL_APE_LEASH=250;
+const PAL_APE_HP=70, PAL_APE_LEASH=250;
 const PAL_APE_SEEK_R=150;          // how far he will pick a target to come down on
 const PAL_APE_SMASH_R=74;          // the blast radius of the landing
 const PAL_APE_DMG=3;               // modest: this is a shove with a bruise attached
@@ -2666,10 +2666,10 @@ function pkPalDamage(dt,WW,WH){
           // actually get clear of the pile that hit it in the first place — and re-triggers the
           // instant that window runs out, so it's never a one-time thing
           if(!(p.invulnT>0)){
-            p.hp-=e.alpha?6:2;
-            const kf=220+Math.random()*60;
+            p.hp-=e.alpha?5:2;
+            const kf = p.k==="ape" ? 290+Math.random()*30 : 290;
             p.kx=-dx/d*kf; p.ky=-dy/d*kf;
-            p.invulnT=2.0;
+            p.invulnT = p.k==="ape" ? 2.5 : 2.0;
             beep(210,.05,"square",.03,{prio:0});
           }
         }
@@ -2687,10 +2687,10 @@ function pkPalDamage(dt,WW,WH){
         if(p.palBurnT>0.28){
           p.palBurnT=0;
           if(!(p.invulnT>0)){
-            p.hp-=4;
-            const kf=220+Math.random()*60;
+            p.hp-=3;
+            const kf = p.k==="ape" ? 290+Math.random()*30 : 290;
             p.kx=ux*kf; p.ky=uy*kf;
-            p.invulnT=2.0;
+            p.invulnT = p.k==="ape" ? 2.5 : 2.0;
             PK.embers.push({x:p.x, y:p.y, vx:(Math.random()-0.5)*60, vy:-40, life:0.5});
           }
         }
@@ -4239,9 +4239,11 @@ function drawPal(ctx,p,sx,sy,t){
   // the shield ring is the one exception: it's telling you something is happening RIGHT HERE,
   // not a status the HUD could show just as well from a distance
   if(p.invulnT>0){
+    // red rather than the usual pal-blue — this specifically means "can't be hurt right now",
+    // not "this is a friendly unit", so it needs its own colour language
     const ir = p.k==="ape" ? 20 : 14;
     const pulse = SETTINGS.reduceMotion ? 0.6 : 0.4+0.4*Math.abs(Math.sin(t*10));
-    ctx.save(); ctx.globalAlpha*=pulse; ctx.strokeStyle="#6cf"; ctx.lineWidth=2;
+    ctx.save(); ctx.globalAlpha*=pulse; ctx.strokeStyle="#f22"; ctx.lineWidth=2.5;
     ctx.beginPath(); ctx.ellipse(sx,sy-ir*0.55,ir,ir*0.8,0,0,7); ctx.stroke();
     ctx.restore();
   }
