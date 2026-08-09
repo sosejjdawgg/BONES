@@ -307,7 +307,9 @@ function startPark(plus){
     powerups:[], zoomT:0, over:0, regenT:0, regenAcc:0, hurtT:0, hpSeen:0, zoom:1, zoomFromBark:0, zoomFromPark:0, sniffLvl:0, w2Stage:0,
     trees:[], scorch:[], embers:[],
     plusMode:!!plus, mixTypes:null, mixLabel:null, swoopT:0,
-    pals:[], palEyes:false, friendsOpen:false, friendsArm:false, npc:{x:.5,y:.5}
+    pals:[], palEyes:false, friendsOpen:false, friendsArm:false, npc:{x:.5,y:.5},
+    sword:null, swordCine:null, swordSite:null, swordDone:false, swordNagT:0,
+    hell:false, hellT:0, hellSpreadT:0, hellHurtT:0
   });
   PK.hp=PK.maxhp;
   PK.healerT=pkHealerGap();
@@ -646,8 +648,11 @@ function pkSpreadFireFrom(tr){
   }
 }
 function pkSpawnApeRaw(x,y,hpBase){
-  const hp=pkEnemyHp(hpBase);
-  PK.en.push({t:"ape", boss:true, x, y, hp, hpMax:hp, sp:APE_SPD,
+  let hp=pkEnemyHp(hpBase);
+  // anything born after the gates opened comes out already changed
+  const hellish=!!PK.hell;
+  if(hellish) hp=Math.round(hp*1.15);
+  PK.en.push({t:"ape", boss:true, x, y, hp, hpMax:hp, sp:APE_SPD, hellish,
     ph:0, kx:0, ky:0, dir:1, fi:0, ft:0, side:undefined,
     heading:Math.random()*6.283, spdCur:0,
     introT:APE_INTRO, leapState:null, leapCd:1, leapWindT:0, leapActT:0, landT:0});
@@ -786,6 +791,17 @@ function pkTickTrees(dt){
         laserState:"seek", chargeT:0, aimAng:0, sweepT:0, cd:0.8+Math.random()*1.2});
       beep(320+Math.random()*160,.04,"square",.02);
     }
+    // once hell is loose the fire is fed from below, so a burning tree throws off thick smoke
+    // and brimstone the whole time and never actually burns itself out
+    if(PK.hell){
+      if(Math.random()<0.55){
+        PK.embers.push({x:tr.x+(Math.random()-0.5)*TREE_R*1.4, y:tr.y-26+(Math.random()-0.5)*14,
+          vx:(Math.random()-0.5)*18, vy:-30-Math.random()*40, life:0.7+Math.random()*0.7,
+          dust:Math.random()<0.55});
+      }
+      tr.fireT=Math.min(tr.fireT, TREE_BURN_TIME*0.55);
+      continue;
+    }
     if(tr.fireT>=TREE_BURN_TIME){
       tr.state="ash";
       PK.scorch.push({x:tr.x, y:tr.y, r:TREE_R*1.6});
@@ -871,6 +887,580 @@ function pkApeCount(){ let n=0; for(const e of PK.en) if(e.t==="ape" && !e.fleei
 // the rare fire-triggered spawn; clearing this wave means downing APE_WAVE_QUOTA of them while
 // the ordinary mixed enemies for this stage keep spawning and attacking in the background
 const APE_WAVE=8, APE_WAVE_QUOTA=10, APE_WAVE_CAP=6, APE_WAVE_HP=18;
+
+/* ===================== THE GODS' SWORD (DOGPARK+ only) =====================
+   Wave 2 of a DOGPARK+ run stops dead and a sword is thrown down out of the sky, spinning, to
+   bury itself in a clearing. 250 bones takes it; from then on it rides horizontally in BONES'
+   mouth and cuts whatever he runs into. The hole it leaves behind never closes — it widens every
+   wave, and by wave 6 the fire coming out of it has taken the whole park.                     */
+const SWORD_COST=250, SWORD_UP_COST=100, SWORD_MAX_TIER=5, SWORD_WAVE=2;
+// tuned against the fire boss ape (APE_HP=44): tier 1 needs 7 connects, tier 5 needs 3
+const SWORD_DMG_T   = [7, 9, 11, 13, 15];
+const SWORD_SCALE_T = [1, 1.15, 1.3, 1.45, 1.6];
+const SWORD_CUT_CD=0.3;      // no meter on screen, but it physically cannot cut faster than this
+const SWORD_BLADE=34;        // blade length at tier 1, in world px
+const SWORD_TAKE_R=34;       // walk this close to the planted blade to claim it
+function pkSwordTier(){ return PK.sword && PK.sword.state==="held" ? PK.sword.tier : 0; }
+function pkSwordScale(){ return SWORD_SCALE_T[clamp(pkSwordTier()-1,0,SWORD_MAX_TIER-1)]||1; }
+function pkSwordDmg(){ return SWORD_DMG_T[clamp(pkSwordTier()-1,0,SWORD_MAX_TIER-1)]||0; }
+// somewhere BONES can actually see it land, and genuinely clear of trunks so it isn't swallowed
+// by a canopy the moment it sticks
+function pkSwordSite(){
+  for(let tries=0;tries<160;tries++){
+    const a=Math.random()*6.283, r=95+Math.random()*55;
+    const x=(PK.x+Math.cos(a)*r+PK.WW)%PK.WW, y=(PK.y+Math.sin(a)*r+PK.WH)%PK.WH;
+    if(pkInGrove(x,y)) continue;
+    let clear=true;
+    for(const tr of PK.trees){
+      if(Math.hypot(wd(tr.x-x,PK.WW),wd(tr.y-y,PK.WH))<64){ clear=false; break; }
+    }
+    if(!clear) continue;
+    if(PK.gate && PK.gate.x!=null && Math.hypot(wd(x-PK.gate.x,PK.WW),wd(y-PK.gate.y,PK.WH))<80) continue;
+    return {x,y};
+  }
+  return {x:(PK.x+120)%PK.WW, y:PK.y};
+}
+function pkSwordDrop(){
+  const site=pkSwordSite();
+  PK.sword={state:"falling", x:site.x, y:site.y, spin:0, tier:0, boltT:3+Math.random()*4, cutCd:0, gleamT:0, growT:0};
+  PK.swordCine={ph:"fall", t:0};
+  toast("THE SKY SPLITS OPEN…",1);
+  beep(70,.9,"sawtooth",.1); setTimeout(()=>beep(52,1.0,"sawtooth",.09),160);
+}
+// the cutscene owns the whole world while it runs: parkUpdate hands it the frame and returns, so
+// nothing spawns, moves or attacks until the sword is in the ground (or in his mouth)
+const SW_FALL=1.7, SW_IMPACT=0.18, SW_SETTLE=1.5;
+const SW_PLUCK=0.55, SW_FLOAT=0.75, SW_GLEAM=0.7;
+// how far above the landing point it starts. Tied to the actual view height rather than a fixed
+// number of pixels, so the whole descent stays on screen instead of spending most of it above it.
+function pkSwordFallH(){ const cv=$("#dogcv"); return Math.max(240, (cv?cv.clientHeight:400)*0.92); }
+function pkSwordCineUpdate(dt){
+  const c=PK.swordCine, s=PK.sword;
+  c.t+=dt;
+  // particles still breathe during the cutscene — the debris is most of the spectacle
+  for(let i=SPARKS.length-1;i>=0;i--){ const p=SPARKS[i]; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=140*dt; p.life-=dt; if(p.life<=0) SPARKS.splice(i,1); }
+  for(let i=PK.embers.length-1;i>=0;i--){ const em=PK.embers[i]; em.x+=em.vx*dt; em.y+=em.vy*dt; em.vy+=90*dt; em.life-=dt; if(em.life<=0) PK.embers.splice(i,1); }
+  if(PK.shake>0) PK.shake=Math.max(0,PK.shake-dt);
+  if(c.ph==="fall"){
+    s.spin+=dt*22;                      // end over end, faster the closer it gets
+    if(Math.random()<0.55){              // a shedding trail of divine sparks behind it
+      const p=clamp(c.t/SW_FALL,0,1), ease=p*p;
+      SPARKS.push({x:s.x+(Math.random()-0.5)*26, y:s.y-pkSwordFallH()*(1-ease)+(Math.random()-0.5)*40,
+        vx:(Math.random()-0.5)*40, vy:-30-Math.random()*40, life:0.4+Math.random()*0.3, gold:true});
+    }
+    if(c.t>=SW_FALL){
+      c.ph="impact"; c.t=0;
+      PK.shake=1.1;
+      PK.scorch.push({x:s.x, y:s.y, r:34});
+      for(let i=0;i<46;i++){       // dirt and stone thrown out of the crater
+        const a=Math.random()*6.283, sp=70+Math.random()*180;
+        PK.embers.push({x:s.x, y:s.y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp*0.5-80-Math.random()*70,
+          life:0.5+Math.random()*0.5, dust:true});
+      }
+      for(let i=0;i<34;i++){       // and the light of the thing itself
+        const a=Math.random()*6.283, sp=90+Math.random()*200;
+        SPARKS.push({x:s.x, y:s.y-6, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp-70, life:0.5+Math.random()*0.45, gold:true});
+      }
+      beep(48,.75,"sawtooth",.14); setTimeout(()=>beep(120,.5,"square",.09),40);
+      setTimeout(()=>beep(1500,.5,"sine",.05),90);
+    }
+  } else if(c.ph==="impact"){
+    if(c.t>=SW_IMPACT){ c.ph="settle"; c.t=0; }
+  } else if(c.ph==="settle"){
+    if(Math.random()<0.4){        // it keeps giving off light where it stands
+      const a=Math.random()*6.283;
+      SPARKS.push({x:s.x+Math.cos(a)*16, y:s.y-8+Math.sin(a)*8, vx:0, vy:-22-Math.random()*24,
+        life:0.5+Math.random()*0.4, gold:true});
+    }
+    if(c.t>=SW_SETTLE){
+      PK.swordCine=null; s.state="planted"; s.spin=0;
+      toast("A BLADE FROM THE GODS — " + SWORD_COST + " BONES TO TAKE IT",1);
+      beep(880,.12,"sine",.06); setTimeout(()=>beep(1320,.16,"sine",.05),110);
+    }
+  } else if(c.ph==="pluck"){
+    if(c.t>=SW_PLUCK){
+      c.ph="float"; c.t=0;
+      beep(660,.1,"sine",.05);
+    }
+  } else if(c.ph==="float"){
+    if(c.t>=SW_FLOAT){
+      c.ph="gleam"; c.t=0;
+      beep(1600,.5,"sine",.05);
+    }
+  } else if(c.ph==="gleam"){
+    if(Math.random()<0.5){
+      SPARKS.push({x:PK.x+(Math.random()-0.5)*30, y:PK.y-10+(Math.random()-0.5)*16,
+        vx:(Math.random()-0.5)*30, vy:-20-Math.random()*25, life:0.4+Math.random()*0.3, gold:true});
+    }
+    if(c.t>=SW_GLEAM){
+      // the ground it came out of stays open, and starts keeping its own count of the waves
+      PK.swordCine=null;
+      PK.swordSite={x:PK.sword.x, y:PK.sword.y, wave:PK.wave, r:9};
+      PK.sword={state:"held", tier:1, cutCd:0, gleamT:0, growT:0, x:0, y:0, spin:0};
+      PK.swordDone=true;
+      toast("THE BLADE IS HIS — RUN THEM DOWN",1);
+      beep(700,.1); setTimeout(()=>beep(1050,.14),90);
+    }
+  }
+}
+// standing in the ground waiting to be claimed: it glows, it bobs, and now and then the sky
+// remembers where it came from and hits it
+function pkSwordPlantedUpdate(dt){
+  const s=PK.sword;
+  s.boltT-=dt;
+  if(s.boltT<=0){
+    s.boltT=4.5+Math.random()*5.5;
+    s.flashT=0.42;
+    PK.shake=Math.max(PK.shake||0,0.5);
+    for(let i=0;i<26;i++){
+      const a=Math.random()*6.283, sp=60+Math.random()*170;
+      SPARKS.push({x:s.x, y:s.y-10, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp-60, life:0.35+Math.random()*0.4, gold:true});
+    }
+    for(let i=0;i<10;i++){
+      const a=Math.random()*6.283, sp=40+Math.random()*80;
+      PK.embers.push({x:s.x, y:s.y, vx:Math.cos(a)*sp, vy:-40-Math.random()*50, life:0.4+Math.random()*0.3, dust:true});
+    }
+    beep(58,.5,"sawtooth",.1); setTimeout(()=>beep(150,.35,"square",.06),50);
+  }
+  if(s.flashT>0) s.flashT=Math.max(0,s.flashT-dt);
+  PK.swordNagT=Math.max(0,(PK.swordNagT||0)-dt);
+  const d=Math.hypot(wd(PK.x-s.x,PK.WW),wd(PK.y-s.y,PK.WH));
+  if(d<SWORD_TAKE_R){
+    if(PK.bones>=SWORD_COST){
+      PK.bones-=SWORD_COST;
+      PK.swordCine={ph:"pluck", t:0};
+      for(let i=0;i<24;i++){    // the ground gives it up
+        const a=Math.random()*6.283, sp=40+Math.random()*110;
+        PK.embers.push({x:s.x, y:s.y, vx:Math.cos(a)*sp, vy:-50-Math.random()*70, life:0.45+Math.random()*0.35, dust:true});
+      }
+      beep(300,.16,"square",.07); setTimeout(()=>beep(520,.14,"square",.06),90);
+    } else if(PK.swordNagT<=0){
+      PK.swordNagT=2.6;
+      toast("NEED "+SWORD_COST+" BONES FOR THE BLADE — YOU HAVE "+PK.bones,1);
+      beep(150,.1);
+    }
+  }
+}
+// it cuts by being run into things. One swing catches everything the blade is currently lying
+// across, so wading into a pack is properly rewarded, and then it simply cannot fire again for
+// SWORD_CUT_CD — there is no meter for it, it just physically won't.
+function pkSwordHeldUpdate(dt){
+  const s=PK.sword;
+  s.cutCd=Math.max(0,s.cutCd-dt);
+  s.gleamT=Math.max(0,s.gleamT-dt);
+  s.growT=Math.max(0,s.growT-dt);
+  if(s.cutCd>0) return;
+  const face=PK.vx<0?-1:1;
+  const sc=pkSwordScale();
+  const mx=PK.x+face*15, my=PK.y-2;                 // the mouth
+  const len=SWORD_BLADE*sc;
+  const tipx=mx+face*len;
+  let cut=0;
+  for(const e of PK.en){
+    if(e.fleeing) continue;
+    const ex=PK.x+wd(e.x-PK.x,PK.WW), ey=PK.y+wd(e.y-PK.y,PK.WH);
+    // distance from the enemy to the blade segment, which lies flat along x from mx to tipx
+    const lo=Math.min(mx,tipx), hi=Math.max(mx,tipx);
+    const cx=clamp(ex,lo,hi);
+    const d=Math.hypot(ex-cx, ey-my);
+    if(d < 9*sc + pkHitR(e)){
+      const ux=face, uy=0;
+      pkPalHit(e, pkSwordDmg(), ux, uy);
+      e.hitT=0.3;
+      for(let i=0;i<7;i++){
+        SPARKS.push({x:e.x, y:e.y-6, vx:face*(40+Math.random()*120), vy:(Math.random()-0.5)*140, life:0.28+Math.random()*0.2});
+      }
+      cut++;
+    }
+  }
+  if(cut>0){
+    s.cutCd=SWORD_CUT_CD;
+    s.gleamT=0.22;
+    PK.shake=Math.max(PK.shake||0,cut>1?0.22:0.12);
+    beep(1250,.05,"square",.045); setTimeout(()=>beep(760,.06,"sawtooth",.035),35);
+  }
+}
+function pkSwordUpgrade(){
+  const s=PK.sword;
+  if(!s || s.state!=="held" || s.tier>=SWORD_MAX_TIER) return;
+  s.tier++;
+  s.growT=0.5;         // the sudden growth spurt — see the overshoot in pkDrawHeldSword
+  s.gleamT=0.6;
+  PK.shake=Math.max(PK.shake||0,0.3);
+  for(let i=0;i<26;i++){
+    const a=Math.random()*6.283, sp=50+Math.random()*130;
+    SPARKS.push({x:PK.x+10, y:PK.y-6, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp-40, life:0.4+Math.random()*0.35, gold:true});
+  }
+  beep(420,.1,"square",.06);
+  setTimeout(()=>beep(640,.1,"square",.055),80);
+  setTimeout(()=>beep(950,.16,"square",.05),160);
+  toast("THE BLADE GROWS — TIER "+s.tier+"/"+SWORD_MAX_TIER+", "+pkSwordDmg()+" DMG",1);
+}
+/* ---------- drawing ---------- */
+// drawn pointing along +X with the origin at the middle of the crossguard, so the same shape
+// serves the spinning drop, the planted blade and the one in his mouth
+function pkDrawSwordShape(ctx,s,gleamP){
+  const bl=SWORD_BLADE*s, bw=4.6*s;
+  ctx.lineJoin="miter";
+  // ---- blade
+  ctx.fillStyle="#b9c4cf";
+  ctx.beginPath();
+  ctx.moveTo(3*s,-bw); ctx.lineTo(bl-9*s,-bw*0.8); ctx.lineTo(bl,0); ctx.lineTo(bl-9*s,bw*0.8); ctx.lineTo(3*s,bw);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle="#f2f6fa";                       // lit upper bevel
+  ctx.beginPath();
+  ctx.moveTo(3*s,-bw*0.92); ctx.lineTo(bl-9*s,-bw*0.52); ctx.lineTo(bl-2*s,-bw*0.06); ctx.lineTo(3*s,-bw*0.06);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle="#78838e"; ctx.lineWidth=Math.max(0.8,1.1*s);   // the fuller
+  ctx.beginPath(); ctx.moveTo(6*s,0); ctx.lineTo(bl-8*s,0); ctx.stroke();
+  ctx.strokeStyle="#4a535c"; ctx.lineWidth=Math.max(0.8,1.2*s);
+  ctx.beginPath();
+  ctx.moveTo(3*s,-bw); ctx.lineTo(bl-9*s,-bw*0.8); ctx.lineTo(bl,0); ctx.lineTo(bl-9*s,bw*0.8); ctx.lineTo(3*s,bw);
+  ctx.closePath(); ctx.stroke();
+  // ---- crossguard
+  const gh=11*s;
+  ctx.fillStyle="#1d2740";
+  ctx.fillRect(-2.6*s,-gh,6*s,gh*2);
+  ctx.fillStyle="#d9a441";
+  ctx.fillRect(-3.4*s,-gh,1.9*s,gh*2);
+  ctx.fillRect(2.6*s,-gh,1.9*s,gh*2);
+  ctx.beginPath(); ctx.moveTo(-3.4*s,-gh); ctx.lineTo(4.5*s,-gh); ctx.lineTo(1.6*s,-gh-3.2*s); ctx.lineTo(-1.4*s,-gh-3.2*s); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-3.4*s, gh); ctx.lineTo(4.5*s, gh); ctx.lineTo(1.6*s, gh+3.2*s); ctx.lineTo(-1.4*s, gh+3.2*s); ctx.closePath(); ctx.fill();
+  ctx.fillStyle="#222d49";                       // the medallion, with its bone
+  ctx.beginPath(); ctx.arc(0.4*s,0,5.2*s,0,7); ctx.fill();
+  ctx.strokeStyle="#d9a441"; ctx.lineWidth=Math.max(0.9,1.3*s);
+  ctx.beginPath(); ctx.arc(0.4*s,0,5.2*s,0,7); ctx.stroke();
+  if(s>0.55) drawBone(ctx,0.4*s,0,0.42*s,"#f4f0e6");
+  // ---- grip
+  ctx.fillStyle="#1b2338";
+  ctx.fillRect(-17*s,-3.4*s,14.5*s,6.8*s);
+  ctx.strokeStyle="#c8973a"; ctx.lineWidth=Math.max(0.7,0.9*s);
+  for(let i=0;i<4;i++){
+    const gx=-16*s+i*3.6*s;
+    ctx.beginPath(); ctx.moveTo(gx,-3.4*s); ctx.lineTo(gx+3.2*s,3.4*s); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(gx+3.2*s,-3.4*s); ctx.lineTo(gx,3.4*s); ctx.stroke();
+  }
+  ctx.fillStyle="#d9a441";
+  ctx.fillRect(-3.4*s,-4.4*s,2.2*s,8.8*s);       // ferrule against the guard
+  ctx.fillRect(-18.6*s,-4.4*s,2.2*s,8.8*s);      // and at the pommel end
+  // ---- pommel
+  ctx.fillStyle="#222d49";
+  ctx.beginPath();
+  ctx.moveTo(-19*s,0); ctx.lineTo(-23.5*s,-5.4*s); ctx.lineTo(-28*s,0); ctx.lineTo(-23.5*s,5.4*s);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle="#d9a441"; ctx.lineWidth=Math.max(0.9,1.3*s); ctx.stroke();
+  if(s>0.55) drawBone(ctx,-23.5*s,0,0.38*s,"#f4f0e6");
+  // ---- the gleam: a hard white band running out along the blade to the tip
+  if(gleamP!=null && gleamP>=0 && gleamP<=1){
+    const gx=3*s+(bl-3*s)*gleamP;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(3*s,-bw); ctx.lineTo(bl-9*s,-bw*0.8); ctx.lineTo(bl,0); ctx.lineTo(bl-9*s,bw*0.8); ctx.lineTo(3*s,bw);
+    ctx.closePath(); ctx.clip();
+    const grd=ctx.createLinearGradient(gx-9*s,0,gx+9*s,0);
+    grd.addColorStop(0,"rgba(255,255,255,0)");
+    grd.addColorStop(0.5,"rgba(255,255,255,0.95)");
+    grd.addColorStop(1,"rgba(255,255,255,0)");
+    ctx.fillStyle=grd;
+    ctx.fillRect(gx-9*s,-bw*1.2,18*s,bw*2.4);
+    ctx.restore();
+  }
+}
+// the falling / planted / being-plucked sword, drawn in world space. Screen coords come in
+// already projected so this never has to know about the camera.
+function pkDrawWorldSword(ctx,sx,sy,t){
+  const s=PK.sword; if(!s) return;
+  const c=PK.swordCine;
+  const ph=c?c.ph:null;
+  if(ph==="fall"){
+    const p=clamp(c.t/SW_FALL,0,1), ease=p*p;      // accelerating out of the sky
+    const y=sy-pkSwordFallH()*(1-ease);
+    // the shaft of light it is riding down, and the ring on the ground marking where it lands
+    ctx.save();
+    const grd=ctx.createLinearGradient(sx,y-200,sx,sy+20);
+    grd.addColorStop(0,"rgba(255,246,200,0)");
+    grd.addColorStop(0.45,"rgba(255,240,170,"+(0.18+0.24*p).toFixed(3)+")");
+    grd.addColorStop(1,"rgba(255,228,120,0)");
+    ctx.fillStyle=grd;
+    ctx.beginPath(); ctx.moveTo(sx-18,y-200); ctx.lineTo(sx+18,y-200); ctx.lineTo(sx+64*p+26,sy+16); ctx.lineTo(sx-64*p-26,sy+16); ctx.closePath(); ctx.fill();
+    ctx.globalAlpha=0.35+0.45*p;
+    ctx.strokeStyle="#ffe98a"; ctx.lineWidth=2+2*p;
+    ctx.beginPath(); ctx.ellipse(sx,sy,30+26*p,(30+26*p)*0.42,0,0,7); ctx.stroke();
+    ctx.restore();
+    ctx.save(); ctx.translate(sx,y); ctx.rotate(s.spin);
+    ctx.save(); ctx.globalAlpha=0.55; ctx.shadowColor="#ffe98a"; ctx.shadowBlur=22;
+    pkDrawSwordShape(ctx,1.15,null); ctx.restore();
+    pkDrawSwordShape(ctx,1.15,null);
+    ctx.restore();
+    return;
+  }
+  // impact / settle / planted / pluck all show it upright, blade buried
+  let y=sy, s2=1.15, alpha=1;
+  if(ph==="impact"){ y=sy+2; }
+  else if(ph==="pluck"){
+    const p=clamp(c.t/SW_PLUCK,0,1);
+    y=sy-26*p*p;                                   // eases up and out of the dirt
+  } else if(ph==="float"||ph==="gleam"){
+    return;                                        // it is on its way to / already in his mouth
+  } else {
+    y=sy-2-Math.sin(t*2.2)*2.5;                    // idle bob
+  }
+  // the light it keeps giving off while it waits
+  ctx.save();
+  const pul=0.55+0.45*Math.sin(t*3);
+  const R=54+10*pul;
+  const g2=ctx.createRadialGradient(sx,y-8,0,sx,y-8,R);
+  g2.addColorStop(0,"rgba(255,244,190,"+(0.26*pul+0.12).toFixed(3)+")");
+  g2.addColorStop(0.5,"rgba(255,214,110,"+(0.10*pul).toFixed(3)+")");
+  g2.addColorStop(1,"rgba(255,200,80,0)");
+  ctx.fillStyle=g2;
+  ctx.beginPath(); ctx.ellipse(sx,y-8,R,R*0.72,0,0,7); ctx.fill();
+  ctx.restore();
+  if(s.flashT>0){                                  // a bolt has just come down on it
+    const f=s.flashT/0.42;
+    ctx.save(); ctx.globalAlpha=f;
+    ctx.strokeStyle="#fff"; ctx.lineWidth=3.5;
+    ctx.beginPath();
+    let bx=sx, by=y-46;
+    ctx.moveTo(bx,-40);
+    for(let i=0;i<7;i++){ bx=sx+(Math.random()-0.5)*26; by=-40+(y-46+40)*(i+1)/7; ctx.lineTo(bx,by); }
+    ctx.lineTo(sx,y-40); ctx.stroke();
+    ctx.globalAlpha=f*0.5; ctx.strokeStyle="#bfe4ff"; ctx.lineWidth=8;
+    ctx.stroke();
+    ctx.globalAlpha=f*0.35; ctx.fillStyle="#fff";
+    ctx.beginPath(); ctx.arc(sx,y-14,40,0,7); ctx.fill();
+    ctx.restore();
+  }
+  // buried: rotate so the blade points straight down into the dirt
+  ctx.save(); ctx.translate(sx,y+14); ctx.rotate(Math.PI/2);
+  pkDrawSwordShape(ctx,s2,null);
+  ctx.restore();
+  // dirt piled at the entry point, hiding the join
+  ctx.fillStyle="#2e2519";
+  ctx.beginPath(); ctx.ellipse(sx,y+16,15,5,0,0,7); ctx.fill();
+  if(!ph){
+    ctx.save();
+    ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    const afford=PK.bones>=SWORD_COST;
+    ctx.fillStyle=afford?"#ffe98a":"#e08a8a";
+    ctx.globalAlpha=0.75+0.25*Math.sin(t*4);
+    ctx.fillText(SWORD_COST+" BONES", sx, y-58);
+    ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle="#cfd6dd"; ctx.globalAlpha=0.7;
+    ctx.fillText(afford?"WALK UP TO TAKE IT":"NOT ENOUGH YET", sx, y-48);
+    ctx.restore(); ctx.textAlign="left";
+  }
+}
+// in his mouth: flat, pointing the way he faces, with the growth-spurt overshoot on upgrade
+function pkDrawHeldSword(ctx,DX,DY,t){
+  const s=PK.sword; if(!s || s.state!=="held") return;
+  const face=PK.vx<0?-1:1;
+  let sc=pkSwordScale();
+  if(s.growT>0){   // a hard elastic pop outward, settling back to the new size — kept modest so
+                   // the growth spurt reads without the blade swallowing BONES himself
+    const p=1-s.growT/0.5;
+    sc*=1+Math.sin(p*Math.PI)*0.32*(1-p*0.35);
+  }
+  ctx.save();
+  ctx.translate(DX+face*15, DY-2);
+  if(face<0) ctx.scale(-1,1);
+  if(s.growT>0){
+    ctx.save(); ctx.globalAlpha=(s.growT/0.5)*0.8;
+    ctx.shadowColor="#fff"; ctx.shadowBlur=26;
+    pkDrawSwordShape(ctx,sc,null);
+    ctx.restore();
+  }
+  const gleamP = s.gleamT>0 ? 1-clamp(s.gleamT/(s.growT>0?0.6:0.22),0,1) : null;
+  pkDrawSwordShape(ctx,sc,gleamP);
+  ctx.restore();
+}
+// the cutscene's mid-air sword, on its way from the ground into his mouth
+function pkDrawFloatingSword(ctx,SC,DX,DY,t){
+  const c=PK.swordCine, s=PK.sword;
+  if(!c || !s || (c.ph!=="float" && c.ph!=="gleam")) return;
+  const [gx,gy]=SC(s.x,s.y);
+  if(c.ph==="float"){
+    const p=clamp(c.t/SW_FLOAT,0,1), e=p<0.5?2*p*p:1-Math.pow(-2*p+2,2)/2;
+    const x=gx+(DX+15-gx)*e, y=(gy-30)+((DY-2)-(gy-30))*e;
+    ctx.save(); ctx.translate(x,y); ctx.rotate((1-e)*(-Math.PI/2)+Math.sin(p*6.283)*0.12);
+    ctx.save(); ctx.globalAlpha=0.6; ctx.shadowColor="#fff"; ctx.shadowBlur=20;
+    pkDrawSwordShape(ctx,1.15,null); ctx.restore();
+    pkDrawSwordShape(ctx,1.15,null);
+    ctx.restore();
+  } else {
+    const p=clamp(c.t/SW_GLEAM,0,1);
+    ctx.save(); ctx.translate(DX+15,DY-2);
+    ctx.save(); ctx.globalAlpha=0.5*(1-p); ctx.shadowColor="#fff"; ctx.shadowBlur=24;
+    pkDrawSwordShape(ctx,1.15,null); ctx.restore();
+    pkDrawSwordShape(ctx,1.15,p);
+    ctx.restore();
+  }
+}
+/* ===================== THE HOLE, AND WHAT COMES OUT OF IT =====================
+   The crater the sword left widens a step every wave. From wave 6 the fire in it stops being
+   scenery: it spreads into the grove, keeps the trees permanently alight, and burns BONES if he
+   stands in it. Nothing ever puts it out again.                                               */
+const HELL_WAVE=6, HELL_SPREAD_EVERY=1.6, HELL_HURT_EVERY=0.55, HELL_HURT=5;
+function pkSiteR(){
+  if(!PK.swordSite) return 0;
+  // ~9px across when he pulls it out on wave 2, up to a hole twice his own 40px width by wave 5
+  return clamp(9+(PK.wave-PK.swordSite.wave)*10.5, 9, 44);
+}
+function pkHellOpen(){
+  if(PK.hell) return;
+  PK.hell=true; PK.hellT=0; PK.hellSpreadT=0;
+  PK.shake=Math.max(PK.shake||0,1.0);
+  for(let i=0;i<60;i++){
+    const a=Math.random()*6.283, sp=50+Math.random()*190;
+    PK.embers.push({x:PK.swordSite.x, y:PK.swordSite.y, vx:Math.cos(a)*sp, vy:-60-Math.random()*140, life:0.7+Math.random()*0.7});
+  }
+  toast("THE HOLE IS OPEN — HELL IS IN THE PARK",1);
+  beep(40,1.2,"sawtooth",.13);
+  setTimeout(()=>beep(60,1.0,"sawtooth",.11),200);
+  setTimeout(()=>pkFanfare(null,true,"☠ THE GATES OF HELL HAVE OPENED"),320);
+}
+function pkHellUpdate(dt){
+  if(!PK.hell) return;
+  PK.hellT+=dt;
+  const site=PK.swordSite;
+  // it breathes fire out of the hole constantly
+  if(Math.random()<0.9){
+    const a=Math.random()*6.283, r=Math.random()*pkSiteR();
+    PK.embers.push({x:site.x+Math.cos(a)*r, y:site.y+Math.sin(a)*r*0.5,
+      vx:(Math.random()-0.5)*30, vy:-45-Math.random()*70, life:0.6+Math.random()*0.6});
+  }
+  // and reaches steadily further out into the park, taking the trees as it goes and relighting
+  // anything that has already burnt down to a stump — this never stops
+  PK.hellSpreadT-=dt;
+  if(PK.hellSpreadT<=0){
+    PK.hellSpreadT=HELL_SPREAD_EVERY;
+    const reach=120+PK.hellT*26;
+    const near=PK.trees.filter(tr=>tr.state!=="fire" &&
+      Math.hypot(wd(tr.x-site.x,PK.WW),wd(tr.y-site.y,PK.WH))<reach);
+    near.sort(()=>Math.random()-0.5);
+    for(const tr of near.slice(0,3)){
+      if(tr.state==="ash"){ tr.state="ok"; tr.spawned=tr.spawnMax||0; }   // it comes back up burning
+      pkIgniteTree(tr,true);
+    }
+  }
+  // standing in the fire costs him: the hole itself, and any tree currently alight
+  PK.hellHurtT-=dt;
+  if(PK.hellHurtT<=0){
+    PK.hellHurtT=HELL_HURT_EVERY;
+    let burning=false;
+    if(Math.hypot(wd(PK.x-site.x,PK.WW),wd(PK.y-site.y,PK.WH))<pkSiteR()+14) burning=true;
+    if(!burning){
+      for(const tr of PK.trees){
+        if(tr.state!=="fire") continue;
+        if(Math.hypot(wd(tr.x-PK.x,PK.WW),wd(tr.y-PK.y,PK.WH))<TREE_R*1.7){ burning=true; break; }
+      }
+    }
+    if(burning && !pkInvuln()){
+      pkHurt(HELL_HURT);
+      PK.hurtT=HURT_TIME;
+      for(let i=0;i<6;i++){
+        SPARKS.push({x:PK.x+(Math.random()-0.5)*18, y:PK.y-8, vx:(Math.random()-0.5)*50, vy:-40-Math.random()*40, life:0.3});
+      }
+      beep(95,.16,"sawtooth",.06);
+      if(PK.hp<=0){ pkDeath(); return; }
+    }
+  }
+  // everything with an ape in it turns
+  for(const e of PK.en) if(e.t==="ape" && !e.hellish) pkHellifyApe(e);
+}
+function pkHellifyApe(e){
+  e.hellish=true;
+  e.hp=Math.round(e.hp*1.15); e.hpMax=Math.round(e.hpMax*1.15);
+  for(let i=0;i<18;i++){
+    const a=Math.random()*6.283, sp=40+Math.random()*120;
+    PK.embers.push({x:e.x, y:e.y-8, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp-50, life:0.5+Math.random()*0.4});
+  }
+  beep(70,.35,"sawtooth",.08);
+}
+// the crater itself, under everything else that stands on the ground
+function pkDrawSwordSite(ctx,SC,w,h,t){
+  if(!PK.swordSite) return;
+  const [x,y]=SC(PK.swordSite.x,PK.swordSite.y);
+  const R=pkSiteR();
+  if(x<-R*4||x>w+R*4||y<-R*4||y>h+R*4) return;
+  const pul=0.6+0.4*Math.sin(t*(PK.hell?6:2.4));
+  ctx.save();
+  // the hole
+  ctx.fillStyle="#070503";
+  ctx.beginPath(); ctx.ellipse(x,y,R,R*0.55,0,0,7); ctx.fill();
+  // molten rim
+  const g=ctx.createRadialGradient(x,y,R*0.2,x,y,R*(PK.hell?2.6:1.7));
+  const heat=PK.hell?0.55:0.3;
+  g.addColorStop(0,   "rgba(255,190,70,"+(heat*pul).toFixed(3)+")");
+  g.addColorStop(0.35,"rgba(240,90,20,"+(heat*0.65*pul).toFixed(3)+")");
+  g.addColorStop(1,   "rgba(120,20,0,0)");
+  ctx.fillStyle=g;
+  ctx.beginPath(); ctx.ellipse(x,y,R*(PK.hell?2.6:1.7),R*(PK.hell?2.6:1.7)*0.55,0,0,7); ctx.fill();
+  // cracks radiating out of it, growing with the hole
+  ctx.strokeStyle="rgba(255,150,50,"+(0.5*pul+0.25).toFixed(3)+")";
+  ctx.lineWidth=Math.max(1,R*0.055);
+  for(let i=0;i<9;i++){
+    const a=i*0.698+0.3;
+    ctx.beginPath(); ctx.moveTo(x+Math.cos(a)*R*0.9, y+Math.sin(a)*R*0.5);
+    ctx.lineTo(x+Math.cos(a)*R*(1.6+(i%3)*0.35), y+Math.sin(a)*R*(1.6+(i%3)*0.35)*0.55);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+// a burning park seen through heat and smoke: a red wash that pulses, soot creeping in at the
+// corners, and brimstone drifting up the screen. Screen space, so it sits over everything.
+function pkDrawHellOverlay(ctx,w,h,t){
+  if(!PK.hell) return;
+  const pul=0.5+0.5*Math.sin(t*1.7);
+  ctx.save();
+  const g=ctx.createRadialGradient(w/2,h*0.62,Math.min(w,h)*0.18,w/2,h*0.55,Math.max(w,h)*0.78);
+  g.addColorStop(0,"rgba(255,90,20,0)");
+  g.addColorStop(0.55,"rgba(190,40,10,"+(0.13+0.05*pul).toFixed(3)+")");
+  g.addColorStop(1,"rgba(60,6,0,"+(0.44+0.08*pul).toFixed(3)+")");
+  ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+  ctx.globalCompositeOperation="overlay";
+  ctx.fillStyle="rgba(255,70,10,0.10)"; ctx.fillRect(0,0,w,h);
+  ctx.restore();
+  // brimstone: motes of ash and cinder rising the whole height of the view
+  ctx.save();
+  for(let i=0;i<26;i++){
+    const seed=i*97.13;
+    const x=((seed*7.3)%w + Math.sin(t*0.5+i)*16 + w)%w;
+    const y=h-(((t*(22+ (i%5)*13) + seed) % (h+70)));
+    const hot=i%3===0;
+    ctx.globalAlpha=hot?0.55:0.3;
+    ctx.fillStyle=hot?"#ff9b3c":"#3a2f2a";
+    const sz=hot?2.5:3.5;
+    ctx.fillRect(x,y,sz,sz);
+  }
+  ctx.restore();
+}
+// the cutscene's own letterbox and titles, so the drop and the taking both read as set pieces
+function pkDrawSwordCineOverlay(ctx,w,h,t){
+  const c=PK.swordCine; if(!c) return;
+  const bar=h*0.075;
+  ctx.save();
+  ctx.fillStyle="#000"; ctx.fillRect(0,0,w,bar); ctx.fillRect(0,h-bar,w,bar);
+  if(c.ph==="fall"){
+    const p=clamp(c.t/SW_FALL,0,1);
+    ctx.fillStyle="rgba(0,0,0,"+(0.34*p).toFixed(3)+")"; ctx.fillRect(0,bar,w,h-bar*2);
+    ctx.globalAlpha=Math.min(1,p*2.2);
+    ctx.fillStyle="#ffe98a"; ctx.font="10px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText("THE GODS ARE THROWING SOMETHING DOWN", w/2, bar+h*0.10);
+  } else if(c.ph==="impact"){
+    ctx.fillStyle="rgba(255,255,255,"+(0.75*(1-c.t/SW_IMPACT)).toFixed(3)+")";
+    ctx.fillRect(0,0,w,h);
+  } else if(c.ph==="settle"){
+    const p=clamp(c.t/SW_SETTLE,0,1);
+    ctx.globalAlpha=Math.min(1,p*3)*(p>0.8?(1-p)/0.2:1);
+    ctx.fillStyle="#ffe98a"; ctx.font="11px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText("A BLADE FOR THE DOG", w/2, bar+h*0.10);
+  } else if(c.ph==="gleam"){
+    const p=clamp(c.t/SW_GLEAM,0,1);
+    ctx.globalAlpha=1-p;
+    ctx.fillStyle="rgba(255,255,255,0.30)"; ctx.fillRect(0,0,w,h);
+  }
+  ctx.restore(); ctx.textAlign="left";
+}
 // WAVE 1 — CLEAR THE BIRDS: loose flocks of 3-7 birds clustered together, standing until
 // BONES gets close, then the whole flock startles and scatters (still hittable mid-scatter,
 // and settles back into a roost instead of despawning if it gets away clean). 1-hit kill.
@@ -1577,7 +2167,17 @@ function pkShopOpen(){
   // wave 1's shop is everyone's first taste of it \u2014 a flat, cheap price on everything so a new
   // run always has enough bones banked to actually buy something after the very first clear
   if(PK.wave===2) pool.forEach(o=>o.c=10);
-  PK.shop = pool.sort(()=>Math.random()-0.5).slice(0,3);
+  const shuffled=pool.sort(()=>Math.random()-0.5);
+  // sharpening the blade is offered at the top of every single wave while there are tiers left —
+  // never rolled for, never priced down with the rest, so the upgrade path is always available
+  if(PK.sword && PK.sword.state==="held" && PK.sword.tier<SWORD_MAX_TIER){
+    const nt=PK.sword.tier+1;
+    PK.shop=[{n:"SHARPEN THE BLADE", ic:"sword",
+      fx:"TIER "+nt+"/"+SWORD_MAX_TIER+" — BIGGER, "+SWORD_DMG_T[nt-1]+" DMG",
+      c:SWORD_UP_COST, f:()=>pkSwordUpgrade()}, ...shuffled.slice(0,2)];
+  } else {
+    PK.shop = shuffled.slice(0,3);
+  }
   PK.shopSel = null;      // nothing is bought until it has been confirmed
   PK.joy=null;
 }
@@ -1589,6 +2189,10 @@ function parkUpdate(dt){
   if(PK.hp<PK.hpSeen){ PK.hurtT=HURT_TIME; PK.shake=Math.max(PK.shake||0,0.22); }
   PK.hpSeen=PK.hp;
   if(PK.shop || PK.convertOpen || PK.friendsOpen || PK.gateAsk) return;   // world pauses while a panel is up
+  // the sword's arrival and its collection each take the whole screen: nothing spawns, moves or
+  // attacks until they finish, so the drop reads as an event rather than something happening in
+  // the corner of a firefight
+  if(PK.swordCine){ pkSwordCineUpdate(dt); return; }
   // exercise costs him something: DOGPARK deliberately sits outside the day/night clock
   // (tickStats no-ops while PK.active — see its own comment), so this is a small, self-contained
   // drain instead of unblocking that whole system mid-run. A real session leaves him noticeably
@@ -1696,6 +2300,11 @@ function parkUpdate(dt){
     // from wave 6 the types come mixed — that is the point of "you're on your own"
     if(PK.wave>=6){ PK.mixTypes=pkPickMixTypes(); PK.mixLabel=MIX_NAME[PK.mixTypes[0]]+" & "+MIX_NAME[PK.mixTypes[1]]; }
     if(PK.wave===APE_WAVE){ PK.apeKills=0; PK.apeWaveT=2.5; }
+    // DOGPARK+ only: wave 2 opens with the sky handing him a weapon. Once the hole it leaves is
+    // his, it widens every wave (pkSiteR reads PK.wave directly), and on wave 6 it stops being
+    // scenery — from there the park burns for the rest of the run.
+    if(PK.plusMode && PK.wave===SWORD_WAVE && !PK.sword && !PK.swordDone) pkSwordDrop();
+    if(PK.swordSite && PK.wave>=HELL_WAVE && !PK.hell) pkHellOpen();
     // the roost that just satisfied the PREVIOUS wave's quota, and any stalking cats that came
     // with it, have done their job — clear them out UNLESS the new wave we just landed on
     // shares that same goal type, in which case leaving them be costs nothing (pkSideHazard
@@ -2133,6 +2742,14 @@ function parkUpdate(dt){
         if(e.spdCur>e.sp*0.55 && Math.random()<0.3){
           PK.embers.push({x:e.x, y:e.y+8, vx:(Math.random()-0.5)*20, vy:-8-Math.random()*10, life:0.25+Math.random()*0.2, dust:true});
         }
+        // once hell has it, the ground it covers keeps burning behind it
+        if(e.hellish && e.spdCur>e.sp*0.25){
+          for(let i=0;i<2;i++){
+            PK.embers.push({x:e.x+(Math.random()-0.5)*12, y:e.y+6+(Math.random()-0.5)*6,
+              vx:(Math.random()-0.5)*22, vy:-22-Math.random()*30, life:0.45+Math.random()*0.45});
+          }
+          if(Math.random()<0.18) PK.scorch.push({x:e.x, y:e.y+4, r:9+Math.random()*7});
+        }
         e.leapCd-=dt;
         // the leap is the primary attack — it fires on cooldown whenever not already adjacent,
         // regardless of exactly how far away BONES is (long range is the point)
@@ -2256,6 +2873,9 @@ function parkUpdate(dt){
   }
   pkPalsUpdate(dt,WW,WH);
   pkPalDamage(dt,WW,WH);
+  if(PK.sword && PK.sword.state==="planted") pkSwordPlantedUpdate(dt);
+  else if(PK.sword && PK.sword.state==="held") pkSwordHeldUpdate(dt);
+  if(PK.hell) pkHellUpdate(dt);
   // the bandana dog: stand near him to shop, and you have to actually walk away before he'll
   // talk again — the world is frozen while the panel is up, so a bare radius test would reopen
   // it the instant it closed. Never while another panel owns the taps.
@@ -2785,10 +3405,32 @@ function drawApe(ctx,e,sx,sy){
     ctx.beginPath(); ctx.ellipse(sx, sy+5, 11, 3.5, 0, 0, 7); ctx.fill();
     ctx.restore();
   }
+  if(e.hellish){
+    // a furnace burning inside it, bright enough to light the ground it stands on
+    const hp2=0.6+0.4*Math.sin(performance.now()/90+(e.ph||0));
+    ctx.save();
+    const hg=ctx.createRadialGradient(sx,dy-eh*0.45,0,sx,dy-eh*0.45,eh*1.15);
+    hg.addColorStop(0,"rgba(255,140,40,"+(0.42*hp2).toFixed(3)+")");
+    hg.addColorStop(0.55,"rgba(220,40,10,"+(0.22*hp2).toFixed(3)+")");
+    hg.addColorStop(1,"rgba(140,10,0,0)");
+    ctx.fillStyle=hg;
+    ctx.beginPath(); ctx.ellipse(sx,dy-eh*0.45,eh*1.15,eh*1.05,0,0,7); ctx.fill();
+    ctx.restore();
+  }
   ctx.save(); ctx.imageSmoothingEnabled=false;
+  if(e.hellish) ctx.filter="sepia(1) saturate(9) hue-rotate(-32deg) brightness(1.1) contrast(1.25)";
   if(e.dir<0){ ctx.translate(sx*2,0); ctx.scale(-1,1); }
   ctx.drawImage(img, sx-ew/2, dy-eh, ew, eh);
   ctx.restore();
+  if(e.hellish){
+    // molten eyes, and horns of flame licking off its shoulders
+    ctx.save();
+    ctx.globalAlpha=0.55+0.45*Math.sin(performance.now()/70);
+    ctx.fillStyle="#ffe27a";
+    ctx.fillRect(sx-(e.dir<0?7:3)-1, dy-eh*0.82, 3, 2.6);
+    ctx.fillRect(sx+(e.dir<0?-3:4), dy-eh*0.82, 3, 2.6);
+    ctx.restore();
+  }
   if(e.hitT>0){
     ctx.save(); ctx.globalAlpha=Math.min(1,e.hitT/0.22)*0.85;
     ctx.fillStyle="#fff";
@@ -2960,6 +3602,7 @@ function parkDraw(t){
     for(const ddx of [0,WW]) for(const ddy of [0,WH]) ctx.drawImage(PKBG,-ox+ddx,-oy+ddy);
   } else { ctx.fillStyle="#20261f"; ctx.fillRect(0,0,w,h); }
   pkDrawScorch(ctx,SC,w,h);
+  pkDrawSwordSite(ctx,SC,w,h,t);
   for(const a of PK.acts){
     const [ax,ay]=SC(a.x*WW,a.y*WH);
     if(ax<-70||ax>w+70||ay<-70||ay>h+70) continue;
@@ -2967,9 +3610,35 @@ function parkDraw(t){
     const pw=img.naturalWidth?ph*img.naturalWidth/img.naturalHeight:ph*2.5;
     ctx.fillStyle="rgba(0,0,0,.25)";
     ctx.beginPath(); ctx.ellipse(ax,ay+ph/2-2,pw*0.42,5,0,0,7); ctx.fill();
+    if(PK.hell){
+      // the course furniture is alight too — nothing in the park is spared
+      const fp=0.55+0.45*Math.sin(t*7+a.x*13);
+      ctx.save();
+      const fg=ctx.createRadialGradient(ax,ay,0,ax,ay,ph*1.1);
+      fg.addColorStop(0,"rgba(255,150,50,"+(0.38*fp).toFixed(3)+")");
+      fg.addColorStop(0.6,"rgba(210,50,10,"+(0.18*fp).toFixed(3)+")");
+      fg.addColorStop(1,"rgba(120,15,0,0)");
+      ctx.fillStyle=fg;
+      ctx.beginPath(); ctx.ellipse(ax,ay,ph*1.1,ph*0.9,0,0,7); ctx.fill();
+      ctx.restore();
+      if(Math.random()<0.3){
+        PK.embers.push({x:a.x*WW+(Math.random()-0.5)*20, y:a.y*WH-6,
+          vx:(Math.random()-0.5)*16, vy:-26-Math.random()*34, life:0.6+Math.random()*0.5,
+          dust:Math.random()<0.5});
+      }
+    }
     ctx.globalAlpha = a.cd<=0 ? 0.85+0.15*Math.sin(t*5) : 0.35;
     if(img.complete&&img.naturalWidth){ ctx.imageSmoothingEnabled=false; ctx.drawImage(img,ax-pw/2,ay-ph/2,pw,ph); }
     ctx.globalAlpha=1;
+    if(PK.hell){
+      ctx.save(); ctx.globalAlpha=0.5+0.4*Math.sin(t*9+a.y*7);
+      ctx.fillStyle="#ff8b30";
+      for(let f=0;f<3;f++){
+        const fx2=ax-pw*0.28+f*pw*0.28, fy2=ay-ph*0.45-Math.abs(Math.sin(t*8+f*2))*5;
+        ctx.beginPath(); ctx.moveTo(fx2,fy2); ctx.lineTo(fx2-3,fy2+7); ctx.lineTo(fx2+3,fy2+7); ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+    }
   }
   {
     // shown only where the gate actually is — no off-screen pointer any more, find it for real
@@ -3083,6 +3752,10 @@ function parkDraw(t){
     if(ex2<-40||ex2>w+40||ey2<-40||ey2>h+40) continue;
     drawEnemy(ctx,e,ex2,ey2);
   }
+  if(PK.sword && PK.sword.state!=="held"){
+    const [swx,swy]=SC(PK.sword.x,PK.sword.y);
+    pkDrawWorldSword(ctx,swx,swy,t);
+  }
   {
     // shown only where he actually is — finding him in the grove is the point, no arrow to spoil it
     const [nx2,ny2]=SC(PK.npc.x*WW, PK.npc.y*WH);
@@ -3157,6 +3830,7 @@ function parkDraw(t){
     if(PK.vx<0){ ctx.translate(DX*2,0); ctx.scale(-1,1); }
     ctx.drawImage(img,DX-20+(PK.vx<0?-buzz:buzz),DY-16,40,34);
     ctx.restore();
+    pkDrawHeldSword(ctx,DX,DY,t);
   }
   for(const dr of PK.drops){
     const [dx2,dy2]=SC(dr.x,dr.y);
@@ -3215,7 +3889,10 @@ function parkDraw(t){
     ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
     ctx.fillText("x"+PK.chain, DX, DY-42); ctx.textAlign="left";
   }
+  pkDrawFloatingSword(ctx,SC,DX,DY,t);
   ctx.restore();   // exit the world zoom transform before any fixed-to-screen overlay
+  pkDrawHellOverlay(ctx,w,h,t);
+  pkDrawSwordCineOverlay(ctx,w,h,t);
   if(PK.shop){
     ctx.fillStyle="rgba(0,0,0,.6)"; ctx.fillRect(0,0,w,h);
     ctx.fillStyle="#fff"; ctx.font="9px 'Press Start 2P',monospace"; ctx.textAlign="center";
@@ -3288,6 +3965,9 @@ function pkShopIcon(ctx,x,y,s2,key,col){
     ctx.beginPath(); ctx.moveTo(-4,-4); ctx.lineTo(0,-9); ctx.lineTo(4,-4); ctx.stroke(); }
   else if(key==="expand"){ ctx.strokeRect(-8,-8,16,16); ctx.beginPath(); ctx.moveTo(0,-8); ctx.lineTo(0,8); ctx.moveTo(-8,0); ctx.lineTo(8,0); ctx.stroke(); }
   else if(key==="compass"){ ctx.beginPath(); ctx.arc(0,0,8,0,7); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0,-6); ctx.lineTo(2.4,0); ctx.lineTo(0,6); ctx.lineTo(-2.4,0); ctx.closePath(); ctx.fill(); }
+  else if(key==="sword"){ ctx.beginPath(); ctx.moveTo(0,-9); ctx.lineTo(2.2,-5); ctx.lineTo(2.2,3); ctx.lineTo(-2.2,3); ctx.lineTo(-2.2,-5); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-6,3.4); ctx.lineTo(6,3.4); ctx.stroke();
+    ctx.fillRect(-1.2,4,2.4,4); ctx.beginPath(); ctx.arc(0,9,1.8,0,7); ctx.stroke(); }
   else { ctx.beginPath(); ctx.arc(0,0,6,0,7); ctx.stroke(); }
   ctx.restore();
 }
