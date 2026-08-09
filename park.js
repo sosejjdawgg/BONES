@@ -2051,6 +2051,9 @@ const PAL_TIERS={
 };
 function pkPalTier(k){ const p=PK.pals.find(q=>q.k===k); return p?p.tier:0; }
 function pkPalBuyableK(k){ return pkPalTier(k)<(PAL_MAXTIER[k]||4); }
+// 10 bones per 10% of missing HP, rounded up to the next whole chunk — a full heal, not a top-up,
+// so one tap in the Friends panel is always the whole fix rather than something you do 3 times
+function pkPalHealCost(p){ return 10*Math.ceil((p.hpMax-p.hp)/p.hpMax*100/10); }
 function pkNextTierData(k){ const t=pkPalTier(k)+1, max=PAL_MAXTIER[k]||4; return t<=max?PAL_TIERS[k][t-1]:null; }
 function pkBuyPal(k){
   const existing=PK.pals.find(p=>p.k===k);
@@ -5021,30 +5024,45 @@ function pkPadDraw(t){
       const td=pkNextTierData(k);
       const cost=td?td.c:0, afford=PK.bones>=cost;
       const ok=buyable&&afford;
+      // a hired sq/cat/ape missing HP can be healed with a tap right here \u2014 no separate world-tap
+      // mechanic, this row IS the heal button whenever the friend actually needs it
+      const pal = k!=="bird" ? PK.pals.find(q=>q.k===k) : null;
+      const hurt = !!(pal && pal.hp<pal.hpMax);
+      const healCost = hurt ? pkPalHealCost(pal) : 0;
+      const healAfford = hurt && PK.bones>=healCost;
       const y=h*pkRowYF(i), cardH=h*PANEL_CARDH, top=y-cardH*0.5;
       const rowX=w*0.10, rowW=w*0.80;
-      ctx.strokeStyle = !buyable ? "#334" : (afford?"#f6a":"#663333"); ctx.lineWidth=2;
+      ctx.strokeStyle = hurt ? (healAfford?"#f22":"#663333") : (!buyable ? "#334" : (afford?"#f6a":"#663333"));
+      ctx.lineWidth=2;
       ctx.strokeRect(rowX, top, rowW, cardH);
       // a small icon per companion, same grammar as the wave shop's own cards
-      pkShopIcon(ctx, rowX+cardH*0.55, y, cardH/24, PAL_ICON[k], !buyable?"#556":"#f6a");
+      pkShopIcon(ctx, rowX+cardH*0.55, y, cardH/24, PAL_ICON[k], hurt?"#f22":(!buyable?"#556":"#f6a"));
       // name + action \u2014 shrunk to fit rather than left to run over the pips/cost column
       const textX=rowX+cardH*1.15, textMaxW=rowX+rowW*0.68-textX;
-      const label = buyable
+      const label = hurt
+        ? PAL_TIERS[k][tier-1].n+" \u2014 "+Math.round(pal.hp/pal.hpMax*100)+"% HP"
+        : buyable
         ? (tier===0 ? td.n : "UPGRADE "+td.n)
         : PAL_TIERS[k][maxTier-1].n+" \u2014 "+(maxTier>1?"MAXED":"HIRED");
       ctx.textAlign="left";
-      ctx.fillStyle = !buyable ? "#556" : (afford?"#fff":"#a55");
+      ctx.fillStyle = hurt ? "#f22" : (!buyable ? "#556" : (afford?"#fff":"#a55"));
       pkFitText(ctx, label, textX, y-1, textMaxW, 7);
       // description or maxed note
-      ctx.fillStyle = buyable?"#999":"#445";
-      pkFitText(ctx, buyable ? td.fx : (maxTier>1?"ALL "+maxTier+" TIERS UNLOCKED":"ONE OF A KIND \u2014 ALREADY YOURS"), textX, y+11, textMaxW, 6);
+      ctx.fillStyle = hurt ? "#f88" : (buyable?"#999":"#445");
+      pkFitText(ctx, hurt ? "TAP TO HEAL \u2014 BACK TO FULL HP" : (buyable ? td.fx : (maxTier>1?"ALL "+maxTier+" TIERS UNLOCKED":"ONE OF A KIND \u2014 ALREADY YOURS")), textX, y+11, textMaxW, 6);
       // tier pips: \u25A0 owned, \u25A1 not yet, shown on right above cost
       ctx.textAlign="right"; ctx.font="7px 'Press Start 2P',monospace";
       const pips="\u25A0".repeat(tier)+"\u25A1".repeat(maxTier-tier);
       ctx.fillStyle = tier>0?"#f6a":"#556";
       ctx.fillText(pips, rowX+rowW*0.97, y-1);
-      // cost
+      // cost \u2014 healing takes over this slot whenever the friend needs it, ahead of any upgrade cost
       ctx.font="7px 'Press Start 2P',monospace";
+      if(hurt){
+        ctx.fillStyle = healAfford ? "#3fdc7a" : "#f22";
+        pkFitText(ctx, "HEAL "+healCost+"\u25C6", rowX+rowW*0.97, y+11, rowW*0.29, 7);
+        ctx.textAlign="left";
+        return;
+      }
       ctx.fillStyle = !buyable?"#445":(ok?"#fff":"#f22");
       ctx.fillText(buyable?(cost+"\u25C6"):"", rowX+rowW*0.97, y+11);
       ctx.textAlign="left";
@@ -5095,6 +5113,22 @@ function pkPadDraw(t){
       for(let i=0;i<PAL_KINDS.length;i++){
         if(pkRowHit(yF,i)){
           const k=PAL_KINDS[i];
+          // a hurt friend's row heals on tap — takes priority over an upgrade tap on that same
+          // row, since there's nothing useful an upgrade purchase does for a friend that's down
+          const pal = k!=="bird" ? PK.pals.find(q=>q.k===k) : null;
+          if(pal && pal.hp<pal.hpMax){
+            const cost=pkPalHealCost(pal);
+            if(PK.bones<cost){ beep(150,.1); toast("NEED "+cost+" BONES TO HEAL",1); return; }
+            PK.bones-=cost; pal.hp=pal.hpMax;
+            for(let s=0;s<8;s++){
+              const ang=Math.random()*6.283, sp=30+Math.random()*50;
+              SPARKS.push({x:pal.x,y:pal.y-8,vx:Math.cos(ang)*sp,vy:Math.sin(ang)*sp-20,life:0.5+Math.random()*0.4,heal:true});
+            }
+            PK.fx.push({x:pal.x,y:pal.y-16,txt:"FULL HEAL",life:1.2});
+            toast(PAL_TIERS[k][pal.tier-1].n+" HEALED TO FULL",1);
+            beep(700,.06); setTimeout(()=>beep(940,.07),70);
+            return;
+          }
           if(!pkPalBuyableK(k)){ beep(150,.1); return; }
           const td=pkNextTierData(k);
           if(!td || PK.bones<td.c){ beep(150,.1); return; }
