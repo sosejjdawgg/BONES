@@ -473,7 +473,7 @@ function startPark(plus){
     hell:false, hellT:0, hellSpreadT:0, hellHurtT:0,
     armor:0, armorUnlocked:false, armorFeedCount:0,
     exitNagT:0, exitNagFlashT:0,
-    swordSpinCd:0, whirlwindT:0, whirlwindR:0, spinLastAng:null, spinAngAccum:0, spinT:0,
+    swordSpinCd:0, whirlwindT:0, whirlwindR:0, whirlwindDmg:0, whirlwindHit:new Set(), spinLastAng:null, spinAngAccum:0, spinT:0, spinTier:0,
     rage:0, judgment:null, judgmentFlashT:0, zoomFromJudgment:0,
     endRunAsk:false
   });
@@ -1142,11 +1142,12 @@ function pkApeCount(){ let n=0; for(const e of PK.en) if(e.t==="ape" && !e.fleei
 // the ordinary mixed enemies for this stage keep spawning and attacking in the background
 const APE_WAVE=8, APE_WAVE_QUOTA=10, APE_WAVE_CAP=6, APE_WAVE_HP=18;
 
-/* ===================== THE GODS' SWORD (DOGPARK+ only) =====================
-   Wave 2 of a DOGPARK+ run stops dead and a sword is thrown down out of the sky, spinning, to
-   bury itself in a clearing. 250 bones takes it; from then on it rides horizontally in BONES'
-   mouth and cuts whatever he runs into. The hole it leaves behind never closes — it widens every
-   wave, and by wave 6 the fire coming out of it has taken the whole park.                     */
+/* ===================== THE SWORD (DOGPARK+ only) =====================
+   Wave 2 of a DOGPARK+ run stops dead and a sword comes down out of the sky, spinning, to bury
+   itself in a clearing — deliberately unexplained, no origin story attached. 250 bones takes it;
+   from then on it rides horizontally in BONES' mouth and cuts whatever he runs into. The hole it
+   leaves behind never closes — it widens every wave, and by wave 6 the fire coming out of it has
+   taken the whole park.                                                                        */
 const SWORD_COST=250, SWORD_UP_COST=100, SWORD_MAX_TIER=5, SWORD_WAVE=2;
 // tuned against the fire boss ape (APE_HP=44): tier 1 needs 7 connects, tier 5 needs 3
 const SWORD_DMG_T   = [7, 9, 11, 13, 15];
@@ -1194,7 +1195,6 @@ function pkSwordDrop(){
   const site=pkSwordSite();
   PK.sword={state:"falling", x:site.x, y:site.y, spin:0, tier:0, boltT:3+Math.random()*4, cutCd:0, gleamT:0, growT:0};
   PK.swordCine={ph:"fall", t:0};
-  toast("THE SKY SPLITS OPEN…",1);
   beep(70,.9,"sawtooth",.1); setTimeout(()=>beep(52,1.0,"sawtooth",.09),160);
 }
 // the cutscene owns the whole world while it runs: parkUpdate hands it the frame and returns, so
@@ -1244,7 +1244,7 @@ function pkSwordCineUpdate(dt){
     }
     if(c.t>=SW_SETTLE){
       PK.swordCine=null; s.state="planted"; s.spin=0;
-      toast("A BLADE FROM THE GODS — " + SWORD_COST + " BONES TO TAKE IT",1);
+      toast("A BLADE LIES HERE — " + SWORD_COST + " BONES TO TAKE IT",1);
       beep(880,.12,"sine",.06); setTimeout(()=>beep(1320,.16,"sine",.05),110);
     }
   } else if(c.ph==="pluck"){
@@ -1374,10 +1374,31 @@ function pkSwordUpgrade(){
    this is a payoff for having the blade, not a separate weapon. Long cooldown, so it's a panic
    button / crowd-clearer, not something to lean on every fight. ---------- */
 const SWORD_SPIN_CD=5, SWORD_SPIN_WINDOW=0.45;
+// how long the spin itself plays out and keeps hitting — separate from SWORD_SPIN_CD, which is
+// purely how long BONES has to wait before he can wind up another one
+const WHIRLWIND_DUR=1.1, WHIRLWIND_TURNS=2.5;
+// optional shop upgrade: widens the ring and hits harder, tier by tier — see pkSpinUpgrade
+const SWORD_SPIN_MAXTIER=3, SWORD_SPIN_UP_COST=130;
+const SWORD_SPIN_R_BONUS_T=[25, 50, 80], SWORD_SPIN_DMG_BONUS_T=[10, 22, 38];
+function pkSpinTier(){ return PK.spinTier||0; }
 function pkWhirlwindReady(){ return PK.plusMode && pkSwordTier()>=1 && PK.swordSpinCd<=0; }
+function pkSpinUpgrade(){
+  if((PK.spinTier||0)>=SWORD_SPIN_MAXTIER) return;
+  PK.spinTier=(PK.spinTier||0)+1;
+  PK.shake=Math.max(PK.shake||0,0.3);
+  for(let i=0;i<22;i++){
+    const a=Math.random()*6.283, sp=50+Math.random()*140;
+    SPARKS.push({x:PK.x, y:PK.y-8, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp-30, life:0.4+Math.random()*0.3, gold:true});
+  }
+  beep(420,.1,"square",.06); setTimeout(()=>beep(700,.12,"square",.055),90);
+  toast("WHIRLWIND MASTERY "+PK.spinTier+"/"+SWORD_SPIN_MAXTIER+" — WIDER, HARDER SPIN",1);
+}
 function pkSwordSpinUpdate(dt){
   PK.swordSpinCd=Math.max(0,PK.swordSpinCd-dt);
-  PK.whirlwindT=Math.max(0,PK.whirlwindT-dt);
+  if(PK.whirlwindT>0){
+    PK.whirlwindT=Math.max(0,PK.whirlwindT-dt);
+    pkWhirlwindHitPass(false);   // keeps hitting anything that wanders into the ring for the
+  }                              // whole active window, not just the instant it was cast
   if(!pkWhirlwindReady() || !PK.joy){ PK.spinLastAng=null; PK.spinAngAccum=0; PK.spinT=0; return; }
   const mag=Math.hypot(PK.joy.dx,PK.joy.dy);
   if(mag<0.6){ PK.spinLastAng=null; PK.spinAngAccum=0; PK.spinT=0; return; }
@@ -1398,24 +1419,26 @@ function pkSwordSpinUpdate(dt){
     PK.spinAngAccum=0; PK.spinT=0;
   }
 }
-function pkWhirlwindSlash(){
-  PK.swordSpinCd=SWORD_SPIN_CD;
-  const R=100+pkSwordTier()*8;   // 108..140 across the 5 tiers — noticeably wider than the old 74..90
-  const dmg=18+Math.random()*4+pkSwordTier()*1.5;
+// one sweep of the active ring: anything inside gets hit exactly once per cast (tracked in
+// PK.whirlwindHit), so re-running this every frame for the whole WHIRLWIND_DUR window catches
+// stragglers walking into it without turning the attack into a repeating damage tick
+function pkWhirlwindHitPass(first){
+  const R=PK.whirlwindR, dmg=PK.whirlwindDmg, nearMissR=R*1.5;
   const sweep=[];
-  const nearMissR=R*1.5;
   pkEnemiesNear(PK.x,PK.y,nearMissR+20,e=>sweep.push(e));
   for(const e of sweep){
     if(e.fleeing) continue;
     const dxw=wd(e.x-PK.x,PK.WW), dyw=wd(e.y-PK.y,PK.WH), d=Math.hypot(dxw,dyw)||1;
     if(d<R+pkHitR(e)){
+      if(PK.whirlwindHit.has(e)) continue;
+      PK.whirlwindHit.add(e);
       e.hp-=dmg;
       if(e.hp<=0){ pkDownEnemy(e,dxw/d,dyw/d); pkHitMark(e.x,e.y,true); }
       else {
         e.kx=dxw/d*PK.knock*2.8; e.ky=dyw/d*PK.knock*2.8;   // the whole point — this is the one attack that actually clears the ring
         e.hitT=0.3; pkHitMark(e.x,e.y,false);
       }
-    } else if(d<nearMissR+pkHitR(e) && !(e.startledT>0)){
+    } else if(first && d<nearMissR+pkHitR(e) && !(e.startledT>0)){
       // just outside the blade's actual reach: not hit, but close enough that the whoosh of it
       // rattles them — a beat of hesitation rather than a free hit
       e.startledT=0.7;
@@ -1423,8 +1446,18 @@ function pkWhirlwindSlash(){
       beep(900,.05,"square",.04,{prio:0});
     }
   }
-  PK.whirlwindT=0.5;
+}
+function pkWhirlwindSlash(){
+  PK.swordSpinCd=SWORD_SPIN_CD;
+  const spinTier=pkSpinTier();
+  // 108..140 across the 5 sword tiers, plus up to +80 more from the optional spin upgrade
+  const R=100+pkSwordTier()*8+(SWORD_SPIN_R_BONUS_T[spinTier-1]||0);
+  const dmg=18+Math.random()*4+pkSwordTier()*1.5+(SWORD_SPIN_DMG_BONUS_T[spinTier-1]||0);
+  PK.whirlwindHit=new Set();
   PK.whirlwindR=R;
+  PK.whirlwindDmg=dmg;
+  pkWhirlwindHitPass(true);
+  PK.whirlwindT=WHIRLWIND_DUR;
   PK.shake=Math.max(PK.shake||0,0.45);
   PK.zoomFromBark=Math.min(0.25,(PK.zoomFromBark||0)+0.12); pkApplyZoom();
   beep(220,.12,"sawtooth",.08); setTimeout(()=>beep(880,.09,"square",.05),70);
@@ -1560,9 +1593,9 @@ function pkDrawHeldSword(ctx,DX,DY,t){
   ctx.rotate(SWORD_HOLD_TILT);             // tilted in his teeth — pivots around the grip below
   ctx.translate(-SWORD_GRIP_MID*sc, 0);   // put the middle of the grip in his teeth
   if(PK.whirlwindT>0){
-    // two fast full turns over the half-second, around the grip he's holding it by
-    const spinP=1-PK.whirlwindT/0.5;
-    ctx.rotate(spinP*Math.PI*4);
+    // a slow, heavy 2.5 turns over the whole windup, around the grip he's holding it by
+    const spinP=1-PK.whirlwindT/WHIRLWIND_DUR;
+    ctx.rotate(spinP*Math.PI*2*WHIRLWIND_TURNS);
   }
   if(s.growT>0){
     ctx.save(); ctx.globalAlpha=(s.growT/0.5)*0.8;
@@ -1779,7 +1812,7 @@ function pkDrawSwordCineOverlay(ctx,w,h,t){
     ctx.fillStyle="rgba(0,0,0,"+(0.34*p).toFixed(3)+")"; ctx.fillRect(0,bar,w,h-bar*2);
     ctx.globalAlpha=Math.min(1,p*2.2);
     ctx.fillStyle="#ffe98a"; ctx.font="10px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText("THE GODS ARE THROWING SOMETHING DOWN", w/2, bar+h*0.10);
+    ctx.fillText("SOMETHING IS COMING DOWN", w/2, bar+h*0.10);
   } else if(c.ph==="impact"){
     ctx.fillStyle="rgba(255,255,255,"+(0.75*(1-c.t/SW_IMPACT)).toFixed(3)+")";
     ctx.fillRect(0,0,w,h);
@@ -2307,7 +2340,7 @@ function pkDownEnemy(e,ux,uy,o){
   PK.waveKills=(PK.waveKills||0)+1;    // <- the wave goal itself. Every single kind of enemy.
   PK.lastDowned=e;                     // the wave-ending kill gets its own slow-motion send-off
   if(e.roost) e.roost.killed++;
-  if(e.boss){ PK.apeKills=(PK.apeKills||0)+1; pkFanfare(null,false,"✓ THE APE IS DOWN — +8 BONES"); }
+  if(e.boss){ PK.apeKills=(PK.apeKills||0)+1; }
   return true;
 }
 /* The ape friend's whole contribution: he comes down, and everything around the impact gets
@@ -2788,16 +2821,23 @@ function pkShopOpen(){
   // run always has enough bones banked to actually buy something after the very first clear
   if(PK.wave===2) pool.forEach(o=>o.c=10);
   const shuffled=pool.sort(()=>Math.random()-0.5);
-  // sharpening the blade is offered at the top of every single wave while there are tiers left —
-  // never rolled for, never priced down with the rest, so the upgrade path is always available
+  // sharpening the blade, and (DOGPARK+) upgrading the whirlwind spin, are offered at the top of
+  // every single wave while there are tiers left — never rolled for, never priced down with the
+  // rest, so both upgrade paths are always available whenever they're actually relevant
+  const forced=[];
   if(PK.sword && PK.sword.state==="held" && PK.sword.tier<SWORD_MAX_TIER){
     const nt=PK.sword.tier+1;
-    PK.shop=[{n:"SHARPEN THE BLADE", ic:"sword",
+    forced.push({n:"SHARPEN THE BLADE", ic:"sword",
       fx:"TIER "+nt+"/"+SWORD_MAX_TIER+" — BIGGER, "+SWORD_DMG_T[nt-1]+" DMG",
-      c:SWORD_UP_COST, f:()=>pkSwordUpgrade()}, ...shuffled.slice(0,2)];
-  } else {
-    PK.shop = shuffled.slice(0,3);
+      c:SWORD_UP_COST, f:()=>pkSwordUpgrade()});
   }
+  if(PK.plusMode && PK.sword && PK.sword.state==="held" && pkSpinTier()<SWORD_SPIN_MAXTIER){
+    const nst=pkSpinTier()+1;
+    forced.push({n:"WHIRLWIND MASTERY", ic:"spin",
+      fx:"TIER "+nst+"/"+SWORD_SPIN_MAXTIER+" — +"+SWORD_SPIN_R_BONUS_T[nst-1]+" RADIUS, +"+SWORD_SPIN_DMG_BONUS_T[nst-1]+" DMG",
+      c:SWORD_SPIN_UP_COST, f:()=>pkSpinUpgrade()});
+  }
+  PK.shop = forced.concat(shuffled).slice(0,3);
   PK.shopSel = null;      // nothing is bought until it has been confirmed
   PK.joy=null;
 }
@@ -4350,6 +4390,28 @@ function drawPalBird(ctx,bd,sx,sy,t){
   ctx.drawImage(pkTinted(img,"pal","saturate(0.5) hue-rotate(150deg) brightness(1.15)"), sx-ew/2, by-eh, ew, eh);
   ctx.restore();
 }
+// the grove reads as a proper hidden place rather than a shop sign in a field: a soft, dark fog
+// sits over the whole clearing until BONES actually walks the path in, then eases open smoothly
+// as he nears the centre — drawn last, on top of the trees/NPC/everything else in there, since
+// what it's hiding doesn't respect painter's-order depth
+function pkDrawGroveFog(ctx,SC,w,h){
+  if(!PK.npc) return;
+  const [nx,ny]=SC(PK.npc.x,PK.npc.y);
+  const outerR=pkGroveOuterR(), R=outerR*1.35;
+  if(nx<-R-40||nx>w+R+40||ny<-R-40||ny>h+R+40) return;   // nowhere near the screen, skip entirely
+  const d=Math.hypot(wd(PK.npc.x-PK.x,PK.WW),wd(PK.npc.y-PK.y,PK.WH));
+  const revealStart=outerR*1.05, revealEnd=outerR*0.32;
+  const fog=clamp((d-revealEnd)/(revealStart-revealEnd),0,1);
+  if(fog<=0.01) return;
+  ctx.save();
+  const g=ctx.createRadialGradient(nx,ny,R*0.12,nx,ny,R);
+  g.addColorStop(0,"rgba(4,7,5,"+(0.93*fog).toFixed(3)+")");
+  g.addColorStop(0.72,"rgba(4,7,5,"+(0.88*fog).toFixed(3)+")");
+  g.addColorStop(1,"rgba(4,7,5,0)");
+  ctx.fillStyle=g;
+  ctx.beginPath(); ctx.arc(nx,ny,R,0,7); ctx.fill();
+  ctx.restore();
+}
 function drawBandanaDog(ctx,sx,sy,t){
   ctx.fillStyle="rgba(0,0,0,.25)";
   ctx.beginPath(); ctx.ellipse(sx,sy+12,13,4.5,0,0,7); ctx.fill();
@@ -4383,14 +4445,28 @@ function parkDraw(t){
   pkDrawScorch(ctx,DX,DY,WW,WH,w,h);
   pkDrawSwordSite(ctx,SC,w,h,t);
   if(PK.whirlwindT>0){
-    // an expanding white/red ring right where the hit actually lands — BONES is always drawn at
-    // screen centre, so this never needs its own position tracking
-    const p=1-PK.whirlwindT/0.5, r=PK.whirlwindR*(0.4+0.6*p), fade=1-p;
-    ctx.save(); ctx.globalAlpha=fade;
-    ctx.strokeStyle="#fff"; ctx.lineWidth=5;
+    // a bright white comet-tail swoosh chasing the blade all the way around, sized to exactly
+    // cover the real hit radius — BONES is always drawn at screen centre, so this never needs
+    // its own position tracking. Quick fade in, held bright, smooth fade out at the very end.
+    const p=1-PK.whirlwindT/WHIRLWIND_DUR, r=PK.whirlwindR;
+    const envelope=Math.min(1,p/0.08)*Math.min(1,(1-p)/0.18);
+    const curAng=p*Math.PI*2*WHIRLWIND_TURNS+SWORD_HOLD_TILT;
+    const trailArc=3.4, segs=32, aTail=curAng-trailArc;
+    ctx.save();
+    ctx.globalCompositeOperation="lighter";
+    for(let i=0;i<segs;i++){
+      const f0=i/segs, f1=(i+1)/segs, bright=f1;
+      const alpha=envelope*bright*bright*0.85;
+      if(alpha<0.015) continue;
+      ctx.globalAlpha=alpha; ctx.strokeStyle="#fff"; ctx.lineWidth=Math.max(1.5,13*bright);
+      ctx.beginPath(); ctx.arc(DX,DY,r*0.92,aTail+f0*trailArc,aTail+f1*trailArc); ctx.stroke();
+    }
+    ctx.restore();
+    ctx.save(); ctx.globalAlpha=envelope;
+    ctx.strokeStyle="#fff"; ctx.lineWidth=3; ctx.globalAlpha=envelope*0.6;
     ctx.beginPath(); ctx.arc(DX,DY,r,0,7); ctx.stroke();
-    ctx.strokeStyle="#f22"; ctx.lineWidth=2;
-    ctx.beginPath(); ctx.arc(DX,DY,r*0.92,0,7); ctx.stroke();
+    ctx.strokeStyle="#f22"; ctx.lineWidth=2; ctx.globalAlpha=envelope*0.75;
+    ctx.beginPath(); ctx.arc(DX,DY,r*0.94,0,7); ctx.stroke();
     ctx.restore();
   }
   for(const a of PK.acts){
@@ -4726,6 +4802,7 @@ function parkDraw(t){
     ctx.fillText("x"+PK.chain, DX, DY-42); ctx.textAlign="left";
   }
   pkDrawFloatingSword(ctx,SC,DX,DY,t);
+  pkDrawGroveFog(ctx,SC,w,h);
   ctx.restore();   // exit the world zoom transform before any fixed-to-screen overlay
   pkDrawHellOverlay(ctx,w,h,t);
   pkDrawWaveOutro(ctx,w,h,t);
@@ -4808,6 +4885,10 @@ function pkShopIcon(ctx,x,y,s2,key,col){
   else if(key==="sword"){ ctx.beginPath(); ctx.moveTo(0,-9); ctx.lineTo(2.2,-5); ctx.lineTo(2.2,3); ctx.lineTo(-2.2,3); ctx.lineTo(-2.2,-5); ctx.closePath(); ctx.fill();
     ctx.beginPath(); ctx.moveTo(-6,3.4); ctx.lineTo(6,3.4); ctx.stroke();
     ctx.fillRect(-1.2,4,2.4,4); ctx.beginPath(); ctx.arc(0,9,1.8,0,7); ctx.stroke(); }
+  else if(key==="spin"){ for(let i=0;i<3;i++){ const a=i*2.094; ctx.save(); ctx.rotate(a);
+    ctx.beginPath(); ctx.arc(0,0,7,-0.3,1.5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,7.5); ctx.lineTo(-2.6,4.4); ctx.lineTo(2.8,5.8); ctx.closePath(); ctx.fill();
+    ctx.restore(); } }
   else if(key==="armour"){ ctx.beginPath(); ctx.moveTo(0,-9); ctx.lineTo(7,-5); ctx.lineTo(7,2); ctx.lineTo(0,9); ctx.lineTo(-7,2); ctx.lineTo(-7,-5); ctx.closePath(); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0,-5); ctx.lineTo(0,5); ctx.moveTo(-3.6,-1.5); ctx.lineTo(3.6,-1.5); ctx.stroke(); }
   else if(key==="sqpal"||key==="birdpal"||key==="catpal"||key==="apepal"){
