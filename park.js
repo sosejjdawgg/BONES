@@ -1168,8 +1168,8 @@ const SWORD_TAKE_R=34;       // walk this close to the planted blade to claim it
 // existing gameplay anchors: the middle of its grip sits at SWORD_GRIP_MID, and its blade tip
 // sits at SWORD_BLADE — so the art changes but nothing about reach, mouth position or hitboxes does.
 const SWORD_IMG=new Image(); SWORD_IMG.src=SWORD_IMG_SRC;
-const SWORD_IMG_DX=-22.46, SWORD_IMG_DY=-9.28, SWORD_IMG_DW=66.70, SWORD_IMG_DH=18.55;
-const SWORD_IMG_BLADE_X=2.6;   // where the blade begins, in the same shape-space — clips the gleam to the blade only
+const SWORD_IMG_DX=-16.67, SWORD_IMG_DY=-8.49, SWORD_IMG_DW=60.93, SWORD_IMG_DH=16.98;
+const SWORD_IMG_BLADE_X=6.2;   // where the blade begins, in the same shape-space — clips the gleam to the blade only
 function pkSwordTier(){ return PK.sword && PK.sword.state==="held" ? PK.sword.tier : 0; }
 function pkSwordScale(){ return SWORD_SCALE_T[clamp(pkSwordTier()-1,0,SWORD_MAX_TIER-1)]||1; }
 function pkSwordDmg(){ return SWORD_DMG_T[clamp(pkSwordTier()-1,0,SWORD_MAX_TIER-1)]||0; }
