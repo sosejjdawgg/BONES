@@ -519,12 +519,18 @@ function addXP(n){
     renderShop(); renderMeters();
   }
 }
-function openChoice(title,lines,aTxt,aFn,bTxt,bFn){
+// cTxt/cFn are optional — a third, visually quieter escape hatch for dialogs that force a real
+// pick between two live options (nothing to compare against yet, changed your mind, opened it
+// by accident) so the player is never stuck having to commit to one of two choices they didn't
+// actually want. Screens with a real "not now"/"cancel" already built into bTxt don't need it.
+function openChoice(title,lines,aTxt,aFn,bTxt,bFn,cTxt,cFn){
   $("#chTitle").textContent=DN(title); $("#chLines").innerHTML=DN(lines);
-  const A=$("#chA"),B=$("#chB");
+  const A=$("#chA"),B=$("#chB"),C=$("#chC");
   A.textContent=aTxt; A.onclick=()=>{ $("#choice").classList.remove("show"); aFn&&aFn(); };
   if(bTxt){ B.style.display=""; B.textContent=bTxt; B.onclick=()=>{ $("#choice").classList.remove("show"); bFn&&bFn(); }; }
   else B.style.display="none";
+  if(cTxt){ C.style.display=""; C.textContent=cTxt; C.onclick=()=>{ $("#choice").classList.remove("show"); cFn&&cFn(); }; }
+  else C.style.display="none";
   $("#choice").classList.add("show");
 }
 function fireStageCeremony(stg){
@@ -3248,7 +3254,8 @@ function reallyEnterDogpark(){
     openChoice("CHOOSE YOUR PARK",
       "DOGPARK+ REPEATS THE SAME 10 WAVES WITH DOUBLE THE ENEMIES ON SCREEN AT ONCE.",
       "DOGPARK", ()=>{ toast("SURVIVE THE WAVES, BANK BIG XP. IF BONES GETS CAUGHT, YOU LOSE IT ALL \u2620\ufe0f",1); startPark(false); },
-      "DOGPARK+", ()=>{ toast("DOGPARK+ \u2014 DOUBLE THE ENEMIES, SAME WAVES.",1); startPark(true); });
+      "DOGPARK+", ()=>{ toast("DOGPARK+ \u2014 DOUBLE THE ENEMIES, SAME WAVES.",1); startPark(true); },
+      "\u2190 BACK", null);
     return;
   }
   toast("SURVIVE THE WAVES, BANK BIG XP. IF BONES GETS CAUGHT, YOU LOSE IT ALL \u2620\ufe0f",1);
@@ -3375,7 +3382,8 @@ $("#gooutList").addEventListener("click",e=>{
         heartsBurst(6); beep(700,.09); setTimeout(()=>beep(920,.1),110); setTimeout(()=>beep(1180,.12),220);
         toast(S.pup.name+" IS HOME!");
         renderMeters();
-      });
+      },
+      "\u2190 BACK", null);
   }
 });
 $("#todoClose").onclick=()=>$("#todoPanel").classList.remove("show");

@@ -2221,24 +2221,26 @@ function pkBirdDmg(t) { return PAL_BIRD_DMG_T[t-1]; }
 const PAL_KINDS=["sq","bird","cat","ape"];
 // how many tiers each kind actually has — sq/bird/cat upgrade through 4, the ape is bought once
 const PAL_MAXTIER={sq:4, bird:4, cat:4, ape:4};
+// prices raised 60% across sq/bird/cat (the ape stays put) now that friends can actually
+// survive a run — recruiting one is a real pick, not an impulse buy
 const PAL_TIERS={
   sq:[
-    {n:"SQUIRREL PAL", fx:"FOLLOWS YOU, THROWS NUTS (SLOW)", c:15},
-    {n:"SQUIRREL PAL", fx:"FASTER FIRE, MORE DAMAGE",        c:27},
-    {n:"SQUIRREL PAL", fx:"FASTER STILL, HEAVIER HITS",      c:39},
-    {n:"SQUIRREL PAL", fx:"T4: LASER EYES UNLOCKED",         c:57},
+    {n:"SQUIRREL PAL", fx:"FOLLOWS YOU, THROWS NUTS (SLOW)", c:24},
+    {n:"SQUIRREL PAL", fx:"FASTER FIRE, MORE DAMAGE",        c:43},
+    {n:"SQUIRREL PAL", fx:"FASTER STILL, HEAVIER HITS",      c:62},
+    {n:"SQUIRREL PAL", fx:"T4: LASER EYES UNLOCKED",         c:91},
   ],
   bird:[
-    {n:"BIRD FLOCK",   fx:"4 BIRDS, EVERY 14 SEC",           c:20},
-    {n:"BIRD FLOCK",   fx:"6 BIRDS, EVERY 10 SEC",           c:32},
-    {n:"BIRD FLOCK",   fx:"8 BIRDS, EVERY 8 SEC",            c:47},
-    {n:"BIRD FLOCK",   fx:"10 BIRDS, EVERY 7 SEC — DOUBLE DAMAGE",c:66},
+    {n:"BIRD FLOCK",   fx:"4 BIRDS, EVERY 14 SEC",           c:32},
+    {n:"BIRD FLOCK",   fx:"6 BIRDS, EVERY 10 SEC",           c:51},
+    {n:"BIRD FLOCK",   fx:"8 BIRDS, EVERY 8 SEC",            c:75},
+    {n:"BIRD FLOCK",   fx:"10 BIRDS, EVERY 7 SEC — DOUBLE DAMAGE",c:106},
   ],
   cat:[
-    {n:"CAT FRIEND",   fx:"SHORT RANGE, SLOW POUNCE",        c:18},
-    {n:"CAT FRIEND",   fx:"WIDER PATROL, FASTER",            c:30},
-    {n:"CAT FRIEND",   fx:"QUICK AND AGGRESSIVE",            c:45},
-    {n:"CAT FRIEND",   fx:"T4: FULL POWER, POUNCES ANYTHING",c:57},
+    {n:"CAT FRIEND",   fx:"SHORT RANGE, SLOW POUNCE",        c:29},
+    {n:"CAT FRIEND",   fx:"WIDER PATROL, FASTER",            c:48},
+    {n:"CAT FRIEND",   fx:"QUICK AND AGGRESSIVE",            c:72},
+    {n:"CAT FRIEND",   fx:"T4: FULL POWER, POUNCES ANYTHING",c:91},
   ],
   ape:[
     {n:"APE FRIEND",   fx:"LEAPS AND SMASHES \u2014 5s BETWEEN", c:500},
@@ -3859,20 +3861,26 @@ function pkDrawBanner(ctx,w,h,banner,color){
 }
 // safe-exit reminder: a small non-blocking pill that nags whenever bones are actually at risk —
 // carrying some, and far enough from the gate that the BANK/STAY prompt (see parkUpdate's gate
-// check) isn't already up doing the same job. Gets a brighter, faster pulse right after a wave
-// clears (easiest moment to forget what you're holding) or once the pile gets big.
+// check) isn't already up doing the same job. Only surfaces in short bursts along the bottom edge
+// of the world view (not pinned up the whole time) — a periodic reminder, not a permanent nag —
+// and gets a brighter, faster, more frequent pulse right after a wave clears (easiest moment to
+// forget what you're holding) or once the pile gets big.
 function pkDrawExitNag(ctx,w,h){
   if(!PK.active || PK.bones<=0 || PK.shop || PK.convertOpen || PK.friendsOpen || PK.gateAsk) return;
   const gd=Math.hypot(wd(PK.gate.x-PK.x,PK.WW), wd(PK.gate.y-PK.y,PK.WH));
   if(gd<180) return;
   const urgent = PK.bones>=40 || PK.exitNagFlashT>0;
+  const cycle = urgent ? 9 : 16, showFor = urgent ? 3.0 : 2.2;   // on for a few seconds, then off
+  const phase = PK.exitNagT % cycle;
+  if(phase>showFor) return;
+  const fade = Math.min(1, phase/0.25, (showFor-phase)/0.25);   // quick fade at each edge of the burst
   const period = urgent ? 2.0 : 4.5;
   const pulse = 0.5+0.5*Math.sin(PK.exitNagT*(2*Math.PI/period));
-  const alpha = SETTINGS.reduceMotion ? 0.85 : 0.45+0.55*pulse;
+  const alpha = fade*(SETTINGS.reduceMotion ? 0.85 : 0.45+0.55*pulse);
   const txt = "⚠ "+PK.bones+" BONES AT RISK — BANK AT THE EXIT";
   ctx.save();
   ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
-  const tw=ctx.measureText(txt).width, padX=10, pillW=tw+padX*2, pillH=18, px=w/2-pillW/2, py=8;
+  const tw=ctx.measureText(txt).width, padX=10, pillW=tw+padX*2, pillH=18, px=w/2-pillW/2, py=h-pillH-10;
   ctx.globalAlpha=alpha;
   ctx.fillStyle="#000"; ctx.fillRect(px,py,pillW,pillH);
   ctx.strokeStyle="#f22"; ctx.lineWidth=2; ctx.strokeRect(px,py,pillW,pillH);
