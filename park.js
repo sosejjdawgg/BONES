@@ -45,22 +45,25 @@ function pkHurt(n){
 }
 function pkInvuln(){ return PK.godMode || PK.zoomT>0; }   // the golden bone: zoomies + untouchable
 /* ---------- Rage -> Heavenly Judgment (DOGPARK+): fills from real damage taken (see pkHurt),
-   and once full, a tap unleashes a volley of lightning bolts across the nearby fight. Reuses the
-   planted sword's own bolt-strike visual language (a jagged white core with a thicker glow
-   underneath), just white/red instead of white/cyan so it reads as BONES' own move rather than
+   and once full, a tap unleashes exactly 5 fast, choreographed bolts across the nearby fight.
+   The whole screen drops to black except BONES and every live enemy, who stay fully lit —
+   spotlit, not silhouetted — so the strikes read as landing on a real, visible fight rather than
+   a wash of light. Reuses the planted sword's own bolt-strike visual language (a jagged core with
+   a thicker glow underneath), now blue instead of red so it reads as BONES' own move rather than
    the sword site's ambient hazard. ---------- */
-// three times the old runtime and staged like a real set-piece: a hard flash + slow-mo drop on
-// the wind-up, then a sustained barrage the world crawls through, then an easing release —
-// the golden-axe-superpower cadence, not just "the same move but slower"
-const JUDGMENT_DUR=3.3, JUDGMENT_WINDUP=0.35, JUDGMENT_TAIL=0.5;
+// a tight, punchy set-piece: a hard flash + slow-mo drop on the wind-up, five bolts landing in
+// quick succession, then an easing release — not a long barrage, five hits that all count
+const JUDGMENT_DUR=2.6, JUDGMENT_WINDUP=0.3, JUDGMENT_TAIL=0.6, JUDGMENT_BOLTS=5;
+// the pull-back itself: a tenth of the old 0.22 — this move reads through the black-out and the
+// bolts now, it doesn't need the camera to also yank back to sell the scale of it
+const JUDGMENT_ZOOM=0.022;
 function pkHeavenlyJudgment(){
   if(PK.rage<100) return;
   PK.rage=0;
-  const boltN=16+Math.floor(Math.random()*11);   // 16-26 — a real barrage, not the old spread thinned over 3x the time
   const live=PK.en.filter(e=>!e.fleeing);
   const bolts=[];
   const spread=JUDGMENT_DUR-JUDGMENT_WINDUP-JUDGMENT_TAIL;
-  for(let i=0;i<boltN;i++){
+  for(let i=0;i<JUDGMENT_BOLTS;i++){
     let tx,ty;
     if(live.length){
       const e=live[Math.floor(Math.random()*live.length)];
@@ -69,11 +72,11 @@ function pkHeavenlyJudgment(){
       const a=Math.random()*6.283, r2=60+Math.random()*160;
       tx=PK.x+Math.cos(a)*r2; ty=PK.y+Math.sin(a)*r2;
     }
-    bolts.push({x:tx, y:ty, t:JUDGMENT_WINDUP+i*(spread/boltN)+Math.random()*0.09, done:false, flashT:0});
+    bolts.push({x:tx, y:ty, t:JUDGMENT_WINDUP+i*(spread/JUDGMENT_BOLTS)+Math.random()*0.05, done:false, flashT:0});
   }
   PK.judgment={t:0, dur:JUDGMENT_DUR, bolts};
   PK.judgmentFlashT=JUDGMENT_WINDUP;      // the screen-wide wind-up flash, screen-space
-  PK.zoomFromJudgment=0.22;               // temporary, uncapped pull-back — see pkApplyZoom
+  PK.zoomFromJudgment=0;                  // eased in by pkJudgmentAdvance from the very next frame
   pkApplyZoom();
   PK.shake=Math.max(PK.shake||0,0.75);
   toast("★ HEAVENLY JUDGMENT ★",1);
@@ -84,15 +87,16 @@ function pkJudgmentBoltLand(b){
   PK.scorch.push({x:b.x, y:b.y, r:18+Math.random()*10});
   for(let i=0;i<14;i++){
     const a=Math.random()*6.283, sp=60+Math.random()*160;
-    SPARKS.push({x:b.x, y:b.y-10, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp-60, life:0.4+Math.random()*0.35});
+    SPARKS.push({x:b.x, y:b.y-10, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp-60, life:0.4+Math.random()*0.35, steel:true});
   }
   pkEnemiesNear(b.x,b.y,R+20,e=>{
     if(e.fleeing) return;
     const dxw=wd(e.x-b.x,PK.WW), dyw=wd(e.y-b.y,PK.WH), d=Math.hypot(dxw,dyw)||1;
     if(d<R+pkHitR(e)){
-      // meaningful against a boss, but this was never meant to solo him — everything else in
-      // range is meant to actually die or get shoved clean out of the fight
-      const dmg = e.boss ? 14+Math.random()*6 : 24+Math.random()*8;
+      e.xrayT=0.3;   // lit up from the inside for a beat, whether this hit downs it or not
+      // only 5 strikes now, each one meant to actually matter — hits harder than the old
+      // 16-26-bolt barrage did per-bolt to compensate
+      const dmg = e.boss ? 22+Math.random()*8 : 34+Math.random()*10;
       e.hp-=dmg;
       if(e.hp<=0){ pkDownEnemy(e,dxw/d,dyw/d); pkHitMark(e.x,e.y,true); }
       else {
@@ -102,10 +106,8 @@ function pkJudgmentBoltLand(b){
       }
     }
   });
-  // every bolt keeps the screen alive with impact instead of just the one hit up front fading
-  // out a third of the way through a 3.3s sequence
-  PK.shake=Math.max(PK.shake||0,0.24);
-  beep(180+Math.random()*260,.08,"square",.05,{prio:1});
+  PK.shake=Math.max(PK.shake||0,0.32);
+  beep(220+Math.random()*300,.08,"square",.05,{prio:1});
 }
 // the eased time-dilation curve for the whole sequence — mirrors pkOutroSlow's own shape
 // (hard drop, long hold, gentle release) so it reads as the same "cinematic beat" language
@@ -117,12 +119,17 @@ function pkJudgmentSlow(){
   return 0.4+(1-0.4)*((p-0.88)/0.12);
 }
 // bolt scheduling advances on the real (unslowed) frame time — same trick pkOutroSlow's own
-// caller uses — so "16-26 bolts over ~2.4s" stays true regardless of how slow the world feels
+// caller uses — so "5 bolts over ~1.6s" stays true regardless of how slow the world feels.
+// The zoom pull-back now ramps smoothly on both ends instead of snapping in at cast time —
+// eased out over the first 12% of the sequence, held, then eased back to 0 at the tail.
 function pkJudgmentAdvance(dt){
   if(!PK.judgment) return;
   PK.judgment.t+=dt;
   const p=clamp(PK.judgment.t/PK.judgment.dur,0,1);
-  const zTarget = p<0.9 ? 0.22 : 0.22*(1-(p-0.9)/0.1);
+  let zTarget;
+  if(p<0.12) zTarget=JUDGMENT_ZOOM*(p/0.12);
+  else if(p<0.88) zTarget=JUDGMENT_ZOOM;
+  else zTarget=JUDGMENT_ZOOM*(1-(p-0.88)/0.12);
   PK.zoomFromJudgment=zTarget; pkApplyZoom();
   if(PK.judgmentFlashT>0) PK.judgmentFlashT=Math.max(0,PK.judgmentFlashT-dt);
 }
@@ -157,16 +164,61 @@ function pkDrawJudgmentBolts(ctx,SC,w,h){
     ctx.moveTo(bx,-20);
     for(let i=0;i<6;i++){ bx=sx+(Math.random()-0.5)*30; const by=-20+(sy+20)*(i+1)/6; ctx.lineTo(bx,by); }
     ctx.lineTo(sx,sy); ctx.stroke();
-    ctx.globalAlpha=f*0.55; ctx.strokeStyle="#f22"; ctx.lineWidth=11;
+    ctx.globalAlpha=f*0.6; ctx.strokeStyle="#2ad2ff"; ctx.lineWidth=11;
     ctx.stroke();
-    ctx.globalAlpha=f*0.45; ctx.fillStyle="#fff";
+    ctx.globalAlpha=f*0.45; ctx.fillStyle="#cdefff";
     ctx.beginPath(); ctx.arc(sx,sy,46,0,7); ctx.fill();
     ctx.restore();
   }
 }
-// screen-space, drawn after the world transform is already closed: a hard white wind-up flash
-// on the call-in, then a warm gold vignette that pulses at the screen's edges for the rest of
-// the sequence — the "something enormous is happening" cue Golden Axe's own magic spells use
+// how dark the black-out is right now, 0..1 — fast in, held through the strikes, fast out so
+// there's no dead beat once the last bolt's already landed
+function pkJudgmentDimAlpha(){
+  const j=PK.judgment; if(!j) return 0;
+  const p=clamp(j.t/j.dur,0,1);
+  if(p<0.10) return p/0.10;
+  if(p>0.85) return Math.max(0,1-(p-0.85)/0.15);
+  return 1;
+}
+// the black-out itself: fills the view with black everywhere EXCEPT a hole cut around BONES and
+// every live enemy, using one compound path per pass and the evenodd fill rule — a rect plus a
+// circle sub-path leaves the circle unpainted, so whatever was already drawn there (this runs
+// after the whole world is on screen) simply never gets touched, rather than trying to erase the
+// black back off afterward (destination-out just erases straight to transparent, it doesn't
+// un-blend the black that already got composited in — that was the bug the first version had).
+// Three passes at growing hole radius and shrinking alpha fake a soft edge cheaply, without a
+// radial gradient per enemy every single frame. Screen-space, so it redoes the zoom math pkDraw's
+// own SC() already has baked in, rather than reuse it directly.
+function pkDrawJudgmentDim(ctx,w,h){
+  const a=pkJudgmentDimAlpha();
+  if(a<=0) return;
+  const DX=w/2, DY=h/2, zoom=PK.zoom||1;
+  const toScreen=(ex,ey)=>{
+    const px=DX+wd(ex-PK.x,PK.WW), py=DY+wd(ey-PK.y,PK.WH);
+    return [DX+zoom*(px-DX), DY+zoom*(py-DY)];
+  };
+  const holes=[[DX,DY,36*zoom]];
+  for(const e of PK.en){
+    if(e.fleeing) continue;
+    const [ex,ey]=toScreen(e.x,e.y);
+    if(ex<-90||ex>w+90||ey<-90||ey>h+90) continue;
+    holes.push([ex,ey,((e.big||e.boss)?52:30)*zoom]);
+  }
+  ctx.save();
+  ctx.fillStyle="#000";
+  const rings=[[1.5,0.30],[1.15,0.65],[1.0,1.0]];
+  for(const [rMul,alphaMul] of rings){
+    ctx.globalAlpha=a*0.93*alphaMul;
+    ctx.beginPath();
+    ctx.rect(0,0,w,h);
+    for(const [hx,hy,hr] of holes){ ctx.moveTo(hx+hr*rMul,hy); ctx.arc(hx,hy,hr*rMul,0,7); }
+    ctx.fill("evenodd");
+  }
+  ctx.restore();
+}
+// screen-space, drawn after the world transform is already closed: just a hard white wind-up
+// flash on the call-in now — the black-out (pkDrawJudgmentDim) and the bolts themselves carry
+// the rest of the sequence, so the old warm vignette on top of it all was just noise
 function pkDrawJudgmentFlash(ctx,w,h,t){
   if(PK.judgmentFlashT>0){
     ctx.save();
@@ -174,17 +226,7 @@ function pkDrawJudgmentFlash(ctx,w,h,t){
     ctx.fillStyle="#fff"; ctx.fillRect(0,0,w,h);
     ctx.restore();
   }
-  if(!PK.judgment) return;
-  const p=clamp(PK.judgment.t/PK.judgment.dur,0,1);
-  const envelope = p<0.06 ? p/0.06 : p>0.9 ? Math.max(0,1-(p-0.9)/0.1) : 1;
-  if(envelope<=0) return;
-  const pulse=0.65+0.35*Math.abs(Math.sin(t*7));
-  ctx.save();
-  const g=ctx.createRadialGradient(w/2,h/2,Math.min(w,h)*0.32,w/2,h/2,Math.max(w,h)*0.75);
-  g.addColorStop(0,"rgba(255,214,110,0)");
-  g.addColorStop(1,"rgba(255,60,40,"+(0.34*envelope*pulse).toFixed(3)+")");
-  ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
-  ctx.restore();
+  pkDrawJudgmentDim(ctx,w,h);
 }
 const XP_PER_KILL=0.4, XP_PER_SIDE=2;
 // a long run with a full crew can rack up well over a thousand downed enemies once companions and
@@ -497,6 +539,13 @@ function pkGain(n,x,y){
   PK.bones+=g;
   PK.fx.push({x,y,txt:"+"+g,life:0.9});
 }
+// the world-space distance a fresh spawn (or a recycled straggler) needs to clear before it's
+// actually outside the visible screen. Screen size alone isn't enough — PK.zoom pulls the camera
+// back (bark upgrades, and especially every park-size purchase) and reveals more of the world
+// in the same pixels, so a fixed w/h-based radius that used to be safely off-screen starts
+// popping enemies up mid-view the moment the park's been expanded. Dividing by zoom keeps the
+// same real margin beyond the edge of what's actually visible, however far the camera's pulled back.
+function pkOffscreenR(w,h,mult){ return Math.max(w,h)*(mult||0.62)/(PK.zoom||1); }
 function pkSpawn(w,h){
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
   if(Math.random()<0.05){
@@ -506,7 +555,7 @@ function pkSpawn(w,h){
   }
   const r=Math.random(), wv=PK.wave;
   const type = r<Math.max(0.2,0.55-wv*0.04)?"sq" : r<0.8?"bird":"cat";
-  const ang=Math.random()*6.283, R=Math.max(w,h)*0.62;
+  const ang=Math.random()*6.283, R=pkOffscreenR(w,h);
   const hp0=pkEnemyHp(type==="cat"?2:1);
   pkEnMake({t:type, x:(PK.x+Math.cos(ang)*R+WW)%WW, y:(PK.y+Math.sin(ang)*R+WH)%WH,
     hp:hp0, hpMax:hp0,
@@ -560,7 +609,7 @@ function pkSpawnBirdRow(n){
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
   const diagonals=[Math.PI*0.25, Math.PI*0.75, Math.PI*1.25, Math.PI*1.75];
   const ang=diagonals[Math.floor(Math.random()*4)], perp=ang+Math.PI/2;
-  const R=Math.max(w,h)*0.85;
+  const R=pkOffscreenR(w,h,0.85);
   const cx=PK.x-Math.cos(ang)*R, cy=PK.y-Math.sin(ang)*R;   // upstream of the flight path
   const sp=90+Math.random()*20;
   for(let i=0;i<n;i++){
@@ -608,7 +657,7 @@ function pkSpawnBirdV(n){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
   const ang=Math.random()*6.283, perp=ang+Math.PI/2;
-  const R=Math.max(w,h)*0.9;
+  const R=pkOffscreenR(w,h,0.9);
   const cx=PK.x-Math.cos(ang)*R, cy=PK.y-Math.sin(ang)*R;
   const sp=150;
   for(let i=0;i<n;i++){
@@ -863,7 +912,7 @@ function pkSpreadFireFrom(tr){
    class. That keeps property access in the hot per-enemy loop monomorphic, and it makes it
    impossible for a stale per-type flag (a recycled bird still believing it is a mad squirrel) to
    survive into the next life. */
-const EN_FIELDS=["t","x","y","hp","hpMax","sp","vx","vy","kx","ky","dir","fi","ft","ph","life","side","alpha","big","boss","small","decor","angry","hellish","hunting","circling","flock","vForm","stormForm","diving","swoop","swoopCd","swoopWindT","orbitAng","orbitR","orbitSpd","roost","standing","spooked","spookT","spookVx","spookVy","stalk","stalkAggro","anchorX","anchorY","leapT","windT","leapAng","lvx","lvy","ranger","madsq","fromTree","atkState","atkCd","strafeDir","laserState","chargeT","aimAng","aimBase","aimErr","sweepT","beamLen","cd","burnT","palBeamT","madsqExplode","explodeT","heading","spdCur","introT","leapState","leapCd","leapWindT","leapActT","leapDur","leapStartX","leapStartY","leapDX","leapDY","landT","fleeing","fleeT","fleeVx","fleeVy","shockT","hitT","bounceT","bounceMax","bounceSpin","heroOutro"];
+const EN_FIELDS=["t","x","y","hp","hpMax","sp","vx","vy","kx","ky","dir","fi","ft","ph","life","side","alpha","big","boss","small","decor","angry","hellish","hunting","circling","flock","vForm","stormForm","diving","swoop","swoopCd","swoopWindT","orbitAng","orbitR","orbitSpd","roost","standing","spooked","spookT","spookVx","spookVy","stalk","stalkAggro","anchorX","anchorY","leapT","windT","leapAng","lvx","lvy","ranger","madsq","fromTree","atkState","atkCd","strafeDir","laserState","chargeT","aimAng","aimBase","aimErr","sweepT","beamLen","cd","burnT","palBeamT","madsqExplode","explodeT","heading","spdCur","introT","leapState","leapCd","leapWindT","leapActT","leapDur","leapStartX","leapStartY","leapDX","leapDY","landT","fleeing","fleeT","fleeVx","fleeVy","shockT","hitT","xrayT","bounceT","bounceMax","bounceSpin","heroOutro"];
 const EN_BLANK={};
 for(const f of EN_FIELDS) EN_BLANK[f]=undefined;
 const EN_POOL=[], EN_POOL_MAX=420;
@@ -1272,6 +1321,21 @@ function pkSwordCineUpdate(dt){
       beep(700,.1,"square",.04,{prio:2}); setTimeout(()=>beep(1050,.14,"square",.04,{prio:2}),90);
     }
   }
+}
+// how far the camera has panned off BONES and onto the landing site, 0..1 — eases in over the
+// first beat of the fall, holds through the impact and most of the settle, then eases back out
+// so it's home on BONES again by the moment the cutscene actually hands back to gameplay. Pluck/
+// float/gleam don't get their own pan: BONES is already standing right next to it by then.
+const SWORD_CAM_EASE=0.4;
+function pkSwordCamProgress(){
+  const c=PK.swordCine; if(!c) return 0;
+  if(c.ph==="fall") return Math.min(1, c.t/SWORD_CAM_EASE);
+  if(c.ph==="impact") return 1;
+  if(c.ph==="settle"){
+    const remain=SW_SETTLE-c.t;
+    return remain<SWORD_CAM_EASE ? Math.max(0,remain/SWORD_CAM_EASE) : 1;
+  }
+  return 0;
 }
 // standing in the ground waiting to be claimed: it glows, it bobs, and now and then the sky
 // remembers where it came from and hits it
@@ -1848,7 +1912,7 @@ const BIRD_CLUSTERS=3, BIRD_ROOST_SIZE=12;
 function pkSpawnBirdGroup(){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
-  const R=Math.max(w,h)*0.62;
+  const R=pkOffscreenR(w,h);
   // never spawn more than the wave still needs — wave 1's quota of 1 must mean "1 bird",
   // not "a field full of them, of which the clear check will demand every last one"
   const remaining=Math.max(1, PK.waveQuota-PK.waveSpawned);
@@ -1894,7 +1958,7 @@ function pkSpawnCatSquad(){
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
   const remaining=Math.max(1, PK.waveQuota-PK.waveSpawned);
   const n=Math.min((2+Math.floor(Math.random()*3))*pkPlusMult(), remaining);
-  const ang=Math.random()*6.283, R=Math.max(w,h)*0.62;
+  const ang=Math.random()*6.283, R=pkOffscreenR(w,h);
   for(let i=0;i<n;i++){
     const a2=ang+(Math.random()-0.5)*0.8;
     pkEnMake({t:"cat", x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
@@ -1919,7 +1983,7 @@ function pkSpawnRangerSquad(){
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
   const remaining=Math.max(1, PK.waveQuota-PK.waveSpawned);
   const n=Math.min((2+Math.floor(Math.random()*2))*pkPlusMult(), remaining);
-  const ang=Math.random()*6.283, R=Math.max(w,h)*0.65;
+  const ang=Math.random()*6.283, R=pkOffscreenR(w,h,0.65);
   for(let i=0;i<n;i++){
     const a2=ang+(Math.random()-0.5)*0.9;
     pkEnMake({t:"sq", ranger:true, x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
@@ -1936,7 +2000,7 @@ function pkSpawnMadSquad(){
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
   const remaining=Math.max(1, PK.waveQuota-PK.waveSpawned);
   const n=Math.min((2+Math.floor(Math.random()*2))*pkPlusMult(), remaining);
-  const ang=Math.random()*6.283, R=Math.max(w,h)*0.62;
+  const ang=Math.random()*6.283, R=pkOffscreenR(w,h);
   for(let i=0;i<n;i++){
     const a2=ang+(Math.random()-0.5)*0.9;
     pkEnMake({t:"sq", madsq:true, x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
@@ -1951,7 +2015,7 @@ function pkSpawnAlphaSquad(){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW, WH=PK.WH;
   for(let i=0;i<2;i++){
-    const ang=(i/2)*6.283+Math.random()*0.5, R=Math.max(w,h)*0.6;
+    const ang=(i/2)*6.283+Math.random()*0.5, R=pkOffscreenR(w,h,0.6);
     pkEnMake({t:"cat", alpha:true, big:true, x:(PK.x+Math.cos(ang)*R+WW)%WW, y:(PK.y+Math.sin(ang)*R+WH)%WH,
       hp:pkEnemyHp(5), hpMax:pkEnemyHp(5), sp:ALPHA_APPROACH_SPD, ph:0, kx:0, ky:0, dir:1, fi:0, ft:0, leapCd:1.5+Math.random()});
   }
@@ -1978,7 +2042,7 @@ function pkSpawnMixBurst(types){
   const remaining=Math.max(1, PK.waveQuota-PK.waveSpawned);
   const climb=Math.max(0,PK.wave-6);
   const n=Math.min(((2+Math.floor(Math.random()*3))+Math.floor(climb/1.5))*pkPlusMult(), remaining);
-  const ang=Math.random()*6.283, R=Math.max(w,h)*0.62;
+  const ang=Math.random()*6.283, R=pkOffscreenR(w,h);
   const spread=Math.min(6.283, 0.9+climb*0.15);   // fans out wider each wave — surrounded, not funneled
   for(let i=0;i<n;i++){
     const type=types[Math.floor(Math.random()*types.length)];
@@ -2176,11 +2240,41 @@ function pkClearAround(x,y,r){
     if(Math.hypot(wd(tr.x-x,PK.WW),wd(tr.y-y,PK.WH))<r) PK.trees.splice(i,1);
   }
 }
+// the main grove's actual walk-in spiral is only ever computed once, inside pkBuildGrove, and
+// thrown away — this re-derives the same curve from what IS kept (centre/radius/entry angle) so
+// it can be swept clear again any time something might have encroached on it (a second grove
+// landing close by after a later expansion, say). Coarser sampling than the build-time pass is
+// fine — this only has to catch trees that ended up near the corridor, not shape it.
+function pkGrovePathCurve(g){
+  const outerR=g.r, innerR=outerR*0.35;
+  const spiralR=t=>{ const tc=Math.min(1,t/GROVE_COLLAPSE); return outerR + (innerR*0.22-outerR)*tc; };
+  const curve=[];
+  for(let t=0;t<=1.001;t+=1/60){
+    const ang=g.entryAngle+t*GROVE_SWEEP, r=spiralR(t);
+    curve.push([g.x+Math.cos(ang)*r, g.y+Math.sin(ang)*r]);
+  }
+  return curve;
+}
+function pkClearGroveAccess(g){
+  const curve=pkGrovePathCurve(g);
+  for(let i=PK.trees.length-1;i>=0;i--){
+    const tr=PK.trees[i];
+    let best=Infinity;
+    for(const [px,py] of curve){ const d=Math.hypot(wd(tr.x-px,PK.WW),wd(tr.y-py,PK.WH)); if(d<best) best=d; }
+    if(best<GROVE_PATH_W/2) PK.trees.splice(i,1);
+  }
+}
 // the NPC's shop, the exit gate, wherever BONES is standing right now, and any live power-up all
 // have to stay walkable — a freshly-added grove (from the extra slots in pkBuildWoods) can land
-// close enough to wall one of them in, since it doesn't know where any of them are when it's built
+// close enough to wall one of them in, since it doesn't know where any of them are when it's built.
+// The friend shop specifically gets re-validated every time, not just given a clearing around its
+// own centre: a second grove (or anything else) that's crept up on its entry path since the last
+// check gets swept off it too, so it's never a guaranteed-open spot that's unreachable to get to.
 function pkEnsureWalkable(){
-  if(PK.npc) pkClearAround(PK.npc.x, PK.npc.y, pkGroveOuterR()*0.4);
+  if(PK.npc){
+    pkClearAround(PK.npc.x, PK.npc.y, Math.max(90, pkGroveOuterR()*0.5));
+    if(PK.groveCenters[0]) pkClearGroveAccess(PK.groveCenters[0]);
+  }
   if(PK.gate && PK.gate.x!=null) pkClearAround(PK.gate.x, PK.gate.y, 76);
   pkClearAround(PK.x, PK.y, 64);
   for(const pu of PK.powerups) pkClearAround(pu.x, pu.y, 40);
@@ -2480,7 +2574,7 @@ function pkRecycleStragglers(dt,WW,WH){
   if(PK.recycleT>0) return;
   PK.recycleT=RECYCLE_EVERY;
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
-  const far=Math.hypot(w,h)*RECYCLE_R, ring=Math.max(w,h)*0.62;
+  const far=Math.hypot(w,h)*RECYCLE_R, ring=pkOffscreenR(w,h);
   for(let i=0;i<PK.en.length;i++){
     const e=PK.en[i];
     if(e.fleeing || e.boss || e.roost || e.standing || e.spooked || e.decor || e.swoop) continue;
@@ -2898,6 +2992,7 @@ function parkUpdate(dt){
   for(let i=HITFX.length-1;i>=0;i--){ HITFX[i].life-=dt; if(HITFX[i].life<=0) HITFX.splice(i,1); }
   for(const e of PK.en){
     if(e.hitT>0) e.hitT-=dt;
+    if(e.xrayT>0) e.xrayT=Math.max(0,e.xrayT-dt);   // Heavenly Judgment's per-strike x-ray flash
     if(e.bounceT>0) e.bounceT=Math.max(0,e.bounceT-dt);   // spin/squash from an ape smash
   }
   for(let i=SPARKS.length-1;i>=0;i--){ const s=SPARKS[i]; s.x+=s.vx*dt; s.y+=s.vy*dt; s.vy+=140*dt; s.life-=dt; if(s.life<=0) SPARKS.splice(i,1); }
@@ -4277,6 +4372,18 @@ function drawEnemy(ctx,e,sx,sy){
     ctx.beginPath(); ctx.ellipse(sx, sy-eh*0.5, ew*0.55, eh*0.55, 0,0,7); ctx.fill();
     ctx.restore();
   }
+  // Heavenly Judgment's strike flash: a flat blue x-ray silhouette standing in for the sprite
+  // for a beat, like the bolt just lit it up from the inside — an exact flat recolor (same
+  // source-atop trick the pal-shop icons use), not a CSS filter chain, since sepia/hue-rotate on
+  // a near-white silhouette has almost no saturation left to actually push toward blue
+  if(e.xrayT>0){
+    ctx.save(); ctx.globalAlpha=Math.min(1,e.xrayT/0.3);
+    ctx.imageSmoothingEnabled=false;
+    const ximg=pkPalIconTint(img,"#2ad2ff")||img;
+    if(e.dir<0){ ctx.save(); ctx.translate(sx*2,0); ctx.scale(-1,1); ctx.drawImage(ximg, sx-ew/2, sy-eh, ew, eh); ctx.restore(); }
+    else ctx.drawImage(ximg, sx-ew/2, sy-eh, ew, eh);
+    ctx.restore();
+  }
   drawEnemyHP(ctx,e,sx,sy,eh);
   if(e.madsqExplode) drawMadsqExplosion(ctx,sx,sy,e.explodeT);
   ctx.restore();
@@ -4436,7 +4543,19 @@ function parkDraw(t){
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
   const DX=w/2, DY=h/2;
   const SC=(ex,ey)=>[DX+wd(ex-PK.x,WW), DY+wd(ey-PK.y,WH)];
+  // during the sword's arrival, the whole view pans off BONES and onto the landing site — a
+  // uniform screen-space shift laid on top of everything below, so every single thing already
+  // drawn relative to DX/DY (BONES himself included, he's never routed through SC) slides
+  // together as one real camera move rather than needing its own special-cased position
+  let panX=0, panY=0;
+  const swCamP=pkSwordCamProgress();
+  if(swCamP>0 && PK.sword){
+    const sp=swCamP*swCamP*(3-2*swCamP);   // smoothstep — eases both ends of the pan
+    const [ssx,ssy]=SC(PK.sword.x,PK.sword.y);
+    panX=(DX-ssx)*sp; panY=(DY-ssy)*sp;
+  }
   ctx.save(); ctx.translate(DX,DY); ctx.scale(PK.zoom||1,PK.zoom||1); ctx.translate(-DX,-DY);
+  ctx.translate(panX,panY);
   if(PKBG){
     const ox=((PK.x-DX)%WW+WW)%WW, oy=((PK.y-DY)%WH+WH)%WH;
     ctx.imageSmoothingEnabled=false;
