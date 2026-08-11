@@ -493,7 +493,8 @@ function startPark(plus){
     exitNagT:0, exitNagFlashT:0,
     swordSpinCd:0, whirlwindT:0, whirlwindR:0, whirlwindDmg:0, whirlwindHit:new Set(), spinLastAng:null, spinAngAccum:0, spinT:0, spinTier:0,
     rage:0, judgment:null, judgmentFlashT:0, zoomFromJudgment:0,
-    endRunAsk:false, settingsOpen:false
+    endRunAsk:false, settingsOpen:false,
+    fog:null, fogCols:0, fogRows:0, facing:0, fireflies:[]
   });
   PK.hp=PK.maxhp;
   PK.healerT=pkHealerGap();
@@ -822,6 +823,91 @@ function pkTreesNear(x,y,r,cb){
     const b=g.buckets[gy*g.cols+gx];
     if(b) for(let k=0;k<b.length;k++) cb(b[k]);
   }
+}
+/* ===================== FOG OF WAR (DOGPARK AFTER DARK only) =====================
+   A coarse grid over the whole world, one float per cell holding the game-time (PK.t) it was
+   last inside BONES' sight — mirrors the tree grid above, just storing a timestamp instead of
+   a bucket of objects. Two passes read/write it every frame: pkTickFog (small radius, reveals
+   cells near BONES, biased toward the way he's facing) and pkDrawFog (bigger radius, paints
+   whatever the camera can currently see). Neither pass is more than simple arithmetic over a
+   couple hundred cells at most — no per-pixel work, no gradient allocated per cell, and both
+   are complete no-ops outside PK.plusMode. */
+const FOG_CELL=48;                 // world units per grid cell
+const FOG_VISION_FRONT=190, FOG_VISION_BACK=110;   // sight radius: further ahead than behind
+const FOG_HOLD=20;                 // seconds a seen cell stays fully clear once BONES leaves
+const FOG_REGAIN=6;                // seconds for fog to fully creep back in after the hold expires
+let FOG_TILE=null;
+function pkBuildFogTile(){
+  const S=96;
+  const c=document.createElement("canvas"); c.width=S; c.height=S;
+  const x=c.getContext("2d");
+  const g=x.createRadialGradient(S/2,S/2,0,S/2,S/2,S/2);
+  g.addColorStop(0,   "rgba(6,10,22,1)");
+  g.addColorStop(0.55,"rgba(6,10,22,0.94)");
+  g.addColorStop(1,   "rgba(6,10,22,0)");
+  x.fillStyle=g; x.fillRect(0,0,S,S);
+  FOG_TILE=c;
+}
+pkBuildFogTile();
+function pkBuildFogGrid(){
+  if(!PK.plusMode){ PK.fog=null; return; }
+  const cols=Math.max(1,Math.ceil(PK.WW/FOG_CELL)), rows=Math.max(1,Math.ceil(PK.WH/FOG_CELL));
+  PK.fog=new Float32Array(cols*rows).fill(-1e9);
+  PK.fogCols=cols; PK.fogRows=rows;
+}
+// 0 = fully clear (seen recently), 1 = fully fogged (never seen, or seen too long ago)
+function pkFogAlpha(lastSeenT){
+  const since=PK.t-lastSeenT;
+  if(since<FOG_HOLD) return 0;
+  return clamp((since-FOG_HOLD)/FOG_REGAIN,0,1);
+}
+function pkTickFog(dt){
+  if(!PK.plusMode) return;
+  if(!PK.fog) pkBuildFogGrid();
+  if(Math.hypot(PK.vx,PK.vy)>4) PK.facing=Math.atan2(PK.vy,PK.vx);
+  const cols=PK.fogCols, rows=PK.fogRows, WW=PK.WW, WH=PK.WH;
+  const cx=Math.floor(PK.x/FOG_CELL), cy=Math.floor(PK.y/FOG_CELL);
+  const span=Math.ceil(FOG_VISION_FRONT/FOG_CELL)+1;
+  const facing=PK.facing||0;
+  for(let j=-span;j<=span;j++){
+    const gy=((cy+j)%rows+rows)%rows;
+    for(let i=-span;i<=span;i++){
+      const gx=((cx+i)%cols+cols)%cols;
+      const wx=wd((gx+0.5)*FOG_CELL-PK.x,WW), wy=wd((gy+0.5)*FOG_CELL-PK.y,WH);
+      const dist=Math.hypot(wx,wy);
+      if(dist>FOG_VISION_FRONT) continue;
+      let diff=Math.atan2(wy,wx)-facing;
+      diff=((diff+Math.PI)%6.283+6.283)%6.283-Math.PI;
+      const visionR=FOG_VISION_BACK+(FOG_VISION_FRONT-FOG_VISION_BACK)*((Math.cos(diff)+1)/2);
+      if(dist<=visionR) PK.fog[gy*cols+gx]=PK.t;
+    }
+  }
+}
+// drawn in world-space between the trees pass and the enemy pass in parkDraw, so BONES, every
+// enemy, the sword and pals — all drawn after this point — stay fully legible regardless of fog.
+function pkDrawFog(ctx,DX,DY,w,h){
+  if(!PK.plusMode || !PK.fog) return;
+  const cols=PK.fogCols, rows=PK.fogRows, WW=PK.WW, WH=PK.WH;
+  const viewR=Math.max(w,h)*0.75/(PK.zoom||1);
+  const cx=Math.floor(PK.x/FOG_CELL), cy=Math.floor(PK.y/FOG_CELL);
+  const span=Math.min(40,Math.ceil(viewR/FOG_CELL)+1);
+  const drawSize=FOG_CELL*2.1, half=drawSize/2;
+  ctx.save(); ctx.imageSmoothingEnabled=true;
+  for(let j=-span;j<=span;j++){
+    const gy=((cy+j)%rows+rows)%rows;
+    const wy=wd((gy+0.5)*FOG_CELL-PK.y,WH), ey=DY+wy;
+    if(ey<-drawSize||ey>h+drawSize) continue;
+    for(let i=-span;i<=span;i++){
+      const gx=((cx+i)%cols+cols)%cols;
+      const a=pkFogAlpha(PK.fog[gy*cols+gx]);
+      if(a<=0.02) continue;
+      const wx=wd((gx+0.5)*FOG_CELL-PK.x,WW), ex=DX+wx;
+      if(ex<-drawSize||ex>w+drawSize) continue;
+      ctx.globalAlpha=a;
+      ctx.drawImage(FOG_TILE,ex-half,ey-half,drawSize,drawSize);
+    }
+  }
+  ctx.restore();
 }
 // one hard ceiling on trees alight at once, everywhere — beam strikes, spread and hell alike.
 // This is the main brake on the squirrel onslaught, since every burning tree is a squirrel tap.
@@ -2290,6 +2376,7 @@ function pkExpandPark(){
   pkBuildBG(PK.WW,PK.WH);
   pkBuildTrees();
   pkEnsureWalkable();
+  pkBuildFogGrid();
 }
 /* ---------- the bandana dog: a shop for friends who fight beside you ---------- */
 // he stands stock still in the middle of the carnage wearing a red bandana, utterly unbothered.
@@ -3024,6 +3111,7 @@ function parkUpdate(dt){
     pkBuildBG(PK.WW,PK.WH);
     pkBuildTrees();
     pkEnsureWalkable();
+    pkBuildFogGrid();
   }
   const WW=PK.WW, WH=PK.WH;
   // one rebuild per frame, up front, so every neighbourhood query this frame reads the same
@@ -3174,6 +3262,7 @@ function parkUpdate(dt){
   PK.y=(PK.y+PK.vy*dt+WH)%WH;
   [PK.x,PK.y]=pkTreeCollide(PK.x,PK.y);
   pkTickTrees(dt);
+  pkTickFog(dt);
   PK.barkCd-=dt;
   if((PK.barkCd<=0||PK.zoomT>0) && PK.en.some(e=>!e.fleeing && Math.hypot(wd(e.x-PK.x,WW),wd(e.y-PK.y,WH))<PK.barkR+pkHitR(e))) pkBark();
   if(PK.zoomT>0 && Math.random()<0.55){
@@ -4740,6 +4829,7 @@ function parkDraw(t){
     if(tx2<-70||tx2>w+70||ty2<-90||ty2>h+70) continue;
     pkDrawTree(ctx,tr,tx2,ty2,t);
   }
+  pkDrawFog(ctx,DX,DY,w,h);
   pkDrawJudgmentGroundDim(ctx,DX,DY);
   for(const e of PK.en){
     const ex2=DX+wd(e.x-PK.x,WW), ey2=DY+wd(e.y-PK.y,WH);
