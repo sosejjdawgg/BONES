@@ -319,7 +319,7 @@ $("#money1").style.cursor="pointer"; $("#money2").style.cursor="pointer"; $("#mo
 // during init, because park.js (and its `const PK`) is concatenated after this file.
 var PARK_HDR=false;
 function syncParkHeader(){
-  $("#camlabel").textContent = PK.plusMode ? "DOGPARK+" : "DOGPARK";
+  $("#camlabel").textContent = PK.plusMode ? "DOGPARK AFTER DARK" : "DOGPARK";
   $("#clock").textContent    = "WAVE "+PK.wave;
   $("#camstate").textContent = pkLeftCount()+pkLeftLabel();
   $("#needAlert").classList.add("hidden");     // home needs are not the park's business
@@ -3252,9 +3252,9 @@ function pkFitnessWarning(){
 function reallyEnterDogpark(){
   if(S.dogParkPlusUnlocked){
     openChoice("CHOOSE YOUR PARK",
-      "DOGPARK+ REPEATS THE SAME 10 WAVES WITH DOUBLE THE ENEMIES ON SCREEN AT ONCE.",
+      "DOGPARK AFTER DARK REPEATS THE SAME 10 WAVES UNDER A DARKER NIGHT SKY WITH DOUBLE THE ENEMIES ON SCREEN AT ONCE.",
       "DOGPARK", ()=>{ toast("SURVIVE THE WAVES, BANK BIG XP. IF BONES GETS CAUGHT, YOU LOSE IT ALL \u2620\ufe0f",1); startPark(false); },
-      "DOGPARK+", ()=>{ toast("DOGPARK+ \u2014 DOUBLE THE ENEMIES, SAME WAVES.",1); startPark(true); },
+      "AFTER DARK", ()=>{ toast("DOGPARK AFTER DARK \u2014 DOUBLE THE ENEMIES, SAME WAVES, UNDER COVER OF NIGHT.",1); startPark(true); },
       "\u2190 BACK", null);
     return;
   }
@@ -3762,13 +3762,13 @@ $("#pkDevInvuln").onclick=()=>{
 };
 $("#pkDevSpin").onclick=()=>{
   if(!PK.active) return;
-  if(!PK.plusMode || pkSwordTier()<1){ toast("NEEDS DOGPARK+ AND A HELD SWORD (DEV)",1); return; }
+  if(!PK.plusMode || pkSwordTier()<1){ toast("NEEDS DOGPARK AFTER DARK AND A HELD SWORD (DEV)",1); return; }
   PK.swordSpinCd=0; pkWhirlwindSlash();
   toast("WHIRLWIND SLASH TRIGGERED (DEV)");
 };
 $("#pkDevRage").onclick=()=>{
   if(!PK.active) return;
-  if(!PK.plusMode){ toast("NEEDS DOGPARK+ (DEV)",1); return; }
+  if(!PK.plusMode){ toast("NEEDS DOGPARK AFTER DARK (DEV)",1); return; }
   PK.rage=100;
   toast("RAGE FULL — TAP THE BAR (DEV)");
 };
