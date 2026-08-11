@@ -289,6 +289,7 @@ function pkParkMoodMusic(){ return MODE==="park" && PK.active; }
 function menuMusicWanted(){
   if($("#start") && $("#start").offsetParent) return true;          // title + adoption sequence
   if($("#settingsPanel") && $("#settingsPanel").classList.contains("show")) return true;
+  if($("#mystPanel") && $("#mystPanel").classList.contains("show")) return true;
   if(typeof PK!=="undefined" && PK.active && (PK.settingsOpen||PK.shop||PK.friendsOpen||PK.convertOpen||PK.gateAsk||PK.endRunAsk)) return true;
   return false;
 }
@@ -343,6 +344,7 @@ const S = {
   dailyUsed:false, bestDaily:0, bestPractice:0,
   streak:0, dayNeglected:false, sick:false, sickTimer:0, wellTimer:0, dead:false, neglectNight:false, neglectNights:0,
   kibble:3, snacks:2, beach:false, compsToday:0,
+  mystDay:-1, mystMet:false,   // the mysterious dog: last day he showed, and whether you've met him
   jWave3:false, jCollar:false, jTrick:false,
   dHappy:false, dNour:false, dBall:false, dPark:false, dClean:false, dWater:false, dFood:false,
   hoopOwned:false, ballOwned:false, ballStock:0, brushOwned:false, shampooOwned:false, shampooPct:0, firstWater:false, firstFood:false, bedHinted:false, pbTutorialDone:false, mail:[],
@@ -384,7 +386,7 @@ $("#money1").style.cursor="pointer"; $("#money2").style.cursor="pointer"; $("#mo
 // during init, because park.js (and its `const PK`) is concatenated after this file.
 var PARK_HDR=false;
 function syncParkHeader(){
-  $("#camlabel").textContent = PK.plusMode ? "DOGPARK AFTER DARK" : "DOGPARK";
+  $("#camlabel").textContent = PK.plusMode ? "DARKPARK UNLEASHED" : "DOGPARK";
   $("#clock").textContent    = "WAVE "+PK.wave;
   $("#camstate").textContent = pkLeftCount()+pkLeftLabel();
   $("#needAlert").classList.add("hidden");     // home needs are not the park's business
@@ -945,6 +947,7 @@ $("#dogcv").addEventListener("pointerdown",e=>{
   const r=e.currentTarget.getBoundingClientRect();
   const fx=(e.clientX-r.left)/r.width, fy=(e.clientY-r.top)/r.height;
   if(XPANIM.ready && fy>0.86){ xpLevelTap(); return; }
+  if(mystHitWindow(fx,fy)){ mystOpen(); return; }   // caught him at the glass
   if(S.memorialSrc && fx>0.12 && fx<0.28 && fy>0.12 && fy<0.34){ // the photo on the wall
     $("#portraitImg").src=S.memorialSrc;
     const lb=$("#portraitLb"); lb.textContent="IN LOVING MEMORY"; lb.className="";
@@ -1270,6 +1273,269 @@ function lcdSet(arr){
 for(const k in DOGIMG) lcdSet(DOGIMG[k]);
 lcdSet(BEGIMG); lcdSet(SENIORIMG); lcdSet(ROBOTIMG);   // the bot lives on the same LCD as BONES
 const HEARTIMG = HEARTS.map(u=>{ const i=new Image(); i.src=u; return i; });
+
+/* ==================== THE MYSTERIOUS DOG ====================
+   Some hours he is simply there: a black shape behind the blinds, rocking gently, watching the
+   room. Ten seconds and he is gone again. Tap him in time and the blinds go up and he does
+   business — bones only, and only for things nobody else sells. Meet him once and he leaves you
+   a whistle, so afterwards you can call him rather than wait on him.
+   He is drawn straight into DOGCAM (see mystDrawWindow, called from the blinds block) and runs
+   off the same game clock as everything else: one 5% roll per game hour, at most one visit a day. */
+const WIN_X=0.72, WIN_Y=0.14, WIN_W=0.18, WIN_H=0.20;   // the DOGCAM window, in canvas fractions
+const MYST_PEEK=10;                 // seconds he will wait at the glass before giving up on you
+const MYST_HOUR_CHANCE=0.05;        // per game hour, on the hours he is allowed to come at all
+const MYST_PRICE=999;
+const MYST = { state:"away", t:0, blind:0, lastHour:-1, flash:0 };
+// every silhouette in the game is the same trick: draw the sprite, then flood it with black
+// through source-in so only its own alpha survives. Cached per image — it never changes.
+const MYST_SIL=new WeakMap();
+function mystSil(img){
+  if(!img) return null;
+  const iw=img.naturalWidth||img.width, ih=img.naturalHeight||img.height;
+  if(!iw||!ih) return null;
+  let c=MYST_SIL.get(img);
+  if(c) return c;
+  c=document.createElement("canvas"); c.width=iw; c.height=ih;
+  const x=c.getContext("2d");
+  x.imageSmoothingEnabled=false;
+  x.drawImage(img,0,0);
+  x.globalCompositeOperation="source-in";
+  x.fillStyle="#000"; x.fillRect(0,0,iw,ih);
+  MYST_SIL.set(img,c);
+  return c;
+}
+function mystFrame(){ const a=DOGIMG.idle; return a&&a.length?a[0]:null; }
+function mystBusy(){
+  return R.active||PK.active||OUTING.active||WASH.active||EVO.active||SLEEP.active||atWorkNow();
+}
+function mystSfxArrive(){ beep(150,.16,"sine",.05); setTimeout(()=>beep(112,.26,"sine",.045),150); }
+function mystSfxWhistle(){   // two rising slides, the way a real dog whistle reads
+  const p=[1180,1560,1950,1720,2100];
+  p.forEach((f,i)=>setTimeout(()=>beep(f,.07,"sine",.045),i*68));
+}
+function mystSfxRoll(){      // the blinds going up: a quick ladder of wooden ticks
+  for(let i=0;i<9;i++) setTimeout(()=>beep(320+i*46,.028,"square",.03),i*52);
+  setTimeout(()=>beep(880,.1,"sine",.05),9*52+40);
+}
+function mystArrive(quiet){
+  if(MYST.state!=="away"&&MYST.state!=="leaving") return;
+  MYST.state="peek"; MYST.t=0; MYST.blind=0; MYST.flash=1;
+  if(!quiet) mystSfxArrive();
+}
+// the whistle route: he comes whatever the hour, and walks straight into the roll-up
+function mystWhistle(){
+  if(mystBusy()){ beep(160,.14,"sawtooth",.04); toast("NOT NOW — BONES IS BUSY.",1); return; }
+  $("#supplies").classList.remove("show");
+  mystSfxWhistle();
+  MYST.state="peek"; MYST.t=0; MYST.blind=0; MYST.flash=1;   // rises into the frame, then opens up
+  setTimeout(()=>{ if(MYST.state==="peek") mystOpen(); },900);
+}
+function mystOpen(){
+  if(MYST.state!=="peek") return;
+  MYST.state="opening"; MYST.t=0;
+  if(!S.mystMet){
+    S.mystMet=true;
+    setTimeout(()=>toast("HE LEFT YOU A WHISTLE. IT'S IN YOUR SUPPLIES."),2400);
+  }
+  mystSfxRoll();
+}
+function mystTick(dt){
+  if(MYST.flash>0) MYST.flash=Math.max(0,MYST.flash-dt*1.6);
+  // one roll per game hour, and never twice in a day
+  const hr=Math.floor(CLK.h);
+  if(MYST.lastHour!==hr){
+    MYST.lastHour=hr;
+    if(MYST.state==="away" && !mystBusy() && MODE==="home" && S.mystDay!==CLK.day
+       && Math.random()<MYST_HOUR_CHANCE){
+      S.mystDay=CLK.day; mystArrive();
+    }
+  }
+  MYST.t+=dt;
+  if(MYST.state==="peek"){
+    if(mystBusy()){ MYST.state="leaving"; MYST.t=0; return; }
+    if(MYST.t>=MYST_PEEK){ MYST.state="leaving"; MYST.t=0; }
+  } else if(MYST.state==="leaving"){
+    if(MYST.t>=0.7){ MYST.state="away"; MYST.blind=0; }
+  } else if(MYST.state==="opening"){
+    MYST.blind=Math.min(1,MYST.t/0.62);
+    if(MYST.blind>=1){ MYST.state="shop"; openMystShop(); }
+  } else if(MYST.state==="shop"){
+    MYST.blind=1;
+  } else if(MYST.state==="closing"){
+    MYST.blind=Math.max(0,1-MYST.t/0.5);
+    if(MYST.blind<=0){ MYST.state="away"; }
+  }
+}
+// how far up he is sitting in the window: 0 fully below the sill, 1 fully in view
+function mystRise(){
+  if(MYST.state==="peek")    return Math.min(1,MYST.t/0.55);
+  if(MYST.state==="leaving") return Math.max(0,1-MYST.t/0.7);
+  if(MYST.state==="away")    return 0;
+  return 1;
+}
+// drawn as part of the window: he sits behind the glass, the blinds go over the top of him, and
+// the whole thing is clipped to the frame so he can never spill into the room
+function mystDrawWindow(ctx,w,h){
+  const winX=w*WIN_X, winY=h*WIN_Y, winW=w*WIN_W, winH=h*WIN_H;
+  const rise=mystRise();
+  if(rise>0){
+    const sil=mystSil(mystFrame());
+    ctx.save();
+    ctx.beginPath(); ctx.rect(winX+1.5,winY+1.5,winW-3,winH-3); ctx.clip();
+    // a wash of cold light behind him so the shape separates from the glass
+    const g=ctx.createLinearGradient(0,winY,0,winY+winH);
+    g.addColorStop(0,"rgba(120,140,190,0.16)"); g.addColorStop(1,"rgba(120,140,190,0)");
+    ctx.fillStyle=g; ctx.fillRect(winX,winY,winW,winH);
+    if(sil){
+      const bob=Math.sin(performance.now()/430)*winH*0.035;
+      const sw=winW*0.80, sh=sw*(sil.height/sil.width);
+      const sx=winX+winW*0.5-sw/2;
+      // sits low in the frame and rises into it — head and shoulders only, like someone
+      // standing outside on their back legs with their paws on the sill
+      const sy=winY+winH-sh*0.62 - rise*winH*0.30 + bob;
+      ctx.globalAlpha=0.92*rise;
+      ctx.imageSmoothingEnabled=false;
+      ctx.drawImage(sil,sx,sy,sw,sh);
+      ctx.globalAlpha=1;
+    }
+    ctx.restore();
+  }
+  ctx.strokeStyle="#fff"; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.moveTo(w*0.81,winY); ctx.lineTo(w*0.81,winY+winH); ctx.stroke();
+  // venetian blinds — explains the striped light drawSunray() throws across the room. They
+  // gather at the top as MYST.blind climbs, so the window clears from the bottom upward.
+  const slatN=7, coverH=winH*(1-MYST.blind);
+  ctx.strokeStyle="#15151a"; ctx.lineWidth=1.4;
+  for(let i=1;i<slatN;i++){
+    const sy=winY+(winH/slatN)*i;
+    if(sy>winY+coverH) continue;
+    ctx.beginPath(); ctx.moveTo(winX+1,sy); ctx.lineTo(winX+winW-1,sy); ctx.stroke();
+  }
+  if(MYST.blind>0.02){   // the gathered bundle sitting at the head of the frame
+    ctx.fillStyle="#15151a";
+    ctx.fillRect(winX+1,winY+1,winW-2,Math.min(winH*0.10,winH*0.10*MYST.blind+1));
+  }
+  ctx.strokeStyle="#fff"; ctx.lineWidth=3;
+  // while he is waiting, the frame breathes — the only nudge you get that someone is out there
+  if(MYST.state==="peek"){
+    const pul=0.35+0.65*Math.abs(Math.sin(performance.now()/520));
+    ctx.save();
+    ctx.globalAlpha=pul*0.9; ctx.strokeStyle="#e8c14a"; ctx.lineWidth=2;
+    ctx.strokeRect(winX-2.5,winY-2.5,winW+5,winH+5);
+    ctx.restore();
+  }
+  ctx.strokeStyle="#fff"; ctx.lineWidth=3;
+}
+function mystHitWindow(fx,fy){
+  return MYST.state==="peek" && fx>WIN_X-0.03 && fx<WIN_X+WIN_W+0.03
+      && fy>WIN_Y-0.03 && fy<WIN_Y+WIN_H+0.03;
+}
+/* His stock. Every one of these is a placeholder: the price is real and the flavour is real, but
+   nothing is wired to an effect yet, so buying takes no bones — he simply refuses the sale. That
+   way the shelf can be browsed and priced without anyone paying 999 bones for nothing. */
+const MYST_GOODS=[
+  {n:"THE LONG NIGHT",  d:"HE SAYS IT KEEPS THE DARK OFF YOU"},
+  {n:"SECOND WIND",     d:"FOR THE RUN THAT SHOULD HAVE ENDED"},
+  {n:"THE IRON COLLAR", d:"HEAVIER THAN IT LOOKS. MUCH HEAVIER"},
+  {n:"NINE LIVES",      d:"HE WON'T SAY WHERE HE GOT THEM"},
+  {n:"THE QUIET DOOR",  d:"IT OPENS ONTO SOMEWHERE ELSE"}
+];
+function renderMystShop(){
+  $("#mystBal").textContent = S.snacks+" BONES";
+  $("#mystList").innerHTML = MYST_GOODS.map((g,i)=>
+    '<div class="mrow2'+(S.snacks<MYST_PRICE?" poor":"")+'" data-myst="'+i+'">'
+    +'<span class="mn">'+g.n+'<span class="md">'+g.d+'</span></span>'
+    +'<span class="mc">'+MYST_PRICE+' ◆</span></div>').join("");
+  mystDrawBig();
+}
+/* Where his head actually is, in 0..1 of the silhouette box. Read off the sprite's own alpha
+   rather than guessed at, so the eyes sit in the head whichever frame he happens to be drawn
+   from: find the first row with any ink in it, then take the middle of the ink in the band just
+   below it. Measured once per sprite and cached. */
+const MYST_HEAD=new WeakMap();
+function mystHeadSpot(sil){
+  let hit=MYST_HEAD.get(sil);
+  if(hit) return hit;
+  const x=sil.getContext("2d");
+  const d=x.getImageData(0,0,sil.width,sil.height).data;
+  const op=(px,py)=>d[(py*sil.width+px)*4+3]>10;
+  let top=-1;
+  for(let py=0;py<sil.height && top<0;py++)
+    for(let px=0;px<sil.width;px++) if(op(px,py)){ top=py; break; }
+  if(top<0){ hit={hx:0.5,hy:0.2}; MYST_HEAD.set(sil,hit); return hit; }
+  // A raised tail reaches as high as the head, so the ink up here is usually two separate blobs.
+  // Taking the midpoint of all of it would land squarely on his back — instead split the band
+  // into contiguous runs of inked columns and keep the heaviest one. A head outweighs a tail.
+  const band=Math.max(2,Math.round(sil.height*0.18));
+  const bot=Math.min(sil.height,top+band);
+  const col=new Array(sil.width).fill(0);
+  for(let px=0;px<sil.width;px++)
+    for(let py=top;py<bot;py++) if(op(px,py)) col[px]++;
+  let best={lo:0,hi:sil.width-1,mass:-1}, run=null;
+  for(let px=0;px<=sil.width;px++){
+    const inked = px<sil.width && col[px]>0;
+    if(inked){ if(!run) run={lo:px,hi:px,mass:0}; run.hi=px; run.mass+=col[px]; }
+    else if(run){ if(run.mass>best.mass) best=run; run=null; }
+  }
+  hit={ hx:((best.lo+best.hi)/2)/sil.width, hy:(top+band*0.5)/sil.height };
+  MYST_HEAD.set(sil,hit);
+  return hit;
+}
+// the half-screen cut-out: the same silhouette trick as the window, blown up. He is lit from
+// behind so the black shape separates from the black room, and his eyes burn out of it.
+function mystDrawBig(){
+  const cv=$("#mystCv"); if(!cv) return;
+  const w=cv.clientWidth||360, h=cv.clientHeight||300;
+  if(!w||!h) return;
+  cv.width=w; cv.height=h;
+  const x=cv.getContext("2d");
+  x.clearRect(0,0,w,h);
+  const sil=mystSil(mystFrame());
+  if(!sil) return;
+  // framed on the head rather than the whole animal: blown up well past the panel so only head
+  // and shoulders are in shot, the rest running off the bottom edge. Anchoring on the measured
+  // head spot is what keeps him composed at any scale instead of drifting off frame.
+  const {hx,hy}=mystHeadSpot(sil);
+  const sh=h*1.75, sw=sh*(sil.width/sil.height);
+  const headX=w*0.5, headY=h*0.40;
+  const sx=headX-hx*sw, sy=headY-hy*sh;
+  const pul=0.62+0.38*Math.sin(performance.now()/700);
+  // one clean pool of cold light behind him — no outline tricks, just something for the black
+  // mass to sit against so its edge reads on a black panel
+  const glow=x.createRadialGradient(headX,headY+h*0.08,0,headX,headY+h*0.08,w*0.62);
+  glow.addColorStop(0,"rgba(176,196,246,"+(0.20*pul+0.12).toFixed(3)+")");
+  glow.addColorStop(0.5,"rgba(120,142,200,0.10)");
+  glow.addColorStop(1,"rgba(0,0,0,0)");
+  x.fillStyle=glow; x.fillRect(0,0,w,h);
+  x.imageSmoothingEnabled=false;
+  x.drawImage(sil,sx,sy,sw,sh);
+  // eyes, dropped straight onto the head the sprite actually has
+  const ey=headY, er=Math.max(2.6,w*0.011), gap=w*0.052;
+  for(const ex of [headX-gap, headX+gap]){
+    const eg=x.createRadialGradient(ex,ey,0,ex,ey,er*6);
+    eg.addColorStop(0,"rgba(255,232,160,"+(0.95*pul).toFixed(3)+")");
+    eg.addColorStop(0.3,"rgba(232,193,74,"+(0.5*pul).toFixed(3)+")");
+    eg.addColorStop(1,"rgba(232,193,74,0)");
+    x.fillStyle=eg; x.beginPath(); x.arc(ex,ey,er*6,0,7); x.fill();
+    x.fillStyle="#fff6d0"; x.beginPath(); x.arc(ex,ey,er,0,7); x.fill();
+  }
+}
+let mystBigTimer=null;
+function openMystShop(){
+  renderMystShop();
+  $("#mystPanel").classList.add("show");
+  beep(560,.07,"sine",.05); setTimeout(()=>beep(750,.09,"sine",.05),110);
+  clearInterval(mystBigTimer);
+  mystBigTimer=setInterval(mystDrawBig,80);   // keeps the eyes breathing while he waits on you
+  syncMoodMusic();
+}
+function closeMystShop(){
+  clearInterval(mystBigTimer); mystBigTimer=null;
+  $("#mystPanel").classList.remove("show");
+  MYST.state="closing"; MYST.t=0;             // blinds come back down behind him
+  beep(300,.09,"sine",.04);
+  syncMoodMusic();
+}
 // He has to hold a facing for a beat before he is allowed to turn again, or targets that sit
 // near his centre line make him strobe. Any turn that goes through here is rate-limited.
 const CAM_FLIP_MIN=0.45;
@@ -2290,17 +2556,8 @@ function drawCam(t){
   const {bx,bw2,bh2} = bedRect(w,h);
   ctx.strokeStyle="#fff"; ctx.lineWidth=3;
   ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(w,gy); ctx.stroke();
-  ctx.strokeRect(w*0.72,h*0.14,w*0.18,h*0.20); // window
-  ctx.beginPath(); ctx.moveTo(w*0.81,h*0.14); ctx.lineTo(w*0.81,h*0.34); ctx.stroke();
-  { // venetian blinds — explains the striped light drawSunray() throws across the room
-    const winX=w*0.72, winY=h*0.14, winW=w*0.18, winH=h*0.20, slatN=7;
-    ctx.strokeStyle="#15151a"; ctx.lineWidth=1.4;
-    for(let i=1;i<slatN;i++){
-      const sy=winY+(winH/slatN)*i;
-      ctx.beginPath(); ctx.moveTo(winX+1,sy); ctx.lineTo(winX+winW-1,sy); ctx.stroke();
-    }
-    ctx.strokeStyle="#fff"; ctx.lineWidth=3;
-  }
+  ctx.strokeRect(w*WIN_X,h*WIN_Y,w*WIN_W,h*WIN_H); // window
+  mystDrawWindow(ctx,w,h);   // whoever is behind the glass, then the mullion and the blinds
   if(S.hoopOwned){
     const hx0=HOOP.x0*w, hx1=HOOP.x1*w, hy=HOOP.y*h;
     ctx.strokeStyle="#888"; ctx.lineWidth=2;
@@ -3317,9 +3574,9 @@ function pkFitnessWarning(){
 function reallyEnterDogpark(){
   if(S.dogParkPlusUnlocked){
     openChoice("CHOOSE YOUR PARK",
-      "DOGPARK AFTER DARK REPEATS THE SAME 10 WAVES UNDER A DARKER NIGHT SKY WITH DOUBLE THE ENEMIES ON SCREEN AT ONCE.",
+      "DARKPARK UNLEASHED REPEATS THE SAME 10 WAVES UNDER A DARKER NIGHT SKY WITH DOUBLE THE ENEMIES ON SCREEN AT ONCE.",
       "DOGPARK", ()=>{ toast("SURVIVE THE WAVES, BANK BIG XP. IF BONES GETS CAUGHT, YOU LOSE IT ALL \u2620\ufe0f",1); startPark(false); },
-      "AFTER DARK", ()=>{ toast("DOGPARK AFTER DARK \u2014 DOUBLE THE ENEMIES, SAME WAVES, UNDER COVER OF NIGHT.",1); startPark(true); },
+      "DARKPARK", ()=>{ toast("DARKPARK UNLEASHED \u2014 DOUBLE THE ENEMIES, SAME WAVES, UNDER COVER OF NIGHT.",1); startPark(true); },
       "\u2190 BACK", null);
     return;
   }
@@ -3358,7 +3615,11 @@ function renderSupplies(){
     it(icn("snack"),"BONE TREATS x"+S.snacks,"GIVE ONE FROM NOURISH BONES","snack")+
     (S.ballOwned ? '<div class="prow"><span class="nm">'+icn("ball")+' SPARE BALLS x'+S.ballStock
       +'<br><span class="tiny">SET ONE DOWN IF HIS CURRENT ONE IS LOST OR STUCK</span></span>'
-      +'<button data-supact="ball" '+(S.ballStock<=0?"disabled":"")+'>SET DOWN</button></div>' : "");
+      +'<button data-supact="ball" '+(S.ballStock<=0?"disabled":"")+'>SET DOWN</button></div>' : "")+
+    // left behind the first time the mysterious dog did business with you — blow it and he comes
+    (S.mystMet ? '<div class="prow" style="border-color:#e8c14a"><span class="nm" style="color:#e8c14a">◎ DOG WHISTLE'
+      +'<br><span class="tiny">NOBODY ELSE HEARS IT. HE DOES.</span></span>'
+      +'<button data-supact="whistle">BLOW IT</button></div>' : "");
 }
 $("#shopSup").addEventListener("click",e=>{
   const t=e.target.closest("button"); if(!t) return;
@@ -3373,7 +3634,16 @@ $("#shopSup").addEventListener("click",e=>{
   if(t.dataset.sup==="robot"&&S.money>=350&&!S.owned.robot){ S.money-=350; S.owned.robot=true; beep(660,.08); setTimeout(()=>beep(880,.08),120); setTimeout(()=>beep(1100,.1),240); toast("NOURISH-BOT INSTALLED! BONES EATS AND DRINKS WHILE YOU WORK."); }
   renderMeters(); renderShop();
 });
+$("#mystClose").onclick=closeMystShop;
+$("#mystList").addEventListener("click",e=>{
+  const row=e.target.closest("[data-myst]"); if(!row) return;
+  // nothing here is wired up yet, so he takes nothing — see MYST_GOODS
+  beep(220,.1,"sine",.04);
+  toast("“NOT YET. YOU'RE NOT READY FOR THAT ONE.”",1);
+});
 $("#suppliesList").addEventListener("click",e=>{
+  const wbtn=e.target.closest("button[data-supact='whistle']");
+  if(wbtn){ mystWhistle(); return; }
   const abtn=e.target.closest("button[data-supact]");
   if(abtn){ if(abtn.dataset.supact==="ball") placeBallFromStock(); return; }
   const row=e.target.closest(".prow"); if(!row) return;
@@ -3562,6 +3832,7 @@ function renderSaveCard(){
   $("#saveName").textContent = NAME();
   $("#saveLvl").textContent = "LV. "+S.lvl;
   $("#saveMoney").textContent = "$"+S.money;
+  $("#saveBones").textContent = S.snacks;   // the bone stock park runs bank into
   $("#saveDay").textContent = dayClock(CLK.day,CLK.h);
   $("#saveLast").textContent = S.lastSaveAt ? dayClock(S.lastSaveDay,S.lastSaveH) : "\u2014 NEVER \u2014";
 }
@@ -3828,13 +4099,13 @@ $("#pkDevInvuln").onclick=()=>{
 };
 $("#pkDevSpin").onclick=()=>{
   if(!PK.active) return;
-  if(!PK.plusMode || pkSwordTier()<1){ toast("NEEDS DOGPARK AFTER DARK AND A HELD SWORD (DEV)",1); return; }
+  if(!PK.plusMode || pkSwordTier()<1){ toast("NEEDS DARKPARK UNLEASHED AND A HELD SWORD (DEV)",1); return; }
   PK.swordSpinCd=0; pkWhirlwindSlash();
   toast("WHIRLWIND SLASH TRIGGERED (DEV)");
 };
 $("#pkDevRage").onclick=()=>{
   if(!PK.active) return;
-  if(!PK.plusMode){ toast("NEEDS DOGPARK AFTER DARK (DEV)",1); return; }
+  if(!PK.plusMode){ toast("NEEDS DARKPARK UNLEASHED (DEV)",1); return; }
   PK.rage=100;
   toast("RAGE FULL — TAP THE BAR (DEV)");
 };
@@ -3984,6 +4255,7 @@ function loop(now){
     }
     // at work the dogcam runs on fast-forward, so BONES visibly races through his routine
     if(!R.active && !PK.active){ camBehavior(dt*WORK_FF); pupTick(dt*WORK_FF); tickTreats(dt*WORK_FF); }
+    mystTick(dt);
     if(CAM.workBlockT > 0) CAM.workBlockT = Math.max(0, CAM.workBlockT - dt);
     robotTick(dt);
     if(MODE==="park" && PK.active){ parkUpdate(dt); parkDraw(t); PARK_HDR=true; syncParkHeader(); }

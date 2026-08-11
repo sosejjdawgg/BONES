@@ -251,6 +251,31 @@ body.reduce-motion .screen.screen-in{animation:none}
 body.reduce-motion .overpanel{transition:opacity .12s linear,visibility 0s linear .12s;transform:none}
 body.reduce-motion .overpanel.show{transition:opacity .12s linear,visibility 0s linear 0s;transform:none}
 .overpanel h2{font-size:15px;letter-spacing:2px}
+
+/* THE MYSTERIOUS DOG — he takes the bottom half of the screen as a flat black cut-out and the
+   goods are listed over him, so the whole panel reads as one silhouette rather than a dialog
+   with a picture stuck beside it. */
+#mystPanel{justify-content:flex-start;padding:0;gap:0;overflow:hidden;
+  background:radial-gradient(120% 70% at 50% 12%,#1a1d2b 0%,#07080e 55%,#000 100%)}
+#mystCv{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:100%;height:52%;
+  image-rendering:pixelated;pointer-events:none}
+#mystStage{position:relative;z-index:2;width:100%;padding:26px 16px 0;display:flex;
+  flex-direction:column;align-items:center;gap:12px}
+#mystSay{font-size:13px;letter-spacing:2px;color:#e8c14a;text-shadow:0 0 14px rgba(232,193,74,.45);
+  animation:mystSayIn .5s ease both}
+@keyframes mystSayIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
+#mystBal{font-size:8px;letter-spacing:2px;color:#8a8a8a}
+#mystList{display:flex;flex-direction:column;gap:7px;width:94%;max-height:34vh;overflow-y:auto}
+#mystList .mrow2{border:2px solid #3a3320;background:rgba(0,0,0,.72);padding:9px 11px;
+  display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:pointer;
+  font-size:8px;letter-spacing:1px;transition:border-color .15s,transform .08s}
+#mystList .mrow2:active{transform:scale(.98)}
+#mystList .mrow2 .mn{color:#d8cfae;text-align:left}
+#mystList .mrow2 .md{display:block;font-size:6px;color:#6d675a;margin-top:5px;letter-spacing:1px}
+#mystList .mrow2 .mc{color:#e8c14a;white-space:nowrap}
+#mystList .mrow2.poor{border-color:#2a2418}
+#mystList .mrow2.poor .mc{color:#7a3030}
+#mystClose{position:absolute;top:10px;right:10px;z-index:3}
 .overpanel .lines{font-size:8px;line-height:2.2;color:#ccc}
 .overpanel .big{font-size:22px;color:#fff}
 
@@ -346,7 +371,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.228a</span>
+          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.233a</span>
         </div>
       </div>
 
@@ -401,6 +426,17 @@ body.reduce-motion *{animation:none!important}
         <div id="suppliesList" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:94%;max-height:58vh;overflow-y:auto"></div>
       </div>
 
+      <!-- THE MYSTERIOUS DOG -->
+      <div id="mystPanel" class="overpanel">
+        <canvas id="mystCv"></canvas>
+        <div id="mystStage">
+          <div id="mystSay">"WHAT YOU BUYING?"</div>
+          <div id="mystBal">0 BONES</div>
+          <div id="mystList"></div>
+          <button class="tiny" id="mystClose">&#10005; LEAVE</button>
+        </div>
+      </div>
+
       <!-- NOURISH -->
       <div id="nourish" class="overpanel">
         <button class="tiny pclose" id="nourishClose">&#10005; CLOSE</button>
@@ -423,6 +459,7 @@ body.reduce-motion *{animation:none!important}
         <div id="saveCard" style="border:3px solid #fff;padding:12px 14px;width:82%;font-size:7px;line-height:2.1;text-align:left;box-sizing:border-box">
           <div style="display:flex;justify-content:space-between"><span id="saveName">BONES</span><span id="saveLvl">LV. 1</span></div>
           <div style="display:flex;justify-content:space-between"><span>MONEY</span><span id="saveMoney">$0</span></div>
+          <div style="display:flex;justify-content:space-between"><span>BONES</span><span id="saveBones" style="color:#e8c14a">0</span></div>
           <div style="display:flex;justify-content:space-between"><span>NOW</span><span id="saveDay">DAY 1 08:00</span></div>
           <div style="border-top:1px solid #444;margin-top:6px;padding-top:6px;color:#8a8a8a;display:flex;justify-content:space-between">
             <span>LAST SAVED</span><span id="saveLast" style="color:#8a8a8a">— NEVER —</span>
@@ -452,10 +489,10 @@ body.reduce-motion *{animation:none!important}
           TAP GO OUT FOR WORK, TRAINING OR THE BEACH — OR HEAD TO THE DOGPARK ONCE HE HITS LV.5. BARK AT SQUIRRELS, BIRDS & CATS TO SCARE THEM OFF — HE DOESN'T HURT ANYONE, THEY JUST DROP A BONE AND SCUTTLE AWAY. SURVIVE THE WAVES AND REACH THE RED EXIT TO BANK REAL XP BEFORE HE GETS OVERRUN.<br><br>
           <span class="gh">THE DOGPARK ECONOMY</span><br>
           EVERY SCARED-OFF CRITTER DROPS ONE BONE. SPEND THEM BETWEEN WAVES ON UPGRADES, RARE CHARMS, OR GROWING THE PARK ITSELF — OR TAP THE BONES COUNTER ANY TIME TO TRADE SOME FOR XP, MONEY OR A BONE TREAT. CLEAR A WAVE INSIDE 60 SECONDS AND A BONUS CHARM UNLOCKS IN THE SHOP. KEEP AN EYE OUT FOR THE GOLDEN BIRD — CATCH IT FOR A BIG BONES PAYOUT.<br><br>
-          <span class="gh">DOGPARK AFTER DARK</span><br>
-          CLEAR WAVE 10 ONCE AND DOGPARK AFTER DARK UNLOCKS FOR GOOD. SAME 10 WAVES, DOUBLE THE ENEMIES ON SCREEN AT ONCE, UNDER A DARKER NIGHT SKY WITH FIREFLIES DRIFTING THROUGH THE GLOOM — PICK EITHER MODE EVERY TIME YOU HEAD OUT. THE PARK STAYS WRAPPED IN FOG OUTSIDE WHERE HE'S RECENTLY EXPLORED, SO GROUND HE HASN'T WALKED IN A WHILE FADES BACK INTO THE DARK.<br><br>
-          <span class="gh">THE SWORD (DOGPARK AFTER DARK)</span><br>
-          WAVE 2 OF A DOGPARK AFTER DARK RUN, SOMETHING FALLS TO EARTH AND BURIES ITSELF NEARBY. WALK UP AND PAY THE PRICE SHOWN TO CLAIM IT — FROM THEN ON HE CARRIES IT IN HIS MOUTH AND CUTS DOWN ANYTHING HE RUNS INTO. SHARPEN THE BLADE BETWEEN WAVES FOR MORE REACH AND DAMAGE, UP TO 5 TIERS. LEAVE IT UNCLAIMED TOO LONG AND LIGHTNING STARTS STRIKING IT WHERE IT STANDS.<br><br>
+          <span class="gh">DARKPARK UNLEASHED</span><br>
+          CLEAR WAVE 10 ONCE AND DARKPARK UNLEASHED UNLOCKS FOR GOOD. SAME 10 WAVES, DOUBLE THE ENEMIES ON SCREEN AT ONCE, UNDER A DARKER NIGHT SKY WITH FIREFLIES DRIFTING THROUGH THE GLOOM — PICK EITHER MODE EVERY TIME YOU HEAD OUT. THE PARK STAYS WRAPPED IN FOG OUTSIDE WHERE HE'S RECENTLY EXPLORED, SO GROUND HE HASN'T WALKED IN A WHILE FADES BACK INTO THE DARK.<br><br>
+          <span class="gh">THE SWORD (DARKPARK UNLEASHED)</span><br>
+          WAVE 2 OF A DARKPARK UNLEASHED RUN, SOMETHING FALLS TO EARTH AND BURIES ITSELF NEARBY. WALK UP AND PAY THE PRICE SHOWN TO CLAIM IT — FROM THEN ON HE CARRIES IT IN HIS MOUTH AND CUTS DOWN ANYTHING HE RUNS INTO. SHARPEN THE BLADE BETWEEN WAVES FOR MORE REACH AND DAMAGE, UP TO 5 TIERS. LEAVE IT UNCLAIMED TOO LONG AND LIGHTNING STARTS STRIKING IT WHERE IT STANDS.<br><br>
           <span class="gh">WHIRLWIND SLASH</span><br>
           ONCE THE SWORD IS IN HIS MOUTH, SPIN THE JOYSTICK ONE FULL FAST TURN AND HE CUTS LOOSE IN A WIDE, HEAVY CIRCLE — HITS EVERYTHING AROUND HIM FOR A GOOD WHILE AND KNOCKS BACK ANYTHING IT DOESN'T DOWN. LONG COOLDOWN, SO SAVE IT FOR WHEN HE'S SURROUNDED. UPGRADE WHIRLWIND MASTERY IN THE SHOP (UP TO 3 TIERS) TO WIDEN THE RING AND HIT HARDER.<br><br>
           <span class="gh">RAGE & HEAVENLY JUDGMENT</span><br>
