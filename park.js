@@ -2482,10 +2482,10 @@ const PAL_NUT_SPEED=210, PAL_NUT_DMG=1;
 const PAL_SQ_CD_T    = [4.0, 2.5, 1.5, 1.0];
 const PAL_SQ_RANGE_T = [100, 160, 200, 240];
 const PAL_SQ_DMG_T   = [1,   2,   3,   4];
-const PAL_SQ_HP_T    = [20,  24,  28,  32];
+const PAL_SQ_HP_T    = [40,  48,  56,  64];
 const PAL_CAT_SEEK_T = [50,  75,  95,  115];
 const PAL_CAT_SPD_T  = [120, 160, 195, 230];
-const PAL_CAT_HP_T   = [18,  22,  26,  30];
+const PAL_CAT_HP_T   = [36,  44,  52,  60];
 // double the flock size at every tier, and only the T4 dive itself hits twice as hard
 const PAL_BIRD_N_T   = [4,   6,   8,   10];
 const PAL_BIRD_EVT   = [14,  10,  8,   7];
@@ -2495,7 +2495,7 @@ const PAL_BIRD_DMG_T = [1,   1,   1,   2];
    damage is deliberately modest — he is crowd control, not a damage dealer — and every upgrade
    buys back cooldown rather than power, so a maxed ape is a far more frequent hammer, not a
    bigger one. */
-const PAL_APE_HP=70, PAL_APE_LEASH=250;
+const PAL_APE_HP=140, PAL_APE_LEASH=250;
 const PAL_APE_SEEK_R=150;          // how far he will pick a target to come down on
 const PAL_APE_SMASH_R=74;          // the blast radius of the landing
 const PAL_APE_DMG=3;               // modest: this is a shove with a bruise attached
@@ -2504,7 +2504,7 @@ const PAL_APE_WINDUP=0.45;         // he crouches first, so the smash is readabl
 const PAL_APE_AIR=0.55;            // time in the air
 const PAL_APE_ARC=54;              // how high the hop goes
 const PAL_APE_LAND=0.35;           // the shockwave beat after he lands
-const PAL_APE_CD_T=[5.0, 3.8, 2.8, 2.0];   // "stays still for 5 seconds", down to 2 at max tier
+const PAL_APE_CD_T=[2.5, 1.9, 1.4, 1.0];   // "stays still for 2.5 seconds", down to 1 at max tier
 function pkApePalCd(t){ return PAL_APE_CD_T[clamp(t,1,4)-1]; }
 function pkSqCd(t)    { return PAL_SQ_CD_T[t-1]; }
 function pkSqRange(t) { return PAL_SQ_RANGE_T[t-1]; }
@@ -3910,7 +3910,18 @@ function parkUpdate(dt){
     for(const p of PK.pals){
       if(p.k==="bird") continue;
       if(Math.hypot(wd(n.x-p.x,WW),wd(n.y-p.y,WH))<12){
-        p.hp-=6; beep(180,.08,"square",.03,{prio:0}); hitPal=true; break;
+        hitPal=true;
+        // a thrown nut used to ignore invulnerability entirely — a friend fresh off one hit could
+        // be shredded by the very next nut in flight. Route it through the same protection every
+        // other source of pal damage already respects.
+        if(!(p.invulnT>0)){
+          const nsp=Math.hypot(n.vx,n.vy)||1;
+          p.hp-=6;
+          p.kx=n.vx/nsp*290; p.ky=n.vy/nsp*290;
+          p.invulnT = p.k==="ape" ? 2.5 : 2.0;
+          beep(180,.08,"square",.03,{prio:0});
+        }
+        break;
       }
     }
     if(hitPal){ PK.nuts.splice(i,1); continue; }
@@ -4718,6 +4729,32 @@ function drawBandanaDog(ctx,sx,sy,t){
   ctx.fillText("FRIENDS", sx, sy-20);
   ctx.globalAlpha=1; ctx.textAlign="left";
 }
+// BONES' own health, tucked directly under his feet — always visible, no numbers, so it stays
+// tidy: the fill, the hurt-flash and the shield tint say everything that matters at a glance,
+// the same visual language his old pad bar used, just relocated and shrunk to fit the world.
+function pkDrawBonesHp(ctx,DX,DY,hz,buzz){
+  const bw=32, bh=4, bx=DX-bw/2+buzz, by=DY+21;
+  const hfrac=clamp(PK.hp/PK.maxhp,0,1);
+  if(hz>0){ ctx.save(); ctx.globalAlpha=0.5*hz; ctx.fillStyle="#f22";
+            ctx.fillRect(bx-3,by-3,bw+6,bh+6); ctx.restore(); }
+  ctx.fillStyle="rgba(0,0,0,.65)"; ctx.fillRect(bx-1,by-1,bw+2,bh+2);
+  ctx.strokeStyle = hz>0 ? "#f22" : "#fff"; ctx.lineWidth=1.5;
+  ctx.strokeRect(bx,by,bw,bh);
+  if(PK.regenT>0){
+    const ahead=clamp((PK.hp+Math.min(PK.regenT,PK.maxhp-PK.hp))/PK.maxhp,0,1);
+    ctx.save(); ctx.globalAlpha=0.4+0.25*Math.sin(performance.now()/160); ctx.fillStyle="#3fdc7a";
+    ctx.fillRect(bx+1+bw*hfrac,by+1,Math.max(0,bw*(ahead-hfrac)),bh-2); ctx.restore();
+  }
+  ctx.fillStyle = hz>0 ? "#fff" : (PK.hp<PK.maxhp*0.3?"#f22":"#fff");
+  ctx.fillRect(bx+1,by+1,(bw-2)*hfrac,bh-2);
+  if(PK.over>0){   // the shield rides on top of a full bar, and glows harder the bigger it is
+    const of2=clamp(PK.over/Math.max(1,pkOverCap()),0,1);
+    ctx.save(); ctx.globalAlpha=0.6+0.4*Math.abs(Math.sin(performance.now()/145)); ctx.fillStyle="#ffd94a";
+    ctx.fillRect(bx+1,by+1,(bw-2)*of2,bh-2);
+    ctx.strokeStyle="#ffd94a"; ctx.lineWidth=1.5; ctx.strokeRect(bx,by,bw,bh);
+    ctx.restore();
+  }
+}
 function parkDraw(t){
   if(!PK.active) return;
   const [ctx,w,h]=fit($("#dogcv"));
@@ -5050,6 +5087,7 @@ function parkDraw(t){
     ctx.save(); ctx.globalAlpha=g*0.5; ctx.strokeStyle="#3fdc7a"; ctx.lineWidth=2;
     ctx.beginPath(); ctx.arc(DX,DY,21,0,7); ctx.stroke(); ctx.restore();
   }
+  pkDrawBonesHp(ctx,DX,DY,hz,buzz);
   if(img.complete && !(PK.inv>0&&Math.floor(t*12)%2)){
     if(PK.zoomT>0){   // star power: bones flashes gold and shiny with a pulsing aura
       const rglow=0.5+0.5*Math.sin(t*8);
@@ -5527,43 +5565,16 @@ function pkPadDraw(t){
     ctx.fillText("⚙", sr.x+sr.w/2, sr.y+sr.h*0.72);
     ctx.textAlign="left";
   }
-  let hudBottomY=44;   // grows as the HP/armour/pal stack below actually uses space, so the wave
+  let hudBottomY=44;   // grows as the armour/pal stack below actually uses space, so the wave
                        // goal block (drawn later) always clears it with real room instead of a guess
   {
-    // BONES' health lives down here now — up top it sat straight on the wave meter
-    const hzh=PK.hurtT>0 ? PK.hurtT/HURT_TIME : 0;
-    const hb=hzh>0 ? Math.sin(t*90)*3.5*hzh*hzh : 0;
-    const hfrac=clamp(PK.hp/PK.maxhp,0,1);
+    // BONES' own HP bar now lives in the world, directly under his feet (see pkDrawBonesHp in
+    // parkDraw) -- this block keeps only the position anchors the armour bar and the pal rows
+    // below were already built around, so removing the bar here never shifts anything else.
     const bx=w-140, by=14, bw2=128, bh2=8;
-    if(hzh>0){ ctx.save(); ctx.globalAlpha=0.55*hzh; ctx.fillStyle="#f22";
-               ctx.fillRect(bx-4+hb,by-4,bw2+8,bh2+8); ctx.restore(); }
-    ctx.fillStyle="rgba(0,0,0,.6)"; ctx.fillRect(bx+hb,by,bw2,bh2);
-    ctx.strokeStyle = hzh>0 ? "#f22" : "#fff"; ctx.lineWidth = hzh>0 ? 3 : 2;
-    ctx.strokeRect(bx+hb,by,bw2,bh2);
-    if(PK.regenT>0){
-      const ahead=clamp((PK.hp+Math.min(PK.regenT,PK.maxhp-PK.hp))/PK.maxhp,0,1);
-      ctx.save(); ctx.globalAlpha=0.35+0.2*Math.sin(t*6); ctx.fillStyle="#3fdc7a";
-      ctx.fillRect(bx+2+hb+(bw2-4)*hfrac,by+2,(bw2-4)*(ahead-hfrac),bh2-4); ctx.restore();
-    }
-    ctx.fillStyle = hzh>0 ? "#fff" : (PK.hp<PK.maxhp*0.3?"#f22":"#fff");
-    ctx.fillRect(bx+2+hb,by+2,(bw2-4)*hfrac,bh2-4);
-    if(PK.over>0){
-      // the shield rides on top of a full bar, and glows harder the bigger it is
-      const of2=clamp(PK.over/Math.max(1,pkOverCap()),0,1);
-      ctx.save();
-      ctx.globalAlpha=0.55+0.45*Math.abs(Math.sin(t*7));
-      ctx.fillStyle="#ffd94a";
-      ctx.fillRect(bx+2+hb,by+2,(bw2-4)*of2,bh2-4);
-      ctx.strokeStyle="#ffd94a"; ctx.lineWidth=2; ctx.strokeRect(bx+hb,by,bw2,bh2);
-      ctx.restore();
-    }
-    ctx.fillStyle=PK.over>0?"#ffd94a":"#fff"; ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="right";
-    ctx.fillText((PK.over>0?"+"+Math.ceil(PK.over)+"  ":"")+Math.max(0,Math.ceil(PK.hp))+"/"+PK.maxhp, bx+bw2, by+bh2+10);
-    ctx.textAlign="left"; ctx.lineWidth=2;
     // Full Armour: a whole second bar of its own rather than a tint on the first \u2014 it was bought
     // outright, and it reads as its own asset, not a temporary bonus riding the HP bar. Gaps below
-    // are deliberately generous (10px+) so the HP number, armour bar and pal bars never crowd \u2014
-    // this whole stack used to read as one jammed block.
+    // are deliberately generous (10px+) so the armour bar and pal bars never crowd.
     let armorH=0;
     if(PK.armorUnlocked){
       const ay=by+bh2+12, ah=8, afrac=clamp(PK.armor/Math.max(1,pkArmorCap()),0,1);
