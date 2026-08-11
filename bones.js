@@ -288,7 +288,7 @@ const S = {
   lvl:1, xp:0, gen:1, senior:false, seniorDays:0, lifePathChosen:false, litter:false, memorialSrc:null, pendingStage:[],
   lastSaveAt:null, lastSaveDay:0, lastSaveH:0, dogParkPlusUnlocked:false
 };
-const SETTINGS = { sound:true, reduceMotion:false, music:false, musicDefaultMigrated:true };
+const SETTINGS = { sound:true, reduceMotion:false, music:false, musicDefaultMigrated:true, barkStyle:"circle" };
 const CHARMS = [
   {id:"spike", name:"SPIKED COLLAR", cost:15, unlock:2,   fx:"+15% SPEED / -10% JUMP",            mod:{spd:1.15,jmp:0.90}},
   {id:"band",  name:"RED BANDANA",   cost:10, unlock:5,   fx:"+15% JUMP",                          mod:{jmp:1.15}},
@@ -3504,7 +3504,10 @@ function renderSettings(){
   $("#setSound").textContent = SETTINGS.sound ? "ON" : "OFF";
   $("#setMusic").textContent = SETTINGS.music ? "ON" : "OFF";
   $("#setMotion").textContent = SETTINGS.reduceMotion ? "ON" : "OFF";
+  $("#setBarkStyle").textContent = SETTINGS.barkStyle==="lines" ? "LINES" : "CIRCLE";
   $("#mReplayTutorial").style.display = S.pbTutorialDone ? "" : "none";
+  // only relevant mid-run — opened from DOGPARK's own settings button (see pkSettingsRect)
+  $("#setEndRunPk").style.display = PK.active ? "" : "none";
   renderGlobalMusicBtn();
 }
 // kept separate from renderSettings() so the corner button can refresh on its own
@@ -3518,10 +3521,24 @@ $("#mSettings").onclick=()=>{
   $("#menuPanel").classList.remove("show"); renderSettings();
   $("#settingsPanel").classList.add("show"); beep(500,.05);
 };
-$("#settingsClose").onclick=()=>$("#settingsPanel").classList.remove("show");
+// PK.settingsOpen only matters while a DOGPARK run is live (see pkPadDraw's gear button) —
+// pausing the world while this panel covers the screen, same as the shop/friends/gate prompts
+$("#settingsClose").onclick=()=>{ $("#settingsPanel").classList.remove("show"); if(typeof PK!=="undefined") PK.settingsOpen=false; };
 $("#setSound").onclick=()=>{
   SETTINGS.sound=!SETTINGS.sound; renderSettings();
   if(SETTINGS.sound) beep(500,.05);
+};
+$("#setBarkStyle").onclick=()=>{
+  SETTINGS.barkStyle = SETTINGS.barkStyle==="lines" ? "circle" : "lines";
+  renderSettings(); beep(500,.05);
+};
+$("#setEndRunPk").onclick=()=>{
+  $("#settingsPanel").classList.remove("show"); PK.settingsOpen=false;
+  PK.endRunAsk=true;
+  openChoice("LEAVE EARLY?",
+    "YOU'LL LOSE ALL "+PK.bones+" BONES AND ALL THE XP FROM<br>THIS RUN — NONE OF IT COMES HOME.<br><br>DO YOU REALLY WANT TO LEAVE EARLY?",
+    "YES, END RUN", ()=>{ PK.endRunAsk=false; pkForfeitRun(); },
+    "KEEP PLAYING", ()=>{ PK.endRunAsk=false; });
 };
 $("#setMusic").onclick=()=>{
   SETTINGS.music=!SETTINGS.music;

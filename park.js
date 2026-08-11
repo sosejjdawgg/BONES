@@ -517,7 +517,7 @@ function startPark(plus){
     exitNagT:0, exitNagFlashT:0,
     swordSpinCd:0, whirlwindT:0, whirlwindR:0, whirlwindDmg:0, whirlwindHit:new Set(), spinLastAng:null, spinAngAccum:0, spinT:0, spinTier:0,
     rage:0, judgment:null, judgmentFlashT:0, zoomFromJudgment:0,
-    endRunAsk:false
+    endRunAsk:false, settingsOpen:false
   });
   PK.hp=PK.maxhp;
   PK.healerT=pkHealerGap();
@@ -2942,7 +2942,7 @@ function parkUpdate(dt){
   // health total across frames rather than by touching all nine.
   if(PK.hp<PK.hpSeen){ PK.hurtT=HURT_TIME; PK.shake=Math.max(PK.shake||0,0.22); }
   PK.hpSeen=PK.hp;
-  if(PK.shop || PK.convertOpen || PK.friendsOpen || PK.gateAsk || PK.endRunAsk) return;   // world pauses while a panel is up
+  if(PK.shop || PK.convertOpen || PK.friendsOpen || PK.gateAsk || PK.endRunAsk || PK.settingsOpen) return;   // world pauses while a panel is up
   // the sword's arrival and its collection each take the whole screen: nothing spawns, moves or
   // attacks until they finish, so the drop reads as an event rather than something happening in
   // the corner of a firefight
@@ -4827,8 +4827,24 @@ function parkDraw(t){
   ctx.beginPath(); ctx.arc(DX,DY,Math.max(6,PK.barkR*frac2),0,7); ctx.stroke();
   ctx.globalAlpha=1;
   if(PK.pulse>0){
-    ctx.lineWidth=4; ctx.globalAlpha=PK.pulse/0.35;
-    ctx.beginPath(); ctx.arc(DX,DY,PK.barkR*(1.35-(PK.pulse/0.35)*0.35),0,7); ctx.stroke();
+    const pf=PK.pulse/0.35, pr=PK.barkR*(1.35-pf*0.35);
+    ctx.globalAlpha=pf;
+    if(SETTINGS.barkStyle==="lines"){
+      // classic cartoon bark lines instead of a ring — same reach, same timing, purely a
+      // different read on the exact same AOE (see SETTINGS.barkStyle in the settings panel)
+      ctx.lineWidth=5; ctx.lineCap="round"; ctx.strokeStyle="#fff";
+      for(let i=0;i<4;i++){
+        const a=i*(Math.PI/2)+Math.PI/4;
+        ctx.beginPath();
+        ctx.moveTo(DX+Math.cos(a)*pr*0.42, DY+Math.sin(a)*pr*0.42);
+        ctx.lineTo(DX+Math.cos(a)*pr, DY+Math.sin(a)*pr);
+        ctx.stroke();
+      }
+      ctx.lineCap="butt";
+    } else {
+      ctx.lineWidth=4;
+      ctx.beginPath(); ctx.arc(DX,DY,pr,0,7); ctx.stroke();
+    }
     ctx.globalAlpha=1; ctx.lineWidth=2;
   }
   ctx.fillStyle="rgba(0,0,0,.28)";
@@ -5259,6 +5275,12 @@ function pkDrawFixedSlot(ctx,r,ic,label,owned,cost,col){
 function pkEndRunRect(h){
   return {x:8, y:h-38, w:104, h:26};
 }
+// sits right beside END RUN, same row — opens the shared settings panel (sound/music/reduce
+// motion/bark style, plus its own copy of end-run for anyone who goes looking for it in there)
+function pkSettingsRect(h){
+  const er=pkEndRunRect(h);
+  return {x:er.x+er.w+6, y:er.y, w:34, h:26};
+}
 function pkPalHudRows(w){
   const bx=w-140, bw2=128;
   const by=14, bh2=14;
@@ -5310,6 +5332,12 @@ function pkPadDraw(t){
     ctx.fillRect(er.x,er.y,er.w,er.h); ctx.strokeRect(er.x,er.y,er.w,er.h);
     ctx.fillStyle="#f22"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
     ctx.fillText("⚑ END RUN", er.x+er.w/2, er.y+er.h*0.65);
+    ctx.textAlign="left";
+    const sr=pkSettingsRect(h);
+    ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.fillStyle="rgba(0,0,0,.7)";
+    ctx.fillRect(sr.x,sr.y,sr.w,sr.h); ctx.strokeRect(sr.x,sr.y,sr.w,sr.h);
+    ctx.fillStyle="#fff"; ctx.font="11px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText("⚙", sr.x+sr.w/2, sr.y+sr.h*0.72);
     ctx.textAlign="left";
   }
   let hudBottomY=44;   // grows as the HP/armour/pal stack below actually uses space, so the wave
@@ -5676,6 +5704,14 @@ function pkPadDraw(t){
           "YOU'LL LOSE ALL "+PK.bones+" BONES AND ALL THE XP FROM<br>THIS RUN — NONE OF IT COMES HOME.<br><br>DO YOU REALLY WANT TO LEAVE EARLY?",
           "YES, END RUN", ()=>{ PK.endRunAsk=false; pkForfeitRun(); },
           "KEEP PLAYING", ()=>{ PK.endRunAsk=false; });
+        return;
+      }
+      const sr=pkSettingsRect(r.height);
+      if(hit2(sr.x,sr.y,sr.w,sr.h)){
+        beep(500,.05);
+        PK.settingsOpen=true;
+        renderSettings();
+        $("#settingsPanel").classList.add("show");
         return;
       }
     }
