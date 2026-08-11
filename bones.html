@@ -120,7 +120,7 @@ button.red:active{background:#f22;color:#000}
 
 /* NINTENDOGS-STYLE HOME */
 #home #hud{display:flex;align-items:center;justify-content:flex-start;gap:8px}
-#home #hud .money{margin-left:auto}
+#home #hud #walletStack{margin-left:auto}
 #todoBar.pulse{border-color:#f22;color:#f22;animation:blink .6s steps(2) infinite}
 #todoList .prow{overflow:hidden;flex-shrink:0;transition:opacity .6s,max-height .6s,padding .6s,border-width .6s}
 #todoList .prow.claim{border-color:#f22;cursor:pointer}
@@ -208,6 +208,8 @@ button.red:active{background:#f22;color:#000}
 body.reduce-motion .screen.screen-in{animation:none}
 #hud{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:3px solid #fff;font-size:9px}
 #hud .money{font-size:12px}
+#walletStack{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+#hudBones{font-size:8px;color:#e8c14a;letter-spacing:1px}
 #home .body{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:12px}
 #toastGap{flex:1;min-height:34px}
 .sect{font-size:7px;color:#888;letter-spacing:2px;margin-bottom:-6px}
@@ -334,7 +336,7 @@ body.reduce-motion *{animation:none!important}
     <div id="panel">
       <!-- HOME -->
       <div id="home" class="screen">
-        <div id="hud"><button class="tiny" id="bMenu">&#9776; MENU</button><button class="tiny" id="todoBar">&#9656; TO-DO 0/6</button><button class="tiny" id="bSupplies">&#9636; SUPPLIES</button><button class="tiny" id="bShopBtn">&#9670; SHOP</button><span class="money" id="money1">$0</span></div>
+        <div id="hud"><button class="tiny" id="bMenu">&#9776; MENU</button><button class="tiny" id="todoBar">&#9656; TO-DO 0/6</button><button class="tiny" id="bSupplies">&#9636; SUPPLIES</button><button class="tiny" id="bShopBtn">&#9670; SHOP</button><div id="walletStack"><span class="money" id="money1">$0</span><span id="hudBones">&#9670; 0 BONES</span></div></div>
         <div class="body">
           <div id="mainGrid">
             <button id="bWalk" class="mg">&#9650;<br>GO TO<br>THE PARK</button>
@@ -371,7 +373,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.233a</span>
+          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.234a</span>
         </div>
       </div>
 
