@@ -180,45 +180,22 @@ function pkJudgmentDimAlpha(){
   if(p>0.85) return Math.max(0,1-(p-0.85)/0.15);
   return 1;
 }
-// the black-out itself: fills the view with black everywhere EXCEPT a hole cut around BONES and
-// every live enemy, using one compound path per pass and the evenodd fill rule — a rect plus a
-// circle sub-path leaves the circle unpainted, so whatever was already drawn there (this runs
-// after the whole world is on screen) simply never gets touched, rather than trying to erase the
-// black back off afterward (destination-out just erases straight to transparent, it doesn't
-// un-blend the black that already got composited in — that was the bug the first version had).
-// Three passes at growing hole radius and shrinking alpha fake a soft edge cheaply, without a
-// radial gradient per enemy every single frame. Screen-space, so it redoes the zoom math pkDraw's
-// own SC() already has baked in, rather than reuse it directly.
-function pkDrawJudgmentDim(ctx,w,h){
+// simplified per feedback: the per-enemy spotlight version read as messy and hard to follow at
+// real enemy counts. Now it just blackens the ground/environment — called from parkDraw between
+// the trees pass and the enemy pass, so BONES, every enemy, the sword and pals (all drawn after
+// this point in the normal order) simply paint over it at their own full brightness, with zero
+// spotlight bookkeeping needed at all.
+function pkDrawJudgmentGroundDim(ctx,DX,DY){
   const a=pkJudgmentDimAlpha();
   if(a<=0) return;
-  const DX=w/2, DY=h/2, zoom=PK.zoom||1;
-  const toScreen=(ex,ey)=>{
-    const px=DX+wd(ex-PK.x,PK.WW), py=DY+wd(ey-PK.y,PK.WH);
-    return [DX+zoom*(px-DX), DY+zoom*(py-DY)];
-  };
-  const holes=[[DX,DY,36*zoom]];
-  for(const e of PK.en){
-    if(e.fleeing) continue;
-    const [ex,ey]=toScreen(e.x,e.y);
-    if(ex<-90||ex>w+90||ey<-90||ey>h+90) continue;
-    holes.push([ex,ey,((e.big||e.boss)?52:30)*zoom]);
-  }
   ctx.save();
-  ctx.fillStyle="#000";
-  const rings=[[1.5,0.30],[1.15,0.65],[1.0,1.0]];
-  for(const [rMul,alphaMul] of rings){
-    ctx.globalAlpha=a*0.93*alphaMul;
-    ctx.beginPath();
-    ctx.rect(0,0,w,h);
-    for(const [hx,hy,hr] of holes){ ctx.moveTo(hx+hr*rMul,hy); ctx.arc(hx,hy,hr*rMul,0,7); }
-    ctx.fill("evenodd");
-  }
+  ctx.fillStyle="#000"; ctx.globalAlpha=a*0.82;
+  ctx.fillRect(DX-4000,DY-4000,8000,8000);
   ctx.restore();
 }
 // screen-space, drawn after the world transform is already closed: just a hard white wind-up
-// flash on the call-in now — the black-out (pkDrawJudgmentDim) and the bolts themselves carry
-// the rest of the sequence, so the old warm vignette on top of it all was just noise
+// flash on the call-in — the ground black-out (pkDrawJudgmentGroundDim, drawn earlier as part of
+// the world) and the bolts themselves carry the rest of the sequence
 function pkDrawJudgmentFlash(ctx,w,h,t){
   if(PK.judgmentFlashT>0){
     ctx.save();
@@ -226,7 +203,6 @@ function pkDrawJudgmentFlash(ctx,w,h,t){
     ctx.fillStyle="#fff"; ctx.fillRect(0,0,w,h);
     ctx.restore();
   }
-  pkDrawJudgmentDim(ctx,w,h);
 }
 const XP_PER_KILL=0.4, XP_PER_SIDE=2;
 // a long run with a full crew can rack up well over a thousand downed enemies once companions and
@@ -1439,13 +1415,27 @@ function pkSwordUpgrade(){
    button / crowd-clearer, not something to lean on every fight. ---------- */
 const SWORD_SPIN_CD=5, SWORD_SPIN_WINDOW=0.45;
 // how long the spin itself plays out and keeps hitting — separate from SWORD_SPIN_CD, which is
-// purely how long BONES has to wait before he can wind up another one
-const WHIRLWIND_DUR=1.1, WHIRLWIND_TURNS=2.5;
+// purely how long BONES has to wait before he can wind up another one. One full turn, stretched
+// out slow and heavy, reads as a real weighty sweep rather than a fast blur — and gives the
+// player time to actually watch every enemy in it pop.
+const WHIRLWIND_DUR=2.2, WHIRLWIND_TURNS=1;
+// the magical "grow into it" beat at the start/end of the spin — see pkWhirlwindGrowP
+const WHIRLWIND_GROW_IN=0.18, WHIRLWIND_GROW_OUT=0.22, WHIRLWIND_GROW_SCALE=0.85, WHIRLWIND_FLOAT_Y=22;
 // optional shop upgrade: widens the ring and hits harder, tier by tier — see pkSpinUpgrade
 const SWORD_SPIN_MAXTIER=3, SWORD_SPIN_UP_COST=130;
 const SWORD_SPIN_R_BONUS_T=[25, 50, 80], SWORD_SPIN_DMG_BONUS_T=[10, 22, 38];
 function pkSpinTier(){ return PK.spinTier||0; }
 function pkWhirlwindReady(){ return PK.plusMode && pkSwordTier()>=1 && PK.swordSpinCd<=0; }
+// 0 -> 1 -> 0 envelope for the magical grow/float: pops up fast, holds big through the whole
+// sweep, eases back down at the very end — the same "quick pop, long hold, gentle release" shape
+// as the rest of the sequence, just scoped to how big/high the sword sits rather than time itself
+function pkWhirlwindGrowP(){
+  if(!(PK.whirlwindT>0)) return 0;
+  const p=1-PK.whirlwindT/WHIRLWIND_DUR;
+  if(p<WHIRLWIND_GROW_IN) return p/WHIRLWIND_GROW_IN;
+  if(p>1-WHIRLWIND_GROW_OUT) return Math.max(0,(1-p)/WHIRLWIND_GROW_OUT);
+  return 1;
+}
 function pkSpinUpgrade(){
   if((PK.spinTier||0)>=SWORD_SPIN_MAXTIER) return;
   PK.spinTier=(PK.spinTier||0)+1;
@@ -1651,19 +1641,29 @@ function pkDrawHeldSword(ctx,DX,DY,t){
     const p=1-s.growT/0.5;
     sc*=1+Math.sin(p*Math.PI)*0.32*(1-p*0.35);
   }
+  // the whirlwind's own magical grow: noticeably bigger than his normal blade, floating up off
+  // his usual carry height, with a slow bob riding on top so it reads as heavy and alive rather
+  // than just a bigger static prop — see WHIRLWIND_GROW_* and pkWhirlwindGrowP
+  const whirlGrowP=pkWhirlwindGrowP();
+  let floatY=0;
+  if(whirlGrowP>0){
+    sc*=1+whirlGrowP*WHIRLWIND_GROW_SCALE;
+    const spinP=1-PK.whirlwindT/WHIRLWIND_DUR;
+    floatY=-whirlGrowP*WHIRLWIND_FLOAT_Y-Math.sin(spinP*Math.PI*2*3)*3.5*whirlGrowP;
+  }
   ctx.save();
-  ctx.translate(DX+face*SWORD_MOUTH_X, DY+SWORD_MOUTH_Y);
+  ctx.translate(DX+face*SWORD_MOUTH_X, DY+SWORD_MOUTH_Y+floatY);
   if(face<0) ctx.scale(-1,1);
   ctx.rotate(SWORD_HOLD_TILT);             // tilted in his teeth — pivots around the grip below
   ctx.translate(-SWORD_GRIP_MID*sc, 0);   // put the middle of the grip in his teeth
   if(PK.whirlwindT>0){
-    // a slow, heavy 2.5 turns over the whole windup, around the grip he's holding it by
+    // one slow, heavy turn over the whole windup, around the grip he's holding it by
     const spinP=1-PK.whirlwindT/WHIRLWIND_DUR;
     ctx.rotate(spinP*Math.PI*2*WHIRLWIND_TURNS);
   }
-  if(s.growT>0){
-    ctx.save(); ctx.globalAlpha=(s.growT/0.5)*0.8;
-    ctx.shadowColor="#fff"; ctx.shadowBlur=26;
+  if(s.growT>0 || whirlGrowP>0){
+    ctx.save(); ctx.globalAlpha=Math.max(s.growT>0?(s.growT/0.5)*0.8:0, whirlGrowP*0.75);
+    ctx.shadowColor="#ffe98a"; ctx.shadowBlur=30;
     pkDrawSwordShape(ctx,sc,null);
     ctx.restore();
   }
@@ -4740,6 +4740,7 @@ function parkDraw(t){
     if(tx2<-70||tx2>w+70||ty2<-90||ty2>h+70) continue;
     pkDrawTree(ctx,tr,tx2,ty2,t);
   }
+  pkDrawJudgmentGroundDim(ctx,DX,DY);
   for(const e of PK.en){
     const ex2=DX+wd(e.x-PK.x,WW), ey2=DY+wd(e.y-PK.y,WH);
     if(ex2<-40||ex2>w+40||ey2<-40||ey2>h+40) continue;
@@ -5275,11 +5276,13 @@ function pkDrawFixedSlot(ctx,r,ic,label,owned,cost,col){
 function pkEndRunRect(h){
   return {x:8, y:h-38, w:104, h:26};
 }
-// sits right beside END RUN, same row — opens the shared settings panel (sound/music/reduce
-// motion/bark style, plus its own copy of end-run for anyone who goes looking for it in there)
+// sits beside END RUN, same row — opens the shared settings panel (sound/music/reduce motion/
+// bark style, plus its own copy of end-run for anyone who goes looking for it in there). A real
+// gap and a properly sized target here on purpose — these two used to sit close enough that a
+// real touch (not a pixel-precise mouse click) would land End Run when the gear was the target.
 function pkSettingsRect(h){
   const er=pkEndRunRect(h);
-  return {x:er.x+er.w+6, y:er.y, w:34, h:26};
+  return {x:er.x+er.w+22, y:er.y, w:46, h:26};
 }
 function pkPalHudRows(w){
   const bx=w-140, bw2=128;
@@ -5347,7 +5350,7 @@ function pkPadDraw(t){
     const hzh=PK.hurtT>0 ? PK.hurtT/HURT_TIME : 0;
     const hb=hzh>0 ? Math.sin(t*90)*3.5*hzh*hzh : 0;
     const hfrac=clamp(PK.hp/PK.maxhp,0,1);
-    const bx=w-140, by=14, bw2=128, bh2=14;
+    const bx=w-140, by=14, bw2=128, bh2=8;
     if(hzh>0){ ctx.save(); ctx.globalAlpha=0.55*hzh; ctx.fillStyle="#f22";
                ctx.fillRect(bx-4+hb,by-4,bw2+8,bh2+8); ctx.restore(); }
     ctx.fillStyle="rgba(0,0,0,.6)"; ctx.fillRect(bx+hb,by,bw2,bh2);
@@ -5356,17 +5359,17 @@ function pkPadDraw(t){
     if(PK.regenT>0){
       const ahead=clamp((PK.hp+Math.min(PK.regenT,PK.maxhp-PK.hp))/PK.maxhp,0,1);
       ctx.save(); ctx.globalAlpha=0.35+0.2*Math.sin(t*6); ctx.fillStyle="#3fdc7a";
-      ctx.fillRect(bx+3+hb+(bw2-6)*hfrac,by+3,(bw2-6)*(ahead-hfrac),bh2-6); ctx.restore();
+      ctx.fillRect(bx+2+hb+(bw2-4)*hfrac,by+2,(bw2-4)*(ahead-hfrac),bh2-4); ctx.restore();
     }
     ctx.fillStyle = hzh>0 ? "#fff" : (PK.hp<PK.maxhp*0.3?"#f22":"#fff");
-    ctx.fillRect(bx+3+hb,by+3,(bw2-6)*hfrac,bh2-6);
+    ctx.fillRect(bx+2+hb,by+2,(bw2-4)*hfrac,bh2-4);
     if(PK.over>0){
       // the shield rides on top of a full bar, and glows harder the bigger it is
       const of2=clamp(PK.over/Math.max(1,pkOverCap()),0,1);
       ctx.save();
       ctx.globalAlpha=0.55+0.45*Math.abs(Math.sin(t*7));
       ctx.fillStyle="#ffd94a";
-      ctx.fillRect(bx+3+hb,by+3,(bw2-6)*of2,bh2-6);
+      ctx.fillRect(bx+2+hb,by+2,(bw2-4)*of2,bh2-4);
       ctx.strokeStyle="#ffd94a"; ctx.lineWidth=2; ctx.strokeRect(bx+hb,by,bw2,bh2);
       ctx.restore();
     }
