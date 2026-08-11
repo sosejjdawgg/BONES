@@ -12,7 +12,7 @@ No install, no backend, no accounts. Open the HTML file and play. It's an instal
 2. Pick a breed and name your dog.
 3. Keep him alive: feed him, water him, let him rest, play with him, keep him clean. Everything happens live in **DOGCAM**, the home screen.
 4. Earn XP from care and activities to level him up. At **Lv.5**, the **DOGPARK** unlocks.
-5. From Lv.5 onward you can send him out to bark off critters, bank bones and XP, and eventually take on a much harder night-time combat mode, **DARKPARK UNLEASHED**.
+5. From Lv.5 onward you can send him out to bark off critters, bank bones and XP, and eventually take on a much harder night-time combat mode, **DOGPARK UNLEASHED**.
 
 The in-game **Care Guide** (menu → ♥ CARE GUIDE) is the up-to-date, in-app version of everything below — check there first if something's unclear while playing.
 
@@ -46,7 +46,7 @@ Every bit of care and every activity earns XP. When the bar fills, tap it to lev
 - **Beach Day** — a one-time unlock, then a repeatable outing for a bigger fun/mood boost than a walk.
 - **Dog Competition** — enter for prize money, limited entries per day.
 - **The Breeder** — see **Growing Up** above.
-- **The DOGPARK / DARKPARK UNLEASHED** — see below; by far the deepest system in the game.
+- **The DOGPARK / DOGPARK UNLEASHED** — see below; by far the deepest system in the game.
 
 ---
 
@@ -59,17 +59,17 @@ Once he's Lv.5, DOGPARK is a real-time survival mode: bark at squirrels, birds a
 - **Speed bonus** — clear a wave inside 60 seconds and a bonus charm unlocks in that wave's shop.
 - **The Golden Bird** — a rare, fast-flying target worth chasing for a big one-off bones payout.
 - **Side missions** — bark at every kind of critter in one run (+20 XP), survive wave 1 (+10 XP). Both pay out immediately, no banking required.
-- **Choosing a mode** — if DARKPARK UNLEASHED is unlocked, heading out asks **DOGPARK** or **DARKPARK UNLEASHED** each time, with a **← BACK** if you opened it by mistake.
+- **Choosing a mode** — if DOGPARK UNLEASHED is unlocked, heading out asks **DOGPARK** or **DOGPARK UNLEASHED** each time, with a **← BACK** if you opened it by mistake.
 
-## DARKPARK UNLEASHED
+## DOGPARK UNLEASHED
 
-Clear wave 10 of regular DOGPARK once, and DARKPARK UNLEASHED unlocks for good: the same 10 waves, with double the enemies on screen at once, played out under a genuinely dark night sky. It's built around several systems the base mode doesn't have:
+Clear wave 10 of regular DOGPARK once, and DOGPARK UNLEASHED unlocks for good: the same 10 waves, with double the enemies on screen at once, played out under a genuinely dark night sky. It's built around several systems the base mode doesn't have:
 
 ### Night & Fog of War
 The whole park goes dark — a true night-time look, with fireflies drifting through the gloom. Visibility is limited to ground BONES has actually explored; wander away for too long and it fades back into fog, creeping in fastest from the directions he isn't facing. Stay moving and keep your bearings, or the park you thought you knew disappears again.
 
 ### The Sword
-Wave 2 of a DARKPARK UNLEASHED run stops everything: something falls out of the sky and buries itself nearby. Walk up and pay the price shown to claim it — from then on it rides in BONES' mouth and cuts down anything he runs into. **Sharpen the blade** between waves for more reach and damage, up to 5 tiers. Leave it unclaimed too long and lightning starts striking it where it stands. Where it came from is never explained — it's just there.
+Wave 2 of a DOGPARK UNLEASHED run stops everything: something falls out of the sky and buries itself nearby. Walk up and pay the price shown to claim it — from then on it rides in BONES' mouth and cuts down anything he runs into. **Sharpen the blade** between waves for more reach and damage, up to 5 tiers. Leave it unclaimed too long and lightning starts striking it where it stands. Where it came from is never explained — it's just there.
 
 ### Whirlwind Slash
 Once the sword is his, spin the joystick one full fast turn and he cuts loose in a wide, heavy circle — a bright white swoosh sweeps the whole radius, hitting everything around him for the full duration of the spin and knocking back anything it doesn't down outright. Enemies just outside the ring flinch and hesitate instead of getting hit for free. Long cooldown, so it's a panic button for when he's surrounded, not something to lean on constantly.
@@ -117,7 +117,7 @@ His stock is currently five placeholders at 999 bones each. The prices and the f
 BONES ships as one self-contained HTML file with everything — code, art, audio — inlined as base64 data URIs. No build tooling is required to *play* it; `dist/bones.html` is the finished artifact.
 
 ### Repo layout
-- Gameplay logic is split across focused source files: `bones.js` (DOGCAM/home + meta-systems), `park.js` (DOGPARK/DARKPARK UNLEASHED), `paperboy.js` (Delivery Driver minigame).
+- Gameplay logic is split across focused source files: `bones.js` (DOGCAM/home + meta-systems), `park.js` (DOGPARK/DOGPARK UNLEASHED), `paperboy.js` (Delivery Driver minigame).
 - Art and audio are pre-encoded into small JS modules (`portraits.js`, `frames.js`, `swordimg.js`, `music_*.js`, etc.), each exporting a single base64 data-URI constant.
 - `bones.html` is the source template; `build.sh` concatenates every source file into `combined.js`, validates it (`node --check`, plus a check that every `$("#id")` referenced in JS actually exists in the HTML), inlines it into `bones.html`, bumps the version stamp, and writes the finished file to `dist/bones.html` alongside a versioned `dist/sw.js` service worker.
 

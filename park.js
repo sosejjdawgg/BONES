@@ -44,7 +44,7 @@ function pkHurt(n){
   }
 }
 function pkInvuln(){ return PK.godMode || PK.zoomT>0; }   // the golden bone: zoomies + untouchable
-/* ---------- Rage -> Heavenly Judgment (DARKPARK UNLEASHED): fills from real damage taken (see pkHurt),
+/* ---------- Rage -> Heavenly Judgment (DOGPARK UNLEASHED): fills from real damage taken (see pkHurt),
    and once full, a tap unleashes exactly 5 fast, choreographed bolts across the nearby fight.
    The whole screen drops to black except BONES and every live enemy, who stay fully lit —
    spotlit, not silhouetted — so the strikes read as landing on a real, visible fight rather than
@@ -476,7 +476,7 @@ function startPark(plus){
   tickTodo("d_park");
   hidePortrait(); closeStatus();
   showScreen("park");
-  $("#camstate").textContent = plus ? "DARKPARK UNLEASHED" : "DOGPARK";
+  $("#camstate").textContent = plus ? "DOGPARK UNLEASHED" : "DOGPARK";
   toast("SURVIVE. COLLECT BONES, BANK XP AT THE RED EXIT.");
   beep(660,.08); setTimeout(()=>beep(880,.08),120);
 }
@@ -629,7 +629,7 @@ function pkLaserRange(){
   const cv=$("#dogcv");
   return Math.min(cv.clientWidth,cv.clientHeight)/(2*(PK.zoom||1))*0.82;
 }
-function pkPlusMult(){ return PK.plusMode ? 2 : 1; }   // DARKPARK UNLEASHED: same wave structure, double enemies on screen at once
+function pkPlusMult(){ return PK.plusMode ? 2 : 1; }   // DOGPARK UNLEASHED: same wave structure, double enemies on screen at once
 /* ---------- trees: cover, collision, kindling, and squirrel nests ---------- */
 // the BBBSSHHHZZZHHH — layered saw tones plus a noise-ish crackle tail
 function pkBlastSfx(){
@@ -795,7 +795,7 @@ function pkTreesNear(x,y,r,cb){
     if(b) for(let k=0;k<b.length;k++) cb(b[k]);
   }
 }
-/* ===================== FOG OF WAR (DARKPARK UNLEASHED only) =====================
+/* ===================== FOG OF WAR (DOGPARK UNLEASHED only) =====================
    A coarse grid over the whole world, one float per cell holding the game-time (PK.t) it was
    last inside BONES' sight — mirrors the tree grid above, just storing a timestamp instead of
    a bucket of objects. Two passes read/write it every frame: pkTickFog (small radius, reveals
@@ -880,7 +880,7 @@ function pkDrawFog(ctx,DX,DY,w,h){
   }
   ctx.restore();
 }
-// a night-time colour grade under the fog and everything alive, so DARKPARK UNLEASHED reads as
+// a night-time colour grade under the fog and everything alive, so DOGPARK UNLEASHED reads as
 // darker even in ground BONES has already explored (the fog above only fades in past FOG_HOLD).
 // Multiply rather than a flat alpha wash — it crushes brightness while keeping the grass and
 // dirt's own hue, which reads as a real night grade instead of a grey filter laid over the day.
@@ -903,7 +903,7 @@ function pkDrawNightTint(ctx,DX,DY,w,h){
   ctx.fillRect(DX-vr,DY-vr,vr*2,vr*2);
   ctx.restore();
 }
-/* ---------- fireflies: small fixed pool of drifting glow motes, DARKPARK UNLEASHED only ---------- */
+/* ---------- fireflies: small fixed pool of drifting glow motes, DOGPARK UNLEASHED only ---------- */
 const FIREFLY_N=20;
 function pkFireflySpawn(near){
   const a=Math.random()*6.283, r=40+Math.random()*220;
@@ -1291,8 +1291,8 @@ function pkApeCount(){ let n=0; for(const e of PK.en) if(e.t==="ape" && !e.fleei
 // the ordinary mixed enemies for this stage keep spawning and attacking in the background
 const APE_WAVE=8, APE_WAVE_QUOTA=10, APE_WAVE_CAP=6, APE_WAVE_HP=18;
 
-/* ===================== THE SWORD (DARKPARK UNLEASHED only) =====================
-   Wave 2 of a DARKPARK UNLEASHED run stops dead and a sword comes down out of the sky, spinning, to bury
+/* ===================== THE SWORD (DOGPARK UNLEASHED only) =====================
+   Wave 2 of a DOGPARK UNLEASHED run stops dead and a sword comes down out of the sky, spinning, to bury
    itself in a clearing — deliberately unexplained, no origin story attached. 250 bones takes it;
    from then on it rides horizontally in BONES' mouth and cuts whatever he runs into. The hole it
    leaves behind never closes — it widens every wave, and by wave 6 the fire coming out of it has
@@ -1534,7 +1534,7 @@ function pkSwordUpgrade(){
   toast("THE BLADE GROWS — TIER "+s.tier+"/"+SWORD_MAX_TIER+", "+pkSwordDmg()+" DMG",1);
 }
 /* ---------- Whirlwind Slash: spin the joystick a full turn fast enough and BONES cuts loose
-   with the blade in a wide circle. DARKPARK UNLEASHED only, and only once the sword is actually held —
+   with the blade in a wide circle. DOGPARK UNLEASHED only, and only once the sword is actually held —
    this is a payoff for having the blade, not a separate weapon. Long cooldown, so it's a panic
    button / crowd-clearer, not something to lean on every fight. ---------- */
 const SWORD_SPIN_CD=5, SWORD_SPIN_WINDOW=0.45;
@@ -2134,7 +2134,7 @@ function pkSpawnMadSquad(){
   return n;
 }
 // WAVE 6 — THE ALPHAS: exactly 2 giant alpha cats (5-hit kill, gigantic leap attack) plus a
-// trickle of 20 regular cats. Alphas are fixed boss units — not scaled by DARKPARK UNLEASHED.
+// trickle of 20 regular cats. Alphas are fixed boss units — not scaled by DOGPARK UNLEASHED.
 function pkSpawnAlphaSquad(){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW, WH=PK.WH;
@@ -2147,7 +2147,7 @@ function pkSpawnAlphaSquad(){
   beep(120,.35,"sawtooth",.05);
 }
 // WAVES 7-10(+) — a random mix of two previously-seen enemy types, trickling in as small
-// squads of 1-3. Clearing wave 10 unlocks DARKPARK UNLEASHED.
+// squads of 1-3. Clearing wave 10 unlocks DOGPARK UNLEASHED.
 const MIX_POOL=["bird","cat","ranger","madsq"];
 const MIX_NAME={bird:"BIRDS", cat:"CATS", ranger:"SQUIRRELS", madsq:"MAD SQUIRRELS"};
 function pkPickMixTypes(){
@@ -3087,7 +3087,7 @@ function pkShopOpen(){
   // run always has enough bones banked to actually buy something after the very first clear
   if(PK.wave===2) pool.forEach(o=>o.c=10);
   const shuffled=pool.sort(()=>Math.random()-0.5);
-  // sharpening the blade, and (DARKPARK UNLEASHED) upgrading the whirlwind spin, are offered at the top of
+  // sharpening the blade, and (DOGPARK UNLEASHED) upgrading the whirlwind spin, are offered at the top of
   // every single wave while there are tiers left — never rolled for, never priced down with the
   // rest, so both upgrade paths are always available whenever they're actually relevant
   const forced=[];
@@ -3235,7 +3235,7 @@ function parkUpdate(dt){
     }
     if(PK.wave===10 && !S.dogParkPlusUnlocked){
       S.dogParkPlusUnlocked=true;
-      setTimeout(()=>pkFanfare(null,true,"🏆 DARKPARK UNLEASHED UNLOCKED!"),300);
+      setTimeout(()=>pkFanfare(null,true,"🏆 DOGPARK UNLEASHED UNLOCKED!"),300);
     }
     tickStats(2.5, true);   // a cleared wave is 15 game minutes — the only time the park spends
     if(PK.bones>0) PK.exitNagFlashT=2.4;   // a fresh wave is exactly when it's easy to forget what you're carrying
@@ -3256,7 +3256,7 @@ function parkUpdate(dt){
     // from wave 6 the types come mixed — that is the point of "you're on your own"
     if(PK.wave>=6){ PK.mixTypes=pkPickMixTypes(); PK.mixLabel=MIX_NAME[PK.mixTypes[0]]+" & "+MIX_NAME[PK.mixTypes[1]]; }
     if(PK.wave===APE_WAVE){ PK.apeKills=0; PK.apeWaveT=2.5; }
-    // DARKPARK UNLEASHED only: wave 2 opens with the sky handing him a weapon. Once the hole it leaves is
+    // DOGPARK UNLEASHED only: wave 2 opens with the sky handing him a weapon. Once the hole it leaves is
     // his, it widens every wave (pkSiteR reads PK.wave directly), and on wave 6 it stops being
     // scenery — from there the park burns for the rest of the run.
     if(PK.plusMode && PK.wave===SWORD_WAVE && !PK.sword && !PK.swordDone) pkSwordDrop();
