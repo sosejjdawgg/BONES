@@ -909,6 +909,59 @@ function pkDrawFog(ctx,DX,DY,w,h){
   }
   ctx.restore();
 }
+// a flat night-time tint under the fog and everything alive, so DOGPARK AFTER DARK reads as
+// darker even in ground BONES has already explored (the fog above only fades in past FOG_HOLD).
+function pkDrawNightTint(ctx,DX,DY){
+  if(!PK.plusMode) return;
+  ctx.save();
+  ctx.fillStyle="#060a1e"; ctx.globalAlpha=0.40;
+  ctx.fillRect(DX-4000,DY-4000,8000,8000);
+  ctx.restore();
+}
+/* ---------- fireflies: small fixed pool of drifting glow motes, DOGPARK AFTER DARK only ---------- */
+const FIREFLY_N=20;
+function pkFireflySpawn(near){
+  const a=Math.random()*6.283, r=40+Math.random()*220;
+  return {
+    x:(near.x+Math.cos(a)*r+PK.WW)%PK.WW, y:(near.y+Math.sin(a)*r+PK.WH)%PK.WH,
+    vx:(Math.random()-0.5)*14, vy:(Math.random()-0.5)*14,
+    ph:Math.random()*6.283, wanderT:Math.random()*2
+  };
+}
+function pkTickFireflies(dt){
+  if(!PK.plusMode) return;
+  while(PK.fireflies.length<FIREFLY_N) PK.fireflies.push(pkFireflySpawn(PK));
+  const WW=PK.WW, WH=PK.WH;
+  for(const f of PK.fireflies){
+    f.wanderT-=dt;
+    if(f.wanderT<=0){                      // gently retarget drift every couple of seconds
+      f.wanderT=1.5+Math.random()*2;
+      f.vx=(Math.random()-0.5)*14; f.vy=(Math.random()-0.5)*14;
+    }
+    f.x=(f.x+f.vx*dt+WW)%WW; f.y=(f.y+f.vy*dt+WH)%WH;
+    const d=Math.hypot(wd(f.x-PK.x,WW),wd(f.y-PK.y,WH));
+    if(d>Math.max(320,Math.min(WW,WH)*0.4)){   // drifted too far — recycle back in near BONES
+      const s=pkFireflySpawn(PK);
+      f.x=s.x; f.y=s.y; f.vx=s.vx; f.vy=s.vy;
+    }
+  }
+}
+function pkDrawFireflies(ctx,DX,DY,WW,WH,w,h,t){
+  if(!PK.plusMode) return;
+  for(const f of PK.fireflies){
+    const fx=DX+wd(f.x-PK.x,WW), fy=DY+wd(f.y-PK.y,WH);
+    if(fx<-10||fx>w+10||fy<-10||fy>h+10) continue;
+    const pulse=0.35+0.65*(0.5+0.5*Math.sin(t*2.2+f.ph));
+    ctx.save();
+    ctx.globalAlpha=pulse*0.9; ctx.fillStyle="#d4ff6a";
+    ctx.beginPath(); ctx.arc(fx,fy,1.6,0,7); ctx.fill();
+    ctx.globalAlpha=pulse*0.35;
+    const g=ctx.createRadialGradient(fx,fy,0,fx,fy,7);
+    g.addColorStop(0,"rgba(212,255,106,0.9)"); g.addColorStop(1,"rgba(212,255,106,0)");
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(fx,fy,7,0,7); ctx.fill();
+    ctx.restore();
+  }
+}
 // one hard ceiling on trees alight at once, everywhere — beam strikes, spread and hell alike.
 // This is the main brake on the squirrel onslaught, since every burning tree is a squirrel tap.
 const FIRE_CAP=5;
@@ -3263,6 +3316,7 @@ function parkUpdate(dt){
   [PK.x,PK.y]=pkTreeCollide(PK.x,PK.y);
   pkTickTrees(dt);
   pkTickFog(dt);
+  pkTickFireflies(dt);
   PK.barkCd-=dt;
   if((PK.barkCd<=0||PK.zoomT>0) && PK.en.some(e=>!e.fleeing && Math.hypot(wd(e.x-PK.x,WW),wd(e.y-PK.y,WH))<PK.barkR+pkHitR(e))) pkBark();
   if(PK.zoomT>0 && Math.random()<0.55){
@@ -4829,6 +4883,7 @@ function parkDraw(t){
     if(tx2<-70||tx2>w+70||ty2<-90||ty2>h+70) continue;
     pkDrawTree(ctx,tr,tx2,ty2,t);
   }
+  pkDrawNightTint(ctx,DX,DY);
   pkDrawFog(ctx,DX,DY,w,h);
   pkDrawJudgmentGroundDim(ctx,DX,DY);
   for(const e of PK.en){
@@ -4913,6 +4968,7 @@ function parkDraw(t){
     ctx.fillRect(ex3-1.5,ey3-1.5,3,3);
     ctx.globalAlpha=1;
   }
+  pkDrawFireflies(ctx,DX,DY,WW,WH,w,h,t);
   const frac2=1-clamp(PK.barkCd/PK.barkMax,0,1);
   ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.globalAlpha=0.35;
   ctx.beginPath(); ctx.arc(DX,DY,Math.max(6,PK.barkR*frac2),0,7); ctx.stroke();
