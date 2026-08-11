@@ -372,6 +372,7 @@ function tickStats(dt, force){
   S.energy = clamp(S.energy + (resting?2.4:(MODE==="home"?0.10:-0.02*NEED_FF))*dt, 0, energyCap);
   const target=(S.hunger+S.thirst+S.energy+S.clean+S.fun)/5;
   S.mood = clamp(S.mood + (target-S.mood)*0.05*dt - (m.moodDrain?0.15*dt:0), 0, 100);
+  if(MOOD_BOOST_T>0){ MOOD_BOOST_T=Math.max(0,MOOD_BOOST_T-dt); S.mood=100; }
   S.petCd = Math.max(0, S.petCd-dt);
   S.outTimer += dt;
   if(S.clean<70) SPONGE.rew=false;
@@ -1322,13 +1323,17 @@ function nearestTreatIdx(){
 function eatBoneEffects(){
   S.hunger=clamp(S.hunger+8,0,100); S.energy=clamp(S.energy+12,0,100);
   S.mood=clamp(S.mood+8,0,100); S.fun=clamp(S.fun+6,0,100);
-  addXP(2); heartsBurst(1);
+  addXP(0.3); heartsBurst(1);
   beep(700,.05); setTimeout(()=>beep(940,.06),80);
   renderMeters(); renderNourish();
 }
+// 5 real minutes pinned at peak mood, then tickStats' own target-tracking (see there) eases him
+// back down toward whatever his hunger/thirst/energy/clean/fun actually add up to — a real high,
+// not a permanent free ride
+let MOOD_BOOST_T=0;
 function triggerBoneZoomies(){
   if(CAM.state==="zoomies"||R.active||OUTING.active||PK.active||WASH.active) return;
-  S.mood=clamp(S.mood+25,0,100); S.fun=clamp(S.fun+20,0,100);
+  S.mood=100; MOOD_BOOST_T=300; S.fun=clamp(S.fun+20,0,100);
   CAM.state="zoomies"; CAM.zTarget=CAM.x<0.4?0.98:-0.18; CAM.t=0; CAM.until=5.5; CAM.fi=0;
   ROBOT.zoomArm=true;               // one topple roll per zoomies, not one per frame
   heartsBurst(6); toast("THE ZOOMIES!! HE'S SENDING BONES FLYING!");
@@ -2999,11 +3004,6 @@ document.addEventListener("visibilitychange",()=>{
   }
 });
 $("#bResHome").onclick=()=>{
-  if(PK.pendingBury>0){
-    const b=PK.pendingBury; PK.pendingBury=0;
-    pkOfferGardenBury(b);
-    return;
-  }
   $("#result").classList.remove("show");
   returnHomeFromActivity();
 };

@@ -205,17 +205,8 @@ function pkDrawJudgmentFlash(ctx,w,h,t){
   }
 }
 const XP_PER_KILL=0.4, XP_PER_SIDE=2;
-// a long run with a full crew can rack up well over a thousand downed enemies once companions and
-// burning trees start feeding the count, which was banking enough XP to jump several levels at
-// once. The cap keeps a great run worth roughly a level or two rather than a whole afternoon.
-const XP_RUN_CAP=120;
-// every XP faucet a park visit has -- the run itself, side missions, the bones exchange and the
-// garden bury -- draws from this one budget. A cap only on the run total would have meant nothing:
-// burying leftover bones pays 1 XP each, and a good run comes home with over a thousand of them.
-function pkXPLeft(){ return Math.max(0, XP_RUN_CAP-(PK.xpFromRun||0)); }
 function pkAwardXP(n){
-  const give=Math.min(Math.max(0,Math.round(n)), pkXPLeft());
-  PK.xpFromRun=(PK.xpFromRun||0)+give;
+  const give=Math.max(0,Math.round(n));
   if(give>0) addXP(give);
   return give;
 }
@@ -224,7 +215,7 @@ const MAGNET_DROP_CHANCE=0.01, ZOOM_DURATION=15, MAGNET_HOMING_SPEED=280;
 // a steady drip rather than a lump sum: it rewards staying alive with it, not hoarding it
 const REGEN_DROP_CHANCE=0.02, REGEN_DURATION=25, REGEN_RATE=1;
 const HURT_TIME=0.42;   // how long the red buzz rides on BONES and his health bar after a hit
-function pkRunXP(){ return clamp(Math.round(PK.kills*XP_PER_KILL + PK.sideDone*XP_PER_SIDE), 0, XP_RUN_CAP); }
+function pkRunXP(){ return Math.max(0, Math.round(PK.kills*XP_PER_KILL + PK.sideDone*XP_PER_SIDE)); }
 // Dogpark-only relic pool — same lore/names as the Home Shop charms, but tuned to the verbs
 // that actually exist in a Dogpark run (bark, speed, knockback, hp) rather than the runner's
 // jump/score stats. Bought with bones from the between-wave shop; one active at a time, and
@@ -373,31 +364,11 @@ function pkReveal(biscuits, xpFinal, mode){
         if(p2<1){ requestAnimationFrame(xpStep); return; }
         el.textContent=xpFinal+" XP"; el.classList.add("pop"); setTimeout(()=>el.classList.remove("pop"),160);
         beep(760,.09); setTimeout(()=>beep(1040,.12),110);
-        PK.pendingBury=biscuits;   // offered only once BACK HOME is pressed — see #bResHome
       }
       requestAnimationFrame(xpStep);
     }, 300);
   }
   requestAnimationFrame(step);
-}
-function pkOfferGardenBury(biscuits){
-  $("#result").classList.remove("show");
-  const pay=Math.min(biscuits, pkXPLeft());   // the bury draws from the same budget as everything else
-  if(pay<=0){
-    // offering a choice worth nothing is worse than not offering it
-    toast("HE'S LEARNED ALL HE CAN TODAY — THE BONES KEEP.",1);
-    returnHomeFromActivity();
-    return;
-  }
-  const note = pay<biscuits ? "<br><br>HE'S NEARLY FULL — ONLY +"+pay+" XP LEFT IN HIM TODAY." : "";
-  openChoice("BONES LEFT OVER",
-    "YOU HAVE "+biscuits+" BONES LEFT OVER.<br><br>BURY THEM IN THE GARDEN FOR XP?"+note,
-    "BURY THEM — +"+pay+" XP", ()=>{
-      const got=pkAwardXP(biscuits); beep(700,.08); setTimeout(()=>beep(950,.09),100);
-      toast("+"+got+" XP FROM THE GARDEN.");
-      returnHomeFromActivity();
-    },
-    "LEAVE THEM", ()=>{ returnHomeFromActivity(); });
 }
 let PARKGHOST=null;
 const FRIENDIMG = FRIENDFRAMES.map(u=>{ const i=new Image(); i.src=u; return i; });
@@ -478,11 +449,11 @@ function startPark(plus){
     spd:95*(0.75+0.5*S.energy/100)*(S.senior?0.85:1)*lvlMul*moodMul,
     barkMax:Math.max(1.2,3-0.06*S.lvl), barkCd:1, pulse:0,
     barkR:21*(0.8+0.4*S.hunger/100), knock:150*(0.85+0.3*S.mood/100),
-    bones:0, kills:0, xpFromRun:0, sideDone:0, relic:null, waveBanner:null, shopFlash:null, apeKills:0, apeWaveT:0, idleT:0,
+    bones:0, kills:0, sideDone:0, relic:null, waveBanner:null, shopFlash:null, apeKills:0, apeWaveT:0, idleT:0,
     worldMult:4, groves:1, groveCenters:[], woodsDir:null, woodsOff:0, leaves:[], barkBigLvl:0, barkFastLvl:0, agiLvl:0, speedBonus:null, shopSel:null,
     chain:0, chainT:0, inv:0, fx:[],
     x:0,y:0,vx:0,vy:0, joy:null,
-    en:[], fr:[], gate:{}, gateArm:true, gateAsk:false, started:false, shop:null, biscuits:[], drops:[], pendingBury:0, nuts:[],
+    en:[], fr:[], gate:{}, gateArm:true, gateAsk:false, started:false, shop:null, biscuits:[], drops:[], nuts:[],
     powerups:[], zoomT:0, over:0, regenT:0, regenAcc:0, hurtT:0, hpSeen:0, zoom:1, zoomFromBark:0, zoomFromPark:0, sniffLvl:0, w2Stage:0,
     trees:[], scorch:[], embers:[], treeGrid:null, treeGridDirty:true,
     plusMode:!!plus, mixTypes:null, mixLabel:null, swoopT:0,
@@ -909,13 +880,27 @@ function pkDrawFog(ctx,DX,DY,w,h){
   }
   ctx.restore();
 }
-// a flat night-time tint under the fog and everything alive, so DOGPARK AFTER DARK reads as
+// a night-time colour grade under the fog and everything alive, so DOGPARK AFTER DARK reads as
 // darker even in ground BONES has already explored (the fog above only fades in past FOG_HOLD).
-function pkDrawNightTint(ctx,DX,DY){
+// Multiply rather than a flat alpha wash — it crushes brightness while keeping the grass and
+// dirt's own hue, which reads as a real night grade instead of a grey filter laid over the day.
+// Everything that actually glows (the sword, fireflies, sparks, lightning) is drawn after this
+// in parkDraw, so none of it needs special-casing to "shine through" — it simply paints on top.
+function pkDrawNightTint(ctx,DX,DY,w,h){
   if(!PK.plusMode) return;
   ctx.save();
-  ctx.fillStyle="#060a1e"; ctx.globalAlpha=0.40;
+  ctx.globalCompositeOperation="multiply";
+  ctx.fillStyle="#141c3c"; ctx.globalAlpha=0.62;
   ctx.fillRect(DX-4000,DY-4000,8000,8000);
+  ctx.globalCompositeOperation="source-over";
+  // a soft vignette on top — darkest at the screen edges, so the middle where BONES actually
+  // fights stays the most readable while every direction still reads unmistakably as night
+  const vr=Math.max(w,h)*0.72;
+  const vg=ctx.createRadialGradient(DX,DY,vr*0.35,DX,DY,vr);
+  vg.addColorStop(0,"rgba(2,4,12,0)");
+  vg.addColorStop(1,"rgba(2,4,12,0.55)");
+  ctx.fillStyle=vg; ctx.globalAlpha=1;
+  ctx.fillRect(DX-vr,DY-vr,vr*2,vr*2);
   ctx.restore();
 }
 /* ---------- fireflies: small fixed pool of drifting glow motes, DOGPARK AFTER DARK only ---------- */
@@ -3981,13 +3966,15 @@ function pkDeath(){
   PK.rage=0; PK.judgment=null;   // no free lightning waiting for him on the next life
   const lost=Math.round(PK.bones*0.9), kept=PK.bones-lost;
   if(lost>0) PARKGHOST={x:PK.x,y:PK.y,bones:lost + (PARKGHOST?PARKGHOST.bones:0)};
+  if(kept>0) S.snacks+=kept;
   const earned=pkAwardXP(Math.round(pkRunXP()*0.5));   // dying costs you half of what the run actually earned
   pkExitCosts(); S.fun=clamp(S.fun+10,0,100);
   $("#resTitle").textContent="OVERRUN AT THE PARK"; $("#resTitle").style.color="#f22";
   $("#resPortrait").src=PORTRAITS.sad; $("#resPortraitWrap").classList.add("show");
   $("#resScore").textContent=kept+" BONES";
   const leftBehind = lost>0 ? "<br>YOU LEFT YOUR BONES BEHIND." : "";
-  $("#resLines").innerHTML="90% OF HIS BONES ("+lost+") LIE WHERE HE FELL.<br>"+PK.kills+" DOWNED, "+PK.sideDone+" SIDE OBJECTIVES \u2014 "+earned+" XP MADE IT HOME.<br>NEXT VISIT: GO CLAIM THE REST \u2014 IF YOU DARE."+leftBehind;
+  const treatNote = kept>0 ? "<br>+"+kept+" BONE TREATS SAVED FROM THE WRECKAGE." : "";
+  $("#resLines").innerHTML="90% OF HIS BONES ("+lost+") LIE WHERE HE FELL.<br>"+PK.kills+" DOWNED, "+PK.sideDone+" SIDE OBJECTIVES \u2014 "+earned+" XP MADE IT HOME."+treatNote+"<br>NEXT VISIT: GO CLAIM THE REST \u2014 IF YOU DARE."+leftBehind;
   $("#result").classList.add("show");
   beep(140,.3,"sawtooth");
   setTimeout(()=>pkReveal(kept,earned,"death"),400);
@@ -4013,6 +4000,7 @@ function pkForfeitRun(){
 function pkBank(){
   PK.active=false; syncMoodMusic();
   const g=PK.bones;
+  if(g>0) S.snacks+=g;
   const earned=pkAwardXP(pkRunXP());
   LVLFX = earned>0 ? 1.2 : 0;
   pkExitCosts(); S.fun=clamp(S.fun+20,0,100); S.mood=clamp(S.mood+8,0,100);
@@ -4020,9 +4008,8 @@ function pkBank(){
   $("#resPortrait").src = PORTRAITS.content;   // pkReveal takes it from here, building to HAPPY as the pile grows
   $("#resPortraitWrap").classList.add("show");
   $("#resScore").textContent=g+" BONES";
-  const rawXP=Math.round(PK.kills*XP_PER_KILL + PK.sideDone*XP_PER_SIDE);
-  const capNote = rawXP>earned ? "<br>XP CAPPED AT "+XP_RUN_CAP+" A RUN." : "";
-  $("#resLines").innerHTML="WAVE "+PK.wave+" REACHED.<br>"+PK.kills+" DOWNED, "+PK.sideDone+" SIDE OBJECTIVES."+capNote+"<br>A GOOD DAY AT THE PARK.";
+  const treatNote = g>0 ? "<br>+"+g+" BONE TREATS FROM THE BONES HE BROUGHT HOME." : "";
+  $("#resLines").innerHTML="WAVE "+PK.wave+" REACHED.<br>"+PK.kills+" DOWNED, "+PK.sideDone+" SIDE OBJECTIVES."+treatNote+"<br>A GOOD DAY AT THE PARK.";
   $("#result").classList.add("show");
   beep(660,.1); setTimeout(()=>beep(880,.1),100); setTimeout(()=>beep(1170,.14),200);
   setTimeout(()=>pkReveal(g,earned,"bank"),500);
@@ -4883,7 +4870,7 @@ function parkDraw(t){
     if(tx2<-70||tx2>w+70||ty2<-90||ty2>h+70) continue;
     pkDrawTree(ctx,tr,tx2,ty2,t);
   }
-  pkDrawNightTint(ctx,DX,DY);
+  pkDrawNightTint(ctx,DX,DY,w,h);
   pkDrawFog(ctx,DX,DY,w,h);
   pkDrawJudgmentGroundDim(ctx,DX,DY);
   for(const e of PK.en){
@@ -5682,15 +5669,14 @@ function pkPadDraw(t){
     BONES_EXCHANGE.forEach((o,i)=>{
       const y=cRow0+i*cRowStep, top=y-cCardH*0.5;
       const owned = o.label==="COMPASS" && PK.compass;
-      const spent = (o.label==="XP" && pkXPLeft()<=0) || owned;
-      const afford=PK.bones>=o.cost && !spent;
-      ctx.strokeStyle = spent?"#334":(afford?"#fff":"#663333"); ctx.lineWidth=2;
+      const afford=PK.bones>=o.cost && !owned;
+      ctx.strokeStyle = owned?"#334":(afford?"#fff":"#663333"); ctx.lineWidth=2;
       ctx.strokeRect(w*0.10, top, w*0.80, cCardH);
       ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
-      ctx.fillStyle = spent?"#556":(afford?"#fff":"#a55");
+      ctx.fillStyle = owned?"#556":(afford?"#fff":"#a55");
       ctx.fillText(o.label, w*0.145, y-1);
-      ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle = spent?"#445":"#999";
-      ctx.fillText(owned?"ALREADY OWNED THIS RUN":spent?"XP CAP REACHED THIS RUN":o.sub, w*0.145, y+11);
+      ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle = owned?"#445":"#999";
+      ctx.fillText(owned?"ALREADY OWNED THIS RUN":o.sub, w*0.145, y+11);
       ctx.textAlign="right"; ctx.font="7px 'Press Start 2P',monospace";
       ctx.fillStyle = afford?"#fff":"#f22";
       ctx.fillText(o.cost+"◆", w*0.855, y+2);
@@ -5796,8 +5782,7 @@ function pkPadDraw(t){
       for(let i=0;i<BONES_EXCHANGE.length;i++){
         if(Math.abs(yF-(cRow0+i*cRowStep))<tolF){
           const o=BONES_EXCHANGE[i];
-          if(o.label==="XP" && pkXPLeft()<=0){ beep(150,.1); toast("XP CAP REACHED FOR THIS RUN",1); }
-          else if(o.label==="COMPASS" && PK.compass){ beep(150,.1); toast("ALREADY OWNED THIS RUN",1); }
+          if(o.label==="COMPASS" && PK.compass){ beep(150,.1); toast("ALREADY OWNED THIS RUN",1); }
           else if(PK.bones>=o.cost){ PK.bones-=o.cost; o.f(); beep(700,.06); toast(o.sub+" — DONE"); }
           else beep(150,.1);
           return;
