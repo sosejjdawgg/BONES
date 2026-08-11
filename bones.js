@@ -199,26 +199,36 @@ function haptic(pattern){
 /* ---------- background music: a small looping chiptune bed, purely procedural ---------- */
 const MUSIC_BASS=[110,110,98,110, 87.31,87.31,98,110];        // A2 A2 G2 A2 F2 F2 G2 A2
 const MUSIC_ARP=[220,277.18,329.63,440];                       // A3 C#4 E4 A4
+const MUSIC_BEAT=380;                  // ms per step — the title sequence lands its letters on this
 let musicTimer=null, musicStep=0;
+// 0..1, scaled into every note this melody plays. The title sequence brings it up from silence;
+// it lives here rather than on MUSICBUS so it can never collide with sfxDuck's own gain schedule.
+let MUSIC_FADE=1;
 function musicTick(){
   if(!SETTINGS.music || !SETTINGS.sound) return;
+  if(MUSIC_FADE<=0.001) { musicStep++; return; }
   try{
     audioInit();
     const t0=AC.currentTime;
     const bo=AC.createOscillator(), bg=AC.createGain();
     bo.type="triangle"; bo.frequency.value=MUSIC_BASS[musicStep%MUSIC_BASS.length];
-    bg.gain.setValueAtTime(0.0001,t0); bg.gain.exponentialRampToValueAtTime(0.05,t0+0.02); bg.gain.exponentialRampToValueAtTime(0.0001,t0+0.34);
+    bg.gain.setValueAtTime(0.0001,t0); bg.gain.exponentialRampToValueAtTime(0.05*MUSIC_FADE,t0+0.02); bg.gain.exponentialRampToValueAtTime(0.0001,t0+0.34);
     bo.connect(bg); bg.connect(MUSICBUS); bo.start(t0); bo.stop(t0+0.36);
 
     const ao=AC.createOscillator(), ag=AC.createGain();
     ao.type="square"; ao.frequency.value=MUSIC_ARP[musicStep%MUSIC_ARP.length];
-    ag.gain.setValueAtTime(0.0001,t0); ag.gain.exponentialRampToValueAtTime(0.022,t0+0.01); ag.gain.exponentialRampToValueAtTime(0.0001,t0+0.16);
+    ag.gain.setValueAtTime(0.0001,t0); ag.gain.exponentialRampToValueAtTime(0.022*MUSIC_FADE,t0+0.01); ag.gain.exponentialRampToValueAtTime(0.0001,t0+0.16);
     ao.connect(ag); ag.connect(MUSICBUS); ao.start(t0); ao.stop(t0+0.18);
 
     musicStep++;
   }catch(e){}
 }
-function startMusic(){ if(!musicTimer) musicTimer=setInterval(musicTick,380); }
+function fadeMelodyIn(ms){
+  MUSIC_FADE=0;
+  const steps=Math.max(1,Math.round(ms/60)); let i=0;
+  const id=setInterval(()=>{ i++; MUSIC_FADE=Math.min(1,i/steps); if(i>=steps) clearInterval(id); },60);
+}
+function startMusic(){ if(!musicTimer) musicTimer=setInterval(musicTick,MUSIC_BEAT); }
 function stopMusic(){ if(musicTimer){ clearInterval(musicTimer); musicTimer=null; } }
 
 /* ---------- DOGCAM ambient loop: a real track for when things are good ----------
@@ -226,40 +236,92 @@ function stopMusic(){ if(musicTimer){ clearInterval(musicTimer); musicTimer=null
    yet (bad mood/sick — still planned). Two real ones exist now: a relaxed chiptune loop for
    hanging out with BONES on the home screen while he's actually doing well, and a driving one
    for DOGPARK runs. */
+const TRACK_VOL=0.42;
 const MOOD_AUDIO = new Audio(MUSIC_GOODMOOD);
-MOOD_AUDIO.loop = true; MOOD_AUDIO.volume = 0.42; MOOD_AUDIO.preload = "auto";
+MOOD_AUDIO.loop = true; MOOD_AUDIO.volume = TRACK_VOL; MOOD_AUDIO.preload = "auto";
 let moodMusicOn = false;
 const MOOD_AUDIO_PARK = new Audio(MUSIC_DOGPARK);
-MOOD_AUDIO_PARK.loop = true; MOOD_AUDIO_PARK.volume = 0.42; MOOD_AUDIO_PARK.preload = "auto";
+MOOD_AUDIO_PARK.loop = true; MOOD_AUDIO_PARK.volume = TRACK_VOL; MOOD_AUDIO_PARK.preload = "auto";
 let parkMusicOn = false;
+/* Cross-context switches used to cut a track dead the instant MODE changed, so leaving DOGCAM for
+   a run clipped one loop off mid-bar while the next one started underneath it. Every start/stop
+   below goes through these instead: the outgoing track rides its volume down and only then pauses,
+   the incoming one comes up from silence, and each track owns a single timer so a fast
+   back-and-forth (home -> park -> home) can never leave two fades fighting over the same element. */
+const AUDIO_FADES=new WeakMap();
+function fadeAudio(a, to, ms, thenPause){
+  clearInterval(AUDIO_FADES.get(a));
+  const from=a.volume, steps=Math.max(1,Math.round(ms/40));
+  let i=0;
+  const id=setInterval(()=>{
+    i++;
+    a.volume=clamp(from+(to-from)*(i/steps),0,1);
+    if(i>=steps){
+      clearInterval(id); AUDIO_FADES.delete(a);
+      if(thenPause){ a.pause(); a.volume=TRACK_VOL; }
+    }
+  },40);
+  AUDIO_FADES.set(a,id);
+}
+/* play() resolves a frame or two late, which is long enough for a fast context switch (closing
+   Settings straight into a park run) to have already asked this same track to fade out. Without a
+   token the stale resolve would cancel that fade-out and pull the track back up — two tracks
+   playing at once, which is the exact thing the fades exist to prevent. Every start/stop takes a
+   fresh token, and a resolve holding a stale one does nothing. */
+const AUDIO_GEN=new WeakMap();
+function bumpGen(a){ const g=(AUDIO_GEN.get(a)||0)+1; AUDIO_GEN.set(a,g); return g; }
+function trackIn(a){
+  clearInterval(AUDIO_FADES.get(a)); AUDIO_FADES.delete(a);
+  const gen=bumpGen(a);
+  a.volume=0;
+  a.play().then(()=>{
+    if(AUDIO_GEN.get(a)!==gen) return;    // something else took the room while we were starting
+    fadeAudio(a,TRACK_VOL,420,false);
+  }).catch(()=>{ if(AUDIO_GEN.get(a)===gen) a.volume=TRACK_VOL; });
+}
+function trackOut(a){ bumpGen(a); fadeAudio(a,0,320,true); }
 function pkGoodMoodMusic(){ return MODE==="home" && !S.sick && dogMoodState()!=="sad"; }
 function pkParkMoodMusic(){ return MODE==="park" && PK.active; }
+/* The little procedural melody is the game's front-of-house theme: it owns every screen that
+   isn't the world itself — the title/adoption sequence on first load, the settings panel, and
+   any panel that has the world paused underneath it. Stepping into DOGCAM or a park run hands
+   over to that context's own chiptune track, and stepping back out hands it straight back. */
+function menuMusicWanted(){
+  if($("#start") && $("#start").offsetParent) return true;          // title + adoption sequence
+  if($("#settingsPanel") && $("#settingsPanel").classList.contains("show")) return true;
+  if(typeof PK!=="undefined" && PK.active && (PK.settingsOpen||PK.shop||PK.friendsOpen||PK.convertOpen||PK.gateAsk||PK.endRunAsk)) return true;
+  return false;
+}
 // idempotent by design — always computes the state every music system should be in right now,
 // rather than only acting on a change, so it's safe to call from anywhere (boot, a screen
 // switch, the settings toggle, or just the periodic meter refresh) with no ordering assumptions.
-// MODE gates home vs park mutually exclusively, so at most one real track ever wants to play.
+// The three contexts are mutually exclusive, so at most one of them ever wants to be playing.
 function syncMoodMusic(){
   const base = SETTINGS.music && SETTINGS.sound && !document.hidden;
-  const wantHome = base && pkGoodMoodMusic();
-  const wantPark = base && pkParkMoodMusic();
+  const wantMenu = base && menuMusicWanted();
+  const wantHome = base && !wantMenu && pkGoodMoodMusic();
+  const wantPark = base && !wantMenu && pkParkMoodMusic();
   if(wantHome){
-    if(!moodMusicOn){
-      moodMusicOn=true;
-      stopMusic();                        // a real track replaces the procedural bed, never layers under it
-      MOOD_AUDIO.play().catch(()=>{});    // blocked until a real gesture happens — retried on the next sync
-    }
-  } else if(moodMusicOn){ moodMusicOn=false; MOOD_AUDIO.pause(); }
+    if(!moodMusicOn){ moodMusicOn=true; stopMusic(); trackIn(MOOD_AUDIO); }
+  } else if(moodMusicOn){ moodMusicOn=false; trackOut(MOOD_AUDIO); }
   if(wantPark){
-    if(!parkMusicOn){
-      parkMusicOn=true;
-      stopMusic();
-      MOOD_AUDIO_PARK.play().catch(()=>{});
-    }
-  } else if(parkMusicOn){ parkMusicOn=false; MOOD_AUDIO_PARK.pause(); }
+    if(!parkMusicOn){ parkMusicOn=true; stopMusic(); trackIn(MOOD_AUDIO_PARK); }
+  } else if(parkMusicOn){ parkMusicOn=false; trackOut(MOOD_AUDIO_PARK); }
   if(!wantHome && !wantPark){
-    if(SETTINGS.music && SETTINGS.sound) startMusic(); else stopMusic();
+    if(base) startMusic(); else stopMusic();
   }
 }
+// The AudioContext boots suspended until the page has seen a real gesture, so the title melody
+// can't actually sound on a cold load however early it's asked to. This catches the very first
+// interaction anywhere, wakes the context, and re-runs the sync so whatever should be playing
+// by then starts for real.
+(function(){
+  const wake=()=>{
+    try{ audioInit(); if(AC.state==="suspended") AC.resume(); }catch(e){}
+    syncMoodMusic();
+  };
+  for(const ev of ["pointerdown","keydown","touchstart"]) window.addEventListener(ev,wake,{once:true});
+})();
 
 /* ---------- toast ---------- */
 let toastT=0;
@@ -288,7 +350,10 @@ const S = {
   lvl:1, xp:0, gen:1, senior:false, seniorDays:0, lifePathChosen:false, litter:false, memorialSrc:null, pendingStage:[],
   lastSaveAt:null, lastSaveDay:0, lastSaveH:0, dogParkPlusUnlocked:false
 };
-const SETTINGS = { sound:true, reduceMotion:false, music:false, musicDefaultMigrated:true, barkStyle:"circle" };
+// music on by default: the title sequence is scored to the melody, so a silent first boot would
+// hide the whole opening. A save that already carries an explicit preference still wins (see
+// loadGame), so nobody who deliberately turned it off gets it switched back on.
+const SETTINGS = { sound:true, reduceMotion:false, music:true, musicDefaultMigrated:true, barkStyle:"circle" };
 const CHARMS = [
   {id:"spike", name:"SPIKED COLLAR", cost:15, unlock:2,   fx:"+15% SPEED / -10% JUMP",            mod:{spd:1.15,jmp:0.90}},
   {id:"band",  name:"RED BANDANA",   cost:10, unlock:5,   fx:"+15% JUMP",                          mod:{jmp:1.15}},
@@ -800,7 +865,7 @@ function renderTodo(){
   let html="";
   for(const k of TODO_NEW){
     const m=TODO_META.find(x=>x[0]===k);
-    html+='<div class="prow claim" data-k="'+k+'"><span class="nm">\u2611 '+m[2]+'<br><b style="color:#f22">TAP TO CLAIM '+m[3]+'</b></span></div>';
+    html+='<div class="prow claim" data-k="'+k+'"><span class="nm">\u2611 '+m[2]+'<br><span class="claimTag">TAP TO CLAIM '+m[3]+'</span></span></div>';
   }
   const sect=t=>'<div class="tiny" style="color:#777;letter-spacing:2px;padding:4px 0">'+t+'</div>';
   const rows=stage=>TODO_META.filter(m=>(m[4]||0)===stage && !S[m[1]] && !(m[0]==="d_ball" && !S.ballOwned) && !(m[0]==="lvl5" && !S.todoPark)).map(m=>{
@@ -3520,10 +3585,11 @@ function renderGlobalMusicBtn(){
 $("#mSettings").onclick=()=>{
   $("#menuPanel").classList.remove("show"); renderSettings();
   $("#settingsPanel").classList.add("show"); beep(500,.05);
+  syncMoodMusic();   // settings hands the room back to the menu melody
 };
 // PK.settingsOpen only matters while a DOGPARK run is live (see pkPadDraw's gear button) —
 // pausing the world while this panel covers the screen, same as the shop/friends/gate prompts
-$("#settingsClose").onclick=()=>{ $("#settingsPanel").classList.remove("show"); if(typeof PK!=="undefined") PK.settingsOpen=false; };
+$("#settingsClose").onclick=()=>{ $("#settingsPanel").classList.remove("show"); if(typeof PK!=="undefined") PK.settingsOpen=false; syncMoodMusic(); };
 $("#setSound").onclick=()=>{
   SETTINGS.sound=!SETTINGS.sound; renderSettings();
   if(SETTINGS.sound) beep(500,.05);
@@ -3818,8 +3884,9 @@ function loadGame(){
     if(data.FBOWL) FBOWL.level=data.FBOWL.level;
     deepAssign(STAY,data.STAY); deepAssign(CLK,data.CLK);
     if(data.SETTINGS) deepAssign(SETTINGS,data.SETTINGS);
-    // saves made before music defaulted to off can still carry an old music:true — force the
-    // new default once per save; the player can always flip it back on from Settings after
+    // a save old enough to predate this flag is from the era when music was forced off, so it
+    // keeps that; every save since stores a real preference, which the deepAssign above honours
+    // over the (now on-by-default) SETTINGS value. Either way Settings can flip it.
     if(!SETTINGS.musicDefaultMigrated){ SETTINGS.music=false; SETTINGS.musicDefaultMigrated=true; }
     if(Array.isArray(data.TODO_NEW)) TODO_NEW=data.TODO_NEW.slice();
     if(data.XPANIM) Object.assign(XPANIM,data.XPANIM);
@@ -3859,16 +3926,43 @@ function showWelcomeBack(gapMs){
 }
 $("#bWelcomeHome").onclick=()=>{ $("#welcomeBack").classList.remove("show"); beep(500,.05); };
 
+/* ---------- the cold open ----------
+   #start ships with .intro on it, so the very first painted frame is pure black — no flash of a
+   half-built adoption screen before anything has been arranged. From there the melody comes up
+   out of silence and the five letters of BONES march in from the right, one per beat of that same
+   melody, each landing with a short side-to-side knock before it settles. Only once the word is
+   whole does the border draw itself and the dog and the rest of the adoption UI come up from
+   black. Reduce-motion skips straight to the finished screen. */
+function runTitleSequence(){
+  const start=$("#start"), title=$("#startTitle");
+  const spans=Array.from(title.querySelectorAll("span"));
+  if(SETTINGS.reduceMotion){ start.classList.remove("intro"); title.classList.add("lit"); return; }
+  fadeMelodyIn(1600);
+  const LEAD=520;   // a beat of pure black and rising melody before the first letter arrives
+  spans.forEach((s,i)=>{
+    setTimeout(()=>{
+      s.style.opacity="1"; s.style.transform="translateX(0)";
+      beep(392+i*66,.05,"square",.02);                       // each letter knocks as it lands
+      setTimeout(()=>{ s.style.transform="translateX(-5px)"; }, 330);
+      setTimeout(()=>{ s.style.transform="translateX(0)"; },   430);
+    }, LEAD+i*MUSIC_BEAT);
+  });
+  const settledAt=LEAD+spans.length*MUSIC_BEAT;
+  setTimeout(()=>{ title.classList.add("lit","settled"); beep(660,.09); }, settledAt);
+  setTimeout(()=>{ start.classList.remove("intro"); }, settledAt+MUSIC_BEAT);
+}
+
 /* ---------- main loop ---------- */
 const RESTORED = loadGame();
 if(RESTORED){
-  $("#start").classList.add("hidden"); $("#game").classList.remove("hidden");
+  $("#start").classList.add("hidden","intro"); $("#game").classList.remove("hidden");
   const gapMs = S.lastSaveAt ? Date.now()-S.lastSaveAt : 0;
   if(gapMs>=WELCOME_BACK_MS) setTimeout(()=>showWelcomeBack(gapMs),500);
   else setTimeout(()=>toast(S.lastSaveAt ? "WELCOME BACK — LAST SAVED "+dayClock(S.lastSaveDay,S.lastSaveH) : "WELCOME BACK",1),500);
 }
 document.body.classList.toggle("reduce-motion", SETTINGS.reduceMotion);
 $("#startDog").src = PORTRAITS.happy;
+if(!RESTORED) runTitleSequence();   // a returning player has already seen it — straight to DOGCAM
 if(!STORAGE_OK) addMail("storage","PROGRESS CAN'T BE SAVED","STORAGE IS BLOCKED ON THIS DEVICE — "+NAME().toUpperCase()+"'S PROGRESS WON'T PERSIST BETWEEN VISITS.");
 buildMeters(); renderMeters(); renderShop(); renderTodo(); renderDogSel(); renderMailBadge();
 syncMoodMusic();

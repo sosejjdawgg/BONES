@@ -2394,15 +2394,57 @@ function pkClearGroveAccess(g){
 // The friend shop specifically gets re-validated every time, not just given a clearing around its
 // own centre: a second grove (or anything else) that's crept up on its entry path since the last
 // check gets swept off it too, so it's never a guaranteed-open spot that's unreachable to get to.
+// how much genuinely open ground BONES is guaranteed to be standing in. The trunk collision
+// ellipse alone is 26 wide, so the old 64 punched a hole barely wider than he was and left him
+// hemmed in on every side the moment a grove landed on him; this is a real clearing he can
+// actually pick a direction out of.
+const SAFE_SPOT_R=150;
+// finds ground near (x,y) with nothing growing within `r`. Walks outward in rings rather than
+// sampling at random so the answer is the CLOSEST open ground, not merely some open ground —
+// being teleported to a clearing on the far side of the park would be its own bug. Falls back to
+// the original spot (which pkClearAround then force-clears) if the park really is wall-to-wall.
+function pkCountTreesWithin(x,y,r){
+  let n=0;
+  pkTreesNear(x,y,r,tr=>{ if(Math.hypot(wd(tr.x-x,PK.WW),wd(tr.y-y,PK.WH))<r) n++; });
+  return n;
+}
+function pkFindOpenSpot(x,y,r){
+  if(pkCountTreesWithin(x,y,r)===0) return [x,y];
+  for(let ring=1;ring<=6;ring++){
+    const R=r*0.7*ring, steps=8+ring*4;
+    let best=null, bestN=Infinity;
+    for(let i=0;i<steps;i++){
+      const a=(i/steps)*6.283+ring*0.4;
+      const cx=(x+Math.cos(a)*R+PK.WW)%PK.WW, cy=(y+Math.sin(a)*R+PK.WH)%PK.WH;
+      const n=pkCountTreesWithin(cx,cy,r);
+      if(n===0) return [cx,cy];
+      if(n<bestN){ bestN=n; best=[cx,cy]; }
+    }
+    if(ring===6 && best) return best;   // nothing perfect anywhere — take the emptiest we saw
+  }
+  return [x,y];
+}
+// the NPC's shop, the exit gate, wherever BONES is standing right now, and any live power-up all
+// have to stay walkable. BONES and the friend shop get the full treatment: moved to the nearest
+// genuinely open ground first, and only then given a guaranteed clearing there — punching a hole
+// on the spot was never enough on its own, because a spot in the middle of a fresh grove is
+// surrounded by hundreds more trees the hole doesn't touch.
 function pkEnsureWalkable(){
+  // every pkClearAround below splices the tree list out from under the grid the searches read,
+  // so the grid is rebuilt immediately before each search rather than once up front
   if(PK.npc){
-    pkClearAround(PK.npc.x, PK.npc.y, Math.max(90, pkGroveOuterR()*0.5));
+    const npcR=Math.max(110, pkGroveOuterR()*0.5);
+    pkBuildTreeGrid();
+    [PK.npc.x, PK.npc.y] = pkFindOpenSpot(PK.npc.x, PK.npc.y, npcR);
+    pkClearAround(PK.npc.x, PK.npc.y, npcR);
     if(PK.groveCenters[0]) pkClearGroveAccess(PK.groveCenters[0]);
   }
   if(PK.gate && PK.gate.x!=null) pkClearAround(PK.gate.x, PK.gate.y, 76);
-  pkClearAround(PK.x, PK.y, 64);
+  pkBuildTreeGrid();
+  [PK.x, PK.y] = pkFindOpenSpot(PK.x, PK.y, SAFE_SPOT_R);
+  pkClearAround(PK.x, PK.y, SAFE_SPOT_R);
   for(const pu of PK.powerups) pkClearAround(pu.x, pu.y, 40);
-  PK.treeGridDirty=true;
+  pkBuildTreeGrid();   // and leave a grid that matches the trees everything after this will query
 }
 function pkExpandPark(){
   PK.worldMult=Math.min(8,PK.worldMult+0.5);
@@ -3193,6 +3235,10 @@ function parkUpdate(dt){
     tickStats(2.5, true);   // a cleared wave is 15 game minutes — the only time the park spends
     if(PK.bones>0) PK.exitNagFlashT=2.4;   // a fresh wave is exactly when it's easy to forget what you're carrying
     PK.waveT=0; PK.wave++;
+    // no wave ever begins with him wedged in a thicket — wherever the last one left him, and
+    // whatever the trees have done since (grown back, burned, or been rebuilt by an expansion),
+    // he starts this one standing in real open ground
+    pkEnsureWalkable();
     if(PK.wave>=3) tickTodo("j_wave3");
     PK.barkMax=Math.max(0.85,PK.barkMax-0.16); PK.barkR=Math.min(BARK_CAP,PK.barkR+5.5); PK.knock+=12;
     PK.waveQuota=pkWaveQuota(PK.wave); PK.waveSpawned=0; PK.waveKills=0; PK.lastDowned=null;

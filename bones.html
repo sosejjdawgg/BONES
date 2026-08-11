@@ -31,6 +31,17 @@ button.red:active{background:#f22;color:#000}
 /* START */
 #start{position:absolute;inset:0;background:#000;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:34px;text-align:center}
 #start h1{font-size:44px;letter-spacing:6px;border:5px solid #fff;padding:20px 26px}
+#start h1 span{display:inline-block}
+/* TITLE SEQUENCE — the cold-open. #start.intro holds everything at black; each piece is released
+   in turn by the script (see runTitleSequence) as the melody comes up underneath. */
+#start.intro #startTitle{border-color:transparent}
+#start.intro #startTitle span{opacity:0;transform:translateX(120vw)}
+#start.intro #breedRow,#start.intro .warn,#start.intro #namebox{opacity:0}
+#startTitle span{transition:opacity .12s linear,transform .34s cubic-bezier(.2,1.5,.4,1)}
+#startTitle.settled{animation:titleSettle .5s ease}
+@keyframes titleSettle{40%{transform:scale(1.04)}}
+#start #breedRow,#start .warn,#start #namebox{transition:opacity .9s ease}
+#startTitle.lit{border-color:#fff;transition:border-color .6s ease}
 #breedRow{display:flex;gap:10px;align-items:stretch;justify-content:center;width:92%}
 .breed{flex:1;max-width:130px;border:3px solid #fff;padding:10px 6px;display:flex;flex-direction:column;align-items:center;gap:7px;font-size:7px;text-align:center;cursor:pointer}
 .breed .bn{font-size:8px}
@@ -112,7 +123,10 @@ button.red:active{background:#f22;color:#000}
 #home #hud .money{margin-left:auto}
 #todoBar.pulse{border-color:#f22;color:#f22;animation:blink .6s steps(2) infinite}
 #todoList .prow{overflow:hidden;flex-shrink:0;transition:opacity .6s,max-height .6s,padding .6s,border-width .6s}
-#todoList .prow.claim{border-color:#f22;cursor:pointer;animation:blink 1.1s steps(2) infinite}
+#todoList .prow.claim{border-color:#f22;cursor:pointer}
+/* only the chip itself asks for the tap — the row around it stays calm and readable */
+.claimTag{display:inline-block;margin-top:7px;background:#f22;color:#000;font-size:11px;letter-spacing:1px;padding:7px 10px;border:2px solid #f22;animation:claimPulse 1.2s ease-in-out infinite}
+@keyframes claimPulse{50%{transform:scale(1.05)}}
 #todoList .prow.fade{max-height:0 !important}
 #todoList .prow.justdone{border-color:#f22}
 #todoList .prow.fade{opacity:0;max-height:0;padding:0 8px;border-width:0}
@@ -261,8 +275,8 @@ body.reduce-motion *{animation:none!important}
 <body>
 <div id="app">
 
-  <div id="start">
-    <h1>BONES</h1>
+  <div id="start" class="intro">
+    <h1 id="startTitle"><span>B</span><span>O</span><span>N</span><span>E</span><span>S</span></h1>
     <div id="breedRow">
       <div class="breed locked"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="#777" stroke-width="2.4"><rect x="5" y="11" width="14" height="9"/><path d="M8 11 V8 a4 4 0 0 1 8 0 V11"/></svg><div class="bn">WHIPPET</div><div class="ba">SWIFT PAWS</div><div class="bs">COMING SOON</div></div>
       <div class="breed" id="breedBones"><img id="startDog" alt="BONES"><div class="bn">ROTTWEILER</div><div class="ba">LOYAL HEART</div><div class="bs">&#9656; CHOOSE</div></div>
@@ -332,7 +346,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.224a</span>
+          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.228a</span>
         </div>
       </div>
 
