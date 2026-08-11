@@ -207,9 +207,9 @@ button.red:active{background:#f22;color:#000}
 .screen.screen-in{animation:screenIn .22s ease}
 body.reduce-motion .screen.screen-in{animation:none}
 #hud{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:3px solid #fff;font-size:9px}
-#hud .money{font-size:12px}
-#walletStack{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
-#hudBones{font-size:8px;color:#e8c14a;letter-spacing:1px}
+#hud .money{font-size:12px;white-space:nowrap}
+#walletStack{display:flex;flex-direction:column;align-items:flex-end;gap:1px;flex:none;line-height:1.3}
+#hudBones{font-size:8px;color:#e8c14a;letter-spacing:1px;white-space:nowrap}
 #home .body{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:12px}
 #toastGap{flex:1;min-height:34px}
 .sect{font-size:7px;color:#888;letter-spacing:2px;margin-bottom:-6px}
@@ -373,7 +373,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.234a</span>
+          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.235a</span>
         </div>
       </div>
 
