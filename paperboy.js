@@ -2,7 +2,7 @@
 // The primary money-earning job. An isometric delivery route: the van drives down the road
 // while houses sit back from it, each joined to the road by its own long thin path. Parcels
 // are thrown left or right in strict door-number order — a quick tap for a normal throw, or
-// a held 3-second charge for an all-or-nothing power throw. Accuracy is a pure timing skill:
+// or held, to pull the van over and walk the parcel to the door. Accuracy is a pure timing skill:
 // the path IS the aiming guide, and it's drawn exactly as wide as the doormat tolerance, so
 // "throw while the van is over the path" is literally the rule for a perfect delivery.
 const PB_ROUTE_LEN=12, PB_HOUSE_GAP=250;
@@ -10,13 +10,38 @@ const PB_ROUTE_LEN=12, PB_HOUSE_GAP=250;
 // laid out UK-style (odd numbers up one side, even up the other, each side incrementing by 2),
 // with only PB_ROUTE_LEN of them actually due a delivery.
 const PB_STREET_LEN=PB_ROUTE_LEN*3;
-const PB_SPEED0=95, PB_SPEED_MAX=155, PB_SPEED_RAMP=0.7;
+// The van pulls away slowly and keeps building all route long — the ramp is the point, so every
+// restart (a hand delivery, the start line) is a fresh run up through the gears with the
+// speedometer climbing and the speed lines thickening behind it.
+const PB_SPEED0=70, PB_SPEED_MAX=215, PB_SPEED_RAMP=14;
 const PB_TOL={doormat:11, house:27, window:50};
-const PB_CHARGE_TIME=3.0, PB_TAP_MAX=0.22, PB_SWIPE_MIN=26;
-const PB_HOUSE_VALUE=5, PB_PERFECT_BONUS=2, PB_DESTRUCTION_PENALTY=3, PB_MISS_PENALTY=1;
-// SKILLSHOT: a fully-charged throw that lands the doormat. Pays a bonus on top of the normal
-// perfect bonus and delights the customer, who often comes out and tips on top of that.
-const PB_SKILLSHOT_BONUS=3, PB_TIP_CHANCE=0.55, PB_TIP_MIN=1, PB_TIP_MAX=4;
+const PB_HOLD_TIME=0.42;        // how long a press has to be held before it becomes a hand delivery
+const PB_TAP_MAX=0.22, PB_SWIPE_MIN=26;
+/* PAY — deliberately lopsided. A clean throw is worth little, a lost parcel hurts, and putting
+   one through a window is close to unrecoverable, so the safe-but-slow hand delivery is a real
+   choice rather than a novelty. */
+const PB_PERFECT_PAY=4;         // parcel on the doormat
+const PB_HOUSE_PAY=2;           // on the property, off the mat
+const PB_MISS_PENALTY=7;        // parcel lost
+const PB_DESTRUCTION_PENALTY=42;// broken window / wrecked property
+const PB_TIP_CHANCE=0.75, PB_TIP_MIN=1, PB_TIP_MAX=4;
+const PB_PARK_BONUS=6;          // parked cleanly in the bay at the end of the road
+const PB_CRASH_PENALTY=15;      // drove into the wall
+// Run time is rated against this. Hand delivering is safe but eats seconds, so the clock is the
+// cost that keeps it from simply being the correct answer every time.
+const PB_PAR_TIME=45;
+
+/* HAND DELIVERY — hold instead of throwing. The van pulls up, the driver walks the parcel to the
+   door, hands it over and walks back. Guaranteed perfect and near-guaranteed tip, but it costs
+   the better part of three seconds and all the speed you'd built up. */
+const PB_HAND={ stop:0.45, out:0.85, give:0.55, back:0.85 };
+const PB_HAND_TOTAL=PB_HAND.stop+PB_HAND.out+PB_HAND.give+PB_HAND.back;
+
+/* THE END OF THE ROAD — past the last house the job changes: get it stopped in the bay. The bay
+   is a bit over two van lengths, and at full speed you need to be on the brake as you reach it,
+   so the SLOW DOWN sign is the cue rather than a decoration. */
+const PB_STOP_ZONE_LEN=100, PB_BRAKE_DECEL=260;
+const PB_SIGN_LEAD=300;         // how far before the bay the SLOW DOWN sign stands
 
 // --- isometric world layout (x = along the road, y = lateral offset, z = up) ---
 const PB_S=0.42, PB_IX=0.866, PB_IY=0.5;         // projection scale + iso basis
@@ -33,11 +58,73 @@ const PB={
   pressing:false, pressSide:null, pressT:0,
   charging:null, fx:[], shake:0,
   camX:0, camY:0, swipe:null,
-  stats:{perfect:0, house:0, destruction:0, miss:0, skillshot:0, tips:0}
+  // phase: "route" while parcels remain, "approach" once they're all done and the bay is ahead,
+  // "stopping" from the moment the brakes go on, "done" once it has come to rest or hit the wall
+  phase:"route", hand:null, roadEnd:0, braking:false, wobble:0, wobbleT:0,
+  crashed:false, parked:null, elapsed:0, lines:[],
+  stats:{perfect:0, house:0, destruction:0, miss:0, hand:0, tips:0}
 };
+/* Engine note: one oscillator held for the whole run, its pitch and volume riding the speedometer,
+   so acceleration is something you hear building rather than just watch. Lives outside the SFX
+   helpers because it is continuous — beep() is for one-shots. */
+const PBAUD={osc:null, gain:null, filt:null, screech:null, screechGain:null};
+function pbEngineStart(){
+  if(!SETTINGS.sound || PBAUD.osc) return;
+  try{
+    audioInit();
+    const o=AC.createOscillator(), g=AC.createGain(), f=AC.createBiquadFilter();
+    o.type="sawtooth"; o.frequency.value=52;
+    f.type="lowpass"; f.frequency.value=420; f.Q.value=6;
+    g.gain.value=0.0001;
+    o.connect(f); f.connect(g); g.connect(SFXBUS); o.start();
+    PBAUD.osc=o; PBAUD.gain=g; PBAUD.filt=f;
+  }catch(e){}
+}
+function pbEngineStop(){
+  try{
+    if(PBAUD.osc){ PBAUD.gain.gain.cancelScheduledValues(AC.currentTime);
+      PBAUD.gain.gain.setTargetAtTime(0.0001,AC.currentTime,0.05);
+      const o=PBAUD.osc; setTimeout(()=>{ try{o.stop();}catch(_){} },300); }
+    if(PBAUD.screech){ const s=PBAUD.screech; PBAUD.screechGain.gain.setTargetAtTime(0.0001,AC.currentTime,0.04);
+      setTimeout(()=>{ try{s.stop();}catch(_){} },260); }
+  }catch(e){}
+  PBAUD.osc=null; PBAUD.gain=null; PBAUD.filt=null; PBAUD.screech=null; PBAUD.screechGain=null;
+}
+function pbEngineTick(){
+  if(!PBAUD.osc) return;
+  try{
+    const f=clamp(PB.speed/PB_SPEED_MAX,0,1);
+    const t=AC.currentTime;
+    PBAUD.osc.frequency.setTargetAtTime(46+f*104, t, 0.08);
+    PBAUD.filt.frequency.setTargetAtTime(360+f*1500, t, 0.08);
+    PBAUD.gain.gain.setTargetAtTime((PB.hand||PB.phase==="done") ? 0.006 : 0.018+f*0.05, t, 0.08);
+  }catch(e){}
+}
+// tyre squeal, held for as long as the brakes are on
+function pbScreech(on){
+  try{
+    if(on && !PBAUD.screech && SETTINGS.sound){
+      audioInit();
+      const b=AC.createBufferSource(), g=AC.createGain(), f=AC.createBiquadFilter();
+      const len=AC.sampleRate*0.5, buf=AC.createBuffer(1,len,AC.sampleRate), d=buf.getChannelData(0);
+      for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*0.6;
+      b.buffer=buf; b.loop=true;
+      f.type="bandpass"; f.frequency.value=2100; f.Q.value=9;
+      g.gain.value=0.0001;
+      b.connect(f); f.connect(g); g.connect(SFXBUS); b.start();
+      g.gain.setTargetAtTime(0.10,AC.currentTime,0.02);
+      PBAUD.screech=b; PBAUD.screechGain=g;
+    } else if(!on && PBAUD.screech){
+      const s=PBAUD.screech;
+      PBAUD.screechGain.gain.setTargetAtTime(0.0001,AC.currentTime,0.05);
+      setTimeout(()=>{ try{s.stop();}catch(_){} },300);
+      PBAUD.screech=null; PBAUD.screechGain=null;
+    }
+  }catch(e){}
+}
 
 /* ---------- tutorial: two houses, van stops at each, teaches swipe-throw then hold-skillshot ---------- */
-const PBTUT_STEP={DRIVE_TO_1:0, TEACH_SWIPE:1, CELEBRATE_1:2, DRIVE_TO_2:3, TEACH_CHARGE:4, CELEBRATE_2:5, COMPLETE:6};
+const PBTUT_STEP={DRIVE_TO_1:0, TEACH_SWIPE:1, CELEBRATE_1:2, DRIVE_TO_2:3, TEACH_HAND:4, CELEBRATE_2:5, COMPLETE:6};
 const PBTUT={step:0, stepT:0, arrowPulse:0, waitingInput:false, bannerT:0, houseIdx:0, target:0};
 
 function pbNewRoute(){
@@ -62,12 +149,17 @@ function pbNewRoute(){
     if(dueIdx.has(i)) houses.push({doorNum:st.doorNum, side:st.side, worldDist:st.worldDist, thrown:false, zone:null, angryT:0, happyT:0, tip:0});
     else decoys.push({doorNum:st.doorNum, side:st.side, worldDist:st.worldDist, zone:null});
   }
+  // the road runs on past the last address, giving the sign and then the bay somewhere to live
+  const lastDist=street[street.length-1].worldDist;
   Object.assign(PB,{
     houses, decoys, nextIdx:0, dist:0, speed:PB_SPEED0,
     pressing:false, pressSide:null, pressT:0, charging:null, fx:[], shake:0, swipe:null,
-    stats:{perfect:0, house:0, destruction:0, miss:0, skillshot:0, tips:0}
+    phase:"route", hand:null, braking:false, wobble:0, wobbleT:0, crashed:false, parked:null,
+    roadEnd:lastDist+PB_SIGN_LEAD+PB_STOP_ZONE_LEN+140, elapsed:0, lines:[],
+    stats:{perfect:0, house:0, destruction:0, miss:0, hand:0, tips:0}
   });
 }
+function pbStopZoneStart(){ return PB.roadEnd-PB_STOP_ZONE_LEN; }
 function enterPaperboy(){
   if(!S.pbTutorialDone){ enterPaperboyTutorial(); return; }
   hidePortrait(); closeStatus();
@@ -75,7 +167,8 @@ function enterPaperboy(){
     showScreen("paperboy");
     pbNewRoute();
     PB.active=true; PB.run=true;
-    toast("SWIPE OR TAP TO THROW AS THE VAN CROSSES THE PATH — HOLD TO CHARGE A SKILLSHOT",1);
+    pbEngineStart();
+    toast("SWIPE TO THROW — HOLD TO PULL UP AND HAND DELIVER",1);
     beep(500,.06); setTimeout(()=>beep(700,.07),110);
   });
 }
@@ -89,71 +182,91 @@ function enterPaperboyTutorial(){
   });
 }
 function pbSideY(side){ return side==="L" ? 1 : -1; }   // L = down-left of road, R = up-right
+// Once every parcel is gone the controls change meaning entirely: there is nothing left to throw,
+// so any press is the brake pedal. This is why the SLOW DOWN sign only appears after the last house.
+function pbBrakeMode(){ return !PB.tutorial && (PB.phase==="approach"||PB.phase==="stopping"); }
+function pbStartBraking(){
+  if(PB.phase!=="approach") return;
+  PB.phase="stopping"; PB.braking=true;
+  pbScreech(true);
+  PB.shake=Math.max(PB.shake,0.6);
+  haptic([30,20,30]);
+}
 function pbPressStart(side){
   if((!PB.run && !PB.tutorial) || PB.pressing) return;
   if(PB.tutorial && !PBTUT.waitingInput) return;
+  if(pbBrakeMode()){ pbStartBraking(); return; }
+  if(PB.hand) return;                       // already out of the van
   PB.pressing=true; PB.pressSide=side; PB.pressT=0;
 }
 function pbPressEnd(side){
   if(!PB.pressing || PB.pressSide!==side) return;
   PB.pressing=false;
-  if(PB.tutorial){ pbTutorialThrow(side,false); return; }
-  if(PB.charging){
-    PB.charging=null;
-    beep(200,.08,"sawtooth");
-    toast("SKILLSHOT ABORTED",1);
-  } else {
-    pbThrow(side,false);
-  }
+  if(PB.tutorial){ pbTutorialThrow(side); return; }
+  if(PB.charging){ PB.charging=null; }       // released before the hold committed — nothing happens
+  else pbThrow(side);
 }
-// Swipe input decides its direction at the flick, not at the press — so a held charge parks at
-// full power and waits for the swipe to tell it which way to launch. A swipe always throws:
-// fully charged it's a SKILLSHOT, otherwise it's an ordinary throw.
+// Swipe decides its direction at the flick rather than the press. A flick always throws; holding
+// still instead is what pulls the van over for a hand delivery (see pbBeginHand).
 function pbLaunch(side){
   if(!PB.run && !PB.tutorial) return;
-  const power = !!(PB.charging && PB.charging.t>=PB_CHARGE_TIME);
+  if(pbBrakeMode()){ pbStartBraking(); return; }
+  if(PB.hand) return;
   PB.charging=null; PB.pressing=false; PB.pressSide=null;
-  if(PB.tutorial){ pbTutorialThrow(side,power); return; }
-  pbThrow(side,power);
+  if(PB.tutorial){ pbTutorialThrow(side); return; }
+  pbThrow(side);
+}
+/* The hold has been held long enough: commit to walking this one up the path. The van brakes to a
+   halt on its own from here, so the player's hands are free — the cost is the clock, not attention. */
+function pbBeginHand(){
+  const h=PB.houses[PB.nextIdx];
+  if(!h || PB.hand) return;
+  PB.charging=null; PB.pressing=false; PB.pressSide=null;
+  PB.hand={h, phase:"stop", t:0, from:PB.dist};
+  PB.nextIdx++;                     // claimed the moment he commits, so it can't be double-thrown
+  h.thrown=true;
+  pbScreech(true);
+  beep(300,.12,"square",.05);
 }
 function pbSpawnParcelFX(house,kind){
   PB.fx.push({t:"parcel", house, ox:PB.dist, p:0, dur:0.34, kind});
 }
-function pbThrow(side,power){
+function pbThrow(side){
   const h=PB.houses[PB.nextIdx];
   if(!h) return;
   PB.nextIdx++;
   h.thrown=true;
   let zone;
   if(side!==h.side){
-    zone = power ? "destruction" : "miss";
+    zone="miss";
   } else {
     const off=Math.abs(h.worldDist-PB.dist);
-    if(power){ zone = off<PB_TOL.doormat ? "doormat" : "destruction"; }
-    else if(off<PB_TOL.doormat) zone="doormat";
+    if(off<PB_TOL.doormat) zone="doormat";
     else if(off<PB_TOL.house) zone="house";
     else if(off<PB_TOL.window) zone="window";
     else zone="miss";
   }
   h.zone=zone;
-  pbApplyResult(h,zone,power);
+  pbApplyResult(h,zone);
 }
-function pbApplyResult(h,zone,power){
+// the payoff for walking it up: a guaranteed doormat, a customer who stays out on the step, and
+// a tip far more often than not
+function pbCompleteHand(h){
+  PB.stats.perfect++; PB.stats.hand++;
+  h.zone="doormat"; h.handed=true; h.customerOut=true; h.happyT=999;
+  haptic([20,30,20]);
+  if(Math.random()<PB_TIP_CHANCE){
+    h.tip=PB_TIP_MIN+Math.floor(Math.random()*(PB_TIP_MAX-PB_TIP_MIN+1));
+    PB.stats.tips+=h.tip;
+    toast("HANDED OVER — +$"+h.tip+" TIP",1);
+  } else toast("HANDED OVER",1);
+  beep(880,.07); setTimeout(()=>beep(1180,.09),80); setTimeout(()=>beep(1480,.11),160);
+}
+function pbApplyResult(h,zone){
   if(zone==="doormat"){
     PB.stats.perfect++;
     pbSpawnParcelFX(h,"doormat");
-    if(power){
-      // SKILLSHOT — bonus pay, a delighted customer, and often a tip on the doorstep
-      PB.stats.skillshot++;
-      h.happyT=3.5;
-      haptic([20,30,20]);
-      if(Math.random()<PB_TIP_CHANCE){
-        h.tip=PB_TIP_MIN+Math.floor(Math.random()*(PB_TIP_MAX-PB_TIP_MIN+1));
-        PB.stats.tips+=h.tip;
-        toast("SKILLSHOT! +$"+h.tip+" TIP",1);
-      } else toast("SKILLSHOT!",1);
-      beep(980,.07); setTimeout(()=>beep(1320,.09),80); setTimeout(()=>beep(1660,.11),160);
-    } else { beep(880,.07); setTimeout(()=>beep(1180,.09),80); }
+    beep(880,.07); setTimeout(()=>beep(1180,.09),80);
   } else if(zone==="house"){
     PB.stats.house++;
     pbSpawnParcelFX(h,"house");
@@ -165,7 +278,7 @@ function pbApplyResult(h,zone,power){
     beep(160,.2,"sawtooth");
   } else if(zone==="destruction"){
     PB.stats.destruction++;
-    pbSpawnParcelFX(h,power?"power-destruction":"destruction");
+    pbSpawnParcelFX(h,"destruction");
     h.angryT=3.5;
     beep(120,.3,"sawtooth",.1);
   } else {
@@ -190,17 +303,34 @@ function pbDrawReportIcon(grade){
   ctx.fillText(grade, 65, 118);
   ctx.textAlign="left";
 }
+function pbTimeStr(sec){
+  const m=Math.floor(sec/60), s=Math.floor(sec%60);
+  return m+":"+(s<10?"0":"")+s;
+}
 function pbFinish(){
+  if(!PB.active) return;               // both the rest and the crash schedule this — only once
   PB.run=false; PB.active=false;
+  pbEngineStop();
   const s=PB.stats, total=PB.houses.length;
   const delivered=s.perfect+s.house;
-  const gross=delivered*PB_HOUSE_VALUE + s.perfect*PB_PERFECT_BONUS + s.skillshot*PB_SKILLSHOT_BONUS + s.tips;
-  const deduction=s.destruction*PB_DESTRUCTION_PENALTY + s.miss*PB_MISS_PENALTY;
+  const gross = s.perfect*PB_PERFECT_PAY + s.house*PB_HOUSE_PAY + s.tips
+              + (PB.parked==="bay" ? PB_PARK_BONUS : 0);
+  const deduction = s.destruction*PB_DESTRUCTION_PENALTY + s.miss*PB_MISS_PENALTY
+                  + (PB.crashed ? PB_CRASH_PENALTY : 0);
+  // the floor is zero: a bad shift pays nothing, but nobody ever pays to go to work
   const net=Math.max(0,gross-deduction);
   S.money+=net; S.earned+=net;
-  const score=(s.perfect*2 + s.house - s.destruction*1.5 - s.miss)/total;
+  const secs=PB.elapsed;
+  const ratio=secs/PB_PAR_TIME;
+  const timeRating = ratio<=0.8 ? "FLYING" : ratio<=1.0 ? "ON TIME" : ratio<=1.25 ? "BEHIND" : "SLOW";
+  const timeCol = ratio<=1.0 ? "#3fdc7a" : ratio<=1.25 ? "#ffd94a" : "#f22";
+  // grade weighs the round as a whole: what got delivered, what got broken, and the clock
+  let score=(s.perfect*2 + s.house - s.destruction*4 - s.miss*1.5)/total;
+  if(ratio<=0.8) score+=0.35; else if(ratio>1.25) score-=0.35;
+  if(PB.parked==="bay") score+=0.2;
+  if(PB.crashed) score-=0.6;
   let grade;
-  if(s.perfect===total) grade="S";
+  if(s.perfect===total && !PB.crashed && ratio<=1.0) grade="S";
   else if(score>=1.3) grade="A";
   else if(score>=0.9) grade="B";
   else if(score>=0.5) grade="C";
@@ -213,10 +343,14 @@ function pbFinish(){
   $("#resPortraitWrap").classList.remove("show");
   pbDrawReportIcon(grade);
   $("#resScore").textContent="$"+net;
+  const parkLine = PB.crashed ? '<span style="color:#f22">CRASHED INTO THE WALL — −$'+PB_CRASH_PENALTY+'</span>'
+    : PB.parked==="bay" ? '<span style="color:#3fdc7a">PARKED IN THE BAY — +$'+PB_PARK_BONUS+'</span>'
+    : '<span style="color:#8a8a8a">STOPPED SHORT OF THE BAY</span>';
   $("#resLines").innerHTML=
-    "DELIVERED "+delivered+"/"+total+" ("+s.perfect+" PERFECT)<br>"+
-    s.skillshot+(s.skillshot===1?" SKILLSHOT":" SKILLSHOTS")+(s.tips?" — $"+s.tips+" IN TIPS":"")+"<br>"+
-    s.destruction+" DESTROYED, "+s.miss+" MISSED<br>"+
+    "DELIVERED "+delivered+"/"+total+" ("+s.perfect+" PERFECT, "+s.hand+" BY HAND)<br>"+
+    s.destruction+" BROKEN, "+s.miss+" LOST"+(s.tips?" — $"+s.tips+" IN TIPS":"")+"<br>"+
+    parkLine+"<br>"+
+    'TIME '+pbTimeStr(secs)+' vs '+pbTimeStr(PB_PAR_TIME)+' — <span style="color:'+timeCol+'">'+timeRating+"</span><br>"+
     "GROSS $"+gross+" − $"+deduction+" DEDUCTIONS = <b>$"+net+"</b>";
   $("#result").classList.add("show");
   renderMeters();
@@ -232,40 +366,147 @@ function updatePaperboy(dt){
   }
   for(const hh of PB.houses){
     if(hh.angryT>0) hh.angryT=Math.max(0,hh.angryT-dt);
-    if(hh.happyT>0) hh.happyT=Math.max(0,hh.happyT-dt);
+    // someone handed a parcel in person stays out on the step for the rest of the run
+    if(hh.happyT>0 && !hh.customerOut) hh.happyT=Math.max(0,hh.happyT-dt);
   }
 
+  PB.elapsed+=dt;
+  pbEngineTick();
+  pbTickSpeedLines(dt);
+  if(PB.wobbleT>0){ PB.wobbleT=Math.max(0,PB.wobbleT-dt); }
+
+  // --- hand delivery owns the van completely while it runs ---
+  if(PB.hand){ pbHandUpdate(dt); return; }
+
+  // a press held past the tap window commits to a hand delivery rather than a throw
   if(PB.pressing && !PB.charging){
     PB.pressT+=dt;
-    if(PB.pressT>=PB_TAP_MAX){
-      PB.charging={side:PB.pressSide, t:0};
-      beep(90,.4,"sawtooth",.1);
-    }
+    if(PB.pressT>=PB_TAP_MAX){ PB.charging={side:PB.pressSide, t:0}; beep(90,.25,"sawtooth",.07); }
   }
   if(PB.charging){
-    PB.charging.t=Math.min(PB_CHARGE_TIME,PB.charging.t+dt);
-    PB.shake=0.5;
-    if(PB.charging.t>=PB_CHARGE_TIME){
-      const side=PB.charging.side;
-      // a button charge knows its direction and fires the instant it maxes out; a swipe charge
-      // doesn't yet, so it parks at full power waiting for the flick to point it somewhere
-      if(side){
-        PB.charging=null; PB.pressing=false;
-        pbThrow(side,true);
-      } else if(!PB.charging.rang){ PB.charging.rang=true; beep(1200,.09); }
-    }
-    return;   // van stays fully stopped while charging — nothing scrolls
+    PB.charging.t+=dt;
+    PB.shake=Math.max(PB.shake,0.25);
+    if(PB.charging.t>=PB_HOLD_TIME){ pbBeginHand(); return; }
   }
+
+  if(PB.phase==="stopping"){
+    PB.speed=Math.max(0,PB.speed-PB_BRAKE_DECEL*dt);
+    PB.dist+=PB.speed*dt;
+    PB.shake=Math.max(PB.shake, 0.25+0.5*(PB.speed/PB_SPEED_MAX));
+    if(PB.dist>=PB.roadEnd && PB.speed>0){ pbCrash(); return; }
+    if(PB.speed<=0){ pbComeToRest(); }
+    return;
+  }
+
   PB.speed=Math.min(PB_SPEED_MAX, PB.speed+PB_SPEED_RAMP*dt);
   PB.dist+=PB.speed*dt;
+  // the road itself rumbles harder the faster you take it
+  PB.shake=Math.max(PB.shake, 0.10*Math.pow(clamp(PB.speed/PB_SPEED_MAX,0,1),2));
 
-  const h=PB.houses[PB.nextIdx];
-  if(h && !h.thrown && (PB.dist-h.worldDist)>PB_TOL.window){
-    h.thrown=true; h.zone="miss";
-    PB.stats.miss++;
-    PB.nextIdx++;
+  if(PB.phase==="route"){
+    const h=PB.houses[PB.nextIdx];
+    if(h && !h.thrown && (PB.dist-h.worldDist)>PB_TOL.window){
+      h.thrown=true; h.zone="miss";
+      PB.stats.miss++;
+      PB.nextIdx++;
+      beep(150,.1);
+    }
+    if(PB.nextIdx>=PB.houses.length){
+      PB.phase="approach";
+      toast("END OF THE ROAD — TAP TO BRAKE",1);
+      beep(420,.1); setTimeout(()=>beep(330,.14),120);
+    }
+  } else if(PB.phase==="approach"){
+    // never braked at all: straight into the wall
+    if(PB.dist>=PB.roadEnd){ pbCrash(); return; }
   }
-  if(PB.nextIdx>=PB.houses.length) pbFinish();
+}
+/* The stop itself. Where the van's nose ends up decides whether that was a park or an overshoot,
+   and either way it rocks on its springs for a beat before it settles — that wobble is the whole
+   reason the stop feels like it had weight behind it. */
+function pbComeToRest(){
+  PB.speed=0; PB.braking=false; PB.phase="done";
+  pbScreech(false);
+  const z0=pbStopZoneStart();
+  const inBay = PB.dist>=z0 && PB.dist<=PB.roadEnd;
+  PB.parked = inBay ? "bay" : "short";
+  PB.wobble=inBay?1:0.6; PB.wobbleT=inBay?1.15:0.8;
+  PB.shake=0.55;
+  haptic(inBay?[40,40,60]:[30]);
+  if(inBay){ beep(760,.09); setTimeout(()=>beep(1020,.11),110); setTimeout(()=>beep(1360,.14),230); }
+  else { beep(420,.12); setTimeout(()=>beep(330,.12),120); }
+  setTimeout(pbFinish, 1450);
+}
+function pbCrash(){
+  PB.dist=PB.roadEnd; PB.speed=0; PB.braking=false; PB.phase="done";
+  PB.crashed=true; PB.parked="crash";
+  pbScreech(false);
+  PB.wobble=1.5; PB.wobbleT=1.5;
+  PB.shake=1.4;
+  haptic([90,50,90]);
+  beep(90,.42,"sawtooth",.12); setTimeout(()=>beep(140,.3,"sawtooth",.08),70);
+  toast("INTO THE WALL!",1);
+  setTimeout(pbFinish, 1650);
+}
+/* Out of the van, up the path, hand it over, back again. Each leg is a fixed slice of time so the
+   whole errand always costs the same — see PB_HAND. */
+function pbHandUpdate(dt){
+  const H=PB.hand, ph=H.phase;
+  H.t+=dt;
+  if(ph==="stop"){
+    // brake AND draw level with the door: stopping wherever the hold happened to land would leave
+    // the driver hiking half the street, so the van rolls up outside the house it's delivering to
+    const target=H.h.worldDist;
+    PB.speed=Math.max(0,PB.speed-PB_BRAKE_DECEL*0.75*dt);
+    PB.dist += (target-PB.dist)*Math.min(1,dt*5.5);
+    PB.shake=Math.max(PB.shake,0.3*(PB.speed/PB_SPEED_MAX));
+    if(H.t>=PB_HAND.stop){
+      PB.speed=0; PB.dist=target; pbScreech(false);
+      PB.wobble=0.7; PB.wobbleT=0.6;
+      H.phase="out"; H.t=0; H.stoppedAt=PB.dist;
+    }
+    return;
+  }
+  if(ph==="out"){
+    if(H.t>=PB_HAND.out){ H.phase="give"; H.t=0; pbCompleteHand(H.h); }
+    return;
+  }
+  if(ph==="give"){
+    if(H.t>=PB_HAND.give){ H.phase="back"; H.t=0; }
+    return;
+  }
+  // "back" — once he's in, pull away and let the whole speed ramp start again from a standstill
+  if(H.t>=PB_HAND.back){
+    PB.hand=null; PB.speed=PB_SPEED0*0.4;
+    beep(240,.1,"square",.05);
+    if(PB.nextIdx>=PB.houses.length && PB.phase==="route"){
+      PB.phase="approach";
+      toast("END OF THE ROAD — TAP TO BRAKE",1);
+    }
+  }
+}
+// how far along the path the driver currently is, 0 at the van and 1 at the door
+function pbHandWalkP(){
+  const H=PB.hand; if(!H) return 0;
+  if(H.phase==="stop") return 0;
+  if(H.phase==="out")  return clamp(H.t/PB_HAND.out,0,1);
+  if(H.phase==="give") return 1;
+  return 1-clamp(H.t/PB_HAND.back,0,1);
+}
+/* Speed lines: short streaks flung backwards past the camera. They only start showing up once the
+   van is genuinely moving, and both how many there are and how long they are climb with the
+   speedometer, so the screen gets busier the harder you push. */
+function pbTickSpeedLines(dt){
+  const f=clamp((PB.speed-PB_SPEED0*0.7)/(PB_SPEED_MAX-PB_SPEED0*0.7),0,1);
+  for(let i=PB.lines.length-1;i>=0;i--){
+    const L=PB.lines[i];
+    L.life-=dt; L.p+=dt*(1.6+f*2.4);
+    if(L.life<=0||L.p>=1) PB.lines.splice(i,1);
+  }
+  if(f>0.05 && PB.lines.length<34 && Math.random()<f*0.9){
+    PB.lines.push({ y:Math.random(), side:Math.random()<0.5?-1:1, off:0.25+Math.random()*0.9,
+                    p:0, life:0.28+Math.random()*0.2, len:0.4+Math.random()*0.6 });
+  }
 }
 
 /* ---------- isometric drawing ---------- */
@@ -308,6 +549,56 @@ function pbDrawRoad(ctx){
   for(let x=s0;x<x1;x+=step){
     pbQuad(ctx,[pbP(x,-3,0),pbP(x+30,-3,0),pbP(x+30,3,0),pbP(x,3,0)],"#fff",null);
   }
+  if(!PB.tutorial) pbDrawRoadEnd(ctx);
+}
+/* Everything at the far end of the street: the warning sign, the hatched bay you are trying to
+   stop in, and the wall behind it that ends the run badly if you arrive still moving. All of it
+   is drawn as part of the road so it slides toward you at the same rate as everything else and
+   you can read the distance off it. */
+function pbDrawRoadEnd(ctx){
+  const R=PB_ROAD_HALF, z0=pbStopZoneStart(), end=PB.roadEnd;
+  if(end-PB.dist>1400) return;
+  // --- the bay: hatched box, brighter once it's the live target ---
+  const live = PB.phase!=="route";
+  pbQuad(ctx,[pbP(z0,-R,0),pbP(end,-R,0),pbP(end,R,0),pbP(z0,R,0)],
+         live?"#2b2410":"#1b1b1b", live?"#ffd94a":"#555", 2);
+  ctx.save(); ctx.globalAlpha=live?0.55:0.28;
+  ctx.strokeStyle=live?"#ffd94a":"#666"; ctx.lineWidth=2;
+  for(let x=z0;x<end;x+=22){
+    const a=pbP(x,-R,0), b=pbP(x+16,R,0);
+    ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke();
+  }
+  ctx.restore();
+  // --- the wall across the road ---
+  const WH=52;
+  pbQuad(ctx,[pbP(end,-R,0),pbP(end,R,0),pbP(end,R,WH),pbP(end,-R,WH)],"#1a1a1a","#f22",3);
+  ctx.save(); ctx.globalAlpha=0.9;
+  for(let i=0;i<5;i++){   // hazard chevrons
+    const y=-R+(2*R)*(i/5);
+    pbQuad(ctx,[pbP(end,y,6),pbP(end,y+(2*R)/10,6),pbP(end,y+(2*R)/10,WH-6),pbP(end,y,WH-6)],
+           i%2?"#f22":"#111",null);
+  }
+  ctx.restore();
+}
+/* The sign is depth-sorted along with the houses and the van rather than painted with the road,
+   so driving past it puts the van in front of it exactly when it should. */
+function pbDrawSlowSign(ctx){
+  const R=PB_ROAD_HALF, signX=pbStopZoneStart()-PB_SIGN_LEAD;
+  {
+    const sy=R+22, postTop=54;
+    const base=pbP(signX,sy,0), top=pbP(signX,sy,postTop);
+    ctx.strokeStyle="#999"; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.moveTo(base[0],base[1]); ctx.lineTo(top[0],top[1]); ctx.stroke();
+    const blink = PB.phase==="route" ? 1 : (Math.floor(performance.now()/260)%2 ? 1 : 0.45);
+    ctx.save(); ctx.globalAlpha=blink;
+    pbQuad(ctx,[pbP(signX-62,sy,postTop),pbP(signX+62,sy,postTop),
+                pbP(signX+62,sy,postTop+52),pbP(signX-62,sy,postTop+52)],"#000","#ffd94a",3);
+    const c=pbP(signX,sy,postTop+26);
+    ctx.fillStyle="#ffd94a"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText("SLOW", c[0], c[1]-4);
+    ctx.fillText("DOWN", c[0], c[1]+8);
+    ctx.textAlign="left"; ctx.restore();
+  }
 }
 function pbDrawGround(ctx,h,isNext){
   const s=pbSideY(h.side);
@@ -328,7 +619,7 @@ function pbDrawHouse(ctx,h,t){
   const yf=s*PB_HOUSE_Y0, yb=s*(PB_HOUSE_Y0+PB_HOUSE_DEPTH);
   const ylo=Math.min(yf,yb), yhi=Math.max(yf,yb), ymid=(ylo+yhi)/2;
   const H=PB_WALL_H, RH=PB_ROOF_H;
-  const wrecked = h.zone==="window"||h.zone==="destruction"||h.zone==="power-destruction";
+  const wrecked = h.zone==="window"||h.zone==="destruction";
   const line = wrecked ? "#f22" : "#fff";
   // walls: the two camera-facing faces
   pbQuad(ctx,[pbP(x0,yhi,0),pbP(x1,yhi,0),pbP(x1,yhi,H),pbP(x0,yhi,H)],"#000",line,2);
@@ -350,7 +641,7 @@ function pbDrawHouse(ctx,h,t){
   // big door number across the wide down-left face
   const c=pbP((x0+x1)/2,yhi,H*0.52);
   pbFaceText(ctx,c[0],c[1],PB_IX,PB_IY,""+h.doorNum,17, h.zone==="miss"?"#f22":"#fff");
-  // delighted customer after a SKILLSHOT — comes out, waves, and shows the tip if they left one
+  // delighted customer — comes out, waves, and shows the tip if they left one
   if(h.happyT>0){
     const p=pbP(h.worldDist, s*(PB_HOUSE_Y0-48), 0);
     const wave=Math.sin(t*9)*4;
@@ -380,30 +671,81 @@ function pbDrawHouse(ctx,h,t){
     ctx.restore(); ctx.restore();
   }
 }
+const PB_VAN_L=42;
+// a decaying rock on the suspension — driven by whatever last jolted it (a stop, a crash) and
+// dying away over its own timer, so the van visibly settles rather than freezing dead still
+function pbVanRock(){
+  if(PB.wobbleT<=0) return 0;
+  return PB.wobble*PB.wobbleT*Math.sin(performance.now()/1000*17);
+}
 function pbDrawVan(ctx,t){
-  const glow = PB.charging ? clamp(PB.charging.t/PB_CHARGE_TIME,0,1) : 0;
-  const L=42, Wd=26, Hh=34;
+  const winding = PB.charging ? clamp(PB.charging.t/PB_HOLD_TIME,0,1) : 0;
+  const braking = PB.braking?1:0;
+  const L=PB_VAN_L, Wd=26, Hh=34;
   const x0=PB.dist-L/2, x1=PB.dist+L/2, y0=-Wd/2, y1=Wd/2;
-  if(glow>0){
+  const rock=pbVanRock();
+  const anchor=pbP(PB.dist,0,0);
+  ctx.save();
+  if(Math.abs(rock)>0.001){    // pitch the whole body about where it meets the road
+    ctx.translate(anchor[0],anchor[1]);
+    ctx.rotate(rock*0.10);
+    ctx.translate(0,-Math.abs(rock)*2.2);
+    ctx.translate(-anchor[0],-anchor[1]);
+  }
+  if(winding>0){
     const g=pbP(PB.dist,0,Hh*0.5);
-    ctx.save(); ctx.globalAlpha=0.25+0.55*glow;
-    ctx.strokeStyle = Math.floor(t*14)%2 ? "#f22" : "#fff"; ctx.lineWidth=3+glow*4;
-    ctx.beginPath(); ctx.arc(g[0],g[1],24+glow*18,0,7); ctx.stroke();
+    ctx.save(); ctx.globalAlpha=0.25+0.55*winding;
+    ctx.strokeStyle="#ffd94a"; ctx.lineWidth=3+winding*4;
+    ctx.beginPath(); ctx.arc(g[0],g[1],22+winding*10,0,7); ctx.stroke();
     ctx.restore();
   }
-  const line = glow>0 ? "#f22" : "#fff";
+  const line = braking ? "#f22" : winding>0 ? "#ffd94a" : "#fff";
   pbQuad(ctx,[pbP(x0,y1,0),pbP(x1,y1,0),pbP(x1,y1,Hh),pbP(x0,y1,Hh)],"#000",line,2);
   pbQuad(ctx,[pbP(x1,y0,0),pbP(x1,y1,0),pbP(x1,y1,Hh),pbP(x1,y0,Hh)],"#050505",line,2);
   pbQuad(ctx,[pbP(x0,y0,Hh),pbP(x1,y0,Hh),pbP(x1,y1,Hh),pbP(x0,y1,Hh)],"#111",line,2);
   // windscreen on the leading face
   pbQuad(ctx,[pbP(x1,y0+4,Hh*0.42),pbP(x1,y1-4,Hh*0.42),pbP(x1,y1-4,Hh*0.82),pbP(x1,y0+4,Hh*0.82)],"#9cf","#ccc",1.5);
-  if(glow>0){
-    ctx.strokeStyle="rgba(255,255,255,"+(0.5*glow)+")"; ctx.lineWidth=2;
-    for(let i=0;i<3;i++){
-      const a=pbP(x0-8-i*12, y0+i*7, Hh*0.5), b=pbP(x0-26-i*12, y0+i*7, Hh*0.5);
+  if(braking){   // brake lights on the back panel, and rubber burning off both rear corners
+    pbQuad(ctx,[pbP(x0,y0+3,Hh*0.30),pbP(x0,y0+9,Hh*0.30),pbP(x0,y0+9,Hh*0.52),pbP(x0,y0+3,Hh*0.52)],"#f22","#f66",1);
+    pbQuad(ctx,[pbP(x0,y1-9,Hh*0.30),pbP(x0,y1-3,Hh*0.30),pbP(x0,y1-3,Hh*0.52),pbP(x0,y1-9,Hh*0.52)],"#f22","#f66",1);
+    ctx.save(); ctx.globalAlpha=0.5;
+    ctx.strokeStyle="#666"; ctx.lineWidth=4;
+    for(const sy of [y0+4,y1-4]){
+      const a=pbP(x0,sy,0), b=pbP(x0-70,sy,0);
       ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke();
     }
+    ctx.restore();
+    for(let i=0;i<2;i++){       // smoke off the tyres
+      const sy=(i?y1-4:y0+4), q=pbP(x0-6-Math.random()*18, sy, 2+Math.random()*10);
+      ctx.save(); ctx.globalAlpha=0.10+Math.random()*0.18; ctx.fillStyle="#ddd";
+      ctx.beginPath(); ctx.arc(q[0],q[1],4+Math.random()*7,0,7); ctx.fill(); ctx.restore();
+    }
   }
+  ctx.restore();
+}
+/* The driver, on foot. Only ever on screen during a hand delivery: he tracks along the same path
+   the parcel would have flown down, box in hand on the way out and empty-handed on the way back. */
+function pbDrawDriver(ctx,t){
+  const H=PB.hand; if(!H || H.phase==="stop") return;
+  const h=H.h, s=pbSideY(h.side), p=pbHandWalkP();
+  const x=H.stoppedAt+(h.worldDist-H.stoppedAt)*p;
+  const y=s*(PB_HOUSE_Y0-26)*p;
+  const q=pbP(x,y,0);
+  const step=Math.sin(t*13)*(p>0&&p<1?1:0);
+  ctx.save(); ctx.translate(q[0],q[1]);
+  ctx.fillStyle="rgba(0,0,0,.35)";
+  ctx.beginPath(); ctx.ellipse(0,1,7,3,0,0,7); ctx.fill();
+  ctx.fillStyle="#fff";
+  ctx.beginPath(); ctx.arc(0,-25,5,0,7); ctx.fill();     // head
+  ctx.fillRect(-4,-20,8,13);                              // body
+  ctx.fillRect(-4,-7,3,7+step);                           // legs
+  ctx.fillRect(1,-7,3,7-step);
+  if(H.phase==="out"||H.phase==="stop"){                  // parcel still in his arms
+    ctx.fillStyle="#eee"; ctx.fillRect(3,-19,9,8);
+    ctx.fillStyle="#f22"; ctx.fillRect(3,-19,9,2);
+    ctx.strokeStyle="#000"; ctx.lineWidth=1; ctx.strokeRect(3,-19,9,8);
+  }
+  ctx.restore();
 }
 function pbDrawParcelFX(ctx,f){
   const h=f.house, s=pbSideY(h.side), p=f.p;
@@ -431,20 +773,103 @@ function pbDrawHUD(ctx,w,h){
   ctx.fillText(PB.nextIdx+"/"+PB.houses.length, w-12, 22);
   ctx.textAlign="left";
   if(PB.charging){
-    const p=clamp(PB.charging.t/PB_CHARGE_TIME,0,1), full=p>=1;
+    const p=clamp(PB.charging.t/PB_HOLD_TIME,0,1);
     const bw=w*0.6, bx=w/2-bw/2, by=h*0.68;
-    const col = full ? "#ffd94a" : "#f22";
-    ctx.fillStyle="rgba(0,0,0,.7)"; ctx.fillRect(bx-5,by-18,bw+10,48);
-    ctx.fillStyle=col; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText("SKILLSHOT", w/2, by-5);
-    ctx.strokeStyle=col; ctx.lineWidth=2; ctx.strokeRect(bx,by,bw,12);
-    ctx.fillStyle=col; ctx.fillRect(bx,by,bw*p,12);
-    if(full && !PB.charging.side && Math.floor(performance.now()/220)%2){
-      ctx.fillStyle="#ffd94a"; ctx.font="7px 'Press Start 2P',monospace";
-      ctx.fillText("SWIPE TO LAUNCH", w/2, by+26);
-    }
+    ctx.fillStyle="rgba(0,0,0,.7)"; ctx.fillRect(bx-5,by-18,bw+10,34);
+    ctx.fillStyle="#ffd94a"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText("PULLING OVER…", w/2, by-5);
+    ctx.strokeStyle="#ffd94a"; ctx.lineWidth=2; ctx.strokeRect(bx,by,bw,12);
+    ctx.fillStyle="#ffd94a"; ctx.fillRect(bx,by,bw*p,12);
     ctx.textAlign="left";
   }
+  if(PB.hand){
+    const lbl = PB.hand.phase==="stop" ? "PULLING OVER" :
+                PB.hand.phase==="out"  ? "WALKING IT UP" :
+                PB.hand.phase==="give" ? "HANDING IT OVER" : "BACK TO THE VAN";
+    ctx.fillStyle="rgba(0,0,0,.72)"; ctx.fillRect(w*0.18,h*0.68,w*0.64,26);
+    ctx.fillStyle="#3fdc7a"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText(lbl, w/2, h*0.68+17);
+    ctx.textAlign="left";
+  }
+  // the one instruction that matters once the parcels are gone
+  if(PB.phase==="approach" && Math.floor(performance.now()/300)%2){
+    ctx.fillStyle="rgba(0,0,0,.75)"; ctx.fillRect(w*0.16,h*0.55,w*0.68,30);
+    ctx.strokeStyle="#f22"; ctx.lineWidth=2; ctx.strokeRect(w*0.16,h*0.55,w*0.68,30);
+    ctx.fillStyle="#f22"; ctx.font="10px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText("TAP TO BRAKE", w/2, h*0.55+20);
+    ctx.textAlign="left";
+  }
+  if(PB.phase==="done"){
+    const msg = PB.crashed ? "CRASHED" : PB.parked==="bay" ? "PARKED!" : "STOPPED SHORT";
+    const col = PB.crashed ? "#f22" : PB.parked==="bay" ? "#3fdc7a" : "#ffd94a";
+    ctx.fillStyle="rgba(0,0,0,.8)"; ctx.fillRect(w*0.2,h*0.44,w*0.6,34);
+    ctx.strokeStyle=col; ctx.lineWidth=3; ctx.strokeRect(w*0.2,h*0.44,w*0.6,34);
+    ctx.fillStyle=col; ctx.font="13px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText(msg, w/2, h*0.44+23);
+    ctx.textAlign="left";
+  }
+}
+/* Speed lines. Drawn in screen space rather than world space so they read as motion blur past the
+   camera rather than as objects in the street; they thicken, lengthen and brighten together as the
+   speedometer climbs, which is most of why fast feels fast. */
+function pbDrawSpeedLines(ctx,w,h){
+  const f=clamp((PB.speed-PB_SPEED0*0.7)/(PB_SPEED_MAX-PB_SPEED0*0.7),0,1);
+  if(f<=0.02 || !PB.lines.length) return;
+  ctx.save();
+  ctx.lineCap="round";
+  for(const L of PB.lines){
+    const fade=Math.sin(Math.min(1,L.p)*Math.PI);
+    const x = w*(1.05 - L.p*1.25);
+    const y = h*(0.10+L.y*0.74);
+    const len = w*0.10*L.len*(0.4+f);
+    ctx.globalAlpha=0.10+0.55*fade*f;
+    ctx.strokeStyle = f>0.8 ? "#ffd94a" : "#fff";
+    ctx.lineWidth=1+2.5*f*L.len;
+    ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+len,y); ctx.stroke();
+  }
+  ctx.restore();
+}
+/* Speedometer, bottom-right: a dial that sweeps 200° with a red band up top, the needle riding the
+   real PB.speed, and the number spelled out underneath. Goes gold once the van is genuinely flat out. */
+function pbDrawSpeedo(ctx,w,h){
+  const r=34, cx=w-r-16, cy=h-r-52;
+  const f=clamp(PB.speed/PB_SPEED_MAX,0,1);
+  const A0=Math.PI*0.80, A1=Math.PI*2.20;      // sweep, measured clockwise from the left
+  const hot=f>0.86;
+  ctx.save();
+  ctx.fillStyle="rgba(0,0,0,.72)";
+  ctx.beginPath(); ctx.arc(cx,cy,r+4,0,7); ctx.fill();
+  ctx.strokeStyle=hot?"#ffd94a":"#666"; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.arc(cx,cy,r+4,0,7); ctx.stroke();
+  // track, then the red line at the top end
+  ctx.strokeStyle="#333"; ctx.lineWidth=6;
+  ctx.beginPath(); ctx.arc(cx,cy,r-5,A0,A1); ctx.stroke();
+  ctx.strokeStyle="#5a1414";
+  ctx.beginPath(); ctx.arc(cx,cy,r-5,A0+(A1-A0)*0.86,A1); ctx.stroke();
+  // the live sweep
+  ctx.strokeStyle=hot?"#f22":"#3fdc7a"; ctx.lineWidth=6;
+  ctx.beginPath(); ctx.arc(cx,cy,r-5,A0,A0+(A1-A0)*f); ctx.stroke();
+  // ticks
+  ctx.strokeStyle="#888"; ctx.lineWidth=1.5;
+  for(let i=0;i<=5;i++){
+    const a=A0+(A1-A0)*(i/5);
+    ctx.beginPath();
+    ctx.moveTo(cx+Math.cos(a)*(r-12), cy+Math.sin(a)*(r-12));
+    ctx.lineTo(cx+Math.cos(a)*(r-16), cy+Math.sin(a)*(r-16));
+    ctx.stroke();
+  }
+  // needle
+  const na=A0+(A1-A0)*f;
+  ctx.strokeStyle=hot?"#ffd94a":"#fff"; ctx.lineWidth=2.5; ctx.lineCap="round";
+  ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+Math.cos(na)*(r-11), cy+Math.sin(na)*(r-11)); ctx.stroke();
+  ctx.fillStyle=hot?"#ffd94a":"#fff";
+  ctx.beginPath(); ctx.arc(cx,cy,3,0,7); ctx.fill();
+  ctx.fillStyle=hot?"#ffd94a":"#fff"; ctx.font="9px 'Press Start 2P',monospace"; ctx.textAlign="center";
+  ctx.fillText(Math.round(PB.speed), cx, cy+16);
+  ctx.font="5px 'Press Start 2P',monospace"; ctx.fillStyle="#8a8a8a";
+  ctx.fillText("MPH", cx, cy+25);
+  ctx.textAlign="left";
+  ctx.restore();
 }
 // Route minimap: a strip of the whole street, one small square per house. White = due a delivery,
 // not thrown yet. Green/red = thrown, matching the doorstep outcome (good vs bad zone). Decoys —
@@ -487,14 +912,21 @@ function pbTutorialStart(){
   Object.assign(PB,{
     houses:[h1,h2], decoys:[], nextIdx:0, dist:0, speed:0,
     pressing:false, pressSide:null, pressT:0, charging:null, fx:[], shake:0, swipe:null,
-    stats:{perfect:0, house:0, destruction:0, miss:0, skillshot:0, tips:0},
+    phase:"route", hand:null, braking:false, wobble:0, wobbleT:0, crashed:false, parked:null,
+    roadEnd:PB_HOUSE_GAP*9, elapsed:0, lines:[],
+    stats:{perfect:0, house:0, destruction:0, miss:0, hand:0, tips:0},
     tutorial:true, active:true, run:false
   });
   Object.assign(PBTUT,{step:PBTUT_STEP.DRIVE_TO_1, stepT:0, arrowPulse:0, waitingInput:false, bannerT:0, houseIdx:0, target:h1.worldDist});
 }
-function pbTutorialThrow(side,power){
+function pbTutorialThrow(side){
   const S_=PBTUT_STEP;
-  if(PBTUT.step!==S_.TEACH_SWIPE && PBTUT.step!==S_.TEACH_CHARGE) return;
+  if(PBTUT.step===S_.TEACH_HAND){           // the second lesson is a hold, not a throw
+    beep(300,.08); toast("HOLD IT INSTEAD — DON'T FLICK",1);
+    PB.charging=null; PB.pressing=false;
+    return;
+  }
+  if(PBTUT.step!==S_.TEACH_SWIPE) return;
   const h=PB.houses[PBTUT.houseIdx];
   if(!h) return;
   if(side!==h.side){
@@ -503,14 +935,9 @@ function pbTutorialThrow(side,power){
     PB.charging=null; PB.pressing=false;
     return;
   }
-  if(PBTUT.step===S_.TEACH_CHARGE && !power){
-    toast("HOLD IT A LITTLE LONGER, THEN SWIPE",1);
-    return;
-  }
-  pbThrow(side,power);   // off===0 at a dead stop, so this always lands the doormat
+  pbThrow(side);   // off===0 at a dead stop, so this always lands the doormat
   PBTUT.waitingInput=false;
-  PBTUT.step = PBTUT.houseIdx===0 ? S_.CELEBRATE_1 : S_.CELEBRATE_2;
-  PBTUT.stepT=0;
+  PBTUT.step=S_.CELEBRATE_1; PBTUT.stepT=0;
 }
 function pbTutorialUpdate(dt){
   PB.shake=Math.max(0,PB.shake-dt);
@@ -520,7 +947,8 @@ function pbTutorialUpdate(dt){
   }
   for(const hh of PB.houses){
     if(hh.angryT>0) hh.angryT=Math.max(0,hh.angryT-dt);
-    if(hh.happyT>0) hh.happyT=Math.max(0,hh.happyT-dt);
+    // someone handed a parcel in person stays out on the step for the rest of the run
+    if(hh.happyT>0 && !hh.customerOut) hh.happyT=Math.max(0,hh.happyT-dt);
   }
   const S_=PBTUT_STEP, st=PBTUT.step;
   if(st===S_.DRIVE_TO_1 || st===S_.DRIVE_TO_2){
@@ -528,23 +956,30 @@ function pbTutorialUpdate(dt){
     PB.dist += (PBTUT.target-PB.dist)*Math.min(1,dt*2.2);
     if(Math.abs(PBTUT.target-PB.dist)<0.6 || PBTUT.stepT>4){
       PB.dist=PBTUT.target;
-      PBTUT.step = st===S_.DRIVE_TO_1 ? S_.TEACH_SWIPE : S_.TEACH_CHARGE;
+      PBTUT.step = st===S_.DRIVE_TO_1 ? S_.TEACH_SWIPE : S_.TEACH_HAND;
       PBTUT.stepT=0; PBTUT.waitingInput=true;
     }
-  } else if(st===S_.TEACH_SWIPE || st===S_.TEACH_CHARGE){
+  } else if(st===S_.TEACH_SWIPE || st===S_.TEACH_HAND){
     PBTUT.arrowPulse+=dt;
+    // the hand delivery, once committed, runs on exactly the same code as the real route
+    if(PB.hand){
+      pbHandUpdate(dt);
+      if(!PB.hand){ PBTUT.waitingInput=false; PBTUT.step=S_.CELEBRATE_2; PBTUT.stepT=0; }
+      return;
+    }
     // same tap-vs-hold conversion the real route uses, so the muscle memory transfers directly
     if(PB.pressing && !PB.charging){
       PB.pressT+=dt;
-      if(PB.pressT>=PB_TAP_MAX){ PB.charging={side:PB.pressSide, t:0}; beep(90,.4,"sawtooth",.1); }
+      if(PB.pressT>=PB_TAP_MAX){ PB.charging={side:PB.pressSide, t:0}; beep(90,.25,"sawtooth",.07); }
     }
     if(PB.charging){
-      PB.charging.t=Math.min(PB_CHARGE_TIME,PB.charging.t+dt);
-      PB.shake=0.5;
-      if(PB.charging.t>=PB_CHARGE_TIME){
-        const side=PB.charging.side;
-        if(side){ PB.charging=null; PB.pressing=false; pbTutorialThrow(side,true); }
-        else if(!PB.charging.rang){ PB.charging.rang=true; beep(1200,.09); }
+      PB.charging.t+=dt;
+      PB.shake=Math.max(PB.shake,0.25);
+      if(st===S_.TEACH_HAND){
+        if(PB.charging.t>=PB_HOLD_TIME) pbBeginHand();
+      } else {
+        // lesson one is a throw — holding here isn't the lesson, so let it lapse harmlessly
+        if(PB.charging.t>=PB_HOLD_TIME*2){ PB.charging=null; PB.pressing=false; toast("FLICK IT — DON'T HOLD",1); }
       }
     }
   } else if(st===S_.CELEBRATE_1){
@@ -558,7 +993,8 @@ function pbTutorialUpdate(dt){
     if(PBTUT.bannerT>2.0){
       S.pbTutorialDone=true; PB.tutorial=false;
       pbNewRoute(); PB.active=true; PB.run=true;
-      toast("SWIPE OR TAP TO THROW AS THE VAN CROSSES THE PATH — HOLD TO CHARGE A SKILLSHOT",1);
+      pbEngineStart();
+      toast("SWIPE TO THROW — HOLD TO PULL UP AND HAND DELIVER",1);
       beep(500,.06); setTimeout(()=>beep(700,.07),110);
     }
   }
@@ -582,8 +1018,8 @@ function pbTutorialDraw(ctx,w,h,t){
   if(st===S_.DRIVE_TO_1||st===S_.DRIVE_TO_2) title="DRIVING TO THE NEXT HOUSE...";
   else if(st===S_.TEACH_SWIPE){ title="YOUR FIRST DELIVERY"; sub="SWIPE "+(h0.side==="L"?"LEFT":"RIGHT")+" TO THROW THE PARCEL"; }
   else if(st===S_.CELEBRATE_1) title="PERFECT!";
-  else if(st===S_.TEACH_CHARGE){ title="THE SKILLSHOT"; sub="HOLD, THEN SWIPE "+(h0.side==="L"?"LEFT":"RIGHT")+" FOR A POWER THROW"; }
-  else if(st===S_.CELEBRATE_2) title="SKILLSHOT!";
+  else if(st===S_.TEACH_HAND){ title="HAND DELIVERY"; sub="HOLD TO PULL OVER AND WALK IT TO THE DOOR"; }
+  else if(st===S_.CELEBRATE_2) title="HANDED OVER!";
   else if(st===S_.COMPLETE) title="TUTORIAL COMPLETE";
 
   ctx.textAlign="center";
@@ -603,7 +1039,7 @@ function pbTutorialDraw(ctx,w,h,t){
   }
   ctx.textAlign="left";
 
-  if(PBTUT.waitingInput && (st===S_.TEACH_SWIPE||st===S_.TEACH_CHARGE)){
+  if(PBTUT.waitingInput && !PB.hand && (st===S_.TEACH_SWIPE||st===S_.TEACH_HAND)){
     const dir = h0.side==="L" ? -1 : 1;
     const pulse=0.85+0.15*Math.sin(PBTUT.arrowPulse*5);
     const cx=w/2+dir*w*0.16, cy=h*0.5;
@@ -611,8 +1047,8 @@ function pbTutorialDraw(ctx,w,h,t){
     ctx.translate(cx,cy); ctx.scale(pulse*dir,pulse);
     pbQuad(ctx,[[-20,-8],[6,-8],[6,-20],[30,0],[6,20],[6,8],[-20,8]],"#ffd94a",null);
     ctx.restore();
-    if(st===S_.TEACH_CHARGE && PB.charging){
-      const p=clamp(PB.charging.t/PB_CHARGE_TIME,0,1);
+    if(st===S_.TEACH_HAND && PB.charging){
+      const p=clamp(PB.charging.t/PB_HOLD_TIME,0,1);
       ctx.strokeStyle="#f22"; ctx.lineWidth=4;
       ctx.beginPath(); ctx.arc(cx,cy,34,-Math.PI/2,-Math.PI/2+p*6.283); ctx.stroke();
     }
@@ -653,15 +1089,22 @@ function drawPaperboy(t){
     drawables.push({d:hh.worldDist+yhi, f:()=>pbDrawHouse(ctx,hh,t)});
   }
   drawables.push({d:PB.dist+10, f:()=>pbDrawVan(ctx,t)});
+  if(PB.hand) drawables.push({d:PB.dist+11, f:()=>pbDrawDriver(ctx,t)});
+  {
+    const sx=pbStopZoneStart()-PB_SIGN_LEAD;
+    if(sx-PB.dist>-260 && sx-PB.dist<1400) drawables.push({d:sx+PB_ROAD_HALF+22, f:()=>pbDrawSlowSign(ctx)});
+  }
   drawables.sort((a,b)=>a.d-b.d);
   for(const dd of drawables) dd.f();
   for(const f of PB.fx){ if(f.t==="parcel") pbDrawParcelFX(ctx,f); }
+  pbDrawSpeedLines(ctx,w,h);
   pbDrawHUD(ctx,w,h);
+  pbDrawSpeedo(ctx,w,h);
   pbDrawMinimap(ctx,w,h);
 }
 (function(){
   // Swipe delivery straight on the route view: flick left or right to throw that way. Press and
-  // hold still first to wind up a SKILLSHOT, then flick to launch it.
+  // hold still instead to pull the van over and hand the parcel to the door.
   const cv=$("#paperboycv");
   cv.addEventListener("pointerdown",e=>{
     if(!PB.run && !PB.tutorial) return;
@@ -685,7 +1128,7 @@ function drawPaperboy(t){
     // lifted without a flick: cancel the wind-up rather than burning a parcel
     if(!fired && PB.pressSide===null){
       PB.pressing=false;
-      if(PB.charging){ PB.charging=null; beep(200,.08,"sawtooth"); toast("SKILLSHOT ABORTED",1); }
+      if(PB.charging){ PB.charging=null; }
     }
   };
   cv.addEventListener("pointerup",swEnd);

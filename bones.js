@@ -4205,10 +4205,13 @@ $("#bWelcomeHome").onclick=()=>{ $("#welcomeBack").classList.remove("show"); bee
    melody, each landing with a short side-to-side knock before it settles. Only once the word is
    whole does the border draw itself and the dog and the rest of the adoption UI come up from
    black. Reduce-motion skips straight to the finished screen. */
-function runTitleSequence(){
+function runTitleSequence(onDone){
   const start=$("#start"), title=$("#startTitle");
   const spans=Array.from(title.querySelectorAll("span"));
-  if(SETTINGS.reduceMotion){ start.classList.remove("intro"); title.classList.add("lit"); return; }
+  if(SETTINGS.reduceMotion){
+    start.classList.remove("intro"); title.classList.add("lit");
+    onDone&&onDone(); return;
+  }
   fadeMelodyIn(1600);
   const LEAD=520;   // a beat of pure black and rising melody before the first letter arrives
   spans.forEach((s,i)=>{
@@ -4221,20 +4224,39 @@ function runTitleSequence(){
   });
   const settledAt=LEAD+spans.length*MUSIC_BEAT;
   setTimeout(()=>{ title.classList.add("lit","settled"); beep(660,.09); }, settledAt);
-  setTimeout(()=>{ start.classList.remove("intro"); }, settledAt+MUSIC_BEAT);
+  setTimeout(()=>{ start.classList.remove("intro"); onDone&&onDone(); }, settledAt+MUSIC_BEAT);
 }
+// A save no longer skips the cold open — it plays for everyone, and only once it has landed does
+// the returning player get asked which door they're going through. Enter is deferred rather than
+// done at boot so the title is never cut short by the game screen appearing underneath it.
+function enterLoadedGame(){
+  $("#start").classList.add("hidden"); $("#game").classList.remove("hidden");
+  syncMoodMusic();
+  const gapMs = S.lastSaveAt ? Date.now()-S.lastSaveAt : 0;
+  if(gapMs>=WELCOME_BACK_MS) setTimeout(()=>showWelcomeBack(gapMs),450);
+  else setTimeout(()=>toast(S.lastSaveAt ? "WELCOME BACK — LAST SAVED "+dayClock(S.lastSaveDay,S.lastSaveH) : "WELCOME BACK",1),450);
+}
+function showStartChoice(){
+  $("#breedRow").classList.add("hidden");
+  $("#startChoice").classList.remove("hidden");
+  $("#continueLine").textContent =
+    NAME().toUpperCase()+" — LV."+S.lvl+(S.lastSaveAt?" — SAVED "+dayClock(S.lastSaveDay,S.lastSaveH):"");
+}
+$("#btnContinue").onclick=()=>{ beep(660,.07); setTimeout(()=>beep(880,.09),90); enterLoadedGame(); };
+$("#btnNewGame").onclick=()=>{
+  beep(400,.06);
+  openChoice("START OVER?",
+    "THIS DELETES "+NAME()+"'S SAVE FOR GOOD — THERE'S NO GETTING IT BACK.<br><br>ARE YOU SURE?",
+    "YES, START OVER", startNewGame,
+    "CANCEL", null);
+};
 
 /* ---------- main loop ---------- */
 const RESTORED = loadGame();
-if(RESTORED){
-  $("#start").classList.add("hidden","intro"); $("#game").classList.remove("hidden");
-  const gapMs = S.lastSaveAt ? Date.now()-S.lastSaveAt : 0;
-  if(gapMs>=WELCOME_BACK_MS) setTimeout(()=>showWelcomeBack(gapMs),500);
-  else setTimeout(()=>toast(S.lastSaveAt ? "WELCOME BACK — LAST SAVED "+dayClock(S.lastSaveDay,S.lastSaveH) : "WELCOME BACK",1),500);
-}
 document.body.classList.toggle("reduce-motion", SETTINGS.reduceMotion);
 $("#startDog").src = PORTRAITS.happy;
-if(!RESTORED) runTitleSequence();   // a returning player has already seen it — straight to DOGCAM
+// the cold open runs every single time, save or no save; what it hands over to is what differs
+runTitleSequence(RESTORED ? showStartChoice : null);
 if(!STORAGE_OK) addMail("storage","PROGRESS CAN'T BE SAVED","STORAGE IS BLOCKED ON THIS DEVICE — "+NAME().toUpperCase()+"'S PROGRESS WON'T PERSIST BETWEEN VISITS.");
 buildMeters(); renderMeters(); renderShop(); renderTodo(); renderDogSel(); renderMailBadge();
 syncMoodMusic();

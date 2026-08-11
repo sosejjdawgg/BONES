@@ -56,6 +56,11 @@ button.red:active{background:#f22;color:#000}
 #dogNameIn{background:#000;color:#fff;border:3px solid #fff;font-family:inherit;font-size:13px;text-transform:uppercase;text-align:center;padding:10px;width:200px;letter-spacing:3px}
 #start .warn{font-size:8px;color:#f22;line-height:1.8;max-width:280px}
 #adopt{font-size:13px;padding:16px 22px}
+/* shown in place of the breed picker when a save is waiting — the cold open runs either way,
+   and only once it lands does the player get asked which door they're going through */
+#startChoice{display:flex;flex-direction:column;align-items:center;gap:10px;width:70%;max-width:260px}
+#startChoice.hidden{display:none!important}
+#startChoice button{width:100%;font-size:11px;padding:14px 10px}
 
 /* DOGCAM */
 #cam{height:42%;border-bottom:5px solid #fff;position:relative;flex:none}
@@ -314,6 +319,11 @@ body.reduce-motion *{animation:none!important}
       <input id="dogNameIn" value="BONES" maxlength="10" autocomplete="off">
       <button id="adopt">ADOPT</button>
     </div>
+    <div id="startChoice" class="hidden">
+      <button id="btnContinue">&#9656; CONTINUE</button>
+      <div id="continueLine" class="tiny" style="color:#8a8a8a;letter-spacing:1px"></div>
+      <button id="btnNewGame" class="red">&#10005; NEW GAME</button>
+    </div>
     <div class="warn">A DOG IS FOR LIFE.<br>ADOPT RESPONSIBLY.</div>
   </div>
 
@@ -373,7 +383,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.235a</span>
+          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.242a</span>
         </div>
       </div>
 

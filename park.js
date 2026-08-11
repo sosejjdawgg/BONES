@@ -2425,19 +2425,24 @@ function pkFindOpenSpot(x,y,r){
   return [x,y];
 }
 // the NPC's shop, the exit gate, wherever BONES is standing right now, and any live power-up all
-// have to stay walkable. BONES and the friend shop get the full treatment: moved to the nearest
-// genuinely open ground first, and only then given a guaranteed clearing there — punching a hole
-// on the spot was never enough on its own, because a spot in the middle of a fresh grove is
-// surrounded by hundreds more trees the hole doesn't touch.
+// have to stay walkable. BONES gets the full treatment: moved to the nearest genuinely open
+// ground first, and only then given a guaranteed clearing there — punching a hole on the spot
+// was never enough on its own, because a spot in the middle of a fresh grove is surrounded by
+// hundreds more trees the hole doesn't touch.
 function pkEnsureWalkable(){
   // every pkClearAround below splices the tree list out from under the grid the searches read,
   // so the grid is rebuilt immediately before each search rather than once up front
   if(PK.npc){
     const npcR=Math.max(110, pkGroveOuterR()*0.5);
     pkBuildTreeGrid();
-    [PK.npc.x, PK.npc.y] = pkFindOpenSpot(PK.npc.x, PK.npc.y, npcR);
+    // The friend-shop dog is the anchor of the main grove and must NEVER be relocated to make
+    // him walkable. An expansion can drop a new grove next to him, and searching for open ground
+    // then answers by teleporting him out of his own clearing — the shop vanishes from where the
+    // compass is pointing. Pin him to the grove's own centre and clear the trees around THAT.
+    if(PK.groveCenters[0]){ PK.npc.x=PK.groveCenters[0].x; PK.npc.y=PK.groveCenters[0].y; }
     pkClearAround(PK.npc.x, PK.npc.y, npcR);
     if(PK.groveCenters[0]) pkClearGroveAccess(PK.groveCenters[0]);
+    pkBuildTreeGrid();   // clearGroveAccess just spliced trees — refresh before the next query
   }
   if(PK.gate && PK.gate.x!=null) pkClearAround(PK.gate.x, PK.gate.y, 76);
   pkBuildTreeGrid();
