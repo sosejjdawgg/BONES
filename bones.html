@@ -258,6 +258,13 @@ body.reduce-motion .screen.screen-in{animation:none}
 body.reduce-motion .overpanel{transition:opacity .12s linear,visibility 0s linear .12s;transform:none}
 body.reduce-motion .overpanel.show{transition:opacity .12s linear,visibility 0s linear 0s;transform:none}
 .overpanel h2{font-size:15px;letter-spacing:2px}
+/* #start (the title/cold-open screen) sits at z-index:50, above every ordinary overpanel — but
+   NEW GAME on the title's own CONTINUE/NEW GAME choice opens this same confirm dialog while
+   #start is still showing. Without this override the dialog opened correctly but painted behind
+   #start, so the tap that looked like it landed on "YES, START OVER" actually landed on whatever
+   #start button happened to be underneath it. The id selector's specificity beats .overpanel's
+   regardless of source order, so this only ever affects #choice. */
+#choice{z-index:55}
 
 /* THE MYSTERIOUS DOG — he takes the bottom half of the screen as a flat black cut-out and the
    goods are listed over him, so the whole panel reads as one silhouette rather than a dialog
@@ -383,7 +390,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.244a</span>
+          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.246a</span>
         </div>
       </div>
 
@@ -562,14 +569,6 @@ body.reduce-motion *{animation:none!important}
       </div>
 
       <!-- LIFE CHOICES -->
-      <div id="choice" class="overpanel">
-        <h2 id="chTitle"></h2>
-        <div class="lines" id="chLines"></div>
-        <button id="chA" style="font-size:11px;padding:12px 20px"></button>
-        <button id="chB" style="font-size:11px;padding:12px 20px"></button>
-        <button id="chC" class="tiny" style="padding:8px 16px"></button>
-      </div>
-
       <!-- MONEY SHORTCUT -->
       <div id="moneyPick" class="overpanel">
         <h2>$ SPEND OR EARN?</h2>
@@ -642,6 +641,18 @@ body.reduce-motion *{animation:none!important}
       </div>
     </div>
     <button id="globalMusicBtn" aria-label="Toggle music">&#9834;</button>
+  </div>
+
+  <!-- confirmation/choice dialog: lives OUTSIDE #game so it can still render (and sit above
+     #start's z-index) when triggered from the title screen's own NEW GAME button, not just
+     from inside a live game -- #game is display:none while #start is up, which used to bury
+     this dialog along with it. -->
+  <div id="choice" class="overpanel">
+    <h2 id="chTitle"></h2>
+    <div class="lines" id="chLines"></div>
+    <button id="chA" style="font-size:11px;padding:12px 20px"></button>
+    <button id="chB" style="font-size:11px;padding:12px 20px"></button>
+    <button id="chC" class="tiny" style="padding:8px 16px"></button>
   </div>
 
   <div id="trans">
