@@ -59,7 +59,7 @@ Once he's Lv.5, DOGPARK is a real-time survival mode: bark at squirrels, birds a
 - **Speed bonus** — clear a wave inside 60 seconds and a bonus charm unlocks in that wave's shop.
 - **The Golden Bird** — a rare, fast-flying target worth chasing for a big one-off bones payout.
 - **Side missions** — bark at every kind of critter in one run (+20 XP), survive wave 1 (+10 XP). Both pay out immediately, no banking required.
-- **Choosing a mode** — if DOGPARK UNLEASHED is unlocked, heading out asks **DOGPARK** or **DOGPARK UNLEASHED** each time, with a **← BACK** if you opened it by mistake.
+- **Choosing a mode** — if DOGPARK UNLEASHED is unlocked, heading out asks **NORMAL** or **UNLEASHED** each time, with a **← BACK** if you opened it by mistake.
 
 ## DOGPARK UNLEASHED
 
@@ -67,6 +67,8 @@ Clear wave 10 of regular DOGPARK once, and DOGPARK UNLEASHED unlocks for good: t
 
 ### Night & Fog of War
 The whole park goes dark — a true night-time look, with fireflies drifting through the gloom. Visibility is limited to ground BONES has actually explored; wander away for too long and it fades back into fog, creeping in fastest from the directions he isn't facing. Stay moving and keep your bearings, or the park you thought you knew disappears again.
+
+**Night Mode** (Settings, only while an UNLEASHED run is live) switches all of that off — the tint, the fog-of-war, the fireflies — and the park looks exactly like regular DOGPARK again, in broad daylight. Everything else about UNLEASHED (double enemies, the sword, Whirlwind Slash, Heavenly Judgment) stays exactly as it is; it only ever touches the lighting.
 
 ### The Sword
 Wave 2 of a DOGPARK UNLEASHED run stops everything: something falls out of the sky and buries itself nearby. Walk up and pay the price shown to claim it — from then on it rides in BONES' mouth and cuts down anything he runs into. **Sharpen the blade** between waves for more reach and damage, up to 5 tiers. Leave it unclaimed too long and lightning starts striking it where it stands. Where it came from is never explained — it's just there.

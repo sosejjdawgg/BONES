@@ -833,7 +833,7 @@ function pkFogAlpha(lastSeenT){
   return clamp((since-FOG_HOLD)/FOG_REGAIN,0,1);
 }
 function pkTickFog(dt){
-  if(!PK.plusMode) return;
+  if(!PK.plusMode || !SETTINGS.nightMode) return;
   if(!PK.fog) pkBuildFogGrid();
   if(Math.hypot(PK.vx,PK.vy)>4) PK.facing=Math.atan2(PK.vy,PK.vx);
   const cols=PK.fogCols, rows=PK.fogRows, WW=PK.WW, WH=PK.WH;
@@ -857,7 +857,7 @@ function pkTickFog(dt){
 // drawn in world-space between the trees pass and the enemy pass in parkDraw, so BONES, every
 // enemy, the sword and pals — all drawn after this point — stay fully legible regardless of fog.
 function pkDrawFog(ctx,DX,DY,w,h){
-  if(!PK.plusMode || !PK.fog) return;
+  if(!PK.plusMode || !SETTINGS.nightMode || !PK.fog) return;
   const cols=PK.fogCols, rows=PK.fogRows, WW=PK.WW, WH=PK.WH;
   const viewR=Math.max(w,h)*0.75/(PK.zoom||1);
   const cx=Math.floor(PK.x/FOG_CELL), cy=Math.floor(PK.y/FOG_CELL);
@@ -887,7 +887,7 @@ function pkDrawFog(ctx,DX,DY,w,h){
 // Everything that actually glows (the sword, fireflies, sparks, lightning) is drawn after this
 // in parkDraw, so none of it needs special-casing to "shine through" — it simply paints on top.
 function pkDrawNightTint(ctx,DX,DY,w,h){
-  if(!PK.plusMode) return;
+  if(!PK.plusMode || !SETTINGS.nightMode) return;
   ctx.save();
   ctx.globalCompositeOperation="multiply";
   ctx.fillStyle="#141c3c"; ctx.globalAlpha=0.62;
@@ -914,7 +914,7 @@ function pkFireflySpawn(near){
   };
 }
 function pkTickFireflies(dt){
-  if(!PK.plusMode) return;
+  if(!PK.plusMode || !SETTINGS.nightMode) return;
   while(PK.fireflies.length<FIREFLY_N) PK.fireflies.push(pkFireflySpawn(PK));
   const WW=PK.WW, WH=PK.WH;
   for(const f of PK.fireflies){
@@ -932,7 +932,7 @@ function pkTickFireflies(dt){
   }
 }
 function pkDrawFireflies(ctx,DX,DY,WW,WH,w,h,t){
-  if(!PK.plusMode) return;
+  if(!PK.plusMode || !SETTINGS.nightMode) return;
   for(const f of PK.fireflies){
     const fx=DX+wd(f.x-PK.x,WW), fy=DY+wd(f.y-PK.y,WH);
     if(fx<-10||fx>w+10||fy<-10||fy>h+10) continue;

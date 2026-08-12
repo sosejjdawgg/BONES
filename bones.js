@@ -355,7 +355,7 @@ const S = {
 // music on by default: the title sequence is scored to the melody, so a silent first boot would
 // hide the whole opening. A save that already carries an explicit preference still wins (see
 // loadGame), so nobody who deliberately turned it off gets it switched back on.
-const SETTINGS = { sound:true, reduceMotion:false, music:true, musicDefaultMigrated:true, barkStyle:"circle" };
+const SETTINGS = { sound:true, reduceMotion:false, music:true, musicDefaultMigrated:true, barkStyle:"circle", nightMode:true };
 const CHARMS = [
   {id:"spike", name:"SPIKED COLLAR", cost:15, unlock:2,   fx:"+15% SPEED / -10% JUMP",            mod:{spd:1.15,jmp:0.90}},
   {id:"band",  name:"RED BANDANA",   cost:10, unlock:5,   fx:"+15% JUMP",                          mod:{jmp:1.15}},
@@ -3576,7 +3576,7 @@ function reallyEnterDogpark(){
   if(S.dogParkPlusUnlocked){
     openChoice("CHOOSE YOUR PARK",
       "DOGPARK UNLEASHED REPEATS THE SAME 10 WAVES UNDER A DARKER NIGHT SKY WITH DOUBLE THE ENEMIES ON SCREEN AT ONCE.",
-      "DOGPARK", ()=>{ toast("SURVIVE THE WAVES, BANK BIG XP. IF BONES GETS CAUGHT, YOU LOSE IT ALL \u2620\ufe0f",1); startPark(false); },
+      "NORMAL", ()=>{ toast("SURVIVE THE WAVES, BANK BIG XP. IF BONES GETS CAUGHT, YOU LOSE IT ALL \u2620\ufe0f",1); startPark(false); },
       "UNLEASHED", ()=>{ toast("DOGPARK UNLEASHED \u2014 DOUBLE THE ENEMIES, SAME WAVES, UNDER COVER OF NIGHT.",1); startPark(true); },
       "\u2190 BACK", null);
     return;
@@ -3845,6 +3845,10 @@ function renderSettings(){
   $("#mReplayTutorial").style.display = S.pbTutorialDone ? "" : "none";
   // only relevant mid-run — opened from DOGPARK's own settings button (see pkSettingsRect)
   $("#setEndRunPk").style.display = PK.active ? "" : "none";
+  // only relevant during a live DOGPARK UNLEASHED run — switching it off reverts the whole night
+  // treatment (tint, fog-of-war, fireflies) back to how regular DOGPARK looks, live, mid-run
+  $("#setNightModeRow").style.display = (PK.active && PK.plusMode) ? "" : "none";
+  $("#setNightMode").textContent = SETTINGS.nightMode ? "ON" : "OFF";
   renderGlobalMusicBtn();
 }
 // kept separate from renderSettings() so the corner button can refresh on its own
@@ -3868,6 +3872,10 @@ $("#setSound").onclick=()=>{
 };
 $("#setBarkStyle").onclick=()=>{
   SETTINGS.barkStyle = SETTINGS.barkStyle==="lines" ? "circle" : "lines";
+  renderSettings(); beep(500,.05);
+};
+$("#setNightMode").onclick=()=>{
+  SETTINGS.nightMode=!SETTINGS.nightMode;
   renderSettings(); beep(500,.05);
 };
 $("#setEndRunPk").onclick=()=>{
