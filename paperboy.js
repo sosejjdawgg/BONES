@@ -53,7 +53,7 @@ const PB_HOUSE_DEPTH=64, PB_HOUSE_W=94;
 const PB_WALL_H=60, PB_ROOF_H=32;
 
 const PB={
-  active:false, run:false, tutorial:false,
+  active:false, run:false, tutorial:false, settingsOpen:false,
   dist:0, speed:0, houses:[], decoys:[], nextIdx:0,
   pressing:false, pressSide:null, pressT:0,
   charging:null, fx:[], shake:0,
@@ -357,6 +357,7 @@ function pbFinish(){
   beep(700,.1); setTimeout(()=>beep(950,.1),120);
 }
 function updatePaperboy(dt){
+  if(PB.settingsOpen) return;   // the world pauses while the shared settings panel covers it
   if(PB.tutorial){ pbTutorialUpdate(dt); return; }
   if(!PB.run) return;
   PB.shake=Math.max(0,PB.shake-dt);
@@ -1059,6 +1060,8 @@ function drawPaperboy(t){
   ctx.fillStyle="#000"; ctx.fillRect(0,0,w,h);
   PB.camX = w*0.36 + (Math.random()-0.5)*PB.shake*7;
   PB.camY = h*0.26 + (Math.random()-0.5)*PB.shake*7;
+  // end run only makes sense on the real paid route, never the two-house tutorial
+  $("#pbEndRunBtn").style.display = PB.run ? "" : "none";
   if(PB.tutorial){ pbTutorialDraw(ctx,w,h,t); return; }
   pbDrawRoad(ctx);
   // ground layer first, so every path/doormat sits under every building. Decoys render exactly
@@ -1149,5 +1152,22 @@ function drawPaperboy(t){
     if(MODE!=="paperboy") return;
     if(e.code==="ArrowLeft") pbPressEnd("L");
     if(e.code==="ArrowRight") pbPressEnd("R");
+  });
+  // settings + end run, top-left of the HUD — end run only makes sense on the real paid route,
+  // not the two-house tutorial, so it's hidden there (see the display toggle in drawPaperboy)
+  $("#pbSettingsBtn").addEventListener("click",()=>{
+    PB.settingsOpen=true;
+    if(PB.run) pbEngineStop();   // don't let the engine drone on under the menu melody
+    renderSettings();
+    $("#settingsPanel").classList.add("show");
+    beep(500,.05);
+  });
+  $("#pbEndRunBtn").addEventListener("click",()=>{
+    if(!PB.run) return;
+    beep(300,.06);
+    openChoice("END THE ROUTE?",
+      "YOU'LL BE PAID FOR EVERYTHING ALREADY DELIVERED, THEN HEAD HOME.",
+      "YES, END ROUTE", ()=>{ pbFinish(); },
+      "KEEP DRIVING", null);
   });
 })();

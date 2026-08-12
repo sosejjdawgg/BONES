@@ -3843,8 +3843,9 @@ function renderSettings(){
   $("#setMotion").textContent = SETTINGS.reduceMotion ? "ON" : "OFF";
   $("#setBarkStyle").textContent = SETTINGS.barkStyle==="lines" ? "LINES" : "CIRCLE";
   // only makes sense from the DOGCAM settings — mid-run this would yank the player straight out
-  // of DOGPARK and into the delivery driver minigame, with the park run left dangling
-  $("#mReplayTutorial").style.display = (S.pbTutorialDone && !PK.active) ? "" : "none";
+  // of DOGPARK and into the delivery driver minigame, with the park run left dangling; same logic
+  // mid-route, where it would restart the tutorial on top of the live delivery route
+  $("#mReplayTutorial").style.display = (S.pbTutorialDone && !PK.active && !PB.run) ? "" : "none";
   // only relevant mid-run — opened from DOGPARK's own settings button (see pkSettingsRect)
   $("#setEndRunPk").style.display = PK.active ? "" : "none";
   // only relevant during a live DOGPARK UNLEASHED run — switching it off reverts the whole night
@@ -3865,9 +3866,15 @@ $("#mSettings").onclick=()=>{
   $("#settingsPanel").classList.add("show"); beep(500,.05);
   syncMoodMusic();   // settings hands the room back to the menu melody
 };
-// PK.settingsOpen only matters while a DOGPARK run is live (see pkPadDraw's gear button) —
-// pausing the world while this panel covers the screen, same as the shop/friends/gate prompts
-$("#settingsClose").onclick=()=>{ $("#settingsPanel").classList.remove("show"); if(typeof PK!=="undefined") PK.settingsOpen=false; syncMoodMusic(); };
+// PK.settingsOpen/PB.settingsOpen only matter while a DOGPARK run or delivery route is live (see
+// pkPadDraw's gear button and the paperboy HUD's) — pausing the world while this panel covers the
+// screen, same as the shop/friends/gate prompts
+$("#settingsClose").onclick=()=>{
+  $("#settingsPanel").classList.remove("show");
+  if(typeof PK!=="undefined") PK.settingsOpen=false;
+  if(typeof PB!=="undefined"){ PB.settingsOpen=false; if(PB.run) pbEngineStart(); }
+  syncMoodMusic();
+};
 $("#setSound").onclick=()=>{
   SETTINGS.sound=!SETTINGS.sound; renderSettings();
   if(SETTINGS.sound) beep(500,.05);
