@@ -2472,6 +2472,10 @@ const NPC_TALK_R=30, NPC_REARM_R=68;
 // companions have 4 upgrade tiers. current power = T4; T1 is deliberately weak.
 // fixed properties that don't scale with tier:
 const PAL_SQ_FOLLOW=44;
+// how he leads BONES: below this speed "ahead" collapses back to wherever he already is (no
+// point projecting a heading out of noise while BONES is basically standing still), and above it
+// he tracks BONES' current heading and runs out in front of it rather than glued to his side
+const PAL_SQ_LEAD_MIN_SPD=20, PAL_SQ_LEAD_DIST=85;
 const PAL_CAT_ORBIT_R=44, PAL_CAT_ORBIT_SPD=1.7, PAL_CAT_LEASH=210;
 const PAL_BIRD_ALT=54, PAL_BIRD_SPEED=175;
 const PAL_LASER_CD=10, PAL_LASER_SWEEP=1.2, PAL_LASER_ARC=0.6, PAL_LASER_SAFE=0.45, PAL_LASER_DMG=3;
@@ -2487,7 +2491,7 @@ const PAL_CAT_SEEK_T = [50,  75,  95,  115];
 const PAL_CAT_SPD_T  = [120, 160, 195, 230];
 const PAL_CAT_HP_T   = [36,  44,  52,  60];
 // double the flock size at every tier, and only the T4 dive itself hits twice as hard
-const PAL_BIRD_N_T   = [4,   6,   8,   10];
+const PAL_BIRD_N_T   = [5,   8,   10,  13];  // +30% over the original 4/6/8/10
 const PAL_BIRD_EVT   = [14,  10,  8,   7];
 const PAL_BIRD_DMG_T = [1,   1,   1,   2];
 /* The ape friend does not brawl. He plants himself, waits out a long cooldown, then leaps and
@@ -2608,6 +2612,29 @@ function pkDownEnemy(e,ux,uy,o){
   if(e.roost) e.roost.killed++;
   if(e.boss){ PK.apeKills=(PK.apeKills||0)+1; }
   return true;
+}
+// how many other live enemies are within r of this one — used to find the densest knot to land on
+function pkClusterScore(e,r){
+  let n=0;
+  pkEnemiesNear(e.x,e.y,r,o=>{ if(o!==e && !o.fleeing) n++; });
+  return n;
+}
+// The ape always aims for the middle of the biggest knot of enemies near BONES, not just whichever
+// one happens to be nearest — a lone straggler right next to him used to win over a real crowd a
+// little further off, which wasted the entire point of an AOE smash. Scored, not just sorted by
+// distance: every candidate within range of BONES gets rated by how many neighbours it has within
+// the smash's own blast radius, so the target is the centre of whatever's actually worth hitting.
+// A near-tie in cluster size falls back to whichever is closer to BONES.
+function pkApeBestTarget(x,y,maxR){
+  let best=null, bestScore=-1, bestD=Infinity;
+  pkEnemiesNear(x,y,maxR,e=>{
+    if(e.fleeing) return;
+    const d=Math.hypot(wd(e.x-x,PK.WW),wd(e.y-y,PK.WH));
+    if(d>maxR) return;
+    const score=pkClusterScore(e,PAL_APE_SMASH_R);
+    if(score>bestScore || (score===bestScore && d<bestD)){ best=e; bestScore=score; bestD=d; }
+  });
+  return best;
 }
 /* The ape friend's whole contribution: he comes down, and everything around the impact gets
    thrown outward. Damage is small on purpose — what this is for is peeling a pack off BONES.
@@ -2768,6 +2795,17 @@ function pkNearestEnemy(x,y,maxR){
   });
   return best;
 }
+// same search, restricted to enemies actively pulled toward BONES (see pkHuntPlayer) — the pack
+// that's actually chasing him down, as opposed to something merely standing in range
+function pkNearestHuntingEnemy(x,y,maxR){
+  let best=null, bd=maxR;
+  pkEnemiesNear(x,y,maxR,e=>{
+    if(e.fleeing || !e.hunting) return;
+    const d=Math.hypot(wd(e.x-x,PK.WW),wd(e.y-y,PK.WH));
+    if(d<bd){ bd=d; best=e; }
+  });
+  return best;
+}
 // the laser pal must never, under any circumstances, catch BONES. Layer one: an angular exclusion
 // wide enough to cover the whole sweep arc plus the beam's own half-width at the player's range.
 function pkPalAimSafe(p,ang){
@@ -2838,15 +2876,30 @@ function pkPalsUpdate(dt,WW,WH){
     p.x=(p.x+p.kx*dt+WW)%WW; p.y=(p.y+p.ky*dt+WH)%WH;
     p.ft+=dt; if(p.ft>0.14){ p.ft=0; p.fi++; }
     if(p.k==="sq"){
-      const tdx=wd(PK.x-p.x,WW), tdy=wd(PK.y-p.y,WH), td=Math.hypot(tdx,tdy)||1;
+      // Reads BONES' current heading and, once he's actually going somewhere, runs out ahead of
+      // him along it instead of hanging at a fixed distance from wherever he happens to be right
+      // now — a forward scout clearing the path rather than a pet trailing at his heel. The
+      // heading itself is remembered on the pal (p.leadAng) so it holds steady through the
+      // moments BONES isn't moving, rather than collapsing the station back onto him every time
+      // the joystick is released.
+      const bspd=Math.hypot(PK.vx,PK.vy);
+      if(bspd>PAL_SQ_LEAD_MIN_SPD) p.leadAng=Math.atan2(PK.vy,PK.vx);
+      const leadAng = p.leadAng!=null ? p.leadAng : (p.dir<0?Math.PI:0);
+      const stationX=(PK.x+Math.cos(leadAng)*PAL_SQ_LEAD_DIST+WW)%WW;
+      const stationY=(PK.y+Math.sin(leadAng)*PAL_SQ_LEAD_DIST+WH)%WH;
+      const tdx=wd(stationX-p.x,WW), tdy=wd(stationY-p.y,WH), td=Math.hypot(tdx,tdy)||1;
       if(p.laserState==="idle"){
         if(td>PAL_SQ_FOLLOW && !p.stay){
-          const sp=Math.min(PK.spd*1.25, 55+td*1.7);
+          // has to actually be able to get out in front rather than just keep pace, or "ahead"
+          // never resolves into anything more than a slightly wider follow radius
+          const sp=Math.min(PK.spd*1.45, 60+td*1.9);
           p.x=(p.x+tdx/td*sp*dt+WW)%WW; p.y=(p.y+tdy/td*sp*dt+WH)%WH;
           p.dir = tdx<0 ? -1 : 1;
         }
         p.cd-=dt;
-        const tgt=pkNearestEnemy(PK.x,PK.y,pkSqRange(p.tier));
+        // the pack actually chasing BONES down wins over any other target in range — from his
+        // forward station that's exactly the horde about to reach the path BONES is taking
+        const tgt=pkNearestHuntingEnemy(p.x,p.y,pkSqRange(p.tier)) || pkNearestEnemy(p.x,p.y,pkSqRange(p.tier));
         if(tgt && p.cd<=0){
           p.cd=pkSqCd(p.tier);
           const nx=wd(tgt.x-p.x,WW), ny=wd(tgt.y-p.y,WH), nd=Math.hypot(nx,ny)||1;
@@ -2941,8 +2994,9 @@ function pkPalsUpdate(dt,WW,WH){
       p.landT=Math.max(0,p.landT-dt);
       if(p.state==="rest"){
         p.cd-=dt;
-        // he faces whatever he is waiting to land on, so the wind-up is legible
-        const watch=pkNearestEnemy(p.x,p.y,PAL_APE_SEEK_R);
+        // always the same read on the field, whether it's just deciding which way to face or
+        // actually about to jump: the biggest knot of enemies within range of BONES, not the ape
+        const watch=pkApeBestTarget(PK.x,PK.y,PAL_APE_SEEK_R);
         if(watch) p.dir = wd(watch.x-p.x,WW)<0 ? -1 : 1;
         // scuffs the dirt as the cooldown runs out — a tell that he is nearly ready
         if(p.cd<0.6 && Math.random()<0.10){
@@ -2952,8 +3006,8 @@ function pkPalsUpdate(dt,WW,WH){
         // locked in place: never winds up a new smash, just stands guard where he was told to stay
         if(p.cd<=0 && p.stay){ p.cd=0.35; }
         else if(p.cd<=0){
-          // somewhere worth landing: a target if there is one, otherwise back to BONES' side
-          const tgt=pkNearestEnemy(p.x,p.y,PAL_APE_SEEK_R);
+          // somewhere worth landing: the thickest crowd near BONES if there is one, otherwise back to his side
+          const tgt=watch;
           const leash=Math.hypot(wd(p.x-PK.x,WW),wd(p.y-PK.y,WH));
           let tx=null, ty=null;
           if(tgt){ tx=tgt.x; ty=tgt.y; }
@@ -4674,12 +4728,20 @@ function drawPal(ctx,p,sx,sy,t){
 // once it has committed to a dive
 function drawPalBird(ctx,bd,sx,sy,t){
   const up=clamp(bd.alt/PAL_BIRD_ALT,0,1);
-  ctx.fillStyle="rgba(0,0,0,"+(0.34-0.12*up).toFixed(3)+")";
-  ctx.beginPath(); ctx.ellipse(sx,sy+2,7+3*up,2.5+1.2*up,0,0,7); ctx.fill();
+  // a stronger, bigger shadow than an enemy bird ever casts — the ground-level tell that reads
+  // even before the tint does, so a friend overhead is obvious at a glance rather than something
+  // you have to look twice at to rule out being one more thing to bark at
+  ctx.fillStyle="rgba(0,0,0,"+(0.58-0.20*up).toFixed(3)+")";
+  ctx.beginPath(); ctx.ellipse(sx,sy+2,9+4*up,3.2+1.6*up,0,0,7); ctx.fill();
   if(up>0.97) return;
   const frames=ENEMYIMG.bird;
   const img=frames && frames[bd.fi%frames.length];
   const by=sy-bd.alt;
+  // a soft cyan bloom behind him, same family as every other friend-blue in the UI — a second,
+  // unmissable cue independent of the shadow that he's flying overhead on BONES' side
+  const glow=0.45+0.3*Math.sin(t*6+bd.fi);
+  ctx.save(); ctx.globalAlpha=glow*(1-up*0.3); ctx.fillStyle="#6cf";
+  ctx.beginPath(); ctx.arc(sx,by-8,10,0,7); ctx.fill(); ctx.restore();
   if(!img || !img.complete || !img.naturalWidth){
     ctx.fillStyle="#6cf"; ctx.beginPath(); ctx.arc(sx,by-8,6,0,7); ctx.fill(); return;
   }
