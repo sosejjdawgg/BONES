@@ -70,6 +70,9 @@ The whole park goes dark — a true night-time look, with fireflies drifting thr
 
 **Night Mode** (Settings, only while an UNLEASHED run is live) switches all of that off — the tint, the fog-of-war, the fireflies — and the park looks exactly like regular DOGPARK again, in broad daylight. Everything else about UNLEASHED (double enemies, the sword, Whirlwind Slash, Heavenly Judgment) stays exactly as it is; it only ever touches the lighting.
 
+### Fire
+Wherever real flame breaks out — a burning tree, the hole, a stray laser bolt — embers drift off on the breeze and settle, glowing where they land and casting real light on the ground around them; it's there in daylight DOGPARK too, but it's most dramatic once Night Mode's dark is actually up. Any squirrel or cat that wanders into that flame, or gets caught in a mad squirrel's beam, has a small chance of catching alight itself — doubled once Night Mode is live. A panicking animal is a real hazard: it zips around in tight, uncontrollable circles at double speed, able to set still more trees alight before it finally burns itself out.
+
 ### The Sword
 Wave 2 of a DOGPARK UNLEASHED run stops everything: something falls out of the sky and buries itself nearby. Walk up and pay the price shown to claim it — from then on it rides in BONES' mouth and cuts down anything he runs into. **Sharpen the blade** between waves for more reach and damage, up to 5 tiers. Leave it unclaimed too long and lightning starts striking it where it stands. Where it came from is never explained — it's just there.
 

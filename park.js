@@ -1005,6 +1005,25 @@ function pkSpreadFireFrom(tr){
     beep(85,.4,"sawtooth",.08); setTimeout(()=>beep(60,.5,"sawtooth",.07),130);
   }
 }
+/* A squirrel or cat that strays into real flame, or gets caught in a mad squirrel's beam, has a
+   small chance of catching alight itself. Once ablaze it panics completely — see the "ablaze"
+   branch in the main enemy tick — zipping in fast uncontrolled circles and touching off more
+   trees as it crashes around blind, before it finally burns itself out. Doubled odds once Night
+   Mode's dark UNLEASHED look is actually live, since that's where a fire this loose reads the most. */
+const FIRE_CATCH_CHANCE=0.05, FIRE_TOUCH_EVERY=0.4;
+const FIRE_PANIC_TURN=6.0, FIRE_PANIC_JITTER=2.4, FIRE_PANIC_DUR=4.0;
+const FIRE_PANIC_HURT_EVERY=0.5, FIRE_PANIC_HURT=3, FIRE_PANIC_IGNITE_CD=0.6;
+function pkFireCatchChance(){ return FIRE_CATCH_CHANCE*((PK.plusMode&&SETTINGS.nightMode)?2:1); }
+function pkIgniteAnimal(e){
+  if(!e || e.fleeing || e.ablaze || (e.t!=="sq" && e.t!=="cat")) return false;
+  // the first damage tick is deferred a full interval — even a 1-hp early-wave squirrel gets to
+  // actually panic for a moment first, rather than igniting and burning out in the same frame
+  e.ablaze=true; e.ablazeT=0; e.ablazeHurtT=FIRE_PANIC_HURT_EVERY; e.igniteCdT=0;
+  e.panicAng=Math.random()*6.283; e.panicJit=Math.random()<0.5?1:-1;
+  PK.scorch.push({x:e.x, y:e.y, r:7+Math.random()*4});
+  beep(520,.07,"sawtooth",.05); setTimeout(()=>beep(360,.09,"sawtooth",.04),60);
+  return true;
+}
 /* ---------- enemy object pool ----------
    At horde density enemies are created and discarded constantly. Two things matter here, and the
    second matters more than the first: recycling avoids the allocation churn, and resetting every
@@ -1012,7 +1031,7 @@ function pkSpreadFireFrom(tr){
    class. That keeps property access in the hot per-enemy loop monomorphic, and it makes it
    impossible for a stale per-type flag (a recycled bird still believing it is a mad squirrel) to
    survive into the next life. */
-const EN_FIELDS=["t","x","y","hp","hpMax","sp","vx","vy","kx","ky","dir","fi","ft","ph","life","side","alpha","big","boss","small","decor","angry","hellish","hunting","circling","flock","vForm","stormForm","diving","swoop","swoopCd","swoopWindT","orbitAng","orbitR","orbitSpd","roost","standing","spooked","spookT","spookVx","spookVy","stalk","stalkAggro","anchorX","anchorY","leapT","windT","leapAng","lvx","lvy","ranger","madsq","fromTree","atkState","atkCd","strafeDir","laserState","chargeT","aimAng","aimBase","aimErr","sweepT","beamLen","cd","burnT","palBeamT","madsqExplode","explodeT","heading","spdCur","introT","leapState","leapCd","leapWindT","leapActT","leapDur","leapStartX","leapStartY","leapDX","leapDY","landT","fleeing","fleeT","fleeVx","fleeVy","shockT","hitT","xrayT","bounceT","bounceMax","bounceSpin","heroOutro"];
+const EN_FIELDS=["t","x","y","hp","hpMax","sp","vx","vy","kx","ky","dir","fi","ft","ph","life","side","alpha","big","boss","small","decor","angry","hellish","hunting","circling","flock","vForm","stormForm","diving","swoop","swoopCd","swoopWindT","orbitAng","orbitR","orbitSpd","roost","standing","spooked","spookT","spookVx","spookVy","stalk","stalkAggro","anchorX","anchorY","leapT","windT","leapAng","lvx","lvy","ranger","madsq","fromTree","atkState","atkCd","strafeDir","laserState","chargeT","aimAng","aimBase","aimErr","sweepT","beamLen","cd","burnT","palBeamT","madsqExplode","explodeT","heading","spdCur","introT","leapState","leapCd","leapWindT","leapActT","leapDur","leapStartX","leapStartY","leapDX","leapDY","landT","fleeing","fleeT","fleeVx","fleeVy","shockT","hitT","xrayT","bounceT","bounceMax","bounceSpin","heroOutro","ablaze","ablazeT","ablazeHurtT","panicAng","panicJit","igniteCdT"];
 const EN_BLANK={};
 for(const f of EN_FIELDS) EN_BLANK[f]=undefined;
 const EN_POOL=[], EN_POOL_MAX=420;
@@ -1178,6 +1197,14 @@ function pkTickTrees(dt){
     tr.fireT+=dt;
     tr.spawnT-=dt;
     if(tr.fireT>=tr.spreadAt){ tr.spreadAt=tr.fireT+FIRE_SPREAD_EVERY*(0.75+Math.random()*0.6); pkSpreadFireFrom(tr); }
+    // any squirrel or cat that strays into the flame can catch fire itself and panic
+    tr.touchAt=(tr.touchAt||0)-dt;
+    if(tr.touchAt<=0){
+      tr.touchAt=FIRE_TOUCH_EVERY;
+      pkEnemiesNear(tr.x,tr.y,TREE_R*1.5,o=>{
+        if((o.t==="sq"||o.t==="cat") && !o.ablaze && Math.random()<pkFireCatchChance()) pkIgniteAnimal(o);
+      });
+    }
     // a burning nest keeps disgorging squirrels — but never past a live ceiling, so the onslaught
     // stays an onslaught without ever becoming a framerate problem. It resumes the moment the
     // player thins them out, so nothing is lost, it just cannot run away.
@@ -1192,14 +1219,14 @@ function pkTickTrees(dt){
         laserState:"seek", chargeT:0, aimAng:0, sweepT:0, cd:0.8+Math.random()*1.2});
       beep(320+Math.random()*160,.04,"square",.02,{prio:0});
     }
-    // once hell is loose the fire is fed from below, so a burning tree throws off thick smoke
-    // and brimstone the whole time and never actually burns itself out
-    if(PK.hell){
-      if(Math.random()<0.55){
-        PK.embers.push({x:tr.x+(Math.random()-0.5)*TREE_R*1.4, y:tr.y-26+(Math.random()-0.5)*14,
-          vx:(Math.random()-0.5)*18, vy:-30-Math.random()*40, life:0.7+Math.random()*0.7,
-          dust:Math.random()<0.55});
-      }
+    // any tree alight throws off drifting fire embers the whole time it burns — thicker and
+    // continuous once hell is loose and feeding it from below, which never lets it burn out
+    if(Math.random()<(PK.hell?0.55:0.22)){
+      const isDust=Math.random()<0.3;
+      PK.embers.push({x:tr.x+(Math.random()-0.5)*TREE_R*1.4, y:tr.y-26+(Math.random()-0.5)*14,
+        vx:(Math.random()-0.5)*18, vy:-30-Math.random()*40,
+        life:isDust?0.7+Math.random()*0.7:2.6+Math.random()*1.4,
+        dust:isDust, fire:!isDust});
     }
     if(tr.fireT>=TREE_BURN_TIME){
       tr.state="ash";
@@ -1856,7 +1883,7 @@ function pkHellUpdate(dt){
   if(Math.random()<0.9){
     const a=Math.random()*6.283, r=Math.random()*pkSiteR();
     PK.embers.push({x:site.x+Math.cos(a)*r, y:site.y+Math.sin(a)*r*0.5,
-      vx:(Math.random()-0.5)*30, vy:-45-Math.random()*70, life:0.6+Math.random()*0.6});
+      vx:(Math.random()-0.5)*30, vy:-45-Math.random()*70, life:2.4+Math.random()*1.4, fire:true});
   }
   // and reaches steadily further out into the park, taking the trees as it goes and relighting
   // anything that has already burnt down to a stump — this never stops
@@ -2246,7 +2273,7 @@ function pkWaveDone(){ return PK.wave===APE_WAVE ? (PK.apeKills||0) : (PK.waveKi
 function pkLeftCount(){ return Math.max(0, pkWaveGoal()-pkWaveDone()); }
 function pkLeftLabel(){ return PK.wave===APE_WAVE ? " APES LEFT" : " LEFT"; }
 function pkWavePct(){ return clamp(pkWaveDone()/Math.max(1,pkWaveGoal()),0,1); }
-const SPARK_CAP=260, EMBER_CAP=300;
+const SPARK_CAP=260, EMBER_CAP=300, EMBER_LAND_WINDOW=1.5;
 /* Nothing in the park is allowed to sit out the fight in a far corner while the player wanders
    the map looking for it. Whatever a wave's goal is, the enemies carrying that goal close on
    BONES on their own: anything that drifts beyond the engagement ring gets a steady pull back
@@ -2946,6 +2973,7 @@ function pkPalsUpdate(dt,WW,WH){
               pkPalHit(e,PAL_LASER_DMG,ux,uy);
               PK.embers.push({x:e.x, y:e.y, vx:(Math.random()-0.5)*60, vy:-40-Math.random()*40, life:0.5});
               PK.scorch.push({x:e.x, y:e.y, r:10+Math.random()*6});
+              if((e.t==="sq"||e.t==="cat") && !e.ablaze && Math.random()<pkFireCatchChance()) pkIgniteAnimal(e);
             }
           }
         }
@@ -3222,7 +3250,24 @@ function parkUpdate(dt){
     if(e.bounceT>0) e.bounceT=Math.max(0,e.bounceT-dt);   // spin/squash from an ape smash
   }
   for(let i=SPARKS.length-1;i>=0;i--){ const s=SPARKS[i]; s.x+=s.vx*dt; s.y+=s.vy*dt; s.vy+=140*dt; s.life-=dt; if(s.life<=0) SPARKS.splice(i,1); }
-  for(let i=PK.embers.length-1;i>=0;i--){ const em=PK.embers[i]; em.x+=em.vx*dt; em.y+=em.vy*dt; em.vy+=90*dt; em.life-=dt; if(em.life<=0) PK.embers.splice(i,1); }
+  // real fire embers drift on a slow, uneven breeze rather than just falling, then settle and
+  // keep glowing in place for the rest of their life instead of vanishing mid-air — see the glow
+  // drawn in parkDraw, which is what actually reads as light spilling onto the ground around them
+  for(let i=PK.embers.length-1;i>=0;i--){
+    const em=PK.embers[i];
+    em.life-=dt;
+    if(em.life<=0){ PK.embers.splice(i,1); continue; }
+    if(em.fire){
+      if(!em.landed && em.life<=EMBER_LAND_WINDOW){ em.landed=true; em.vx*=0.15; em.vy=0; }
+      if(!em.landed){
+        em.vx += Math.sin(performance.now()/1000*0.7+em.x*0.01)*9*dt;
+        em.vy += 30*dt;
+        em.x+=em.vx*dt; em.y+=em.vy*dt;
+      }
+    } else {
+      em.vy+=90*dt; em.x+=em.vx*dt; em.y+=em.vy*dt;
+    }
+  }
   // a slow drift of leaves under the canopy — atmosphere for the grove, not gameplay, so it
   // only bothers spawning them for the grove BONES is actually near
   for(let i=PK.leaves.length-1;i>=0;i--){
@@ -3438,6 +3483,36 @@ function parkUpdate(dt){
       if(e.fleeT>FLEE_TIME) pkEnRemove(i);
       continue;
     }
+    // ABLAZE — caught fire from flame or a laser beam: panics completely, overriding whatever
+    // it was doing, and zips in a fast uncontrolled circle, touching off more trees as it goes
+    if(e.ablaze){
+      e.ablazeT+=dt;
+      e.panicAng += (FIRE_PANIC_TURN+(Math.random()-0.5)*FIRE_PANIC_JITTER)*e.panicJit*dt;
+      const pspd=e.sp*2;
+      const pvx=Math.cos(e.panicAng)*pspd, pvy=Math.sin(e.panicAng)*pspd;
+      e.dir = pvx<0 ? -1 : 1;
+      e.x=(e.x+(pvx+e.kx)*dt+WW)%WW; e.y=(e.y+(pvy+e.ky)*dt+WH)%WH;
+      e.ft+=dt; if(e.ft>0.08){ e.ft=0; e.fi++; }   // a frantic, sped-up leg cycle
+      if(Math.random()<0.6){
+        PK.embers.push({x:e.x, y:e.y+4, vx:(Math.random()-0.5)*40, vy:-30-Math.random()*40,
+          life:1.6+Math.random()*1.2, fire:true});
+      }
+      // crashing blind through the grove can set more of it alight
+      e.igniteCdT-=dt;
+      if(e.igniteCdT<=0){
+        e.igniteCdT=FIRE_PANIC_IGNITE_CD;
+        pkTreesNear(e.x,e.y,TREE_R*1.1,tr=>{ if(tr.state==="ok") pkIgniteTree(tr,true); });
+      }
+      // it burns itself out — a real hazard while it lasts, never a bottomless damage source
+      e.ablazeHurtT-=dt;
+      if(e.ablazeHurtT<=0){ e.ablazeHurtT=FIRE_PANIC_HURT_EVERY; e.hp-=FIRE_PANIC_HURT; }
+      if(e.hp<=0 || e.ablazeT>=FIRE_PANIC_DUR){
+        pkDownEnemy(e,Math.cos(e.panicAng),Math.sin(e.panicAng),{shockT:0.25});
+        PK.scorch.push({x:e.x, y:e.y, r:10+Math.random()*6});
+        beep(100,.22,"sawtooth",.06);
+      }
+      continue;
+    }
     // WAVE 1 — a roost bird standing dead still until BONES gets close, then it scatters
     // (still alive and hittable — killing it mid-scatter works exactly like any other kill)
     if(e.standing){
@@ -3607,7 +3682,7 @@ function parkUpdate(dt){
         e.beamLen=stopDist;
         if(blk.tree && blk.dist<=stopDist+0.5){   // the tree is what it actually reached this frame
           pkIgniteTree(blk.tree);
-          if(Math.random()<0.25) PK.embers.push({x:e.x+ux*blk.dist, y:e.y+uy*blk.dist, vx:(Math.random()-0.5)*40, vy:-30-Math.random()*50, life:0.6});
+          if(Math.random()<0.25) PK.embers.push({x:e.x+ux*blk.dist, y:e.y+uy*blk.dist, vx:(Math.random()-0.5)*40, vy:-30-Math.random()*50, life:0.9+Math.random()*0.6, fire:true});
         }
         if(along>0 && along<=stopDist+0.5 && perp<MADSQ_WIDTH && PK.inv<=0 && !pkInvuln()){
           pkHurt(MADSQ_DMG); PK.inv=0.55;
@@ -3630,6 +3705,7 @@ function parkUpdate(dt){
               o.hp-=MADSQ_FF_DMG;
               o.kx=ux*MADSQ_KNOCK*1.6; o.ky=uy*MADSQ_KNOCK*1.6;
               PK.embers.push({x:o.x, y:o.y, vx:(Math.random()-0.5)*60, vy:-40-Math.random()*40, life:0.5});
+              if((o.t==="sq"||o.t==="cat") && !o.ablaze && Math.random()<pkFireCatchChance()) pkIgniteAnimal(o);
               if(o.hp<=0){
                 pkDownEnemy(o,ux,uy,{shockT:0.3});
                 PK.scorch.push({x:o.x, y:o.y, r:12+Math.random()*6});
@@ -4578,7 +4654,7 @@ function drawEnemy(ctx,e,sx,sy){
   ctx.save(); ctx.globalAlpha*=ghost;
   ctx.fillStyle="rgba(0,0,0,.25)";
   ctx.beginPath(); ctx.ellipse(sx, sy+2, 9, 3, 0, 0, 7); ctx.fill();
-  if(e.madsq && !e.fleeing) drawLaserFX(ctx,e,sx,sy);
+  if(e.madsq && !e.fleeing && !e.ablaze) drawLaserFX(ctx,e,sx,sy);
   if((e.fleeing && e.shockT>0 && !e.madsqExplode || (e.spooked && e.spookT<0.3) || (e.stalkAggro && (e.leapT>0||e.windT>0))) && Math.floor(performance.now()/90)%2){
     ctx.fillStyle="#fff"; ctx.font="bold 13px 'Press Start 2P',monospace"; ctx.textAlign="center";
     ctx.fillText("!", sx, sy-24); ctx.textAlign="left";
@@ -4587,9 +4663,11 @@ function drawEnemy(ctx,e,sx,sy){
     ctx.fillStyle="#f22"; ctx.beginPath(); ctx.arc(sx, sy-26, 2.4, 0, 7); ctx.fill();
   }
   // mad squirrels glow red the whole time they're charging or sweeping their beam
-  const madGlow = e.madsq && (e.laserState==="charge" || e.laserState==="sweep");
+  const madGlow = e.madsq && !e.ablaze && (e.laserState==="charge" || e.laserState==="sweep");
   // wave 2's circling/V-formation birds are out for blood — same red glow reused for "angry"
   const angryGlow = !!e.angry;
+  // caught fire and panicking: a warm, flickering flame right under it, unmistakable at a glance
+  const ablazeGlow = !!e.ablaze;
   const frames = ENEMYIMG[e.t];
   const img = frames && frames[e.fi % frames.length];
   if(!img || !img.complete || !img.naturalWidth){ drawEnemyVector(ctx,e,sx,sy); if(e.madsqExplode) drawMadsqExplosion(ctx,sx,sy,e.explodeT); ctx.restore(); return; }
@@ -4607,9 +4685,20 @@ function drawEnemy(ctx,e,sx,sy){
     ctx.beginPath(); ctx.ellipse(sx, sy-eh*0.5, ew*0.65, eh*0.65, 0, 0, 7); ctx.fill();
     ctx.restore();
   }
+  if(ablazeGlow){
+    ctx.save(); ctx.globalAlpha=0.55+0.35*Math.sin(performance.now()/55+e.ph);
+    const fg=ctx.createRadialGradient(sx, sy-eh*0.35, 0, sx, sy-eh*0.35, ew*0.8);
+    fg.addColorStop(0,"rgba(255,170,40,0.85)"); fg.addColorStop(0.5,"rgba(255,90,20,0.5)"); fg.addColorStop(1,"rgba(255,60,10,0)");
+    ctx.fillStyle=fg;
+    ctx.beginPath(); ctx.ellipse(sx, sy-eh*0.35, ew*0.8, eh*0.8, 0, 0, 7); ctx.fill();
+    ctx.restore();
+  }
   ctx.save(); ctx.imageSmoothingEnabled=false;
   if(e.dir<0){ ctx.translate(sx*2,0); ctx.scale(-1,1); }
-  ctx.drawImage((madGlow||angryGlow) ? pkTinted(img,"red","sepia(1) saturate(8) hue-rotate(-50deg) brightness(1.1)") : img, sx-ew/2, sy-eh, ew, eh);
+  const tintImg = (madGlow||angryGlow) ? pkTinted(img,"red","sepia(1) saturate(8) hue-rotate(-50deg) brightness(1.1)")
+    : ablazeGlow ? pkTinted(img,"ablaze","sepia(1) saturate(6) hue-rotate(-20deg) brightness(1.25)")
+    : img;
+  ctx.drawImage(tintImg, sx-ew/2, sy-eh, ew, eh);
   ctx.restore();
   // the instant of impact: the sprite blows out white
   if(e.hitT>0){
@@ -5099,7 +5188,20 @@ function parkDraw(t){
   }
   for(const em of PK.embers){
     const ex3=DX+wd(em.x-PK.x,WW), ey3=DY+wd(em.y-PK.y,WH);
-    if(ex3<-20||ex3>w+20||ey3<-20||ey3>h+20) continue;
+    if(ex3<-40||ex3>w+40||ey3<-40||ey3>h+40) continue;
+    if(em.fire){
+      // the actual "illumination": a warm halo that visibly lights the ground around it,
+      // strongest once it has landed and settled — this is what reads as dynamic, cinematic
+      // light against DOGPARK UNLEASHED's night tint, though it still shows in daylight too
+      const pulse=0.7+0.3*Math.sin(t*9+em.x*0.3);
+      const baseA=em.landed ? Math.min(1,em.life/EMBER_LAND_WINDOW) : 0.5;
+      const gr=em.landed ? 15+pulse*4 : 9;
+      const g=ctx.createRadialGradient(ex3,ey3,0,ex3,ey3,gr);
+      g.addColorStop(0,"rgba(255,170,50,"+(baseA*pulse*0.55).toFixed(3)+")");
+      g.addColorStop(0.5,"rgba(255,90,20,"+(baseA*pulse*0.28).toFixed(3)+")");
+      g.addColorStop(1,"rgba(255,60,10,0)");
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(ex3,ey3,gr,0,7); ctx.fill();
+    }
     ctx.globalAlpha=Math.max(0,em.life*1.6);
     ctx.fillStyle=em.dust ? (em.life>0.3?"#a08258":"#6b5335") : (em.life>0.3?"#ffd06a":"#f2400f");
     ctx.fillRect(ex3-1.5,ey3-1.5,3,3);
