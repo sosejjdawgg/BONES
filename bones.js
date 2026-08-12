@@ -3842,7 +3842,9 @@ function renderSettings(){
   $("#setMusic").textContent = SETTINGS.music ? "ON" : "OFF";
   $("#setMotion").textContent = SETTINGS.reduceMotion ? "ON" : "OFF";
   $("#setBarkStyle").textContent = SETTINGS.barkStyle==="lines" ? "LINES" : "CIRCLE";
-  $("#mReplayTutorial").style.display = S.pbTutorialDone ? "" : "none";
+  // only makes sense from the DOGCAM settings — mid-run this would yank the player straight out
+  // of DOGPARK and into the delivery driver minigame, with the park run left dangling
+  $("#mReplayTutorial").style.display = (S.pbTutorialDone && !PK.active) ? "" : "none";
   // only relevant mid-run — opened from DOGPARK's own settings button (see pkSettingsRect)
   $("#setEndRunPk").style.display = PK.active ? "" : "none";
   // only relevant during a live DOGPARK UNLEASHED run — switching it off reverts the whole night
