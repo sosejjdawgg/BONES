@@ -123,8 +123,9 @@ function pbScreech(on){
   }catch(e){}
 }
 
-/* ---------- tutorial: two houses, van stops at each, teaches swipe-throw then hold-skillshot ---------- */
-const PBTUT_STEP={DRIVE_TO_1:0, TEACH_SWIPE:1, CELEBRATE_1:2, DRIVE_TO_2:3, TEACH_HAND:4, CELEBRATE_2:5, COMPLETE:6};
+/* ---------- tutorial: two houses, van stops at each, teaches swipe-throw then hold-skillshot,
+   then a last stretch of road teaching the real end-of-route brake — see SPEED_RUN ---------- */
+const PBTUT_STEP={DRIVE_TO_1:0, TEACH_SWIPE:1, CELEBRATE_1:2, DRIVE_TO_2:3, TEACH_HAND:4, CELEBRATE_2:5, SPEED_RUN:6, COMPLETE:7};
 const PBTUT={step:0, stepT:0, arrowPulse:0, waitingInput:false, bannerT:0, houseIdx:0, target:0};
 
 function pbNewRoute(){
@@ -184,7 +185,7 @@ function enterPaperboyTutorial(){
 function pbSideY(side){ return side==="L" ? 1 : -1; }   // L = down-left of road, R = up-right
 // Once every parcel is gone the controls change meaning entirely: there is nothing left to throw,
 // so any press is the brake pedal. This is why the SLOW DOWN sign only appears after the last house.
-function pbBrakeMode(){ return !PB.tutorial && (PB.phase==="approach"||PB.phase==="stopping"); }
+function pbBrakeMode(){ return (!PB.tutorial || PBTUT.step===PBTUT_STEP.SPEED_RUN) && (PB.phase==="approach"||PB.phase==="stopping"); }
 function pbStartBraking(){
   if(PB.phase!=="approach") return;
   PB.phase="stopping"; PB.braking=true;
@@ -194,8 +195,9 @@ function pbStartBraking(){
 }
 function pbPressStart(side){
   if((!PB.run && !PB.tutorial) || PB.pressing) return;
+  if(pbBrakeMode()){ pbStartBraking(); return; }   // checked before the waitingInput gate below,
+                                                    // so braking always works once in brake mode
   if(PB.tutorial && !PBTUT.waitingInput) return;
-  if(pbBrakeMode()){ pbStartBraking(); return; }
   if(PB.hand) return;                       // already out of the van
   PB.pressing=true; PB.pressSide=side; PB.pressT=0;
 }
@@ -425,7 +427,10 @@ function updatePaperboy(dt){
 /* The stop itself. Where the van's nose ends up decides whether that was a park or an overshoot,
    and either way it rocks on its springs for a beat before it settles — that wobble is the whole
    reason the stop feels like it had weight behind it. */
-function pbComeToRest(){
+// skipFinish: the tutorial's own speed-and-brake finale reuses this exact same physics/audio/
+// haptic feedback for a real-feeling stop, but it isn't a real paid route — nothing to score,
+// so it skips scheduling the result screen and lets the tutorial's own step machine take over
+function pbComeToRest(skipFinish){
   PB.speed=0; PB.braking=false; PB.phase="done";
   pbScreech(false);
   const z0=pbStopZoneStart();
@@ -436,9 +441,9 @@ function pbComeToRest(){
   haptic(inBay?[40,40,60]:[30]);
   if(inBay){ beep(760,.09); setTimeout(()=>beep(1020,.11),110); setTimeout(()=>beep(1360,.14),230); }
   else { beep(420,.12); setTimeout(()=>beep(330,.12),120); }
-  setTimeout(pbFinish, 1450);
+  if(!skipFinish) setTimeout(pbFinish, 1450);
 }
-function pbCrash(){
+function pbCrash(skipFinish){
   PB.dist=PB.roadEnd; PB.speed=0; PB.braking=false; PB.phase="done";
   PB.crashed=true; PB.parked="crash";
   pbScreech(false);
@@ -446,8 +451,8 @@ function pbCrash(){
   PB.shake=1.4;
   haptic([90,50,90]);
   beep(90,.42,"sawtooth",.12); setTimeout(()=>beep(140,.3,"sawtooth",.08),70);
-  toast("INTO THE WALL!",1);
-  setTimeout(pbFinish, 1650);
+  if(!skipFinish) toast("INTO THE WALL!",1);
+  if(!skipFinish) setTimeout(pbFinish, 1650);
 }
 /* Out of the van, up the path, hand it over, back again. Each leg is a fixed slice of time so the
    whole errand always costs the same — see PB_HAND. */
@@ -550,7 +555,7 @@ function pbDrawRoad(ctx){
   for(let x=s0;x<x1;x+=step){
     pbQuad(ctx,[pbP(x,-3,0),pbP(x+30,-3,0),pbP(x+30,3,0),pbP(x,3,0)],"#fff",null);
   }
-  if(!PB.tutorial) pbDrawRoadEnd(ctx);
+  if(!PB.tutorial || PBTUT.step>=PBTUT_STEP.SPEED_RUN) pbDrawRoadEnd(ctx);
 }
 /* Everything at the far end of the street: the warning sign, the hatched bay you are trying to
    stop in, and the wall behind it that ends the run badly if you arrive still moving. All of it
@@ -911,10 +916,13 @@ function pbTutorialStart(){
   const h1={doorNum:doorStart, side:side1, worldDist:PB_HOUSE_GAP*1, thrown:false, zone:null, angryT:0, happyT:0, tip:0};
   const h2={doorNum:doorStart+1, side:side2, worldDist:PB_HOUSE_GAP*2, thrown:false, zone:null, angryT:0, happyT:0, tip:0};
   Object.assign(PB,{
+    // same formula pbNewRoute uses for the real street, just off the tutorial's own last house —
+    // with only two houses on the road that leaves a short, snappy stretch to the bay, which is
+    // exactly the point: a quick, fast finish, not a long empty drive
     houses:[h1,h2], decoys:[], nextIdx:0, dist:0, speed:0,
     pressing:false, pressSide:null, pressT:0, charging:null, fx:[], shake:0, swipe:null,
     phase:"route", hand:null, braking:false, wobble:0, wobbleT:0, crashed:false, parked:null,
-    roadEnd:PB_HOUSE_GAP*9, elapsed:0, lines:[],
+    roadEnd:h2.worldDist+PB_SIGN_LEAD+PB_STOP_ZONE_LEN+140, elapsed:0, lines:[],
     stats:{perfect:0, house:0, destruction:0, miss:0, hand:0, tips:0},
     tutorial:true, active:true, run:false
   });
@@ -988,7 +996,31 @@ function pbTutorialUpdate(dt){
     if(PBTUT.stepT>1.2){ PBTUT.step=S_.DRIVE_TO_2; PBTUT.stepT=0; PBTUT.houseIdx=1; PBTUT.target=PB.houses[1].worldDist; }
   } else if(st===S_.CELEBRATE_2){
     PBTUT.stepT+=dt;
-    if(PBTUT.stepT>1.2){ PBTUT.step=S_.COMPLETE; PBTUT.stepT=0; PBTUT.bannerT=0; }
+    if(PBTUT.stepT>1.2){
+      PBTUT.step=S_.SPEED_RUN; PBTUT.stepT=0;
+      PB.phase="approach";   // no parcels left — every remaining tap is the brake, same as a real route
+      toast("BUILD SPEED, THEN BRAKE FOR THE BAY",1);
+    }
+  } else if(st===S_.SPEED_RUN){
+    // one last stretch, played out on the exact same physics as the end of a real route: the
+    // speedometer climbs, the SLOW DOWN sign and bay appear, and braking too late means the wall
+    PBTUT.stepT+=dt;
+    if(PB.phase==="done"){
+      if(PBTUT.stepT>1.4){ PBTUT.step=S_.COMPLETE; PBTUT.stepT=0; PBTUT.bannerT=0; }
+      return;
+    }
+    if(PB.phase==="stopping"){
+      PB.speed=Math.max(0,PB.speed-PB_BRAKE_DECEL*dt);
+      PB.dist+=PB.speed*dt;
+      PB.shake=Math.max(PB.shake, 0.25+0.5*(PB.speed/PB_SPEED_MAX));
+      if(PB.dist>=PB.roadEnd && PB.speed>0){ pbCrash(true); PBTUT.stepT=0; return; }
+      if(PB.speed<=0){ pbComeToRest(true); PBTUT.stepT=0; }
+      return;
+    }
+    PB.speed=Math.min(PB_SPEED_MAX, PB.speed+PB_SPEED_RAMP*dt);
+    PB.dist+=PB.speed*dt;
+    PB.shake=Math.max(PB.shake, 0.10*Math.pow(clamp(PB.speed/PB_SPEED_MAX,0,1),2));
+    if(PB.dist>=PB.roadEnd){ pbCrash(true); PBTUT.stepT=0; }
   } else if(st===S_.COMPLETE){
     PBTUT.bannerT+=dt;
     if(PBTUT.bannerT>2.0){
@@ -1010,9 +1042,16 @@ function pbTutorialDraw(ctx,w,h,t){
     drawables.push({d:hh.worldDist+yhi, f:()=>pbDrawHouse(ctx,hh,t)});
   }
   drawables.push({d:PB.dist+10, f:()=>pbDrawVan(ctx,t)});
+  // the last stretch reuses the real route's own SLOW DOWN sign, sorted into the scene exactly
+  // the same way drawPaperboy does it
+  if(st===S_.SPEED_RUN||st===S_.COMPLETE){
+    const sx=pbStopZoneStart()-PB_SIGN_LEAD;
+    if(sx-PB.dist>-260 && sx-PB.dist<1400) drawables.push({d:sx+PB_ROAD_HALF+22, f:()=>pbDrawSlowSign(ctx)});
+  }
   drawables.sort((a,b)=>a.d-b.d);
   for(const dd of drawables) dd.f();
   for(const f of PB.fx){ if(f.t==="parcel") pbDrawParcelFX(ctx,f); }
+  if(st===S_.SPEED_RUN||st===S_.COMPLETE){ pbDrawSpeedLines(ctx,w,h); pbDrawSpeedo(ctx,w,h); }
 
   const h0=PB.houses[PBTUT.houseIdx];
   let title="", sub="";
@@ -1021,6 +1060,12 @@ function pbTutorialDraw(ctx,w,h,t){
   else if(st===S_.CELEBRATE_1) title="PERFECT!";
   else if(st===S_.TEACH_HAND){ title="HAND DELIVERY"; sub="HOLD TO PULL OVER AND WALK IT TO THE DOOR"; }
   else if(st===S_.CELEBRATE_2) title="HANDED OVER!";
+  else if(st===S_.SPEED_RUN){
+    if(PB.phase==="done"){
+      title = PB.crashed ? "INTO THE WALL!" : PB.parked==="bay" ? "PARKED PERFECTLY!" : "STOPPED — CLOSE ENOUGH";
+      sub = PB.crashed ? "EASE OFF THE BRAKE A LITTLE EARLIER NEXT TIME" : "";
+    } else { title="ONE LAST STRETCH"; sub="BUILD SPEED, THEN TAP TO BRAKE FOR THE BAY"; }
+  }
   else if(st===S_.COMPLETE) title="TUTORIAL COMPLETE";
 
   ctx.textAlign="center";
