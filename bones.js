@@ -413,8 +413,10 @@ function renderMeters(){
   na.classList.toggle("hidden", minv>=80);
   na.classList.toggle("crit", minv<40);
   const neg=S.money<0, mstr=(neg?"-$":"$")+Math.abs(S.money);
-  for(const id of ["money1","money2","money3"]){ const el=$("#"+id); if(el){ el.textContent=mstr; el.style.color=neg?"#f22":"#fff"; } }
-  $("#hudBones").textContent = "◆ "+S.snacks+" BONES";   // the bone stock park runs bank into, right under the wallet
+  for(const id of ["money1","money2","money3"]){ const el=$("#"+id); if(el) el.textContent=mstr; }
+  $("#money2").style.color=neg?"#f22":"#fff"; $("#money3").style.color=neg?"#f22":"#fff";
+  $("#moneyRow").style.color=neg?"#f22":"#3fdc7a";
+  $("#hudBones").textContent = S.snacks+" BONES";   // the bone stock park runs bank into, right under the wallet
   syncMoodMusic();   // cheap and idempotent — this is where a drifting mood/sickness gets noticed
   if(PARK_HDR) return;              // the park owns the header; don't stamp the clock over it
   $("#clock").textContent = "DAY "+CLK.day+" "+String(Math.floor(CLK.h)).padStart(2,"0")+":00"+(atWorkNow()?" ▶▶":"");
