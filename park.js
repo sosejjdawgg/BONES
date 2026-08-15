@@ -3403,10 +3403,6 @@ function parkUpdate(dt){
     } else {
       PK.speedBonus={unlocked:false, over:Math.round(PK.waveT-60), charm:null};
     }
-    if(PK.wave===10 && !S.dogParkPlusUnlocked){
-      S.dogParkPlusUnlocked=true;
-      setTimeout(()=>pkFanfare(null,true,"🏆 DOGPARK UNLEASHED UNLOCKED!"),300);
-    }
     tickStats(2.5, true);   // a cleared wave is 15 game minutes — the only time the park spends
     if(PK.bones>0) PK.exitNagFlashT=2.4;   // a fresh wave is exactly when it's easy to forget what you're carrying
     PK.waveT=0; PK.wave++;

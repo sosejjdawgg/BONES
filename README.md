@@ -60,11 +60,11 @@ Once he's Lv.5, DOGPARK is a real-time survival mode: bark at squirrels, birds a
 - **Speed bonus** — clear a wave inside 60 seconds and a bonus charm unlocks in that wave's shop.
 - **The Golden Bird** — a rare, fast-flying target worth chasing for a big one-off bones payout.
 - **Side missions** — bark at every kind of critter in one run (+20 XP), survive wave 1 (+10 XP). Both pay out immediately, no banking required.
-- **Choosing a mode** — if DOGPARK UNLEASHED is unlocked, heading out asks **NORMAL** or **UNLEASHED** each time, with a **← BACK** if you opened it by mistake.
+- **Choosing a mode** — heading out always asks **REGULAR** or **DOGPARK UNLEASHED**, with a **← BACK** if you opened it by mistake. DOGPARK UNLEASHED shows locked (🔒) until you're holding 5,000 bones.
 
 ## DOGPARK UNLEASHED
 
-Clear wave 10 of regular DOGPARK once, and DOGPARK UNLEASHED unlocks for good: the same 10 waves, with double the enemies on screen at once, played out under a genuinely dark night sky. It's built around several systems the base mode doesn't have:
+Bank 5,000 bones and DOGPARK UNLEASHED unlocks for good: the same 10 waves, with double the enemies on screen at once, played out under a genuinely dark night sky. It's built around several systems the base mode doesn't have:
 
 ### Night & Fog of War
 The whole park goes dark — a true night-time look, with fireflies drifting through the gloom. Visibility is limited to ground BONES has actually explored; wander away for too long and it fades back into fog, creeping in fastest from the directions he isn't facing. Stay moving and keep your bearings, or the park you thought you knew disappears again.

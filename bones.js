@@ -350,7 +350,7 @@ const S = {
   hoopOwned:false, ballOwned:false, ballStock:0, brushOwned:false, shampooOwned:false, shampooPct:0, firstWater:false, firstFood:false, bedHinted:false, pbTutorialDone:false, mail:[],
   bedTier:0, todoWork:false, todoLvl5:false, todoBed:false, todoPark:false, todoBall:false, todoBowls:false, twW:false, twF:false, todoHide:false, outTimer:0,
   lvl:1, xp:0, gen:1, senior:false, seniorDays:0, lifePathChosen:false, litter:false, memorialSrc:null, pendingStage:[],
-  lastSaveAt:null, lastSaveDay:0, lastSaveH:0, dogParkPlusUnlocked:false
+  lastSaveAt:null, lastSaveDay:0, lastSaveH:0
 };
 // music on by default: the title sequence is scored to the melody, so a silent first boot would
 // hide the whole opening. A save that already carries an explicit preference still wins (see
@@ -3594,17 +3594,19 @@ function pkFitnessWarning(){
   cands.sort((a,b)=>a.v-b.v);
   return cands[0].v<40 ? cands[0].word : null;
 }
+const DOGPARK_UNLEASHED_COST=5000;   // bones needed to unlock DOGPARK UNLEASHED
 function reallyEnterDogpark(){
-  if(S.dogParkPlusUnlocked){
-    openChoice("CHOOSE YOUR PARK",
-      "DOGPARK UNLEASHED REPEATS THE SAME 10 WAVES UNDER A DARKER NIGHT SKY WITH DOUBLE THE ENEMIES ON SCREEN AT ONCE.",
-      "NORMAL", ()=>{ toast("SURVIVE THE WAVES, BANK BIG XP. IF BONES GETS CAUGHT, YOU LOSE IT ALL \u2620\ufe0f",1); startPark(false); },
-      "UNLEASHED", ()=>{ toast("DOGPARK UNLEASHED \u2014 DOUBLE THE ENEMIES, SAME WAVES, UNDER COVER OF NIGHT.",1); startPark(true); },
-      "\u2190 BACK", null);
-    return;
-  }
-  toast("SURVIVE THE WAVES, BANK BIG XP. IF BONES GETS CAUGHT, YOU LOSE IT ALL \u2620\ufe0f",1);
-  startPark(false);
+  const unlocked=S.snacks>=DOGPARK_UNLEASHED_COST;
+  openChoice("CHOOSE YOUR PARK",
+    "DOGPARK UNLEASHED REPEATS THE SAME 10 WAVES UNDER A DARKER NIGHT SKY WITH DOUBLE THE ENEMIES ON SCREEN AT ONCE."
+      +(unlocked?"":"<br><br>\ud83d\udd12 UNLOCKS AT "+DOGPARK_UNLEASHED_COST+" BONES."),
+    "REGULAR", ()=>{ toast("SURVIVE THE WAVES, BANK BIG XP. IF BONES GETS CAUGHT, YOU LOSE IT ALL \u2620\ufe0f",1); startPark(false); },
+    unlocked?"DOGPARK UNLEASHED":"\ud83d\udd12 DOGPARK UNLEASHED",
+    ()=>{
+      if(!unlocked){ beep(160,.15,"sawtooth",.05); toast("NEEDS "+DOGPARK_UNLEASHED_COST+" BONES TO UNLOCK \u2014 YOU HAVE "+S.snacks,1); return; }
+      toast("DOGPARK UNLEASHED \u2014 DOUBLE THE ENEMIES, SAME WAVES, UNDER COVER OF NIGHT.",1); startPark(true);
+    },
+    "\u2190 BACK", null);
 }
 $("#bWalk").onclick=()=>{
   if(S.lvl<5) return toast("THE DOGPARK UNLOCKS AT LV.5",1);
