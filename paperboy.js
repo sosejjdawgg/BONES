@@ -18,6 +18,8 @@ const PB_STREET_LEN=PB_ROUTE_LEN*3;
 const PB_SPEED0=70, PB_SPEED_MAX=215, PB_SPEED_RAMP=14;
 const PB_TOL={doormat:11, house:27, window:50};
 const PB_SWIPE_MIN=26;          // canvas drag distance that commits to a throw
+const PB_HOLD_ARM_DELAY=0.11;   // canvas press-and-hold vs. swipe: long enough to tell a still
+                                 // press from the start of a real drag, short enough to feel instant
 /* PAY — deliberately lopsided. A clean throw pays well, a lost parcel (never attempted) hurts,
    putting one through a window is close to unrecoverable, and a fumbled hand delivery (started,
    then let go too early) hurts worst of all — you already spent the time on it. */
@@ -267,7 +269,9 @@ function pbHoldStart(){
   if((!PB.run && !PB.tutorial) || PB.pressing) return;
   if(pbBrakeMode()){ pbStartBraking(); return; }   // checked before the waitingInput gate below,
                                                     // so braking always works once in brake mode
-  if(PB.tutorial && !PBTUT.waitingInput) return;
+  // the tutorial's TEACH_SWIPE step is throw-only — without this, a canvas press that's just
+  // slow to become a swipe (see PB_HOLD_ARM_DELAY below) could arm a hold mid-throw-lesson
+  if(PB.tutorial && (PBTUT.step!==PBTUT_STEP.TEACH_HAND || !PBTUT.waitingInput)) return;
   if(PB.hand) return;                       // already out of the van
   PB.pressing=true;
   pbBeginHand();
@@ -1258,15 +1262,21 @@ function drawPaperboy(t){
   pbDrawVignette(ctx,w,h);
 }
 (function(){
-  // Swipe delivery straight on the route view: flick left or right to throw that way. A canvas
-  // tap that never becomes a swipe does nothing — hold has its own dedicated button below, fully
-  // decoupled from this.
+  // The route view does double duty: flick left or right to throw that way, or press and hold
+  // still to start the hand delivery — same two controls as the dedicated buttons below, just
+  // also reachable straight off the canvas. A short arm-delay is what tells the two apart: a
+  // real swipe crosses PB_SWIPE_MIN almost immediately, so if the press is still going and hasn't
+  // moved by the time the delay elapses, it commits to a hold exactly like the HOLD button would.
   const cv=$("#paperboycv");
   cv.addEventListener("pointerdown",e=>{
     if(!PB.run && !PB.tutorial) return;
     e.preventDefault();
     if(pbBrakeMode()){ pbStartBraking(); return; }
-    PB.swipe={x:e.clientX, y:e.clientY, fired:false};
+    const swipe={x:e.clientX, y:e.clientY, fired:false};
+    PB.swipe=swipe;
+    swipe.holdTimer=setTimeout(()=>{
+      if(PB.swipe===swipe && !swipe.fired){ swipe.fired=true; pbHoldStart(); }
+    }, PB_HOLD_ARM_DELAY*1000);
     try{cv.setPointerCapture(e.pointerId);}catch(_){}
   });
   cv.addEventListener("pointermove",e=>{
@@ -1274,11 +1284,17 @@ function drawPaperboy(t){
     const dx=e.clientX-PB.swipe.x;
     if(Math.abs(dx)>=PB_SWIPE_MIN){
       PB.swipe.fired=true;
+      clearTimeout(PB.swipe.holdTimer);
       pbLaunch(dx<0 ? "L" : "R");
     }
   });
-  cv.addEventListener("pointerup",()=>{ PB.swipe=null; });
-  cv.addEventListener("pointercancel",()=>{ PB.swipe=null; });
+  const cvEnd=()=>{
+    if(PB.swipe) clearTimeout(PB.swipe.holdTimer);
+    PB.swipe=null;
+    pbHoldEnd();   // no-op unless the arm-timer above actually started a hold
+  };
+  cv.addEventListener("pointerup",cvEnd);
+  cv.addEventListener("pointercancel",cvEnd);
   const bl=$("#bThrowL"), br=$("#bThrowR");
   bl.addEventListener("pointerdown",e=>{ e.preventDefault(); pbLaunch("L"); });
   br.addEventListener("pointerdown",e=>{ e.preventDefault(); pbLaunch("R"); });

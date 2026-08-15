@@ -1957,8 +1957,15 @@ function camBehavior(dt){
         TRICK.floorB++;
         if(TRICK.floorB>=3 && TRICK.live){ TRICK.live=false; beep(160,.12,"sawtooth",.03); }  // 3rd floor bounce kills it
       }
-      BALL.vy*=-0.69; BALL.vx*=0.92;
-      if(Math.abs(BALL.vy)<0.05) BALL.vy=0;
+      // settle instead of bounce once the incoming speed is small — checking the INCOMING
+      // velocity (not what's left after the *-0.69 damping) means a resting ball actually stops,
+      // rather than micro-bouncing forever off gravity alone. That mattered: at accelerated
+      // (work/Delivery Driver) timescales a single gravity tick was enough to push a "resting"
+      // ball's vy back over the 0.05 "is this ball live" threshold, so BONES never stopped
+      // re-noticing and re-fetching it — a fetch loop that never actually settled.
+      if(Math.abs(BALL.vy)<0.12) BALL.vy=0;
+      else BALL.vy*=-0.69;
+      BALL.vx*=0.92;
     }
     if(BALL.y<0.05 && BALL.vy<0){ BALL.y=0.05; BALL.vy*=-0.75; trickBounce(); }
     if(BALL.x<0.02){ if(Math.abs(BALL.vx)>0.45){ BALL.off=true; BALL.offSide=-1; BALL.vx=0; BALL.vy=0; } else { BALL.x=0.02; BALL.vx*=-0.75; trickBounce(); TRICK.hitWall=true; } }
