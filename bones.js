@@ -416,7 +416,7 @@ function renderMeters(){
   for(const id of ["money1","money2","money3"]){ const el=$("#"+id); if(el) el.textContent=mstr; }
   $("#money2").style.color=neg?"#f22":"#fff"; $("#money3").style.color=neg?"#f22":"#fff";
   $("#moneyRow").style.color=neg?"#f22":"#3fdc7a";
-  $("#hudBones").textContent = S.snacks+" BONES";   // the bone stock park runs bank into, right under the wallet
+  $("#hudBones").textContent = S.snacks;   // the bone stock park runs bank into -- the icon says "bones", the label doesn't need to
   syncMoodMusic();   // cheap and idempotent — this is where a drifting mood/sickness gets noticed
   if(PARK_HDR) return;              // the park owns the header; don't stamp the clock over it
   $("#clock").textContent = "DAY "+CLK.day+" "+String(Math.floor(CLK.h)).padStart(2,"0")+":00"+(atWorkNow()?" ▶▶":"");

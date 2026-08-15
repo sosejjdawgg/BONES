@@ -226,8 +226,12 @@ body.reduce-motion .screen.screen-in{animation:none}
 .walletRow{display:flex;align-items:center;gap:4px}
 #moneyRow{color:#3fdc7a}
 #bonesRow{color:#e8c14a}
-.wicon{width:9px;height:9px;flex:none;display:block}
-#hudBones{font-size:8px;letter-spacing:1px;white-space:nowrap}
+/* each wallet icon keeps its own aspect ratio -- the bone is a wide 16:10 shape, the coin round,
+   so a single square box would squash one of them */
+.wicon{height:10px;flex:none;display:block}
+.wcoin{width:10px}
+.wbone{width:16px}
+#hudBones{font-size:12px;white-space:nowrap}
 #home .body{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:12px}
 #toastGap{flex:1;min-height:34px}
 .sect{font-size:7px;color:#888;letter-spacing:2px;margin-bottom:-6px}
@@ -381,8 +385,8 @@ body.reduce-motion *{animation:none!important}
       <!-- HOME -->
       <div id="home" class="screen">
         <div id="hud"><button class="tiny" id="bMenu">&#9776; MENU</button><button class="tiny" id="todoBar">&#9656; TO-DO 0/6</button><button class="tiny" id="bSupplies">&#9636; SUPPLIES</button><button class="tiny" id="bShopBtn">&#9670; SHOP</button><div id="walletStack">
-          <span class="walletRow" id="moneyRow"><svg class="wicon" viewBox="-6 -6 12 12" aria-hidden="true"><circle cx="0" cy="0" r="5" fill="currentColor"/><circle cx="-1.1" cy="-1.1" r="2.1" fill="#000"/></svg><span class="money" id="money1">$0</span></span>
-          <span class="walletRow" id="bonesRow"><svg class="wicon" viewBox="-8 -5 16 10" aria-hidden="true"><rect x="-5" y="-1.5" width="10" height="3" fill="currentColor"/><circle cx="-5" cy="-2" r="2.2" fill="currentColor"/><circle cx="-5" cy="2" r="2.2" fill="currentColor"/><circle cx="5" cy="-2" r="2.2" fill="currentColor"/><circle cx="5" cy="2" r="2.2" fill="currentColor"/></svg><span id="hudBones">0 BONES</span></span>
+          <span class="walletRow" id="moneyRow"><svg class="wicon wcoin" viewBox="-6 -6 12 12" aria-hidden="true"><circle cx="0" cy="0" r="5" fill="currentColor"/><circle cx="-1.1" cy="-1.1" r="2.1" fill="#000"/></svg><span class="money" id="money1">$0</span></span>
+          <span class="walletRow" id="bonesRow"><svg class="wicon wbone" viewBox="-8 -5 16 10" aria-hidden="true"><rect x="-5" y="-1.5" width="10" height="3" fill="currentColor"/><circle cx="-5" cy="-2" r="2.2" fill="currentColor"/><circle cx="-5" cy="2" r="2.2" fill="currentColor"/><circle cx="5" cy="-2" r="2.2" fill="currentColor"/><circle cx="5" cy="2" r="2.2" fill="currentColor"/></svg><span id="hudBones">0</span></span>
         </div></div>
         <div class="body">
           <div id="mainGrid">
@@ -420,7 +424,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.275a</span>
+          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.276a</span>
         </div>
       </div>
 
