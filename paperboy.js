@@ -7,6 +7,10 @@
 // to pull the van over and walk it to the door: a guaranteed doormat, but it costs the better
 // part of three seconds, and a ticking countdown runs the whole time the box is still in his
 // hands. Let go early and he trips, fumbling it — a fast, funny, costly miss.
+// Pay follows the skill, not the safety: hold pays a basic flat rate, a thrown doormat pays more,
+// and throwing accurately without stopping is how the real money happens — consecutive doormats
+// build a streak bonus, and however long the van is genuinely pinned at top speed ticks up its
+// own bonus on the dial itself. See PB_HOLD_PAY / PB_STREAK_UNIT / PB_TOPSPEED_RATE.
 const PB_ROUTE_LEN=12, PB_HOUSE_GAP=250;
 // the street has far more addressed houses than parcels today — PB_STREET_LEN houses total,
 // laid out UK-style (odd numbers up one side, even up the other, each side incrementing by 2),
@@ -20,10 +24,14 @@ const PB_TOL={doormat:11, house:27, window:50};
 const PB_SWIPE_MIN=26;          // canvas drag distance that commits to a throw
 const PB_HOLD_ARM_DELAY=0.11;   // canvas press-and-hold vs. swipe: long enough to tell a still
                                  // press from the start of a real drag, short enough to feel instant
-/* PAY — deliberately lopsided. A clean throw pays well, a lost parcel (never attempted) hurts,
-   putting one through a window is close to unrecoverable, and a fumbled hand delivery (started,
-   then let go too early) hurts worst of all — you already spent the time on it. */
-const PB_PERFECT_PAY=4;         // parcel on the doormat, thrown or handed over
+/* PAY — deliberately lopsided, and deliberately in favour of the fast, skillful option. A clean
+   THROWN doormat pays the full rate; a HELD one pays a flat, basic rate instead — hold is the
+   safe fallback, not the optimal play, so it earns less than throwing does even before bonuses.
+   A lost parcel (never attempted) hurts, putting one through a window is close to unrecoverable,
+   and a fumbled hand delivery (started, then let go too early) hurts worst of all — you already
+   spent the time on it. */
+const PB_PERFECT_PAY=4;         // parcel thrown onto the doormat
+const PB_HOLD_PAY=3;            // parcel handed over — safe, but the basic rate
 const PB_HOUSE_PAY=2;           // on the property, off the mat
 const PB_MISS_PENALTY=7;        // never attempted — driven past
 const PB_DESTRUCTION_PENALTY=42;// broken window / wrecked property
@@ -31,6 +39,14 @@ const PB_FUMBLE_PENALTY=42;     // let go early — he trips, the parcel's ruine
 const PB_TIP_CHANCE=0.75, PB_TIP_MIN=1, PB_TIP_MAX=4;
 const PB_PARK_BONUS=6;          // parked cleanly in the bay at the end of the road
 const PB_CRASH_PENALTY=15;      // drove into the wall
+/* STREAK — consecutive thrown doormats pay an escalating bonus on top of the base rate, so
+   stringing accurate throws together (rather than pulling over for each one) is the way to real
+   money. Hold neither builds nor breaks a streak — it's simply not part of it. */
+const PB_STREAK_UNIT=1, PB_STREAK_CAP=5;
+/* TOP SPEED — a ticking bonus for however long the van is actually pinned at the top of the
+   speedometer's red zone (same 0.86 threshold the dial itself goes hot at), rewarding driving
+   flat-out between houses instead of coasting. */
+const PB_TOPSPEED_RATIO=0.86, PB_TOPSPEED_RATE=2, PB_TOPSPEED_TICK=0.5;   // $1 every half-second
 // Run time is rated against this. Hand delivering is safe but eats seconds, so the clock is the
 // cost that keeps it from simply being the correct answer every time.
 const PB_PAR_TIME=45;
@@ -72,7 +88,8 @@ const PB={
   // "stopping" from the moment the brakes go on, "done" once it has come to rest or hit the wall
   phase:"route", hand:null, roadEnd:0, braking:false, wobble:0, wobbleT:0,
   crashed:false, parked:null, elapsed:0, lines:[],
-  stats:{perfect:0, house:0, destruction:0, fumble:0, miss:0, hand:0, tips:0}
+  streak:0, streakBest:0, topSpeedT:0, topSpeedTickN:0,
+  stats:{perfect:0, house:0, destruction:0, fumble:0, miss:0, hand:0, tips:0, streakBonus:0, topSpeedBonus:0}
 };
 /* Engine note: one oscillator held for the whole run, its pitch and volume riding the speedometer,
    so acceleration is something you hear building rather than just watch. Lives outside the SFX
@@ -168,7 +185,8 @@ function pbNewRoute(){
     pressing:false, fx:[], swipe:null, shake:0,
     phase:"route", hand:null, braking:false, wobble:0, wobbleT:0, crashed:false, parked:null,
     roadEnd:lastDist+PB_SIGN_LEAD+PB_STOP_ZONE_LEN+140, elapsed:0, lines:[],
-    stats:{perfect:0, house:0, destruction:0, fumble:0, miss:0, hand:0, tips:0}
+    streak:0, streakBest:0, topSpeedT:0, topSpeedTickN:0,
+    stats:{perfect:0, house:0, destruction:0, fumble:0, miss:0, hand:0, tips:0, streakBonus:0, topSpeedBonus:0}
   });
 }
 function pbStopZoneStart(){ return PB.roadEnd-PB_STOP_ZONE_LEN; }
@@ -238,27 +256,40 @@ function pbThrow(side){
   h.zone=zone;
   pbApplyResult(h,zone);
 }
+// consecutive thrown doormats build a streak — hold neither builds nor breaks it, it only ever
+// tracks throwing accuracy. Every other throw outcome resets it.
+function pbStreakBreak(){ PB.streak=0; }
 function pbApplyResult(h,zone){
   if(zone==="doormat"){
     PB.stats.perfect++;
+    PB.streak++; PB.streakBest=Math.max(PB.streakBest,PB.streak);
+    const bonus=Math.min(PB_STREAK_CAP,PB.streak-1)*PB_STREAK_UNIT;
+    if(bonus>0){
+      PB.stats.streakBonus+=bonus;
+      toast("STREAK x"+PB.streak+" — +$"+bonus,1);
+    }
     pbSpawnParcelFX(h,"doormat");
     beep(880,.07); setTimeout(()=>beep(1180,.09),80);
   } else if(zone==="house"){
     PB.stats.house++;
+    pbStreakBreak();
     pbSpawnParcelFX(h,"house");
     beep(600,.06);
   } else if(zone==="window"){
     PB.stats.destruction++;
+    pbStreakBreak();
     pbSpawnParcelFX(h,"window");
     h.angryT=3.5;
     beep(160,.2,"sawtooth");
   } else if(zone==="destruction"){
     PB.stats.destruction++;
+    pbStreakBreak();
     pbSpawnParcelFX(h,"destruction");
     h.angryT=3.5;
     beep(120,.3,"sawtooth",.1);
   } else {
     PB.stats.miss++;
+    pbStreakBreak();
     beep(150,.1);
   }
 }
@@ -343,7 +374,11 @@ function pbFinish(){
   pbEngineStop();
   const s=PB.stats, total=PB.houses.length;
   const delivered=s.perfect+s.house;
-  const gross = s.perfect*PB_PERFECT_PAY + s.house*PB_HOUSE_PAY + s.tips
+  // thrown doormats pay the full rate; held ones (a subset of s.perfect) pay the basic rate —
+  // see PB_HOLD_PAY. Streak and top-speed bonuses only ever come from throwing, never from hold.
+  const thrownPerfect=s.perfect-s.hand;
+  const gross = thrownPerfect*PB_PERFECT_PAY + s.hand*PB_HOLD_PAY + s.house*PB_HOUSE_PAY
+              + s.streakBonus + s.topSpeedBonus + s.tips
               + (PB.parked==="bay" ? PB_PARK_BONUS : 0);
   const deduction = s.destruction*PB_DESTRUCTION_PENALTY + s.fumble*PB_FUMBLE_PENALTY + s.miss*PB_MISS_PENALTY
                   + (PB.crashed ? PB_CRASH_PENALTY : 0);
@@ -354,11 +389,14 @@ function pbFinish(){
   const ratio=secs/PB_PAR_TIME;
   const timeRating = ratio<=0.8 ? "FLYING" : ratio<=1.0 ? "ON TIME" : ratio<=1.25 ? "BEHIND" : "SLOW";
   const timeCol = ratio<=1.0 ? "#3fdc7a" : ratio<=1.25 ? "#ffd94a" : "#f22";
-  // grade weighs the round as a whole: what got delivered, what got broken/fumbled, and the clock
+  // grade weighs the round as a whole: what got delivered, what got broken/fumbled, the clock,
+  // and — on top of all that — how much of it was fast, accurate throwing rather than hold
   let score=(s.perfect*2 + s.house - s.destruction*4 - s.fumble*4 - s.miss*1.5)/total;
   if(ratio<=0.8) score+=0.35; else if(ratio>1.25) score-=0.35;
   if(PB.parked==="bay") score+=0.2;
   if(PB.crashed) score-=0.6;
+  score += Math.min(0.3, PB.streakBest*0.02);
+  score += Math.min(0.3, PB.topSpeedT*0.01);
   let grade;
   if(s.perfect===total && !PB.crashed && ratio<=1.0) grade="S";
   else if(score>=1.3) grade="A";
@@ -376,9 +414,15 @@ function pbFinish(){
   const parkLine = PB.crashed ? '<span style="color:#f22">CRASHED INTO THE WALL — −$'+PB_CRASH_PENALTY+'</span>'
     : PB.parked==="bay" ? '<span style="color:#3fdc7a">PARKED IN THE BAY — +$'+PB_PARK_BONUS+'</span>'
     : '<span style="color:#8a8a8a">STOPPED SHORT OF THE BAY</span>';
+  // bonus lines only show up if you actually earned them — nothing to review from an all-hold run
+  const bonusLines = (s.streakBonus||s.topSpeedBonus)
+    ? '<span style="color:#ffd94a">BEST STREAK x'+PB.streakBest+' — +$'+s.streakBonus+'</span><br>'
+      +'<span style="color:#ffd94a">'+PB.topSpeedT.toFixed(1)+'s AT TOP SPEED — +$'+s.topSpeedBonus+'</span><br>'
+    : "";
   $("#resLines").innerHTML=
-    "DELIVERED "+delivered+"/"+total+" ("+s.perfect+" PERFECT, "+s.hand+" BY HAND)<br>"+
+    "DELIVERED "+delivered+"/"+total+" ("+thrownPerfect+" THROWN, "+s.hand+" BY HAND)<br>"+
     s.destruction+" BROKEN, "+s.fumble+" FUMBLED, "+s.miss+" LOST"+(s.tips?" — $"+s.tips+" IN TIPS":"")+"<br>"+
+    bonusLines+
     parkLine+"<br>"+
     'TIME '+pbTimeStr(secs)+' vs '+pbTimeStr(PB_PAR_TIME)+' — <span style="color:'+timeCol+'">'+timeRating+"</span><br>"+
     "GROSS $"+gross+" − $"+deduction+" DEDUCTIONS = <b>$"+net+"</b>";
@@ -408,6 +452,17 @@ function updatePaperboy(dt){
 
   // --- hand delivery owns the van completely while it runs ---
   if(PB.hand){ pbHandUpdate(dt); return; }
+
+  // top speed bonus: ticks for however long the needle is actually pinned in the dial's red zone
+  if(PB.speed/PB_SPEED_MAX>=PB_TOPSPEED_RATIO){
+    PB.topSpeedT+=dt;
+    const n=Math.floor(PB.topSpeedT/PB_TOPSPEED_TICK);
+    if(n>PB.topSpeedTickN){
+      PB.topSpeedTickN=n;
+      PB.stats.topSpeedBonus+=PB_TOPSPEED_RATE*PB_TOPSPEED_TICK;
+      beep(1500,.03,"square",.02,{prio:0});
+    }
+  }
 
   if(PB.phase==="stopping"){
     PB.speed=Math.max(0,PB.speed-PB_BRAKE_DECEL*dt);
@@ -885,6 +940,12 @@ function pbDrawHUD(ctx,w,h){
   ctx.fillText(nextH ? (nextH.side==="L"?"◀ LEFT":"RIGHT ▶") : "", 12, 74);
   ctx.textAlign="right"; ctx.fillStyle="#fff"; ctx.font="8px 'Press Start 2P',monospace";
   ctx.fillText(PB.nextIdx+"/"+PB.houses.length, w-12, 22);
+  // a streak only appears once it's actually worth something — the same threshold pbApplyResult
+  // starts paying a bonus at (see PB_STREAK_UNIT)
+  if(PB.streak>=2){
+    ctx.fillStyle="#ffd94a"; ctx.font="8px 'Press Start 2P',monospace";
+    ctx.fillText("STREAK x"+PB.streak, w-12, 36);
+  }
   ctx.textAlign="left";
   pbDrawHandStatus(ctx,w,h);
   // the one instruction that matters once the parcels are gone
@@ -931,7 +992,7 @@ function pbDrawSpeedo(ctx,w,h){
   const r=34, cx=w-r-16, cy=h-r-52;
   const f=clamp(PB.speed/PB_SPEED_MAX,0,1);
   const A0=Math.PI*0.80, A1=Math.PI*2.20;      // sweep, measured clockwise from the left
-  const hot=f>0.86;
+  const hot=f>PB_TOPSPEED_RATIO;
   ctx.save();
   ctx.fillStyle="rgba(0,0,0,.72)";
   ctx.beginPath(); ctx.arc(cx,cy,r+4,0,7); ctx.fill();
@@ -941,7 +1002,7 @@ function pbDrawSpeedo(ctx,w,h){
   ctx.strokeStyle="#333"; ctx.lineWidth=6;
   ctx.beginPath(); ctx.arc(cx,cy,r-5,A0,A1); ctx.stroke();
   ctx.strokeStyle="#5a1414";
-  ctx.beginPath(); ctx.arc(cx,cy,r-5,A0+(A1-A0)*0.86,A1); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx,cy,r-5,A0+(A1-A0)*PB_TOPSPEED_RATIO,A1); ctx.stroke();
   // the live sweep
   ctx.strokeStyle=hot?"#f22":"#3fdc7a"; ctx.lineWidth=6;
   ctx.beginPath(); ctx.arc(cx,cy,r-5,A0,A0+(A1-A0)*f); ctx.stroke();
@@ -966,6 +1027,14 @@ function pbDrawSpeedo(ctx,w,h){
   ctx.fillText("MPH", cx, cy+25);
   ctx.textAlign="left";
   ctx.restore();
+  // ticking top-speed bonus — only shows once it's actually ticking, so it reads as a live
+  // reward for staying pinned in the red rather than a permanent HUD fixture
+  if(hot || PB.stats.topSpeedBonus>0){
+    ctx.fillStyle = hot ? "#ffd94a" : "#8a8a8a";
+    ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText("+$"+PB.stats.topSpeedBonus+" TOP SPEED", cx, cy+r+16);
+    ctx.textAlign="left";
+  }
 }
 // Route minimap: a strip of the whole street, one small square per house. White = due a delivery,
 // not thrown yet. Green/red = thrown, matching the doorstep outcome (good vs bad zone). Decoys —
@@ -1014,7 +1083,8 @@ function pbTutorialStart(){
     pressing:false, fx:[], swipe:null, shake:0,
     phase:"route", hand:null, braking:false, wobble:0, wobbleT:0, crashed:false, parked:null,
     roadEnd:h2.worldDist+PB_SIGN_LEAD+PB_STOP_ZONE_LEN+140, elapsed:0, lines:[],
-    stats:{perfect:0, house:0, destruction:0, fumble:0, miss:0, hand:0, tips:0},
+    streak:0, streakBest:0, topSpeedT:0, topSpeedTickN:0,
+    stats:{perfect:0, house:0, destruction:0, fumble:0, miss:0, hand:0, tips:0, streakBonus:0, topSpeedBonus:0},
     tutorial:true, active:true, run:false
   });
   Object.assign(PBTUT,{step:PBTUT_STEP.DRIVE_TO_1, stepT:0, arrowPulse:0, waitingInput:false, bannerT:0, houseIdx:0, target:h1.worldDist});
