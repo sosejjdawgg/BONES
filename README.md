@@ -28,6 +28,7 @@ BONES has six needs, all visible as meters on the home screen: **hunger, thirst,
 - **Rest** — a bed lets him sleep all the way to full energy, but it has to actually fit him. Every growth stage outgrows the old bed (capping sleep at 70% again) until you buy the next size up.
 - **Sickness & the vet** — ignore his needs for too long and he can get sick, or worse. An emergency vet visit costs money and a countdown; letting it lapse rewinds to your last save.
 - **Saving** — the game nudges you to save after anything that earns real progress (a DOGPARK run, a job, a walk). Saves live in the browser's local storage — nothing leaves the device.
+- **Notices** — warnings and confirmations appear in a strip along the bottom of DOGCAM, just above the XP bar, so they never sit on top of the controls. Anything too long for the strip scrolls itself into view; tap the strip to read the whole message in a dialog.
 
 ## Growing Up
 

@@ -81,6 +81,22 @@ button.red:active{background:#f22;color:#000}
 .bar.crit{border-color:#f22}
 .bar.crit i{background:#f22}
 
+/* MESSAGE STRIP — notices land in the dead band between the DOGCAM scene and the XP bar rather
+   than floating over the middle of whatever screen is up. Text too wide for the strip scrolls
+   itself into view and back; tapping the strip opens the whole message in a dialog. */
+#camMsg{position:absolute;left:8px;right:8px;bottom:42px;height:18px;z-index:4;display:none;
+  background:#000;border:2px solid #fff;overflow:hidden;white-space:nowrap;cursor:pointer;
+  font-size:7px;line-height:14px}
+#camMsg.show{display:block}
+#camMsg.red{border-color:#f22;color:#f22}
+#camMsgTxt{display:inline-block;padding:0 6px}
+/* alternate, so a long message slides to its end and back instead of snapping to the start */
+#camMsg.scroll #camMsgTxt{animation:camMsgScroll var(--camMsgDur,4s) ease-in-out infinite alternate}
+@keyframes camMsgScroll{
+  0%,15%{transform:translateX(0)}
+  85%,100%{transform:translateX(calc(-1 * var(--camMsgShift,0px)))}
+}
+
 /* PORTRAIT — small card beside BONES, same size as daily pre-run photo */
 #portrait{position:absolute;top:12%;height:60%;max-height:170px;z-index:5;display:none;border:3px solid #fff;background:#000}
 #portrait.show{display:block}
@@ -378,6 +394,7 @@ body.reduce-motion *{animation:none!important}
         <button id="stClose">X</button>
       </div>
       <div id="portrait"><img id="portraitImg" alt="BONES"><span id="portraitLb"></span></div>
+      <div id="camMsg"><span id="camMsgTxt"></span></div>
     </div>
 
     <div id="panel">
@@ -423,7 +440,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.277a</span>
+          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.280a</span>
         </div>
       </div>
 
@@ -545,7 +562,7 @@ body.reduce-motion *{animation:none!important}
           <span class="gh">THE PARK OPENS UP</span><br>
           FROM THE SECOND WAVE ON, EVERY CLEAR PULLS THE CAMERA BACK A STEP AND HANDS THAT SPACE TO THE VIEW — THE PARK GETS WIDER AND THE CONTROLS GET TIGHTER. IT ALL HAPPENS DURING THE SLOW-MOTION FINAL KILL, SO YOU SEE IT SETTLE. IT FINISHES OPENING UP AT WAVE 10 AND STAYS PUT FROM THERE, HOWEVER DEEP THE RUN GOES.<br><br>
           <span class="gh">DOGPARK UNLEASHED</span><br>
-          CLEAR WAVE 10 ONCE AND DOGPARK UNLEASHED UNLOCKS FOR GOOD. SAME 10 WAVES, DOUBLE THE ENEMIES ON SCREEN AT ONCE, UNDER A DARKER NIGHT SKY WITH FIREFLIES DRIFTING THROUGH THE GLOOM — PICK NORMAL OR UNLEASHED EVERY TIME YOU HEAD OUT. THE PARK STAYS WRAPPED IN FOG OUTSIDE WHERE HE'S RECENTLY EXPLORED, SO GROUND HE HASN'T WALKED IN A WHILE FADES BACK INTO THE DARK. NIGHT MODE IN SETTINGS SWITCHES OFF THE WHOLE NIGHT LOOK MID-RUN IF YOU'D RATHER SEE IT IN NORMAL DAYLIGHT.<br><br>
+          HOLD 5,000 BONES AND DOGPARK UNLEASHED UNLOCKS. SAME 10 WAVES, DOUBLE THE ENEMIES ON SCREEN AT ONCE, UNDER A DARKER NIGHT SKY WITH FIREFLIES DRIFTING THROUGH THE GLOOM — PICK REGULAR OR UNLEASHED EVERY TIME YOU HEAD OUT. THE PARK STAYS WRAPPED IN FOG OUTSIDE WHERE HE'S RECENTLY EXPLORED, SO GROUND HE HASN'T WALKED IN A WHILE FADES BACK INTO THE DARK. NIGHT MODE IN SETTINGS SWITCHES OFF THE WHOLE NIGHT LOOK MID-RUN IF YOU'D RATHER SEE IT IN NORMAL DAYLIGHT.<br><br>
           <span class="gh">THE SWORD (DOGPARK UNLEASHED)</span><br>
           WAVE 2 OF A DOGPARK UNLEASHED RUN, SOMETHING FALLS TO EARTH AND BURIES ITSELF NEARBY. WALK UP AND PAY THE PRICE SHOWN TO CLAIM IT — FROM THEN ON HE CARRIES IT IN HIS MOUTH AND CUTS DOWN ANYTHING HE RUNS INTO. SHARPEN THE BLADE BETWEEN WAVES FOR MORE REACH AND DAMAGE, UP TO 5 TIERS. LEAVE IT UNCLAIMED TOO LONG AND LIGHTNING STARTS STRIKING IT WHERE IT STANDS.<br><br>
           <span class="gh">FIRE</span><br>

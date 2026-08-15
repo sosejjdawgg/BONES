@@ -325,13 +325,43 @@ function syncMoodMusic(){
 })();
 
 /* ---------- toast ---------- */
-let toastT=0;
+// Notices go to the message strip in the DOGCAM's bottom band (see #camMsg) so they never sit on
+// top of the controls. The old floating toast is still the fallback for the two places that band
+// isn't ours to use: the title screen (no DOGCAM yet) and a live park run (the park owns the view).
+let toastT=0, camMsgT=0, CAMMSG_FULL="";
+const CAMMSG_HOLD=1900;   // ms a message that fits stays up
+const CAMMSG_PER_PX=30;   // extra ms per pixel of overflow, so long text gets time to scroll past
+const CAMMSG_MAX=7000;
 function toast(msg,red){
   msg=DN(msg);
-  const t=$("#toast"); t.textContent=msg; t.className=red?"red":"";
-  t.style.display="block"; clearTimeout(toastT);
-  toastT=setTimeout(()=>t.style.display="none",1700);
+  if(PARK_HDR || $("#game").classList.contains("hidden")){
+    const t=$("#toast"); t.textContent=msg; t.className=red?"red":"";
+    t.style.display="block"; clearTimeout(toastT);
+    toastT=setTimeout(()=>t.style.display="none",1700);
+    return;
+  }
+  CAMMSG_FULL=msg;
+  const box=$("#camMsg"), txt=$("#camMsgTxt");
+  txt.textContent=msg;
+  box.className="show"+(red?" red":"");     // also drops any .scroll left over from the last one
+  const shift=Math.max(0, txt.scrollWidth-box.clientWidth+10);   // reading this settles layout too
+  let life=CAMMSG_HOLD;
+  if(shift>2){
+    box.style.setProperty("--camMsgShift", shift+"px");
+    box.style.setProperty("--camMsgDur", (1.1+shift/42).toFixed(2)+"s");
+    if(!SETTINGS.reduceMotion) box.classList.add("scroll");
+    life=Math.min(CAMMSG_MAX, CAMMSG_HOLD+shift*CAMMSG_PER_PX);
+  }
+  clearTimeout(camMsgT);
+  camMsgT=setTimeout(hideCamMsg, life);
 }
+function hideCamMsg(){ clearTimeout(camMsgT); $("#camMsg").className=""; }
+// a strip only holds so much -- tapping it puts the whole message in a dialog that waits for you
+$("#camMsg").addEventListener("click",()=>{
+  if(!CAMMSG_FULL || $("#choice").classList.contains("show")) return;
+  hideCamMsg(); beep(520,.04);
+  openChoice("MESSAGE", CAMMSG_FULL, "OK", null);
+});
 
 /* ---------- state ---------- */
 const S = {
@@ -3059,6 +3089,7 @@ function showScreen(id){
   // canvas from the top down, so the music button's usual perch above a ctrlrow lands in the
   // middle of the pal rows there, and lands on them harder the more the pad shrinks
   $("#app").classList.toggle("in-park", id==="park");
+  if(id==="park") hideCamMsg();   // the park takes over the view — a leftover notice would sit on top of it
   MODE=id;
   $("#rSnack").classList.toggle("hidden", id!=="work");
   $("#rWalk").classList.toggle("hidden", id!=="work");
@@ -4334,7 +4365,10 @@ function loop(now){
     mystTick(dt);
     if(CAM.workBlockT > 0) CAM.workBlockT = Math.max(0, CAM.workBlockT - dt);
     robotTick(dt);
-    if(MODE==="park" && PK.active){ parkUpdate(dt); parkDraw(t); PARK_HDR=true; syncParkHeader(); }
+    if(MODE==="park" && PK.active){
+      if(!PARK_HDR) hideCamMsg();   // a notice fired on the way in would land on the park's own banner
+      parkUpdate(dt); parkDraw(t); PARK_HDR=true; syncParkHeader();
+    }
     else { if(PARK_HDR){ PARK_HDR=false; restoreCamHeader(); } drawCam(t); }
     if(OUTING.active){
       OUTING.timer-=dt;
