@@ -404,7 +404,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.262a</span>
+          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.263a</span>
         </div>
       </div>
 
@@ -602,6 +602,13 @@ body.reduce-motion *{animation:none!important}
       <!-- PARK -->
       <div id="park" class="screen hidden">
         <canvas id="parkcv"></canvas>
+        <!-- real buttons, not canvas-drawn hit-rects — a thumb aiming for the gear used to be
+             able to clip the much larger END RUN button sitting right next to it; native buttons
+             hit-test themselves, so that whole class of mis-tap is gone for good -->
+        <div id="pkBottomBtns" style="position:absolute;left:8px;bottom:10px;display:flex;gap:10px;z-index:5">
+          <button class="tiny red" id="pkEndRunBtn">&#9873; END RUN</button>
+          <button class="tiny" id="pkSettingsBtn">&#9881;</button>
+        </div>
         <span id="pkDevToggle" style="position:absolute;bottom:2px;right:6px;color:#333;font-size:9px;cursor:pointer;padding:8px;z-index:9">&#9881;</span>
         <div id="pkDevbar" class="hidden">
           <button class="tiny" id="pkDevSkip">SKIP WAVE</button>

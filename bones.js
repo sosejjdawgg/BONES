@@ -3851,7 +3851,7 @@ function renderSettings(){
   // of DOGPARK and into the delivery driver minigame, with the park run left dangling; same logic
   // mid-route, where it would restart the tutorial on top of the live delivery route
   $("#mReplayTutorial").style.display = (S.pbTutorialDone && !PK.active && !PB.run) ? "" : "none";
-  // only relevant mid-run — opened from DOGPARK's own settings button (see pkSettingsRect)
+  // only relevant mid-run — opened from DOGPARK's own settings button (see #pkSettingsBtn)
   $("#setEndRunPk").style.display = PK.active ? "" : "none";
   // only relevant during a live DOGPARK UNLEASHED run — switching it off reverts the whole night
   // treatment (tint, fog-of-war, fireflies) back to how regular DOGPARK looks, live, mid-run

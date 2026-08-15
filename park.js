@@ -5657,19 +5657,6 @@ function pkDrawFixedSlot(ctx,r,ic,label,owned,cost,col){
 // one shared geometry for every alive sq/cat/ape pal's HP bar + STAY/FOLLOW buttons — used by
 // both the draw call below and the pad's pointerdown hit-test, so they can never drift apart.
 // Pure function of PK state (no animation terms), so it's safe to call from either place.
-// one shared rect for the END RUN button — draw and hit-test read the same geometry, same
-// convention as pkPalHudRows below. Only depends on h (bottom-anchored), not w.
-function pkEndRunRect(h){
-  return {x:8, y:h-38, w:104, h:26};
-}
-// sits beside END RUN, same row — opens the shared settings panel (sound/music/reduce motion/
-// bark style, plus its own copy of end-run for anyone who goes looking for it in there). A real
-// gap and a properly sized target here on purpose — these two used to sit close enough that a
-// real touch (not a pixel-precise mouse click) would land End Run when the gear was the target.
-function pkSettingsRect(h){
-  const er=pkEndRunRect(h);
-  return {x:er.x+er.w+22, y:er.y, w:46, h:26};
-}
 function pkPalHudRows(w){
   const bx=w-140, bw2=128;
   const by=14, bh2=14;
@@ -5713,22 +5700,11 @@ function pkPadDraw(t){
   drawBone(ctx, 24, 26, 1, "#fff");
   ctx.fillStyle="#fff"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
   ctx.fillText(PK.bones+" BONES", 34, 29);
-  // bottom-left, always reachable — a deliberate way out that isn't "just die on purpose".
-  // Hidden behind whichever full-screen panel is currently up so it never fights for a tap.
-  if(!PK.shop && !PK.friendsOpen && !PK.convertOpen){
-    const er=pkEndRunRect(h);
-    ctx.strokeStyle="#f22"; ctx.lineWidth=2; ctx.fillStyle="rgba(0,0,0,.7)";
-    ctx.fillRect(er.x,er.y,er.w,er.h); ctx.strokeRect(er.x,er.y,er.w,er.h);
-    ctx.fillStyle="#f22"; ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText("⚑ END RUN", er.x+er.w/2, er.y+er.h*0.65);
-    ctx.textAlign="left";
-    const sr=pkSettingsRect(h);
-    ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.fillStyle="rgba(0,0,0,.7)";
-    ctx.fillRect(sr.x,sr.y,sr.w,sr.h); ctx.strokeRect(sr.x,sr.y,sr.w,sr.h);
-    ctx.fillStyle="#fff"; ctx.font="11px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText("⚙", sr.x+sr.w/2, sr.y+sr.h*0.72);
-    ctx.textAlign="left";
-  }
+  // bottom-left, always reachable — a deliberate way out that isn't "just die on purpose". Real
+  // DOM buttons (not canvas-drawn hit-rects) so a thumb aiming for the gear can never clip the
+  // much larger END RUN button beside it — hidden behind whichever full-screen panel is up so
+  // neither one fights for a tap.
+  $("#pkBottomBtns").style.display = (!PK.shop && !PK.friendsOpen && !PK.convertOpen) ? "" : "none";
   let hudBottomY=44;   // grows as the armour/pal stack below actually uses space, so the wave
                        // goal block (drawn later) always clears it with real room instead of a guess
   {
@@ -6055,26 +6031,6 @@ function pkPadDraw(t){
     const px=e.clientX-r.left, py=e.clientY-r.top;
     if(px>8 && px<118 && py>10 && py<40){ PK.convertOpen=true; beep(500,.05); return; }
     const hit2=(rx,ry,rw,rh)=>px>=rx&&px<=rx+rw&&py>=ry&&py<=ry+rh;
-    {
-      const er=pkEndRunRect(r.height);
-      if(hit2(er.x,er.y,er.w,er.h)){
-        beep(300,.06);
-        PK.endRunAsk=true;
-        openChoice("LEAVE EARLY?",
-          "YOU'LL LOSE ALL "+PK.bones+" BONES AND ALL THE XP FROM<br>THIS RUN — NONE OF IT COMES HOME.<br><br>DO YOU REALLY WANT TO LEAVE EARLY?",
-          "YES, END RUN", ()=>{ PK.endRunAsk=false; pkForfeitRun(); },
-          "KEEP PLAYING", ()=>{ PK.endRunAsk=false; });
-        return;
-      }
-      const sr=pkSettingsRect(r.height);
-      if(hit2(sr.x,sr.y,sr.w,sr.h)){
-        beep(500,.05);
-        PK.settingsOpen=true;
-        renderSettings();
-        $("#settingsPanel").classList.add("show");
-        return;
-      }
-    }
     for(const row of pkPalHudRows(r.width)){
       if(hit2(row.stay.x,row.stay.y,row.stay.w,row.stay.h)){
         if(!row.p.stay){ row.p.stay=true; beep(300,.06); }
@@ -6103,3 +6059,21 @@ function pkPadDraw(t){
   const up=()=>{ PK.joy=null; };
   cv.addEventListener("pointerup",up); cv.addEventListener("pointercancel",up);
 })();
+// real buttons — see #pkBottomBtns in bones.html. Visibility is toggled every frame in
+// pkPadDraw, same condition the canvas-drawn version used to gate its own hit-test on.
+$("#pkEndRunBtn").addEventListener("click",()=>{
+  if(!PK.active) return;
+  beep(300,.06);
+  PK.endRunAsk=true;
+  openChoice("LEAVE EARLY?",
+    "YOU'LL LOSE ALL "+PK.bones+" BONES AND ALL THE XP FROM<br>THIS RUN — NONE OF IT COMES HOME.<br><br>DO YOU REALLY WANT TO LEAVE EARLY?",
+    "YES, END RUN", ()=>{ PK.endRunAsk=false; pkForfeitRun(); },
+    "KEEP PLAYING", ()=>{ PK.endRunAsk=false; });
+});
+$("#pkSettingsBtn").addEventListener("click",()=>{
+  if(!PK.active) return;
+  beep(500,.05);
+  PK.settingsOpen=true;
+  renderSettings();
+  $("#settingsPanel").classList.add("show");
+});
