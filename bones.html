@@ -243,6 +243,10 @@ body.reduce-motion .screen.screen-in{animation:none}
    in the corner on purpose, so it never competes with a screen's own bottom controls (this used
    to sit low enough to overlap Delivery Driver's THROW/HOLD row) */
 #globalMusicBtn{position:absolute;right:10px;bottom:78px;z-index:45;width:28px;height:28px;padding:0;border-radius:50%;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center;background:#000;border:2px solid #fff;color:#fff;opacity:.72}
+/* in DOGPARK the pad's own HUD (pal rows, armour bar) is drawn top-down onto the canvas and
+   reaches further down the shorter the pad gets, so the button drops into the empty bottom-right
+   corner instead — the END RUN/settings pair lives bottom-LEFT, so nothing else wants that space */
+#app.in-park #globalMusicBtn{bottom:12px}
 #globalMusicBtn.muted{color:#666;border-color:#666}
 #globalMusicBtn.muted::after{content:"";position:absolute;width:24px;height:2px;background:#f22;transform:rotate(-45deg)}
 #pkDevbar button{flex:1;font-size:6px;padding:5px 3px;border-color:#555;color:#aaa}
@@ -407,7 +411,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.268a</span>
+          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.272a</span>
         </div>
       </div>
 
@@ -525,7 +529,9 @@ body.reduce-motion *{animation:none!important}
           <span class="gh">WALKS & THE DOGPARK</span><br>
           TAP GO OUT FOR WORK, TRAINING OR THE BEACH — OR HEAD TO THE DOGPARK ONCE HE HITS LV.5. BARK AT SQUIRRELS, BIRDS & CATS TO SCARE THEM OFF — HE DOESN'T HURT ANYONE, THEY JUST DROP A BONE AND SCUTTLE AWAY. SURVIVE THE WAVES AND REACH THE RED EXIT TO BANK REAL XP BEFORE HE GETS OVERRUN.<br><br>
           <span class="gh">THE DOGPARK ECONOMY</span><br>
-          EVERY SCARED-OFF CRITTER DROPS ONE BONE. SPEND THEM BETWEEN WAVES ON UPGRADES, RARE CHARMS, OR GROWING THE PARK ITSELF — OR TAP THE BONES COUNTER ANY TIME TO TRADE SOME FOR XP, MONEY OR A BONE TREAT. CLEAR A WAVE INSIDE 60 SECONDS AND A BONUS CHARM UNLOCKS IN THE SHOP. KEEP AN EYE OUT FOR THE GOLDEN BIRD — CATCH IT FOR A BIG BONES PAYOUT.<br><br>
+          EVERY SCARED-OFF CRITTER DROPS ONE BONE. SPEND THEM BETWEEN WAVES ON UPGRADES OR RARE CHARMS — OR TAP THE BONES COUNTER ANY TIME TO TRADE SOME FOR XP, MONEY OR A BONE TREAT. CLEAR A WAVE INSIDE 60 SECONDS AND A BONUS CHARM UNLOCKS IN THE SHOP. KEEP AN EYE OUT FOR THE GOLDEN BIRD — CATCH IT FOR A BIG BONES PAYOUT.<br><br>
+          <span class="gh">THE PARK OPENS UP</span><br>
+          FROM THE SECOND WAVE ON, EVERY CLEAR PULLS THE CAMERA BACK A STEP AND HANDS THAT SPACE TO THE VIEW — THE PARK GETS WIDER AND THE CONTROLS GET TIGHTER AS THE RUN GOES DEEPER. IT ALL HAPPENS DURING THE SLOW-MOTION FINAL KILL, SO YOU SEE IT SETTLE.<br><br>
           <span class="gh">DOGPARK UNLEASHED</span><br>
           CLEAR WAVE 10 ONCE AND DOGPARK UNLEASHED UNLOCKS FOR GOOD. SAME 10 WAVES, DOUBLE THE ENEMIES ON SCREEN AT ONCE, UNDER A DARKER NIGHT SKY WITH FIREFLIES DRIFTING THROUGH THE GLOOM — PICK NORMAL OR UNLEASHED EVERY TIME YOU HEAD OUT. THE PARK STAYS WRAPPED IN FOG OUTSIDE WHERE HE'S RECENTLY EXPLORED, SO GROUND HE HASN'T WALKED IN A WHILE FADES BACK INTO THE DARK. NIGHT MODE IN SETTINGS SWITCHES OFF THE WHOLE NIGHT LOOK MID-RUN IF YOU'D RATHER SEE IT IN NORMAL DAYLIGHT.<br><br>
           <span class="gh">THE SWORD (DOGPARK UNLEASHED)</span><br>

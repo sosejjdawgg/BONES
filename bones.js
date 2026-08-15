@@ -1146,7 +1146,11 @@ $("#mpShop").onclick=()=>{
 /* ---------- canvas setup ---------- */
 function fit(cv){
   const w=cv.clientWidth, h=cv.clientHeight;
-  if(cv.width!==Math.round(w*DPR)){ cv.width=Math.round(w*DPR); cv.height=Math.round(h*DPR); }
+  // height is checked as well as width: the DOGPARK split (see pkApplyUISplit) grows #cam and
+  // shrinks #panel without ever touching their widths, so a width-only test would leave both
+  // canvases drawing into a stale backing buffer and stretch the picture vertically
+  const bw=Math.round(w*DPR), bh=Math.round(h*DPR);
+  if(cv.width!==bw || cv.height!==bh){ cv.width=bw; cv.height=bh; }
   const ctx=cv.getContext("2d");
   ctx.setTransform(DPR,0,0,DPR,0,0);
   ctx.imageSmoothingEnabled=false;
@@ -3049,6 +3053,10 @@ function showScreen(id){
   // that depends on the new screen already being in the DOM the instant this returns has to
   // wait on an animation. The fade-in is a purely cosmetic class added on top of that.
   for(const s of ["home","work","run","park","paperboy"]) $("#"+s).classList.toggle("hidden", s!==id);
+  // DOGPARK's control pad has no button row of its own — it draws its HUD straight onto the
+  // canvas from the top down, so the music button's usual perch above a ctrlrow lands in the
+  // middle of the pal rows there, and lands on them harder the more the pad shrinks
+  $("#app").classList.toggle("in-park", id==="park");
   MODE=id;
   $("#rSnack").classList.toggle("hidden", id!=="work");
   $("#rWalk").classList.toggle("hidden", id!=="work");

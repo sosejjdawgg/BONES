@@ -454,7 +454,8 @@ function startPark(plus){
     chain:0, chainT:0, inv:0, fx:[],
     x:0,y:0,vx:0,vy:0, joy:null,
     en:[], fr:[], gate:{}, gateArm:true, gateAsk:false, started:false, shop:null, biscuits:[], drops:[], nuts:[],
-    powerups:[], zoomT:0, over:0, regenT:0, regenAcc:0, hurtT:0, hpSeen:0, zoom:1, zoomFromBark:0, zoomFromPark:0, sniffLvl:0, w2Stage:0,
+    powerups:[], zoomT:0, over:0, regenT:0, regenAcc:0, hurtT:0, hpSeen:0, zoom:1, zoomFromBark:0, sniffLvl:0, w2Stage:0,
+    zoomFromWave:0, zoomAnim:null, uiCamPct:PK_CAM_PCT0,
     trees:[], scorch:[], embers:[], treeGrid:null, treeGridDirty:true,
     plusMode:!!plus, mixTypes:null, mixLabel:null, swoopT:0,
     pals:[], palEyes:false, friendsOpen:false, friendsArm:false, npc:{x:.5,y:.5},
@@ -468,6 +469,7 @@ function startPark(plus){
     fog:null, fogCols:0, fogRows:0, facing:0, fireflies:[]
   });
   PK.hp=PK.maxhp;
+  pkResetUISplit();       // a run always opens on the stock split, however the last one ended
   PK.healerT=pkHealerGap();
   PK.acts=[{k:"hoop",x:.15,y:.125,cd:0},{k:"tunnel",x:.35,y:.36,cd:0},{k:"ramp",x:.11,y:.39,cd:0},{k:"tunnel",x:.62,y:.70,cd:0},{k:"hoop",x:.85,y:.20,cd:0}];
   PK.waveBanner={text:"WAVE 1", sub:pkWaveName(1), life:3.2, max:3.2};
@@ -2374,14 +2376,85 @@ const BARK_LVL_CAP=4;
 const AGI_LVL_CAP=3, AGI_CD_BASE=20, AGI_CD_STEP=4, AGI_HEAL_BASE=0.05, AGI_HEAL_STEP=0.03;
 function pkAgiCd(){   return Math.max(6, AGI_CD_BASE - AGI_CD_STEP*(PK.agiLvl||0)); }
 function pkAgiHeal(){ return AGI_HEAL_BASE + AGI_HEAL_STEP*(PK.agiLvl||0); }
-// the camera pulls back a little every time BONES gets stronger — a bigger bark or a bigger
-// park both mean more happening on screen at once, so the view widens to show it. The two
-// sources share one 25%-out ceiling rather than stacking without limit.
+// the camera pulls back a little every time BONES gets stronger — a bigger bark means more
+// happening on screen at once, so the view widens to show it. Capped at 25% out on its own.
 function pkApplyZoom(){
-  // the permanent bark/park pull-back stays capped at 25% total, but Heavenly Judgment's own
-  // temporary pull-back is a rare, deliberate cinematic beat — it stacks on top, uncapped, and
-  // decays back to 0 on its own once the sequence ends (see pkJudgmentAdvance)
-  PK.zoom=1-Math.min(0.25,(PK.zoomFromBark||0)+(PK.zoomFromPark||0))-(PK.zoomFromJudgment||0);
+  // three independent pull-backs, deliberately not sharing one ceiling because they mean
+  // different things: the bark upgrades are a permanent earned 25%; the per-wave pull-back is
+  // the run's own arc, opening the park up as it escalates (see PK_ZOOM_MAX); and Heavenly
+  // Judgment's is a rare cinematic beat that stacks on top and decays back to 0 by itself
+  // once the sequence ends (see pkJudgmentAdvance)
+  // the two permanent sources are floored together before Judgment is added: on their own each
+  // is fine, but a fully bark-upgraded run that also reaches the wave ceiling would compound to
+  // a quarter-scale world, which is small enough to stop being readable. The floor sits below
+  // the wave ceiling on its own (0.50), so the full pull-back is always actually reachable —
+  // it only ever bites when both have been maxed at once.
+  const perm=Math.min(1-PK_ZOOM_FLOOR,
+                      Math.min(0.25, PK.zoomFromBark||0) + Math.min(PK_ZOOM_MAX, PK.zoomFromWave||0));
+  PK.zoom = 1 - perm - (PK.zoomFromJudgment||0);
+}
+/* ---------- the park opening up: every wave cleared from wave 2 on pulls the camera back one
+   step and hands the same step's worth of screen from the control pad to the view itself. It
+   runs inside the wave-clear slow-mo (see WAVE_OUTRO_DUR), so the park visibly reacts to the
+   final kill rather than snapping between waves. No world rebuild is involved — this is purely
+   camera + layout, which is both cheaper and reads far better than the old buy-a-bigger-park. */
+const PK_ZOOM_STEP=0.025, PK_ZOOM_MAX=0.50;
+const PK_ZOOM_FLOOR=0.45;                              // the smallest the world may ever be drawn
+const PK_CAM_PCT0=42;                                  // #cam's resting height, matching the CSS
+const PK_BOTTOM_SHRINK_MAX=0.5;                        // the pad gives up at most half its height
+const PK_CAM_PCT_MAX=PK_CAM_PCT0+(100-PK_CAM_PCT0)*PK_BOTTOM_SHRINK_MAX;
+// the split is driven straight off how far through the zoom range the run is, so the view and
+// the pad can never drift out of step with each other however either constant is retuned
+function pkCamPctFor(waveZoom){
+  return PK_CAM_PCT0 + (PK_CAM_PCT_MAX-PK_CAM_PCT0)*clamp((waveZoom||0)/PK_ZOOM_MAX,0,1);
+}
+// one style write per frame, and only while an animation is actually running
+function pkApplyUISplit(pct){
+  PK.uiCamPct=pct;
+  $("#cam").style.height=pct.toFixed(2)+"%";
+}
+// #cam is the shared DOGCAM header, not a park-only element — leaving it grown would follow the
+// player home, so every single exit out of a run has to come back through here
+function pkResetUISplit(){
+  PK.zoomAnim=null;
+  PK.uiCamPct=PK_CAM_PCT0;
+  $("#cam").style.height="";     // back to the stylesheet's own 42%
+}
+// queued by the wave-clearing kill; driven by pkWaveZoomAdvance across the outro that follows
+function pkWaveZoomStep(){
+  const from=PK.zoomFromWave||0;
+  const to=Math.min(PK_ZOOM_MAX, from+PK_ZOOM_STEP);
+  if(to<=from) return;                       // already all the way out — nothing left to give
+  if(SETTINGS.reduceMotion){                 // no travel, just the outcome and the settle
+    PK.zoomFromWave=to; pkApplyZoom(); pkApplyUISplit(pkCamPctFor(to));
+    beep(220,.09,"triangle",.06,{prio:2});
+    return;
+  }
+  PK.zoomAnim={from, to, dur:WAVE_OUTRO_DUR*0.85, clicks:0};
+}
+const PK_ZOOM_CLICKS=8;
+function pkWaveZoomAdvance(){
+  const a=PK.zoomAnim; if(!a || !PK.waveOutro) return;
+  const p=clamp(PK.waveOutro.t/a.dur,0,1);
+  const ease=p*p*(3-2*p);                    // smoothstep: eases out of the kill and into the rest
+  PK.zoomFromWave=a.from+(a.to-a.from)*ease;
+  pkApplyZoom();
+  pkApplyUISplit(pkCamPctFor(PK.zoomFromWave));
+  // a ratchet rather than a metronome: the clicks are spaced by eased progress, so they crowd
+  // together through the fast middle of the move and thin out as it settles
+  const want=Math.floor(ease*PK_ZOOM_CLICKS);
+  while(a.clicks<want){
+    a.clicks++;
+    const f=1750+a.clicks*55+Math.random()*70;
+    beep(f,.026,"square",.032,{prio:1});
+    if(a.clicks>3) beep(f*1.7,.014,"square",.018,{prio:0});
+  }
+  if(p>=1){
+    PK.zoomFromWave=a.to; pkApplyZoom(); pkApplyUISplit(pkCamPctFor(a.to));
+    PK.zoomAnim=null;
+    beep(220,.09,"triangle",.055,{prio:2});           // the mechanism dropping into its notch
+    setTimeout(()=>beep(140,.14,"sawtooth",.04,{prio:1}),40);
+  }
 }
 // removes any tree within r of (x,y) — used after every expansion to guarantee a real clearing
 // around anything BONES actually needs to reach, rather than hoping the random scatter missed it
@@ -2477,18 +2550,6 @@ function pkEnsureWalkable(){
   pkClearAround(PK.x, PK.y, SAFE_SPOT_R);
   for(const pu of PK.powerups) pkClearAround(pu.x, pu.y, 40);
   pkBuildTreeGrid();   // and leave a grid that matches the trees everything after this will query
-}
-function pkExpandPark(){
-  PK.worldMult=Math.min(8,PK.worldMult+0.5);
-  if(Math.random()<0.5 && PK.groves<3){ PK.groves++; toast("THE PARK GREW — AND SO DID THE TREES."); }
-  PK.zoomFromPark=Math.min(0.25,(PK.zoomFromPark||0)+0.10);
-  pkApplyZoom();
-  const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
-  PK.WW=w*PK.worldMult; PK.WH=h*PK.worldMult;
-  pkBuildBG(PK.WW,PK.WH);
-  pkBuildTrees();
-  pkEnsureWalkable();
-  pkBuildFogGrid();
 }
 /* ---------- the bandana dog: a shop for friends who fight beside you ---------- */
 // he stands stock still in the middle of the carnage wearing a red bandana, utterly unbothered.
@@ -3157,12 +3218,8 @@ function pkShopOpen(){
     pool.push({n:"\u2b25 "+pick.name, ic:"relic", fx:pick.fx, c:pick.cost, relic:true,
       f:()=>{ pick.apply(); PK.relic=pick.id; tickTodo("j_collar"); }});
   }
-  // rare chance to grow the park itself, up to a 4\u00d74 world
-  if(PK.worldMult<8 && Math.random()<0.3){
-    const next=Math.min(8,PK.worldMult+0.5);
-    pool.push({n:"EXPAND THE PARK", ic:"expand", fx:"GROW WORLD TO "+next+"\u00d7"+next, c:Math.round(14+(PK.worldMult-4)*16), expand:true,
-      f:()=>pkExpandPark()});
-  }
+  // the park is no longer something you buy your way into a bigger version of \u2014 it opens up on
+  // its own now, a step further back with every wave cleared (see PK_ZOOM_STEP / pkWaveZoomStep)
   // the compass and Full Armour aren't in this rolled pool at all any more \u2014 see pkShopRows,
   // where they're two fixed slots flanking SKIP, visible in every shop from wave 1 on
   // wave 1's shop is everyone's first taste of it \u2014 a flat, cheap price on everything so a new
@@ -3201,8 +3258,9 @@ function parkUpdate(dt){
   // attacks until they finish, so the drop reads as an event rather than something happening in
   // the corner of a firefight
   if(PK.swordCine){ pkSwordCineUpdate(dt); return; }
-  // the wave-ending send-off runs its own real-time clock while the world it is showing slows
-  if(PK.waveOutro){ PK.waveOutro.t+=dt; dt*=pkOutroSlow(); }
+  // the wave-ending send-off runs its own real-time clock while the world it is showing slows —
+  // the park's own pull-back rides that same real clock, so it lands with the slow-mo, not after
+  if(PK.waveOutro){ PK.waveOutro.t+=dt; pkWaveZoomAdvance(); dt*=pkOutroSlow(); }
   if(PK.judgment){ pkJudgmentAdvance(dt); dt*=pkJudgmentSlow(); }
   // exercise costs him something: DOGPARK deliberately sits outside the day/night clock
   // (tickStats no-ops while PK.active — see its own comment), so this is a small, self-contained
@@ -3308,6 +3366,9 @@ function parkUpdate(dt){
   if(waveClear && !PK.waveOutro){
     PK.waveOutro={t:0, hero:PK.lastDowned&&PK.lastDowned.fleeing?PK.lastDowned:null};
     if(PK.waveOutro.hero) PK.waveOutro.hero.heroOutro=true;
+    // wave 1's clear is left alone — the very first send-off is busy enough teaching the beat.
+    // From the wave-2 clear on, the park opens up a step on every single one of these.
+    if(PK.wave>=2) pkWaveZoomStep();
     PK.shake=Math.max(PK.shake||0,0.35);
     beep(1180,.1,"sine",.05,{prio:2});
     setTimeout(()=>beep(1580,.16,"sine",.045,{prio:2}),120);
@@ -4155,6 +4216,7 @@ function pkExitCosts(){
 }
 function pkDeath(){
   PK.active=false; syncMoodMusic();
+  pkResetUISplit();   // hand the screen back before the result card goes up
   PK.rage=0; PK.judgment=null;   // no free lightning waiting for him on the next life
   const lost=Math.round(PK.bones*0.9), kept=PK.bones-lost;
   if(lost>0) PARKGHOST={x:PK.x,y:PK.y,bones:lost + (PARKGHOST?PARKGHOST.bones:0)};
@@ -4177,6 +4239,7 @@ function pkDeath(){
 // to reach for by accident-proofing it, not this function going easy on the outcome.
 function pkForfeitRun(){
   PK.active=false; syncMoodMusic();
+  pkResetUISplit();   // hand the screen back before the result card goes up
   PK.rage=0; PK.judgment=null;
   const lost=PK.bones;
   if(lost>0) PARKGHOST={x:PK.x,y:PK.y,bones:lost + (PARKGHOST?PARKGHOST.bones:0)};
@@ -4191,6 +4254,7 @@ function pkForfeitRun(){
 }
 function pkBank(){
   PK.active=false; syncMoodMusic();
+  pkResetUISplit();   // hand the screen back before the result card goes up
   const g=PK.bones;
   if(g>0) S.snacks+=g;
   const earned=pkAwardXP(pkRunXP());
@@ -4928,7 +4992,17 @@ function parkDraw(t){
   if(PKBG){
     const ox=((PK.x-DX)%WW+WW)%WW, oy=((PK.y-DY)%WH+WH)%WH;
     ctx.imageSmoothingEnabled=false;
-    for(const ddx of [0,WW]) for(const ddy of [0,WH]) ctx.drawImage(PKBG,-ox+ddx,-oy+ddy);
+    // the tile range is derived from what is actually on screen rather than assumed to be the
+    // two-by-two that a 1:1 camera needs: zooming out (and the sword's pan) pulls the visible
+    // rect back past this transform's origin, and a fixed [0,WW] pair leaves the ground
+    // unpainted out there. Undoing the transform gives the exact rect, so the loop still only
+    // ever covers the tiles it has to.
+    const z=PK.zoom||1;
+    const vx0=DX-DX/z-panX, vx1=DX+(w-DX)/z-panX;
+    const vy0=DY-DY/z-panY, vy1=DY+(h-DY)/z-panY;
+    const i0=Math.floor((vx0+ox)/WW), i1=Math.floor((vx1+ox)/WW);
+    const j0=Math.floor((vy0+oy)/WH), j1=Math.floor((vy1+oy)/WH);
+    for(let i=i0;i<=i1;i++) for(let j=j0;j<=j1;j++) ctx.drawImage(PKBG,-ox+i*WW,-oy+j*WH);
   } else { ctx.fillStyle="#20261f"; ctx.fillRect(0,0,w,h); }
   pkDrawScorch(ctx,DX,DY,WW,WH,w,h);
   pkDrawSwordSite(ctx,SC,w,h,t);
@@ -5507,7 +5581,7 @@ function pkDrawShop(ctx,w,h,t){
   // ---- confirm step: the list is replaced entirely, so a stray tap cannot reach a card
   if(PK.shopSel){
     const sel=PK.shopSel, o=sel.item;
-    const col=sel.kind==="charm"?"#e8c14a":(o.relic?"#e8c14a":o.expand?"#6cf":"#fff");
+    const col=(sel.kind==="charm"||o.relic)?"#e8c14a":"#fff";
     const afford=PK.bones>=o.c;
     const bx=w*0.10, by=h*0.235, bw2=w*0.80, bh2=h*0.30;
     ctx.fillStyle="rgba(0,0,0,.9)"; ctx.fillRect(bx,by,bw2,bh2);
@@ -5530,8 +5604,8 @@ function pkDrawShop(ctx,w,h,t){
   }
 
   PK.shop.forEach((o,i)=>{
-    const col = o.relic?"#e8c14a" : o.expand?"#6cf" : "#fff";
-    const glow = (o.relic||o.expand) ? 0.72+0.28*Math.sin(t*5) : 1;
+    const col = o.relic?"#e8c14a" : "#fff";
+    const glow = o.relic ? 0.72+0.28*Math.sin(t*5) : 1;
     pkShopCard(ctx, rows[i], o, col, glow, PK.bones>=o.c);
   });
 
@@ -5692,7 +5766,10 @@ function pkPadDraw(t){
   const [ctx,w,h]=fit($("#parkcv"));
   ctx.fillStyle="#000"; ctx.fillRect(0,0,w,h);
   ctx.strokeStyle="#fff"; ctx.lineWidth=3; ctx.strokeRect(6,6,w-12,h-12);
-  if(!PK.shop && !PK.joy && !PK.friendsOpen && !PK.convertOpen){
+  // the how-to-move hint sits dead centre, which is also where the pal rows reach down to once
+  // the pad has given up enough height to the view (see pkApplyUISplit). It has done its job by
+  // then anyway — this only ever shows on a full-size pad, which is the first wave or two.
+  if(!PK.shop && !PK.joy && !PK.friendsOpen && !PK.convertOpen && h>300){
     ctx.fillStyle="#444"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
     ctx.fillText(DN("DRAG ANYWHERE TO MOVE BONES"), w/2, h/2);
   }
