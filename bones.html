@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>BONES</title>
+<meta name="description" content="A brutalist black, white and red pixel-art dog care sim.">
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="BONES">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 <style>
@@ -22,6 +31,17 @@ button.red:active{background:#f22;color:#000}
 /* START */
 #start{position:absolute;inset:0;background:#000;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:34px;text-align:center}
 #start h1{font-size:44px;letter-spacing:6px;border:5px solid #fff;padding:20px 26px}
+#start h1 span{display:inline-block}
+/* TITLE SEQUENCE — the cold-open. #start.intro holds everything at black; each piece is released
+   in turn by the script (see runTitleSequence) as the melody comes up underneath. */
+#start.intro #startTitle{border-color:transparent}
+#start.intro #startTitle span{opacity:0;transform:translateX(120vw)}
+#start.intro #breedRow,#start.intro .warn,#start.intro #namebox{opacity:0}
+#startTitle span{transition:opacity .12s linear,transform .34s cubic-bezier(.2,1.5,.4,1)}
+#startTitle.settled{animation:titleSettle .5s ease}
+@keyframes titleSettle{40%{transform:scale(1.04)}}
+#start #breedRow,#start .warn,#start #namebox{transition:opacity .9s ease}
+#startTitle.lit{border-color:#fff;transition:border-color .6s ease}
 #breedRow{display:flex;gap:10px;align-items:stretch;justify-content:center;width:92%}
 .breed{flex:1;max-width:130px;border:3px solid #fff;padding:10px 6px;display:flex;flex-direction:column;align-items:center;gap:7px;font-size:7px;text-align:center;cursor:pointer}
 .breed .bn{font-size:8px}
@@ -36,6 +56,11 @@ button.red:active{background:#f22;color:#000}
 #dogNameIn{background:#000;color:#fff;border:3px solid #fff;font-family:inherit;font-size:13px;text-transform:uppercase;text-align:center;padding:10px;width:200px;letter-spacing:3px}
 #start .warn{font-size:8px;color:#f22;line-height:1.8;max-width:280px}
 #adopt{font-size:13px;padding:16px 22px}
+/* shown in place of the breed picker when a save is waiting — the cold open runs either way,
+   and only once it lands does the player get asked which door they're going through */
+#startChoice{display:flex;flex-direction:column;align-items:center;gap:10px;width:70%;max-width:260px}
+#startChoice.hidden{display:none!important}
+#startChoice button{width:100%;font-size:11px;padding:14px 10px}
 
 /* DOGCAM */
 #cam{height:42%;border-bottom:5px solid #fff;position:relative;flex:none}
@@ -56,6 +81,22 @@ button.red:active{background:#f22;color:#000}
 .bar.crit{border-color:#f22}
 .bar.crit i{background:#f22}
 
+/* MESSAGE STRIP — notices land in the dead band between the DOGCAM scene and the XP bar rather
+   than floating over the middle of whatever screen is up. Text too wide for the strip scrolls
+   itself into view and back; tapping the strip opens the whole message in a dialog. */
+#camMsg{position:absolute;left:8px;right:8px;bottom:42px;height:18px;z-index:4;display:none;
+  background:#000;border:2px solid #fff;overflow:hidden;white-space:nowrap;cursor:pointer;
+  font-size:7px;line-height:14px}
+#camMsg.show{display:block}
+#camMsg.red{border-color:#f22;color:#f22}
+#camMsgTxt{display:inline-block;padding:0 6px}
+/* alternate, so a long message slides to its end and back instead of snapping to the start */
+#camMsg.scroll #camMsgTxt{animation:camMsgScroll var(--camMsgDur,4s) ease-in-out infinite alternate}
+@keyframes camMsgScroll{
+  0%,15%{transform:translateX(0)}
+  85%,100%{transform:translateX(calc(-1 * var(--camMsgShift,0px)))}
+}
+
 /* PORTRAIT — small card beside BONES, same size as daily pre-run photo */
 #portrait{position:absolute;top:12%;height:60%;max-height:170px;z-index:5;display:none;border:3px solid #fff;background:#000}
 #portrait.show{display:block}
@@ -65,10 +106,26 @@ button.red:active{background:#f22;color:#000}
 #portrait span.red{border-color:#f22;color:#f22}
 #preSavage{display:none;height:34%;max-height:170px;border:3px solid #f22;image-rendering:pixelated}
 #preSavage.show{display:block}
-#resPortrait{display:none;height:30%;max-height:150px;border:3px solid #fff;image-rendering:pixelated}
-#resPortrait.show{display:block}
+#resPortraitWrap{display:none;position:relative;width:130px;height:130px;border:3px solid #fff;background:#000}
+#resPortraitWrap.show{display:block}
+#resPortrait{width:100%;height:100%;object-fit:contain;image-rendering:pixelated;transition:transform .1s ease}
 #resScore{transition:transform .15s ease}
 #resScore.pop{transform:scale(1.18)}
+#resRow{display:flex;align-items:flex-end;gap:14px;justify-content:center}
+#resPileWrap{display:flex;flex-direction:column;align-items:center;gap:6px}
+#revealcv{border:3px solid #fff;background:#000;width:130px;height:130px;image-rendering:pixelated}
+#bedtimeImg{width:170px;height:170px;object-fit:cover;object-position:top;border:3px solid #fff;background:#000;image-rendering:pixelated}
+#wbImg{width:120px;height:120px;object-fit:cover;object-position:top;border:3px solid #fff;background:#000;image-rendering:pixelated}
+#wbGap{font-size:9px;letter-spacing:2px;color:#ccc}
+#wbMeters{display:flex;flex-direction:column;gap:5px}
+#wbMeters .mrow{font-size:7px}
+#wbMeters .bar{width:110px;height:9px}
+#wbMeters .bar.crit{animation:blink 1s steps(2) infinite}
+#wbLine{color:#fff;letter-spacing:1px}
+#wbLine.crit{color:#f22}
+#bedtimeBtns{display:flex;gap:10px;opacity:0;pointer-events:none;transition:opacity .5s}
+#bedtimeBtns.ready{opacity:1;pointer-events:auto}
+#bedtimeBtns button{font-size:9px;line-height:1.7}
 
 /* CAM ACTION STRIP + HOVER STATUS BUBBLE */
 #camActions{position:absolute;left:6px;bottom:6px;z-index:4;display:flex;gap:6px}
@@ -84,18 +141,27 @@ button.red:active{background:#f22;color:#000}
 
 /* NINTENDOGS-STYLE HOME */
 #home #hud{display:flex;align-items:center;justify-content:flex-start;gap:8px}
-#home #hud .money{margin-left:auto}
+#home #hud #walletStack{margin-left:auto}
 #todoBar.pulse{border-color:#f22;color:#f22;animation:blink .6s steps(2) infinite}
 #todoList .prow{overflow:hidden;flex-shrink:0;transition:opacity .6s,max-height .6s,padding .6s,border-width .6s}
-#todoList .prow.claim{border-color:#f22;cursor:pointer;animation:blink 1.1s steps(2) infinite}
+#todoList .prow.claim{border-color:#f22;cursor:pointer}
+/* only the chip itself asks for the tap — the row around it stays calm and readable */
+.claimTag{display:inline-block;margin-top:7px;background:#f22;color:#000;font-size:11px;letter-spacing:1px;padding:7px 10px;border:2px solid #f22;animation:claimPulse 1.2s ease-in-out infinite}
+@keyframes claimPulse{50%{transform:scale(1.05)}}
 #todoList .prow.fade{max-height:0 !important}
 #todoList .prow.justdone{border-color:#f22}
 #todoList .prow.fade{opacity:0;max-height:0;padding:0 8px;border-width:0}
 #tdBanner{border:3px solid #f22;color:#fff;font-size:10px;text-align:center;padding:12px;animation:tdpop .3s ease}
 @keyframes tdpop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
-.pclose{align-self:flex-start;margin-left:4%;margin-bottom:2px}
-.overpanel .prow{padding:13px 11px;line-height:2;border-width:2px}
+.pclose{position:absolute;top:8px;left:8px;font-size:6px;padding:4px 6px;margin:0}
+#todoPanel,#supplies,#menuPanel,#careGuidePanel,#settingsPanel,#shopPanel,#nourish,#mailPanel{justify-content:flex-start;padding-top:46px}
+#mailBtn.pulse{border-color:#f22;color:#f22;animation:blink .6s steps(2) infinite}
+.overpanel .prow{padding:11px 11px;line-height:1.9;border-width:2px}
+.overpanel .prow button{border-color:#e8c14a;color:#e8c14a}
+.overpanel .prow button:disabled{border-color:#555;color:#555}
+.overpanel .prow button:active:not(:disabled){background:#e8c14a;color:#000}
 .overpanel .prow .nm{font-size:8px;letter-spacing:1px}
+.shopicon{width:24px;height:24px;flex:none;vertical-align:middle;margin-right:7px;image-rendering:pixelated;position:relative;top:-1px}
 .overpanel .tiny{color:#8a8a8a;letter-spacing:1px}
 .overpanel h2{letter-spacing:4px}
 .charm{border-width:2px}
@@ -114,15 +180,34 @@ button.red:active{background:#f22;color:#000}
 #bCall:active{background:#fff}
 #bCall:active svg{fill:#000}
 #bWalk{grid-column:1;grid-row:1}
-#bSnacks{grid-column:3;grid-row:1}
-#bGoOut{grid-column:1;grid-row:2}
+#bGoOut{grid-column:3;grid-row:1}
+#bSnacks{grid-column:1;grid-row:2}
 #bFetch{grid-column:3;grid-row:2}
-.prow{display:flex;justify-content:space-between;align-items:center;border:3px solid #fff;padding:8px;font-size:8px;gap:6px}
+.prow{display:flex;justify-content:space-between;align-items:center;border:2px solid #fff;background:rgba(255,255,255,.035);padding:9px 10px;font-size:8px;gap:8px}
+/* the balance you are about to spend, stated before the list — as in the park shop */
+.wallet{display:flex;align-items:center;gap:8px;border:2px solid #e8c14a;color:#e8c14a;
+        padding:7px 16px;font-size:9px;letter-spacing:2px;margin-bottom:2px}
+/* a scrolled list should look scrolled, not chopped off mid-card */
+.scrollfade{position:relative}
+.scrollfade::after{content:"";position:absolute;left:0;right:0;bottom:0;height:26px;pointer-events:none;
+                   background:linear-gradient(to bottom,rgba(0,0,0,0),#000)}
 .prow.locked{opacity:.4}
 .prow .nm{line-height:1.6}
 .prow button{font-size:7px;padding:6px 8px}
 .bar.attn{border-color:#f22;animation:blink .5s steps(2) infinite}
-#bSave{font-size:7px}
+#bMenu{font-size:7px}
+.menurow{width:100%;text-align:left;font-size:8px;padding:14px 12px;line-height:1.6}
+.settingrow{display:flex;justify-content:space-between;align-items:center;border:3px solid #fff;padding:10px 12px;font-size:8px;width:100%}
+.settingrow button{font-size:7px;padding:6px 10px}
+.settinghead{display:block;text-align:left;width:100%;font-size:7px;color:#f22;letter-spacing:2px;margin-top:2px}
+.rangewrap{display:flex;align-items:center;gap:8px}
+.rangewrap input[type=range]{-webkit-appearance:none;appearance:none;width:90px;height:4px;background:#333;border:2px solid #fff;outline:none;cursor:pointer}
+.rangewrap input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;background:#fff;border:2px solid #000;cursor:pointer}
+.rangewrap input[type=range]::-moz-range-thumb{width:10px;height:14px;background:#fff;border:2px solid #000;cursor:pointer;border-radius:0}
+.rangewrap input[type=range]::-moz-range-track{background:#333;height:4px}
+.rangewrap span{font-size:7px;width:26px;text-align:right;color:#8a8a8a}
+#careGuidePanel .lines{text-align:left;width:88%;max-height:64vh;overflow-y:auto;padding:2px 4px}
+#careGuidePanel .lines .gh{color:#f22;letter-spacing:1px}
 
 /* HOME ACCORDION */
 .acc{width:100%;text-align:center;font-size:10px;padding:14px 8px;position:relative;border-width:3px}
@@ -144,8 +229,24 @@ button.red:active{background:#f22;color:#000}
 /* PANEL */
 #panel{flex:1;position:relative;overflow:hidden;background:#000}
 .screen{position:absolute;inset:0;display:flex;flex-direction:column}
+/* the one moment a mode switch (home/work/run/park/paperboy) actually reads as a transition
+   rather than an instant cut — a quick fade+settle on whatever screen just became active */
+@keyframes screenIn{from{opacity:0;transform:scale(1.025)}to{opacity:1;transform:scale(1)}}
+.screen.screen-in{animation:screenIn .22s ease}
+body.reduce-motion .screen.screen-in{animation:none}
 #hud{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:3px solid #fff;font-size:9px}
-#hud .money{font-size:12px}
+#hud .money{font-size:12px;white-space:nowrap}
+#walletStack{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex:none;line-height:1.3}
+/* one row each, icon then figure, both riding the same currentColor so a debt (red) recolours
+   the coin along with the number rather than leaving it a green coin over a red total */
+.walletRow{display:flex;align-items:center;gap:4px}
+#moneyRow{color:#3fdc7a}
+#bonesRow{color:#e8c14a}
+/* each wallet icon keeps its own aspect ratio -- the bone is a wide 16:10 shape, the coin round,
+   so a single square box would squash one of them */
+.wicon{height:10px;flex:none;display:block}
+.wbone{width:16px}
+#hudBones{font-size:12px;white-space:nowrap}
 #home .body{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:12px}
 #toastGap{flex:1;min-height:34px}
 .sect{font-size:7px;color:#888;letter-spacing:2px;margin-bottom:-6px}
@@ -162,17 +263,76 @@ button.red:active{background:#f22;color:#000}
 #footer{padding:6px 10px;border-top:3px solid #fff;display:flex;justify-content:space-between;align-items:center;font-size:7px;color:#666}
 #devbar{display:flex;gap:4px;padding:6px 8px;border-top:3px solid #333;flex-wrap:wrap}
 #devbar button{flex:1;font-size:6px;padding:5px 3px;border-color:#555;color:#aaa}
+#pkDevbar{position:absolute;top:6px;left:6px;right:6px;z-index:8;display:flex;gap:4px;flex-wrap:wrap;background:rgba(0,0,0,.8);padding:5px;border:2px solid #555}
+/* global, so it floats above whatever's underneath on every screen — kept small and tucked high
+   in the corner on purpose, so it never competes with a screen's own bottom controls (this used
+   to sit low enough to overlap Delivery Driver's THROW/HOLD row) */
+#globalMusicBtn{position:absolute;right:10px;bottom:78px;z-index:45;width:28px;height:28px;padding:0;border-radius:50%;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center;background:#000;border:2px solid #fff;color:#fff;opacity:.72}
+/* in DOGPARK the pad's own HUD (pal rows, armour bar) is drawn top-down onto the canvas and
+   reaches further down the shorter the pad gets, so the button drops into the empty bottom-right
+   corner instead — the END RUN/settings pair lives bottom-LEFT, so nothing else wants that space */
+#app.in-park #globalMusicBtn{bottom:12px}
+#globalMusicBtn.muted{color:#666;border-color:#666}
+#globalMusicBtn.muted::after{content:"";position:absolute;width:24px;height:2px;background:#f22;transform:rotate(-45deg)}
+#pkDevbar button{flex:1;font-size:6px;padding:5px 3px;border-color:#555;color:#aaa}
+#pkDevGod.active{border-color:#f22;color:#f22}
 
 /* WORK / RUN */
-#workcv,#runcv,#parkcv{flex:1;width:100%;display:block;touch-action:none;image-rendering:pixelated}
+/* min-height:0 overrides the flex default of min-height:auto, which for a replaced element like
+   canvas resolves to its intrinsic (attribute) height — without this, the canvas refuses to
+   shrink below whatever resolution it was last rendered at, pushing the ctrlrow (and anything
+   drawn relative to the screen) past the bottom of short viewports and out of reach. */
+#workcv,#runcv,#parkcv,#paperboycv{flex:1;min-height:0;width:100%;display:block;touch-action:none;image-rendering:pixelated}
 .ctrlrow{display:flex;gap:6px;padding:8px;border-top:3px solid #fff}
 .ctrlrow button{flex:1;font-size:10px;padding:14px 4px}
 
 
 /* PRE-RUN + RESULT */
-.overpanel{position:absolute;inset:0;background:#000;z-index:6;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:20px}
-.overpanel.show{display:flex}
+/* every overpanel (shop/mail/todo/settings/result/choice/bedtime/welcome-back/etc.) fades and
+   scales in and out the same way — one rule, applied everywhere, instead of an instant pop.
+   display stays flex the whole time; opacity+visibility carry the actual show/hide so the
+   transition has something to animate, and pointer-events keeps a fading-out panel from
+   swallowing taps meant for what's underneath it. */
+.overpanel{position:absolute;inset:0;background:#000;z-index:6;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:20px;
+  opacity:0;visibility:hidden;pointer-events:none;transform:scale(.96);
+  transition:opacity .16s ease,transform .16s ease,visibility 0s linear .16s}
+.overpanel.show{opacity:1;visibility:visible;pointer-events:auto;transform:scale(1);
+  transition:opacity .18s ease,transform .18s ease,visibility 0s linear 0s}
+body.reduce-motion .overpanel{transition:opacity .12s linear,visibility 0s linear .12s;transform:none}
+body.reduce-motion .overpanel.show{transition:opacity .12s linear,visibility 0s linear 0s;transform:none}
 .overpanel h2{font-size:15px;letter-spacing:2px}
+/* #start (the title/cold-open screen) sits at z-index:50, above every ordinary overpanel — but
+   NEW GAME on the title's own CONTINUE/NEW GAME choice opens this same confirm dialog while
+   #start is still showing. Without this override the dialog opened correctly but painted behind
+   #start, so the tap that looked like it landed on "YES, START OVER" actually landed on whatever
+   #start button happened to be underneath it. The id selector's specificity beats .overpanel's
+   regardless of source order, so this only ever affects #choice. */
+#choice{z-index:55}
+
+/* THE MYSTERIOUS DOG — he takes the bottom half of the screen as a flat black cut-out and the
+   goods are listed over him, so the whole panel reads as one silhouette rather than a dialog
+   with a picture stuck beside it. */
+#mystPanel{justify-content:flex-start;padding:0;gap:0;overflow:hidden;
+  background:radial-gradient(120% 70% at 50% 12%,#1a1d2b 0%,#07080e 55%,#000 100%)}
+#mystCv{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:100%;height:52%;
+  image-rendering:pixelated;pointer-events:none}
+#mystStage{position:relative;z-index:2;width:100%;padding:26px 16px 0;display:flex;
+  flex-direction:column;align-items:center;gap:12px}
+#mystSay{font-size:13px;letter-spacing:2px;color:#e8c14a;text-shadow:0 0 14px rgba(232,193,74,.45);
+  animation:mystSayIn .5s ease both}
+@keyframes mystSayIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
+#mystBal{font-size:8px;letter-spacing:2px;color:#8a8a8a}
+#mystList{display:flex;flex-direction:column;gap:7px;width:94%;max-height:34vh;overflow-y:auto}
+#mystList .mrow2{border:2px solid #3a3320;background:rgba(0,0,0,.72);padding:9px 11px;
+  display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:pointer;
+  font-size:8px;letter-spacing:1px;transition:border-color .15s,transform .08s}
+#mystList .mrow2:active{transform:scale(.98)}
+#mystList .mrow2 .mn{color:#d8cfae;text-align:left}
+#mystList .mrow2 .md{display:block;font-size:6px;color:#6d675a;margin-top:5px;letter-spacing:1px}
+#mystList .mrow2 .mc{color:#e8c14a;white-space:nowrap}
+#mystList .mrow2.poor{border-color:#2a2418}
+#mystList .mrow2.poor .mc{color:#7a3030}
+#mystClose{position:absolute;top:10px;right:10px;z-index:3}
 .overpanel .lines{font-size:8px;line-height:2.2;color:#ccc}
 .overpanel .big{font-size:22px;color:#fff}
 
@@ -187,17 +347,21 @@ button.red:active{background:#f22;color:#000}
 #car::before{content:"";position:absolute;top:-12px;left:10px;width:26px;height:12px;border:3px solid #fff;border-bottom:none;background:#000}
 @keyframes drive{to{left:110%}}
 
-#toast{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);background:#000;border:3px solid #fff;padding:8px 12px;font-size:8px;z-index:60;display:none;max-width:88%;text-align:center;line-height:1.6}
+/* pointer-events:none — a toast is pure information, never a tap target itself, and it sits near
+   the bottom of #app where every screen's own control row also lives; without this a visible
+   toast blocks taps to whatever's underneath it (e.g. Delivery Driver's THROW/HOLD row) */
+#toast{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);background:#000;border:3px solid #fff;padding:8px 12px;font-size:8px;z-index:60;display:none;max-width:88%;text-align:center;line-height:1.6;pointer-events:none}
 #toast.red{border-color:#f22;color:#f22}
 .hidden{display:none!important}
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
+body.reduce-motion *{animation:none!important}
 </style>
 </head>
 <body>
 <div id="app">
 
-  <div id="start">
-    <h1>BONES</h1>
+  <div id="start" class="intro">
+    <h1 id="startTitle"><span>B</span><span>O</span><span>N</span><span>E</span><span>S</span></h1>
     <div id="breedRow">
       <div class="breed locked"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="#777" stroke-width="2.4"><rect x="5" y="11" width="14" height="9"/><path d="M8 11 V8 a4 4 0 0 1 8 0 V11"/></svg><div class="bn">WHIPPET</div><div class="ba">SWIFT PAWS</div><div class="bs">COMING SOON</div></div>
       <div class="breed" id="breedBones"><img id="startDog" alt="BONES"><div class="bn">ROTTWEILER</div><div class="ba">LOYAL HEART</div><div class="bs">&#9656; CHOOSE</div></div>
@@ -208,15 +372,20 @@ button.red:active{background:#f22;color:#000}
       <input id="dogNameIn" value="BONES" maxlength="10" autocomplete="off">
       <button id="adopt">ADOPT</button>
     </div>
+    <div id="startChoice" class="hidden">
+      <button id="btnContinue">&#9656; CONTINUE</button>
+      <div id="continueLine" class="tiny" style="color:#8a8a8a;letter-spacing:1px"></div>
+      <button id="btnNewGame" class="red">&#10005; NEW GAME</button>
+    </div>
     <div class="warn">A DOG IS FOR LIFE.<br>ADOPT RESPONSIBLY.</div>
   </div>
 
   <div id="game" class="hidden" style="display:flex;flex-direction:column;height:100%">
     <div id="cam">
-      <div id="camhead"><span><span class="rec">&#9679;</span> DOGCAM</span><span id="clock"></span><span id="camright"><span id="needAlert" class="hidden">!</span><span id="camstate">LIVE</span></span></div>
+      <div id="camhead"><span id="camlabel"><span class="rec">&#9679;</span> DOGCAM</span><span id="clock"></span><span id="camright"><span id="needAlert" class="hidden">!</span><span id="camstate">LIVE</span></span></div>
       <canvas id="dogcv"></canvas>
       <div id="camActions">
-        <button id="rSnack" class="hidden">&#129460; SNACK $3</button>
+        <button id="rSnack" class="hidden">&#129460; BONE $3</button>
         <button id="rWalk" class="hidden">&#129460; WALKER $5</button>
       </div>
       <div id="status">
@@ -225,17 +394,21 @@ button.red:active{background:#f22;color:#000}
         <button id="stClose">X</button>
       </div>
       <div id="portrait"><img id="portraitImg" alt="BONES"><span id="portraitLb"></span></div>
+      <div id="camMsg"><span id="camMsgTxt"></span></div>
     </div>
 
     <div id="panel">
       <!-- HOME -->
       <div id="home" class="screen">
-        <div id="hud"><button class="tiny" id="bSave">&#9635; SAVE</button><button class="tiny" id="todoBar">&#9656; TO-DO 0/6</button><button class="tiny" id="bSupplies">&#9636; SUPPLIES</button><button class="tiny" id="bShopBtn">&#9670; SHOP</button><span class="money" id="money1">$0</span></div>
+        <div id="hud"><button class="tiny" id="bMenu">&#9776; MENU</button><button class="tiny" id="todoBar">&#9656; TO-DO 0/6</button><button class="tiny" id="bSupplies">&#9636; SUPPLIES</button><button class="tiny" id="bShopBtn">&#9670; SHOP</button><div id="walletStack">
+          <span class="walletRow" id="moneyRow"><span class="money" id="money1">$0</span></span>
+          <span class="walletRow" id="bonesRow"><svg class="wicon wbone" viewBox="-8 -5 16 10" aria-hidden="true"><rect x="-5" y="-1.5" width="10" height="3" fill="currentColor"/><circle cx="-5" cy="-2" r="2.2" fill="currentColor"/><circle cx="-5" cy="2" r="2.2" fill="currentColor"/><circle cx="5" cy="-2" r="2.2" fill="currentColor"/><circle cx="5" cy="2" r="2.2" fill="currentColor"/></svg><span id="hudBones">0</span></span>
+        </div></div>
         <div class="body">
           <div id="mainGrid">
-            <button id="bWalk" class="mg">&#9650;<br>GO TO<br>THE PARK</button>
+            <button id="bWalk" class="mg">&#9650;<br>GO TO<br>DOGPARK</button>
             <button id="bCall" class="paw"><svg viewBox="0 0 24 24" width="30" height="30" fill="#fff"><circle cx="5" cy="9" r="2.4"/><circle cx="9.5" cy="5.6" r="2.4"/><circle cx="14.5" cy="5.6" r="2.4"/><circle cx="19" cy="9" r="2.4"/><ellipse cx="12" cy="15.4" rx="5.4" ry="4.4"/></svg><br>CALL<br>BONES</button>
-            <button id="bSnacks" class="mg">&#9670;<br>FEED<br>SNACKS<br><span class="tiny" id="snackCt">x2</span></button>
+            <button id="bSnacks" class="mg"><svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><circle cx="5" cy="8.2" r="3"/><circle cx="5" cy="13.4" r="3"/><circle cx="19" cy="8.2" r="3"/><circle cx="19" cy="13.4" r="3"/><rect x="5" y="8.6" width="14" height="4.4"/></svg><br>NOURISH<br>BONES</button>
             <button id="bGoOut" class="mg">&#9654;<br>GO<br>OUT</button>
             <button id="bFetch" class="mg">&#9679;<br>PLAY<br>FETCH</button>
           </div>
@@ -247,6 +420,7 @@ button.red:active{background:#f22;color:#000}
           <button class="tiny" id="devReset">RESET DAY</button>
           <button class="tiny" id="devLvl">+5 LVLS</button>
           <button class="tiny" id="devCash">+$50</button>
+          <button class="tiny" id="devRich">+$500</button>
           <button class="tiny" id="devMax">MAX STATS</button>
           <button class="tiny" id="devBad">NEGLECT</button>
           <button class="tiny" id="devDay">+1 DAY</button>
@@ -254,10 +428,19 @@ button.red:active{background:#f22;color:#000}
           <button class="tiny" id="devStock">STOCK+10</button>
           <button class="tiny" id="devSick">SICK</button>
           <button class="tiny" id="devPoo">POO</button>
+          <button class="tiny" id="devWork">GO TO WORK</button>
+          <button class="tiny" id="devRobot">TOGGLE ROBOT</button>
+          <button class="tiny" id="devBedtime">BEDTIME NOW</button>
+          <button class="tiny" id="devKill">DEATH PANEL</button>
+          <button class="tiny" id="devStage5">CEREMONY 5</button>
+          <button class="tiny" id="devStage10">CEREMONY 10</button>
+          <button class="tiny" id="devStage25">CEREMONY 25</button>
+          <button class="tiny" id="devStage50">CEREMONY 50</button>
+          <button class="tiny" id="devGoodbye">GOODBYE</button>
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.20a</span>
+          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.280a</span>
         </div>
       </div>
 
@@ -268,6 +451,17 @@ button.red:active{background:#f22;color:#000}
         <div class="ctrlrow">
           <button id="bStamp">&#9660; STAMP (SWIPE DOWN)</button>
           <button id="bHome1" style="flex:.5">CLOCK OUT</button>
+        </div>
+      </div>
+
+      <!-- PAPERBOY -->
+      <div id="paperboy" class="screen hidden">
+        <div id="hud"><div style="display:flex;gap:6px"><button class="tiny" id="pbSettingsBtn">&#9881;</button><button class="tiny red" id="pbEndRunBtn">&#9873; END</button></div><span>DELIVERY DRIVER</span><span class="money" id="money3">$0</span></div>
+        <canvas id="paperboycv"></canvas>
+        <div class="ctrlrow">
+          <button id="bThrowL">&#9664; THROW</button>
+          <button id="bHold" style="flex:.8">HOLD</button>
+          <button id="bThrowR">THROW &#9654;</button>
         </div>
       </div>
 
@@ -283,8 +477,16 @@ button.red:active{background:#f22;color:#000}
       <!-- TO-DO -->
       <div id="todoPanel" class="overpanel">
         <button class="tiny pclose" id="todoClose">&#10005; CLOSE</button>
+        <button class="tiny pclose" id="mailBtn" style="left:auto;right:8px" title="ALERTS">&#9993;</button>
         <h2>TO-DO</h2>
         <div id="todoList" style="display:flex;flex-direction:column;gap:8px;width:88%;max-height:66%;overflow-y:auto"></div>
+      </div>
+
+      <!-- MAIL / ALERTS -->
+      <div id="mailPanel" class="overpanel">
+        <button class="tiny pclose" id="mailClose">&#10005; CLOSE</button>
+        <h2>&#9993; ALERTS</h2>
+        <div id="mailList" style="display:flex;flex-direction:column;gap:8px;width:88%;max-height:66%;overflow-y:auto"></div>
       </div>
 
       <!-- SUPPLIES -->
@@ -294,6 +496,25 @@ button.red:active{background:#f22;color:#000}
         <div id="suppliesList" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:94%;max-height:58vh;overflow-y:auto"></div>
       </div>
 
+      <!-- THE MYSTERIOUS DOG -->
+      <div id="mystPanel" class="overpanel">
+        <canvas id="mystCv"></canvas>
+        <div id="mystStage">
+          <div id="mystSay">"WHAT YOU BUYING?"</div>
+          <div id="mystBal">0 BONES</div>
+          <div id="mystList"></div>
+          <button class="tiny" id="mystClose">&#10005; LEAVE</button>
+        </div>
+      </div>
+
+      <!-- NOURISH -->
+      <div id="nourish" class="overpanel">
+        <button class="tiny pclose" id="nourishClose">&#10005; CLOSE</button>
+        <h2>NOURISH BONES</h2>
+        <div id="nourishMeters" style="width:86%;display:grid;gap:3px"></div>
+        <div id="nourishList" style="display:flex;flex-direction:column;gap:8px;width:86%;max-height:52%;overflow-y:auto"></div>
+      </div>
+
       <!-- GO OUT -->
       <div id="goout" class="overpanel">
         <h2>GO OUT</h2>
@@ -301,14 +522,101 @@ button.red:active{background:#f22;color:#000}
         <button class="tiny" id="goClose">CLOSE</button>
       </div>
 
+      <!-- MENU -->
+      <div id="menuPanel" class="overpanel">
+        <button class="tiny pclose" id="menuClose">&#10005; CLOSE</button>
+        <h2>&#9776; MENU</h2>
+        <div id="saveCard" style="border:3px solid #fff;padding:12px 14px;width:82%;font-size:7px;line-height:2.1;text-align:left;box-sizing:border-box">
+          <div style="display:flex;justify-content:space-between"><span id="saveName">BONES</span><span id="saveLvl">LV. 1</span></div>
+          <div style="display:flex;justify-content:space-between"><span>MONEY</span><span id="saveMoney">$0</span></div>
+          <div style="display:flex;justify-content:space-between"><span>BONES</span><span id="saveBones" style="color:#e8c14a">0</span></div>
+          <div style="display:flex;justify-content:space-between"><span>NOW</span><span id="saveDay">DAY 1 08:00</span></div>
+          <div style="border-top:1px solid #444;margin-top:6px;padding-top:6px;color:#8a8a8a;display:flex;justify-content:space-between">
+            <span>LAST SAVED</span><span id="saveLast" style="color:#8a8a8a">— NEVER —</span>
+          </div>
+        </div>
+        <button class="menurow" id="mSaveGame" style="width:82%">&#9635; SAVE GAME</button>
+        <div id="saveStatus" style="font-size:7px;color:#8a8a8a;min-height:10px;width:82%;text-align:center">PROGRESS ONLY PERSISTS WHEN YOU SAVE.</div>
+        <div style="display:flex;flex-direction:column;gap:10px;width:82%">
+          <button class="menurow" id="mCare">&#9829; CARE GUIDE</button>
+          <button class="menurow" id="mSettings">&#9670; SETTINGS</button>
+          <button class="menurow red" id="mNewGame">&#10005; NEW GAME</button>
+        </div>
+      </div>
+
+      <!-- CARE GUIDE -->
+      <div id="careGuidePanel" class="overpanel">
+        <button class="tiny pclose" id="careClose">&#10005; CLOSE</button>
+        <h2>&#9829; CARE GUIDE</h2>
+        <div class="lines">
+          <span class="gh">THE BASICS</span><br>
+          BONES NEEDS FOOD, WATER, REST, PLAY & LOVE. WATCH HIS SIX METERS IN DOGCAM — LET ANY OF THEM RUN DRY TOO LONG AND HE GETS SICK.<br><br>
+          <span class="gh">REFILL THE BOWLS</span><br>
+          TAP THE WATER OR FOOD BOWL RIGHT IN DOGCAM TO POUR. HE'LL HELP HIMSELF WHEN HE'S HUNGRY OR THIRSTY — YOUR JOB IS JUST KEEPING THEM FULL.<br><br>
+          <span class="gh">PLAY FETCH</span><br>
+          OWN A BALL? DRAG IT ACROSS DOGCAM AND LET GO — HE'LL CHASE IT DOWN AND BRING IT BACK. OR TAP PLAY FETCH FROM HOME AND HE'LL START THE GAME HIMSELF.<br><br>
+          <span class="gh">WALKS & THE DOGPARK</span><br>
+          TAP GO OUT FOR WORK, TRAINING OR THE BEACH — OR HEAD TO THE DOGPARK ONCE HE HITS LV.5. BARK AT SQUIRRELS, BIRDS & CATS TO SCARE THEM OFF — HE DOESN'T HURT ANYONE, THEY JUST DROP A BONE AND SCUTTLE AWAY. SURVIVE THE WAVES AND REACH THE RED EXIT TO BANK REAL XP BEFORE HE GETS OVERRUN.<br><br>
+          <span class="gh">THE DOGPARK ECONOMY</span><br>
+          EVERY SCARED-OFF CRITTER DROPS ONE BONE. SPEND THEM BETWEEN WAVES ON UPGRADES OR RARE CHARMS — OR TAP THE BONES COUNTER ANY TIME TO TRADE SOME FOR XP, MONEY OR A BONE TREAT. CLEAR A WAVE INSIDE 60 SECONDS AND A BONUS CHARM UNLOCKS IN THE SHOP. KEEP AN EYE OUT FOR THE GOLDEN BIRD — CATCH IT FOR A BIG BONES PAYOUT.<br><br>
+          <span class="gh">THE PARK OPENS UP</span><br>
+          FROM THE SECOND WAVE ON, EVERY CLEAR PULLS THE CAMERA BACK A STEP AND HANDS THAT SPACE TO THE VIEW — THE PARK GETS WIDER AND THE CONTROLS GET TIGHTER. IT ALL HAPPENS DURING THE SLOW-MOTION FINAL KILL, SO YOU SEE IT SETTLE. IT FINISHES OPENING UP AT WAVE 10 AND STAYS PUT FROM THERE, HOWEVER DEEP THE RUN GOES.<br><br>
+          <span class="gh">DOGPARK UNLEASHED</span><br>
+          HOLD 5,000 BONES AND DOGPARK UNLEASHED UNLOCKS. SAME 10 WAVES, DOUBLE THE ENEMIES ON SCREEN AT ONCE, UNDER A DARKER NIGHT SKY WITH FIREFLIES DRIFTING THROUGH THE GLOOM — PICK REGULAR OR UNLEASHED EVERY TIME YOU HEAD OUT. THE PARK STAYS WRAPPED IN FOG OUTSIDE WHERE HE'S RECENTLY EXPLORED, SO GROUND HE HASN'T WALKED IN A WHILE FADES BACK INTO THE DARK. NIGHT MODE IN SETTINGS SWITCHES OFF THE WHOLE NIGHT LOOK MID-RUN IF YOU'D RATHER SEE IT IN NORMAL DAYLIGHT.<br><br>
+          <span class="gh">THE SWORD (DOGPARK UNLEASHED)</span><br>
+          WAVE 2 OF A DOGPARK UNLEASHED RUN, SOMETHING FALLS TO EARTH AND BURIES ITSELF NEARBY. WALK UP AND PAY THE PRICE SHOWN TO CLAIM IT — FROM THEN ON HE CARRIES IT IN HIS MOUTH AND CUTS DOWN ANYTHING HE RUNS INTO. SHARPEN THE BLADE BETWEEN WAVES FOR MORE REACH AND DAMAGE, UP TO 5 TIERS. LEAVE IT UNCLAIMED TOO LONG AND LIGHTNING STARTS STRIKING IT WHERE IT STANDS.<br><br>
+          <span class="gh">FIRE</span><br>
+          WHEREVER REAL FLAME BREAKS OUT, EMBERS DRIFT OFF ON THE BREEZE AND SETTLE, GLOWING WHERE THEY LAND — MOST DRAMATIC ONCE NIGHT MODE'S DARK IS ACTUALLY UP. ANY SQUIRREL OR CAT THAT WANDERS INTO THAT FLAME, OR GETS CAUGHT IN A LASER BEAM, HAS A SMALL CHANCE OF CATCHING ALIGHT ITSELF — DOUBLED WITH NIGHT MODE ON. A PANICKING ANIMAL ZIPS AROUND IN TIGHT, UNCONTROLLABLE CIRCLES AT DOUBLE SPEED, ABLE TO SET STILL MORE TREES ALIGHT BEFORE IT FINALLY BURNS ITSELF OUT.<br><br>
+          <span class="gh">WHIRLWIND SLASH</span><br>
+          ONCE THE SWORD IS IN HIS MOUTH, SPIN THE JOYSTICK ONE FULL FAST TURN AND HE CUTS LOOSE IN A WIDE, HEAVY CIRCLE — HITS EVERYTHING AROUND HIM FOR A GOOD WHILE AND KNOCKS BACK ANYTHING IT DOESN'T DOWN. LONG COOLDOWN, SO SAVE IT FOR WHEN HE'S SURROUNDED. UPGRADE WHIRLWIND MASTERY IN THE SHOP (UP TO 3 TIERS) TO WIDEN THE RING AND HIT HARDER.<br><br>
+          <span class="gh">RAGE & HEAVENLY JUDGMENT</span><br>
+          TAKING HITS FILLS THE RAGE METER. ONCE IT'S FULL, TAP IT TO UNLEASH HEAVENLY JUDGMENT — THE WHOLE PARK SLOWS DOWN AS BOLT AFTER BOLT RAINS DOWN ON EVERYTHING NEARBY. A DEVASTATING PANIC BUTTON FOR WHEN THINGS GET OUT OF HAND.<br><br>
+          <span class="gh">FRIENDS</span><br>
+          THE BANDANA DOG RUNS A SHOP SOMEWHERE OUT IN THE TREES — FOLLOW THE COMPASS OR JUST EXPLORE TO FIND HIM. RECRUIT SQUIRRELS, BIRDS, CATS AND (EVENTUALLY) AN APE TO FIGHT AT BONES' SIDE, EACH UPGRADEABLE THROUGH SEVERAL TIERS. THEY FLASH INVULNERABLE AND GET KNOCKED CLEAR WHENEVER THEY'RE HIT, SO THEY CAN SURVIVE A REAL FIGHT — IF ONE GETS HURT, TAP ITS ROW IN THE FRIENDS PANEL TO HEAL IT BACK UP FOR BONES.<br><br>
+          <span class="gh">ARMOUR & THE COMPASS</span><br>
+          FULL ARMOUR (SHOP) SOAKS UP HITS BEFORE THEY EVER REACH HIS HEALTH. THE COMPASS (SHOP) POINTS TOWARD THE FRIENDS SHOP, THE EXIT, AND ANYTHING ELSE WORTH FINDING THAT'S CURRENTLY OFF SCREEN.<br><br>
+          <span class="gh">LEAVING A RUN EARLY</span><br>
+          NEED OUT NOW? END RUN IN THE BOTTOM-LEFT OF THE CONTROLS TAKES YOU STRAIGHT BACK TO DOGCAM — BUT IT FORFEITS EVERYTHING EARNED THIS RUN, SO ONLY USE IT IF YOU REALLY HAVE TO.<br><br>
+          <span class="gh">SIDE MISSIONS</span><br>
+          BARK AT EVERY KIND OF CRITTER IN ONE RUN FOR +20 XP. SURVIVE WAVE 1 FOR +10 XP. THESE PAY OUT STRAIGHT AWAY, NO NEED TO BANK FIRST.<br><br>
+          <span class="gh">BATH TIME</span><br>
+          GRAB THE SPONGE OFF THE WALL AND DRAG IT ACROSS HIM TO SCRUB HIM SPOTLESS — YOU'LL NEED SHAMPOO FROM THE SHOP FIRST, AND EACH BATH USES SOME UP.<br><br>
+          <span class="gh">REST UP</span><br>
+          A BED LETS HIM SLEEP ALL THE WAY TO FULL ENERGY — BUT IT HAS TO FIT HIM. EVERY TIME HE GROWS, HIS OLD BED BECOMES TOO SMALL AND HE ONLY TOPS OUT AT 70% AGAIN UNTIL YOU UPGRADE. TAP THE BED OR VISIT THE SHOP FOR A BIGGER ONE.<br><br>
+          <span class="gh">GROWING UP</span><br>
+          EVERY BIT OF CARE EARNS XP. WHEN THE BAR FILLS, TAP IT TO LET HIM LEVEL UP — DON'T MISS LV.10, 25 & 50.<br><br>
+          <span class="gh">YOUR SPECIAL JOURNEY</span><br>
+          ONE DAY BONES WILL BE A SENIOR. ONE DAY HE'LL NEED A SUCCESSOR TO CARRY IT ALL FORWARD. VISIT THE BREEDER WHEN THAT DAY COMES — THAT'S HOW THE FAMILY, AND THE LEGACY, GOES ON.<br><br>
+          HE ONLY EVER NEEDS ONE THING FROM YOU: SHOW UP FOR HIM.
+        </div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div id="settingsPanel" class="overpanel">
+        <button class="tiny pclose" id="settingsClose">&#10005; CLOSE</button>
+        <h2>&#9670; SETTINGS</h2>
+        <div style="display:flex;flex-direction:column;gap:10px;width:82%;max-height:56vh;overflow-y:auto;padding:2px 2px">
+          <span class="settinghead">AUDIO</span>
+          <div class="settingrow"><span>SOUND</span><button class="tiny" id="setSound">ON</button></div>
+          <div class="settingrow"><span>MUSIC</span><button class="tiny" id="setMusic">ON</button></div>
+          <span class="settinghead">DISPLAY</span>
+          <div class="settingrow"><span>REDUCE MOTION</span><button class="tiny" id="setMotion">OFF</button></div>
+          <div class="settingrow"><span>BARK STYLE</span><button class="tiny" id="setBarkStyle">CIRCLE</button></div>
+          <div class="settingrow" id="setNightModeRow" style="display:none"><span>NIGHT MODE</span><button class="tiny" id="setNightMode">ON</button></div>
+          <div class="settingrow"><span>SCREEN SHAKE</span><button class="tiny" id="setShake">FULL</button></div>
+          <div class="settingrow"><span>VIGNETTE</span><div class="rangewrap"><input type="range" id="setVignette" min="0" max="100" step="5"><span id="setVignetteVal">60%</span></div></div>
+        </div>
+        <button class="menurow" id="mReplayTutorial" style="width:82%">&#9635; REPLAY DELIVERY TUTORIAL</button>
+        <button class="tiny red" id="setEndRunPk" style="width:82%;display:none">&#9873; END THIS RUN</button>
+      </div>
+
       <!-- CHARM SHOP -->
       <div id="shopPanel" class="overpanel">
         <button class="tiny pclose" id="shopClose">&#10005; CLOSE</button>
         <h2>&#9670; SHOP</h2>
+        <div class="wallet"><img class="shopicon" id="walletIcn" alt=""><span id="shopWallet">$0</span></div>
         <div id="shopScroll" style="width:94%;max-height:72%;overflow-y:auto;display:flex;flex-direction:column;gap:8px">
           <div id="shopSup" style="display:flex;flex-direction:column;gap:8px"></div>
-          <div class="sect">CHARMS &#8212; ONE EQUIPPED AT A TIME</div>
-          <div id="shop"></div>
         </div>
       </div>
 
@@ -321,34 +629,37 @@ button.red:active{background:#f22;color:#000}
       </div>
 
       <!-- LIFE CHOICES -->
-      <div id="choice" class="overpanel">
-        <h2 id="chTitle"></h2>
-        <div class="lines" id="chLines"></div>
-        <button id="chA" style="font-size:11px;padding:12px 20px"></button>
-        <button id="chB" style="font-size:11px;padding:12px 20px"></button>
-      </div>
-
       <!-- MONEY SHORTCUT -->
       <div id="moneyPick" class="overpanel">
         <h2>$ SPEND OR EARN?</h2>
         <button id="mpShop" style="font-size:11px;padding:14px 24px">GO TO SHOP</button>
-        <button id="mpWork" style="font-size:11px;padding:14px 24px">GO TO WORK</button>
+        <button id="mpWork" style="font-size:11px;padding:14px 24px">DELIVERY DRIVER</button>
         <button id="mpCancel" class="tiny">CANCEL</button>
       </div>
 
       <!-- PARK -->
       <div id="park" class="screen hidden">
         <canvas id="parkcv"></canvas>
+        <!-- real buttons, not canvas-drawn hit-rects — a thumb aiming for the gear used to be
+             able to clip the much larger END RUN button sitting right next to it; native buttons
+             hit-test themselves, so that whole class of mis-tap is gone for good -->
+        <div id="pkBottomBtns" style="position:absolute;left:8px;bottom:10px;display:flex;gap:10px;z-index:5">
+          <button class="tiny red" id="pkEndRunBtn">&#9873; END RUN</button>
+          <button class="tiny" id="pkSettingsBtn">&#9881;</button>
+        </div>
+        <span id="pkDevToggle" style="position:absolute;bottom:2px;right:6px;color:#333;font-size:9px;cursor:pointer;padding:8px;z-index:9">&#9881;</span>
+        <div id="pkDevbar" class="hidden">
+          <button class="tiny" id="pkDevSkip">SKIP WAVE</button>
+          <button class="tiny" id="pkDevHeal">FULL HEAL</button>
+          <button class="tiny" id="pkDevGod">GOD MODE</button>
+          <button class="tiny" id="pkDevBones">+50 BONES</button>
+          <button class="tiny" id="pkDevHealerNow">SPAWN HEALER</button>
+          <button class="tiny" id="pkDevInvuln">FORCE INVULN</button>
+          <button class="tiny" id="pkDevSpin">TRIGGER SPIN</button>
+          <button class="tiny" id="pkDevRage">FILL RAGE</button>
+        </div>
       </div>
 
-      <!-- DAILY BONE PICKER -->
-      <div id="dailyPick" class="overpanel">
-        <h2 style="color:#f22">THE DAILY BONE</h2>
-        <div class="lines" id="dpBoard"></div>
-        <button id="dpRanked" class="red" style="font-size:10px;padding:12px 20px">RANKED &#8212; 1 LIFE</button>
-        <button id="dpPractice" style="font-size:10px;padding:12px 20px">PRACTICE RUN</button>
-        <button class="tiny" id="dpClose">CLOSE</button>
-      </div>
 
       <!-- PRE-RUN -->
       <div id="pre" class="overpanel">
@@ -361,13 +672,54 @@ button.red:active{background:#f22;color:#000}
 
       <!-- RESULT -->
       <div id="result" class="overpanel">
-        <img id="resPortrait" alt="BONES">
         <h2 id="resTitle">RUN OVER</h2>
-        <div class="big" id="resScore">0</div>
+        <div id="resRow">
+          <div id="resPortraitWrap">
+            <img id="resPortrait" alt="BONES">
+          </div>
+          <div id="resPileWrap">
+            <canvas id="revealcv" width="130" height="130"></canvas>
+            <div class="big" id="resScore">0</div>
+          </div>
+        </div>
         <div class="lines" id="resLines"></div>
         <button id="bResHome" style="font-size:11px;padding:12px 22px">BACK HOME</button>
       </div>
+
+      <!-- BEDTIME -->
+      <div id="bedtimePanel" class="overpanel">
+        <h2 style="color:#f22">BONES MUST SLEEP NOW</h2>
+        <img id="bedtimeImg" alt="BONES SLEEPING">
+        <div class="lines" id="bedtimeLines">HIS EYES ARE HEAVY... TIME FOR BED.</div>
+        <div id="bedtimeBtns">
+          <button id="bBedWork">GO TO WORK<br><span class="tiny">EARN CASH WHILE HE RESTS</span></button>
+          <button id="bBedSkip">SKIP TO 06:00</button>
+        </div>
+      </div>
+
+      <!-- WELCOME BACK -->
+      <div id="welcomeBack" class="overpanel">
+        <h2 id="wbTitle">YOU'RE HOME</h2>
+        <img id="wbImg" alt="BONES">
+        <div id="wbGap"></div>
+        <div id="wbMeters"></div>
+        <div class="lines" id="wbLine">HE WAITED.</div>
+        <button id="bWelcomeHome" style="font-size:11px;padding:12px 22px">I'M HOME</button>
+      </div>
     </div>
+    <button id="globalMusicBtn" aria-label="Toggle music">&#9834;</button>
+  </div>
+
+  <!-- confirmation/choice dialog: lives OUTSIDE #game so it can still render (and sit above
+     #start's z-index) when triggered from the title screen's own NEW GAME button, not just
+     from inside a live game -- #game is display:none while #start is up, which used to bury
+     this dialog along with it. -->
+  <div id="choice" class="overpanel">
+    <h2 id="chTitle"></h2>
+    <div class="lines" id="chLines"></div>
+    <button id="chA" style="font-size:11px;padding:12px 20px"></button>
+    <button id="chB" style="font-size:11px;padding:12px 20px"></button>
+    <button id="chC" class="tiny" style="padding:8px 16px"></button>
   </div>
 
   <div id="trans">
@@ -378,5 +730,10 @@ button.red:active{background:#f22;color:#000}
   <div id="toast"></div>
 </div>
 <script src="bones.js"></script>
+<script>
+if("serviceWorker" in navigator){
+  window.addEventListener("load",()=>{ navigator.serviceWorker.register("sw.js").catch(()=>{}); });
+}
+</script>
 </body>
 </html>
