@@ -396,7 +396,12 @@ function restoreCamHeader(){
 }
 function renderMeters(){
   for(const [,k] of METERS){
-    const el=$("#bar_"+k), v=S[k];
+    const el=$("#bar_"+k);
+    // clamp defensively on the way to the DOM: an out-of-range or non-finite value (NaN,
+    // undefined, a stray negative from somewhere) is invalid CSS and gets silently ignored by
+    // the browser, leaving the bar frozen at whatever width it last had rather than reflecting
+    // the real (now-fixed) stat underneath
+    const v=clamp(Number(S[k])||0,0,100);
     el.classList.toggle("crit", v<25);
     el.firstElementChild.style.width = v+"%";
   }
