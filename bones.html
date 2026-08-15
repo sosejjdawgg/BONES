@@ -183,6 +183,13 @@ button.red:active{background:#f22;color:#000}
 .menurow{width:100%;text-align:left;font-size:8px;padding:14px 12px;line-height:1.6}
 .settingrow{display:flex;justify-content:space-between;align-items:center;border:3px solid #fff;padding:10px 12px;font-size:8px;width:100%}
 .settingrow button{font-size:7px;padding:6px 10px}
+.settinghead{display:block;text-align:left;width:100%;font-size:7px;color:#f22;letter-spacing:2px;margin-top:2px}
+.rangewrap{display:flex;align-items:center;gap:8px}
+.rangewrap input[type=range]{-webkit-appearance:none;appearance:none;width:90px;height:4px;background:#333;border:2px solid #fff;outline:none;cursor:pointer}
+.rangewrap input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;background:#fff;border:2px solid #000;cursor:pointer}
+.rangewrap input[type=range]::-moz-range-thumb{width:10px;height:14px;background:#fff;border:2px solid #000;cursor:pointer;border-radius:0}
+.rangewrap input[type=range]::-moz-range-track{background:#333;height:4px}
+.rangewrap span{font-size:7px;width:26px;text-align:right;color:#8a8a8a}
 #careGuidePanel .lines{text-align:left;width:88%;max-height:64vh;overflow-y:auto;padding:2px 4px}
 #careGuidePanel .lines .gh{color:#f22;letter-spacing:1px}
 
@@ -390,7 +397,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.257a</span>
+          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.259a</span>
         </div>
       </div>
 
@@ -543,12 +550,16 @@ body.reduce-motion *{animation:none!important}
       <div id="settingsPanel" class="overpanel">
         <button class="tiny pclose" id="settingsClose">&#10005; CLOSE</button>
         <h2>&#9670; SETTINGS</h2>
-        <div style="display:flex;flex-direction:column;gap:10px;width:82%">
+        <div style="display:flex;flex-direction:column;gap:10px;width:82%;max-height:56vh;overflow-y:auto;padding:2px 2px">
+          <span class="settinghead">AUDIO</span>
           <div class="settingrow"><span>SOUND</span><button class="tiny" id="setSound">ON</button></div>
           <div class="settingrow"><span>MUSIC</span><button class="tiny" id="setMusic">ON</button></div>
+          <span class="settinghead">DISPLAY</span>
           <div class="settingrow"><span>REDUCE MOTION</span><button class="tiny" id="setMotion">OFF</button></div>
           <div class="settingrow"><span>BARK STYLE</span><button class="tiny" id="setBarkStyle">CIRCLE</button></div>
           <div class="settingrow" id="setNightModeRow" style="display:none"><span>NIGHT MODE</span><button class="tiny" id="setNightMode">ON</button></div>
+          <div class="settingrow"><span>SCREEN SHAKE</span><button class="tiny" id="setShake">FULL</button></div>
+          <div class="settingrow"><span>VIGNETTE</span><div class="rangewrap"><input type="range" id="setVignette" min="0" max="100" step="5"><span id="setVignetteVal">60%</span></div></div>
         </div>
         <button class="menurow" id="mReplayTutorial" style="width:82%">&#9635; REPLAY DELIVERY TUTORIAL</button>
         <button class="tiny red" id="setEndRunPk" style="width:82%;display:none">&#9873; END THIS RUN</button>

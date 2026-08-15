@@ -1187,14 +1187,33 @@ function pbTutorialDraw(ctx,w,h,t){
     ctx.restore();
   }
 }
+// SETTINGS.shake: FULL/REDUCED/OFF — a player preference, scoped here to the one place the van's
+// camera jitter actually gets applied, rather than touching every place PB.shake gets set
+function pbShakeMul(){
+  return SETTINGS.shake==="off" ? 0 : SETTINGS.shake==="reduced" ? 0.4 : 1;
+}
+// A soft radial fade to black around the edges of the frame — purely a comfort/legibility touch,
+// so the HUD boxes (which already sit on their own dark panels) read more clearly against a
+// calmer, dimmer periphery. Intensity is a player preference (SETTINGS.vignette, 0-100).
+function pbDrawVignette(ctx,w,h){
+  const amt=(SETTINGS.vignette||0)/100;
+  if(amt<=0) return;
+  const cx=w/2, cy=h*0.42, rIn=Math.min(w,h)*0.30, rOut=Math.max(w,h)*0.78;
+  const g=ctx.createRadialGradient(cx,cy,rIn,cx,cy,rOut);
+  g.addColorStop(0,"rgba(0,0,0,0)");
+  g.addColorStop(1,"rgba(0,0,0,"+(0.18+0.62*amt).toFixed(3)+")");
+  ctx.fillStyle=g;
+  ctx.fillRect(0,0,w,h);
+}
 function drawPaperboy(t){
   const [ctx,w,h]=fit($("#paperboycv"));
   ctx.fillStyle="#000"; ctx.fillRect(0,0,w,h);
-  PB.camX = w*0.36 + (Math.random()-0.5)*PB.shake*7;
-  PB.camY = h*0.26 + (Math.random()-0.5)*PB.shake*7;
+  const shakeMul=pbShakeMul();
+  PB.camX = w*0.36 + (Math.random()-0.5)*PB.shake*7*shakeMul;
+  PB.camY = h*0.26 + (Math.random()-0.5)*PB.shake*7*shakeMul;
   // end run only makes sense on the real paid route, never the two-house tutorial
   $("#pbEndRunBtn").style.display = PB.run ? "" : "none";
-  if(PB.tutorial){ pbTutorialDraw(ctx,w,h,t); return; }
+  if(PB.tutorial){ pbTutorialDraw(ctx,w,h,t); pbDrawVignette(ctx,w,h); return; }
   pbDrawRoad(ctx);
   // ground layer first, so every path/doormat sits under every building. Decoys render exactly
   // like real houses but are never "next", so their path/doormat never highlights.
@@ -1236,6 +1255,7 @@ function drawPaperboy(t){
   pbDrawHUD(ctx,w,h);
   pbDrawSpeedo(ctx,w,h);
   pbDrawMinimap(ctx,w,h);
+  pbDrawVignette(ctx,w,h);
 }
 (function(){
   // Swipe delivery straight on the route view: flick left or right to throw that way. A canvas

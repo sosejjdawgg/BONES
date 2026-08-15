@@ -355,7 +355,7 @@ const S = {
 // music on by default: the title sequence is scored to the melody, so a silent first boot would
 // hide the whole opening. A save that already carries an explicit preference still wins (see
 // loadGame), so nobody who deliberately turned it off gets it switched back on.
-const SETTINGS = { sound:true, reduceMotion:false, music:true, musicDefaultMigrated:true, barkStyle:"circle", nightMode:true };
+const SETTINGS = { sound:true, reduceMotion:false, music:true, musicDefaultMigrated:true, barkStyle:"circle", nightMode:true, vignette:60, shake:"full" };
 const CHARMS = [
   {id:"spike", name:"SPIKED COLLAR", cost:15, unlock:2,   fx:"+15% SPEED / -10% JUMP",            mod:{spd:1.15,jmp:0.90}},
   {id:"band",  name:"RED BANDANA",   cost:10, unlock:5,   fx:"+15% JUMP",                          mod:{jmp:1.15}},
@@ -3852,6 +3852,9 @@ function renderSettings(){
   // treatment (tint, fog-of-war, fireflies) back to how regular DOGPARK looks, live, mid-run
   $("#setNightModeRow").style.display = (PK.active && PK.plusMode) ? "" : "none";
   $("#setNightMode").textContent = SETTINGS.nightMode ? "ON" : "OFF";
+  $("#setShake").textContent = SETTINGS.shake==="off" ? "OFF" : SETTINGS.shake==="reduced" ? "REDUCED" : "FULL";
+  $("#setVignette").value = SETTINGS.vignette;
+  $("#setVignetteVal").textContent = SETTINGS.vignette+"%";
   renderGlobalMusicBtn();
 }
 // kept separate from renderSettings() so the corner button can refresh on its own
@@ -3887,6 +3890,15 @@ $("#setNightMode").onclick=()=>{
   SETTINGS.nightMode=!SETTINGS.nightMode;
   renderSettings(); beep(500,.05);
 };
+$("#setShake").onclick=()=>{
+  SETTINGS.shake = SETTINGS.shake==="full" ? "reduced" : SETTINGS.shake==="reduced" ? "off" : "full";
+  renderSettings(); beep(500,.05);
+};
+// live-updates as the slider drags — no need to wait for release before the vignette responds
+$("#setVignette").addEventListener("input",()=>{
+  SETTINGS.vignette = parseInt($("#setVignette").value,10)||0;
+  $("#setVignetteVal").textContent = SETTINGS.vignette+"%";
+});
 $("#setEndRunPk").onclick=()=>{
   $("#settingsPanel").classList.remove("show"); PK.settingsOpen=false;
   PK.endRunAsk=true;
