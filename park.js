@@ -2393,12 +2393,20 @@ function pkApplyZoom(){
                       Math.min(0.25, PK.zoomFromBark||0) + Math.min(PK_ZOOM_MAX, PK.zoomFromWave||0));
   PK.zoom = 1 - perm - (PK.zoomFromJudgment||0);
 }
-/* ---------- the park opening up: every wave cleared from wave 2 on pulls the camera back one
-   step and hands the same step's worth of screen from the control pad to the view itself. It
-   runs inside the wave-clear slow-mo (see WAVE_OUTRO_DUR), so the park visibly reacts to the
-   final kill rather than snapping between waves. No world rebuild is involved — this is purely
-   camera + layout, which is both cheaper and reads far better than the old buy-a-bigger-park. */
-const PK_ZOOM_STEP=0.025, PK_ZOOM_MAX=0.50;
+/* ---------- the park opening up: each wave cleared between wave 2 and PK_ZOOM_LAST_WAVE pulls
+   the camera back one step and hands the same step's worth of screen from the control pad to the
+   view itself. It runs inside the wave-clear slow-mo (see WAVE_OUTRO_DUR), so the park visibly
+   reacts to the final kill rather than snapping between waves. No world rebuild is involved —
+   this is purely camera + layout, which is both cheaper and reads far better than the old
+   buy-a-bigger-park. */
+const PK_ZOOM_STEP=0.025;
+// the progression finishes on the wave-10 clear and holds there for the rest of the run, however
+// deep it goes — the framing you fight wave 10 in is the framing you keep
+const PK_ZOOM_LAST_WAVE=10;
+// the range the split is mapped across (see pkCamPctFor) and the hard ceiling on the pull-back.
+// Deliberately wider than the progression actually travels: retuning the step or the last wave
+// changes where a run ends up without needing the camera/pad mapping retuned to match.
+const PK_ZOOM_MAX=0.50;
 const PK_ZOOM_FLOOR=0.45;                              // the smallest the world may ever be drawn
 const PK_CAM_PCT0=42;                                  // #cam's resting height, matching the CSS
 const PK_BOTTOM_SHRINK_MAX=0.5;                        // the pad gives up at most half its height
@@ -2420,8 +2428,12 @@ function pkResetUISplit(){
   PK.uiCamPct=PK_CAM_PCT0;
   $("#cam").style.height="";     // back to the stylesheet's own 42%
 }
-// queued by the wave-clearing kill; driven by pkWaveZoomAdvance across the outro that follows
+// queued by the wave-clearing kill; driven by pkWaveZoomAdvance across the outro that follows.
+// Both ends of the progression are decided here so there is one place that says when the park
+// opens up: wave 1's clear is left alone (that first send-off is busy enough teaching the beat)
+// and nothing past PK_ZOOM_LAST_WAVE moves it again.
 function pkWaveZoomStep(){
+  if(PK.wave<2 || PK.wave>PK_ZOOM_LAST_WAVE) return;
   const from=PK.zoomFromWave||0;
   const to=Math.min(PK_ZOOM_MAX, from+PK_ZOOM_STEP);
   if(to<=from) return;                       // already all the way out — nothing left to give
@@ -3366,9 +3378,7 @@ function parkUpdate(dt){
   if(waveClear && !PK.waveOutro){
     PK.waveOutro={t:0, hero:PK.lastDowned&&PK.lastDowned.fleeing?PK.lastDowned:null};
     if(PK.waveOutro.hero) PK.waveOutro.hero.heroOutro=true;
-    // wave 1's clear is left alone — the very first send-off is busy enough teaching the beat.
-    // From the wave-2 clear on, the park opens up a step on every single one of these.
-    if(PK.wave>=2) pkWaveZoomStep();
+    pkWaveZoomStep();          // no-ops outside wave 2..PK_ZOOM_LAST_WAVE — see pkWaveZoomStep
     PK.shake=Math.max(PK.shake||0,0.35);
     beep(1180,.1,"sine",.05,{prio:2});
     setTimeout(()=>beep(1580,.16,"sine",.045,{prio:2}),120);
