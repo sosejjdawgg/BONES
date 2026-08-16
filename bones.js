@@ -342,6 +342,7 @@ function toast(msg,red){
   }
   CAMMSG_FULL=msg;
   const box=$("#camMsg"), txt=$("#camMsgTxt");
+  layoutCamMsg();
   txt.textContent=msg;
   box.className="show"+(red?" red":"");     // also drops any .scroll left over from the last one
   const shift=Math.max(0, txt.scrollWidth-box.clientWidth+10);   // reading this settles layout too
@@ -356,6 +357,25 @@ function toast(msg,red){
   camMsgT=setTimeout(hideCamMsg, life);
 }
 function hideCamMsg(){ clearTimeout(camMsgT); $("#camMsg").className=""; }
+// The strip lives in the sliver between the ground line the bowls/bed sit on (h*0.82, see drawCam)
+// and the XP row's own text. Both of those move with the canvas, so the strip is measured against
+// them rather than pinned at a fixed offset that would ride up over the bowls on a short screen.
+let CAMMSG_TOP_FRAC=1;
+function layoutCamMsg(){
+  const h=$("#dogcv").clientHeight;
+  if(!h) return;
+  const groundY=h*0.82, labelY=h-33;
+  const hgt=clamp(labelY-3-(groundY+8), 11, 18);   // shrinks before it will sit on the bowls
+  const box=$("#camMsg");
+  box.style.height=hgt+"px";
+  box.style.bottom=(h-labelY+3)+"px";
+  CAMMSG_TOP_FRAC=(labelY-3-hgt)/h;
+}
+// ...and while it's up it owns its own band, so a notice can never swallow a tap meant for a bowl
+// or the bed underneath it.
+function camTapCeiling(){
+  return $("#camMsg").classList.contains("show") ? CAMMSG_TOP_FRAC : 1;
+}
 // a strip only holds so much -- tapping it puts the whole message in a dialog that waits for you
 $("#camMsg").addEventListener("click",()=>{
   if(!CAMMSG_FULL || $("#choice").classList.contains("show")) return;
@@ -1036,7 +1056,8 @@ $("#dogcv").addEventListener("pointerdown",e=>{
   const uPx=r.height/42, wbX=0.04*r.width, wbW=4*uPx, fbX2=wbX+wbW+8;
   const {bx:bedXpx, bw2:bedWpx} = bedRect(r.width, r.height);
   const px=fx*r.width;
-  if(px>=bedXpx && px<=bedXpx+bedWpx && fy>0.62){
+  const tapMaxFy=camTapCeiling();   // a live notice owns the strip it sits in — see layoutCamMsg
+  if(px>=bedXpx && px<=bedXpx+bedWpx && fy>0.62 && fy<tapMaxFy){
     if(S.bedTier===0){
       S.bedHinted=true;
       toast("HE HAS NOWHERE PROPER TO SLEEP \u2014 SEE THE LIST",1);
@@ -1053,7 +1074,7 @@ $("#dogcv").addEventListener("pointerdown",e=>{
     }
     toggleRest(); return;
   } // the bed
-  if(fy>0.70){
+  if(fy>0.70 && fy<tapMaxFy){
     if(px>=wbX-6 && px<=wbX+wbW+4){ tapBowl("water"); return; }
     if(px>=fbX2-4 && px<=fbX2+wbW+6){ tapBowl("food"); return; }
   }

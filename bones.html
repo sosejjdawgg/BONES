@@ -84,7 +84,8 @@ button.red:active{background:#f22;color:#000}
 /* MESSAGE STRIP — notices land in the dead band between the DOGCAM scene and the XP bar rather
    than floating over the middle of whatever screen is up. Text too wide for the strip scrolls
    itself into view and back; tapping the strip opens the whole message in a dialog. */
-#camMsg{position:absolute;left:8px;right:8px;bottom:42px;height:18px;z-index:4;display:none;
+/* bottom/height are recomputed per canvas size by layoutCamMsg() — these are just the fallback */
+#camMsg{position:absolute;left:8px;right:8px;bottom:37px;height:18px;z-index:4;display:none;
   background:#000;border:2px solid #fff;overflow:hidden;white-space:nowrap;cursor:pointer;
   font-size:7px;line-height:14px}
 #camMsg.show{display:block}
@@ -440,7 +441,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.280a</span>
+          <span id="devToggle" style="color:#555;font-size:7px;cursor:pointer;padding:6px">v0.282a</span>
         </div>
       </div>
 
