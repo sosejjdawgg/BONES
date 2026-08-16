@@ -999,9 +999,29 @@ function blockAtWork(){
   );
 }
 let _vetInterval = null;
+// panels that are safe to dismiss with a stray DOGCAM tap -- "browse and back out" style menus
+// opened from the home screen. Deliberately excludes: #choice (forced confirmations -- also
+// physically covers #cam so it's unreachable anyway), #pre/#result/#bedtimePanel/#welcomeBack
+// (run-flow and forced-narrative beats that shouldn't vanish on an incidental tap).
+const CAM_DISMISS_PANELS = [
+  ["goout","goClose"], ["shopPanel","shopClose"], ["supplies","supClose"],
+  ["todoPanel","todoClose"], ["mailPanel","mailClose"], ["menuPanel","menuClose"],
+  ["careGuidePanel","careClose"], ["settingsPanel","settingsClose"],
+  ["nourish","nourishClose"], ["moneyPick","mpCancel"], ["mystPanel","mystClose"],
+  ["pinPanel","pinClose"],
+];
+// returns true if a panel was open and got closed -- callers use this to swallow the tap
+function dismissOpenCamPanel(){
+  for(const [panelId,closeId] of CAM_DISMISS_PANELS){
+    const p=$("#"+panelId);
+    if(p && p.classList.contains("show")){ $("#"+closeId).click(); return true; }
+  }
+  return false;
+}
 $("#dogcv").addEventListener("pointerdown",e=>{
   if(R.active||OUTING.active||PK.active) return; // BONES is out
   if(WASH.active) return;             // scrubbing uses drag, not taps
+  if(dismissOpenCamPanel()) return;   // a stray tap on DOGCAM backs out of whatever panel is open first
   const r=e.currentTarget.getBoundingClientRect();
   const fx=(e.clientX-r.left)/r.width, fy=(e.clientY-r.top)/r.height;
   if(XPANIM.ready && fy>0.86){ xpLevelTap(); return; }
