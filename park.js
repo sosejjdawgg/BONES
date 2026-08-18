@@ -79,137 +79,6 @@ function pkBuildBG(w,h){
 }
 const ENEMYIMG={};
 for(const k in ENEMYFRAMES) ENEMYIMG[k] = ENEMYFRAMES[k].map(u=>{ const i=new Image(); i.src=u; return i; });
-/* ── ANGEL WINGS ────────────────────────────────────────────────────────────
-   A cooldown-gated special with its own stamina pool — nothing to do with HP
-   or the bark. Double-tap the pad to launch; HOLD the second tap to stay up
-   (5s ceiling); release to dive. Contact with the ground = stomp AoE.
-   While he is above WING.clearZ he and the horde simply cannot reach
-   each other — that is the whole point of the ability. */
-const WINGIMG = WINGFRAMES.map(u=>{ const i=new Image(); i.src=u; return i; });
-const WING = {
-  cost:45,           // stamina per leap
-  cd:8,              // seconds of cooldown after landing
-  hover:5,           // hard ceiling on airtime
-  minHover:0.55,     // you always get this much, even on a flick-tap
-  rise:0.26, dive:0.30,
-  apex:112,          // fake height in screen px
-  clearZ:34,         // above this: no collisions, either way
-  push:2.7,          // pounce speed as a multiple of ground speed
-  aspect:196/131, anchorY:127/131
-};
-function pkWingFrame(t){
-  const J=PK.jump;
-  if(!J) return (Math.floor(t*2)%9===0)?1:0;                                 // folded, occasional twitch
-  if(J.flop) return Math.floor(t*11)%2;                                      // pitiful half-flutter
-  if(J.ph==="rise") return Math.min(6,Math.floor(clamp(J.t/WING.rise,0,1)*6.99));
-  if(J.ph==="hover") return [4,5,6,5][Math.floor(t*9)%4];                    // beat loop, fully spread
-  return [6,5][Math.floor(t*12)%2];
-}
-function pkRing(x,y,r,life,col,fill){ PK.rings.push({x,y,r,life,max:life,col,fill}); }
-function pkFeather(x,y,z){
-  const a=Math.random()*6.283, sp=20+Math.random()*46;
-  PK.fth.push({x,y,z:z+Math.random()*18, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, vz:12+Math.random()*30,
-    rot:Math.random()*6.283, vr:(Math.random()-0.5)*7, life:0.7+Math.random()*0.7, max:1.4});
-}
-function pkParticles(dt){
-  for(let i=PK.rings.length-1;i>=0;i--){ PK.rings[i].life-=dt; if(PK.rings[i].life<=0) PK.rings.splice(i,1); }
-  for(let i=PK.fth.length-1;i>=0;i--){
-    const f=PK.fth[i]; f.life-=dt;
-    if(f.life<=0){ PK.fth.splice(i,1); continue; }
-    f.x=(f.x+f.vx*dt+PK.WW)%PK.WW; f.y=(f.y+f.vy*dt+PK.WH)%PK.WH;
-    f.vx*=0.94; f.vy*=0.94;
-    f.vz-=90*dt; f.z+=f.vz*dt;
-    if(f.z<0){ f.z=0; f.vz=0; }
-    f.rot+=f.vr*dt;
-  }
-  if(PK.jump && !PK.jump.flop){
-    PK.jump.ft+=dt;
-    if(PK.jump.ft>0.055){ PK.jump.ft=0; pkFeather(PK.x,PK.y,PK.z*0.6+8); }
-  }
-}
-function pkLeap(){
-  if(!PK.active||PK.shop||PK.wdrop||PK.jump) return;
-  if(!PK.wings){ beep(150,.07); toast("NO WINGS \u2014 THE PARK SHOP HAS THEM"); return; }
-  if(PK.jcd>0){ beep(150,.06); PK.fx.push({x:PK.x,y:PK.y-28,txt:"WINGS COLD "+PK.jcd.toFixed(1)+"s",life:0.8}); return; }
-  if(PK.wst<WING.cost) return pkFlop();
-  PK.wst-=WING.cost;
-  let dx=0,dy=0;
-  const jl=PK.joy?Math.hypot(PK.joy.dx,PK.joy.dy):0;
-  if(jl>0.18){ dx=PK.joy.dx/jl; dy=PK.joy.dy/jl; }
-  else { const m=Math.hypot(PK.vx,PK.vy); if(m>20){ dx=PK.vx/m; dy=PK.vy/m; } }   // no stick = straight up
-  PK.jump={ph:"rise",t:0,dx,dy,sp:(dx||dy)?PK.spd*WING.push:0,z0:0,ft:0};
-  PK.held=true; PK.inv=Math.max(PK.inv,0.25);
-  pkRing(PK.x,PK.y,54,0.30,"#fff");
-  for(let i=0;i<10;i++) pkFeather(PK.x,PK.y,10);
-  beep(430,.06); setTimeout(()=>beep(720,.07),60); setTimeout(()=>beep(980,.09),130);
-}
-function pkFlop(){                                   // empty tank: a sad little hop and a limp
-  PK.jump={ph:"rise",t:0,dx:0,dy:0,sp:0,z0:0,ft:0,flop:true};
-  PK.held=false; PK.jcd=Math.max(PK.jcd,2.2); PK.slowT=1.6;
-  PK.fx.push({x:PK.x,y:PK.y-28,txt:"NO STAMINA",life:0.9});
-  beep(200,.09,"sawtooth",.05); setTimeout(()=>beep(120,.16,"sawtooth",.05),110);
-}
-function pkFlyTick(dt,mx,my){
-  const J=PK.jump;
-  J.t+=dt;
-  const AP = J.flop?22:WING.apex;
-  if(Math.hypot(mx,my)>0.15){ J.dx=J.dx*0.9+mx*0.1; J.dy=J.dy*0.9+my*0.1; }   // half authority mid-air
-  if(J.ph==="rise"){
-    const k=clamp(J.t/(J.flop?0.16:WING.rise),0,1);
-    PK.z=AP*(1-(1-k)*(1-k));                                                   // ease-out: punchy off the floor
-    if(k>=1){ J.ph="hover"; J.t=0; }
-  } else if(J.ph==="hover"){
-    PK.z=AP+Math.sin(J.t*3.4)*(J.flop?1:5);                                    // wing-beat bob
-    const cap=J.flop?0.08:WING.hover, minH=J.flop?0.08:WING.minHover;
-    if(J.t>cap || (!PK.held && J.t>minH)){ J.ph="dive"; J.t=0; J.z0=PK.z; }
-  } else {
-    const k=clamp(J.t/(J.flop?0.18:WING.dive),0,1);
-    PK.z=J.z0*(1-k*k);                                                         // ease-in: he drops like a verdict
-    if(k>=1){ pkLand(); return; }
-    J.sp*=0.85;
-  }
-  J.sp=Math.max(J.flop?0:PK.spd*0.55, J.sp*Math.exp(-dt*0.85));
-  const l=Math.hypot(J.dx,J.dy)||1;
-  PK.vx=J.dx/l*J.sp; PK.vy=J.dy/l*J.sp;
-}
-function pkLand(){
-  const J=PK.jump;
-  PK.jump=null; PK.z=0; PK.held=false;
-  if(J.flop){ PK.vx*=0.2; PK.vy*=0.2; beep(150,.1,"sawtooth"); pkRing(PK.x,PK.y,20,0.25,"#fff"); return; }
-  PK.jcd=WING.cd; PK.shake=1; PK.pulse=0.35; PK.noBlink=0.5;
-  pkRing(PK.x,PK.y,PK.stompR*0.85,0.16,"#fff",true);      // the impact flash
-  pkRing(PK.x,PK.y,PK.stompR*1.20,0.50,"#fff");
-  pkRing(PK.x,PK.y,PK.stompR*0.95,0.38,"#e8c14a");
-  pkRing(PK.x,PK.y,PK.stompR*0.55,0.26,"#fff");
-  for(let i=0;i<26;i++) pkFeather(PK.x,PK.y,30);
-  let kills=0;
-  for(let i=PK.en.length-1;i>=0;i--){
-    const e=PK.en[i];
-    const dxw=wd(e.x-PK.x,PK.WW), dyw=wd(e.y-PK.y,PK.WH);
-    const d=Math.hypot(dxw,dyw)||1;
-    if(d<PK.stompR){
-      const near=1-clamp(d/PK.stompR,0,1);
-      e.hp-=Math.max(1,Math.round(PK.stompD*(0.55+0.45*near)));
-      if(e.hp<=0){
-        PK.drops.push({x:e.x,y:e.y,v:e.alpha?10:e.t==="cat"?3:e.t==="bird"?2:1,gold:!!e.alpha,life:25});
-        kills++; PK.en.splice(i,1);
-      } else { e.kx=dxw/d*PK.stompK*(0.5+0.5*near); e.ky=dyw/d*PK.stompK*(0.5+0.5*near); }
-    }
-  }
-  for(let i=PK.drops.length-1;i>=0;i--){                  // the shockwave sweeps loose bones in
-    const dr=PK.drops[i];
-    if(Math.hypot(wd(dr.x-PK.x,PK.WW),wd(dr.y-PK.y,PK.WH))<PK.stompR*0.55){ pkGain(dr.v,dr.x,dr.y); PK.drops.splice(i,1); }
-  }
-  if(kills>0) PK.fx.push({x:PK.x,y:PK.y-32,txt:"STOMP x"+kills,life:1.1});
-  PK.inv=Math.max(PK.inv,0.35);
-  beep(90,.22,"sawtooth",.07); setTimeout(()=>beep(180,.1,"square",.05),40);
-  if(kills>0) setTimeout(()=>beep(520,.07),110);
-}
-function pkWingsBuy(){
-  PK.wdrop={t:0}; PK.jcd=0; PK.wst=0; PK.joy=null;
-  beep(880,.12); setTimeout(()=>beep(1170,.12),160);
-  setTimeout(()=>beep(1560,.20),340); setTimeout(()=>beep(1976,.30),700);
-}
 function startPark(){
   Object.assign(PK,{
     active:true,t:0,wave:1,waveT:0,spawnT:1,
@@ -219,11 +88,7 @@ function startPark(){
     barkR:60*(0.8+0.4*S.hunger/100), knock:150,
     xp:0, chain:0, chainT:0, inv:0, fx:[],
     x:0,y:0,vx:0,vy:0, joy:null,
-    en:[], fr:[], gate:{}, started:false, shop:null, biscuits:[], drops:[],
-    // wings
-    wings:!!S.devWings, z:0, jump:null, jcd:0, slowT:0, held:false, tapT:-9,
-    wst:100, wstMax:100, wregen:9, stompR:78, stompD:3, stompK:420, noBlink:0,
-    fth:[], rings:[], shake:0, wdrop:null
+    en:[], fr:[], gate:{}, started:false, shop:null, biscuits:[], drops:[]
   });
   PK.hp=PK.maxhp;
   PK.acts=[{k:"hoop",x:.15,y:.125,cd:0},{k:"tunnel",x:.35,y:.36,cd:0},{k:"ramp",x:.11,y:.39,cd:0},{k:"tunnel",x:.62,y:.70,cd:0},{k:"hoop",x:.85,y:.20,cd:0}];
@@ -302,35 +167,19 @@ function pkBark(){
   if(hits>0) beep(300,.05);
 }
 function pkShopOpen(){
-  const pool=[
+  PK.shop=[
     {n:"BIGGER BARK",c:12,f:()=>PK.barkR+=14},
     {n:"FASTER BARK",c:14,f:()=>PK.barkMax=Math.max(0.8,PK.barkMax-0.35)},
     {n:"MIGHTY KNOCKBACK",c:10,f:()=>PK.knock+=70},
     {n:"SNACK \u2014 HEAL 30",c:8,f:()=>PK.hp=Math.min(PK.maxhp,PK.hp+30)},
     {n:"ZOOMIES +10% SPEED",c:12,f:()=>PK.spd*=1.1},
     {n:"TOUGH COAT +15 HP",c:15,f:()=>{PK.maxhp+=15;PK.hp+=15;}}
-  ];
-  if(PK.wings) pool.push(
-    {n:"DEEP LUNGS \u2014 WING CAP",c:16,f:()=>{PK.wstMax+=45;PK.wst=PK.wstMax;}},
-    {n:"FAST FEATHERS \u2014 REGEN",c:14,f:()=>PK.wregen+=5},
-    {n:"HEAVIER STOMP",c:18,f:()=>{PK.stompD+=2;PK.stompK+=140;}},
-    {n:"WIDER STOMP",c:15,f:()=>PK.stompR+=22}
-  );
-  PK.shop=pool.sort(()=>Math.random()-0.5).slice(0,3);
-  if(!PK.wings) PK.shop.unshift({n:"\u2726 ANGEL WINGS",c:500,gold:true,f:pkWingsBuy});
+  ].sort(()=>Math.random()-0.5).slice(0,3);
   PK.joy=null;
 }
 function parkUpdate(dt){
   if(!PK.active) return;
   if(PK.shop) return;   // world pauses while shopping
-  if(PK.wdrop){        // ...and while the heavens are busy
-    PK.wdrop.t+=dt;
-    if(PK.wdrop.t>=2.9){
-      PK.wdrop=null; PK.wings=true; PK.wst=PK.wstMax; PK.jcd=0;
-      toast("\u2726 WINGS OF THE GOOD BOY \u2014 DOUBLE-TAP TO LEAP");
-    }
-    return;
-  }
   PK.t+=dt; PK.waveT+=dt;
   PK.chainT=Math.max(0,PK.chainT-dt); if(PK.chainT<=0) PK.chain=0;
   PK.inv=Math.max(0,PK.inv-dt); PK.pulse=Math.max(0,PK.pulse-dt);
@@ -343,12 +192,6 @@ function parkUpdate(dt){
     pkBuildBG(PK.WW,PK.WH);
   }
   const WW=PK.WW, WH=PK.WH;
-  PK.slowT=Math.max(0,PK.slowT-dt);
-  PK.jcd=Math.max(0,PK.jcd-dt);
-  PK.shake=Math.max(0,PK.shake-dt*3.4);
-  PK.noBlink=Math.max(0,PK.noBlink-dt);
-  if(PK.wings && !PK.jump) PK.wst=Math.min(PK.wstMax, PK.wst+PK.wregen*dt);
-  pkParticles(dt);
   if(PK.waveT>20){
     PK.waveT=0; PK.wave++;
     if(PK.wave>=3) tickTodo("j_wave3");
@@ -375,14 +218,12 @@ function parkUpdate(dt){
   }
   let mx=0,my=0;
   if(PK.joy){ mx=PK.joy.dx; my=PK.joy.dy; }
-  const gspd=PK.spd*(PK.slowT>0?0.45:1);            // a failed deployment costs him his legs for a moment
-  if(PK.jump) pkFlyTick(dt,mx,my);
-  else if(Math.hypot(mx,my)>0.1){ const l=Math.hypot(mx,my); PK.vx=mx/l*gspd; PK.vy=my/l*gspd; }
+  if(Math.hypot(mx,my)>0.1){ const l=Math.hypot(mx,my); PK.vx=mx/l*PK.spd; PK.vy=my/l*PK.spd; }
   else { PK.vx*=0.8; PK.vy*=0.8; }
   PK.x=(PK.x+PK.vx*dt+WW)%WW;
   PK.y=(PK.y+PK.vy*dt+WH)%WH;
   PK.barkCd-=dt;
-  if(PK.barkCd<=0 && PK.z<WING.clearZ && PK.en.some(e=>Math.hypot(wd(e.x-PK.x,WW),wd(e.y-PK.y,WH))<PK.barkR)) pkBark();
+  if(PK.barkCd<=0 && PK.en.some(e=>Math.hypot(wd(e.x-PK.x,WW),wd(e.y-PK.y,WH))<PK.barkR)) pkBark();
   for(let i=PK.en.length-1;i>=0;i--){
     const e=PK.en[i];
     e.kx*=0.88; e.ky*=0.88;
@@ -394,7 +235,7 @@ function parkUpdate(dt){
     e.ft+=dt; if(e.ft>0.12){ e.ft=0; e.fi++; }
     e.x=(e.x+(sx+e.kx)*dt+WW)%WW;
     e.y=(e.y+(sy+e.ky)*dt+WH)%WH;
-    if(d<14 && PK.inv<=0 && PK.z<WING.clearZ){
+    if(d<14 && PK.inv<=0){
       PK.hp-=(e.alpha?14:8); PK.inv=0.6;
       e.kx=-dxw/d*220; e.ky=-dyw/d*220;
       beep(110,.12,"sawtooth");
@@ -404,7 +245,7 @@ function parkUpdate(dt){
   for(let i=PK.fr.length-1;i>=0;i--){
     const f=PK.fr[i];
     f.x=(f.x+f.vx*dt+WW)%WW; f.life-=dt;
-    if(PK.z<WING.clearZ && Math.hypot(wd(f.x-PK.x,WW),wd(f.y-PK.y,WH))<20){
+    if(Math.hypot(wd(f.x-PK.x,WW),wd(f.y-PK.y,WH))<20){
       PK.hp=Math.min(PK.maxhp,PK.hp+15);
       pkGain(9,f.x,f.y);
       S.mood=clamp(S.mood+2,0,100);
@@ -415,11 +256,11 @@ function parkUpdate(dt){
   }
   for(const a of PK.acts){
     a.cd=Math.max(0,a.cd-dt);
-    if(a.cd<=0 && PK.z<WING.clearZ && Math.hypot(wd(a.x*WW-PK.x,WW),wd(a.y*WH-PK.y,WH))<22){
+    if(a.cd<=0 && Math.hypot(wd(a.x*WW-PK.x,WW),wd(a.y*WH-PK.y,WH))<22){
       a.cd=3; pkGain(3+Math.floor(Math.random()*3), a.x*WW, a.y*WH); beep(700,.06);
     }
   }
-  if(PARKGHOST && PK.z<WING.clearZ && Math.hypot(wd(PARKGHOST.x-PK.x,WW),wd(PARKGHOST.y-PK.y,WH))<18){
+  if(PARKGHOST && Math.hypot(wd(PARKGHOST.x-PK.x,WW),wd(PARKGHOST.y-PK.y,WH))<18){
     PK.xp+=PARKGHOST.xp;
     PK.fx.push({x:PK.x,y:PK.y-22,txt:"+"+PARKGHOST.xp+" RECOVERED",life:1.4});
     PARKGHOST=null;
@@ -432,13 +273,13 @@ function parkUpdate(dt){
     const dr=PK.drops[i];
     dr.life-=dt;
     if(dr.life<=0){ PK.drops.splice(i,1); continue; }
-    if(PK.z<WING.clearZ && Math.hypot(wd(dr.x-PK.x,WW),wd(dr.y-PK.y,WH))<16){
+    if(Math.hypot(wd(dr.x-PK.x,WW),wd(dr.y-PK.y,WH))<16){
       pkGain(dr.v, dr.x, dr.y);            // chain ticks per pickup — route efficiency pays
       beep(dr.gold?900:640,.06);
       PK.drops.splice(i,1);
     }
   }
-  if(PK.z<WING.clearZ && Math.hypot(wd(PK.gate.x-PK.x,WW),wd(PK.gate.y-PK.y,WH))<26) return pkBank();
+  if(Math.hypot(wd(PK.gate.x-PK.x,WW),wd(PK.gate.y-PK.y,WH))<26) return pkBank();
 }
 function pkExitCosts(){
   S.energy=clamp(S.energy-12,0,100); S.clean=clamp(S.clean-8,0,100);
@@ -507,9 +348,6 @@ function drawEnemy(ctx,e,sx,sy){
 function parkDraw(t){
   if(!PK.active) return;
   const [ctx,w,h]=fit($("#dogcv"));
-  const shk=PK.shake*PK.shake;
-  ctx.save();
-  if(shk>0.001) ctx.translate((Math.random()-0.5)*11*shk,(Math.random()-0.5)*11*shk);
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
   const DX=w/2, DY=h/2;
   const SC=(ex,ey)=>[DX+wd(ex-PK.x,WW), DY+wd(ey-PK.y,WH)];
@@ -579,24 +417,6 @@ function parkDraw(t){
     if(ex2<-40||ex2>w+40||ey2<-40||ey2>h+40) continue;
     drawEnemy(ctx,e,ex2,ey2);
   }
-  for(const r of PK.rings){
-    const [rx,ry]=SC(r.x,r.y);
-    const k=1-r.life/r.max;
-    ctx.globalAlpha=(1-k)*(r.fill?0.55:0.85);
-    ctx.beginPath(); ctx.ellipse(rx,ry+6,r.r*k,r.r*k*0.42,0,0,7);
-    if(r.fill){ ctx.fillStyle=r.col; ctx.fill(); }
-    else { ctx.strokeStyle=r.col; ctx.lineWidth=Math.max(1,6*(1-k)); ctx.stroke(); }
-  }
-  ctx.globalAlpha=1; ctx.lineWidth=2;
-  for(const f of PK.fth){
-    const [fx3,fy3]=SC(f.x,f.y);
-    if(fx3<-20||fx3>w+20||fy3<-20||fy3>h+20) continue;
-    ctx.save(); ctx.translate(fx3,fy3-f.z); ctx.rotate(f.rot);
-    ctx.globalAlpha=clamp(f.life,0,1)*0.9; ctx.fillStyle="#fff";
-    ctx.beginPath(); ctx.ellipse(0,0,3.4,1.4,0,0,7); ctx.fill();
-    ctx.restore();
-  }
-  ctx.globalAlpha=1;
   const frac2=1-clamp(PK.barkCd/PK.barkMax,0,1);
   ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.globalAlpha=0.35;
   ctx.beginPath(); ctx.arc(DX,DY,Math.max(6,PK.barkR*frac2),0,7); ctx.stroke();
@@ -606,68 +426,14 @@ function parkDraw(t){
     ctx.beginPath(); ctx.arc(DX,DY,PK.barkR*(1.35-(PK.pulse/0.35)*0.35),0,7); ctx.stroke();
     ctx.globalAlpha=1; ctx.lineWidth=2;
   }
-  {
-    const z=PK.z||0, hk=clamp(z/WING.apex,0,1), dy=DY-z;
-    // a shaft of the good light finds him, and only him
-    if(hk>0.02){
-      ctx.save(); ctx.globalCompositeOperation="lighter";
-      const g1=ctx.createLinearGradient(0,-20,0,dy+16);
-      g1.addColorStop(0,"rgba(255,214,110,0)");
-      g1.addColorStop(0.55,"rgba(255,206,96,"+(0.15*hk).toFixed(3)+")");
-      g1.addColorStop(1,"rgba(255,238,176,"+(0.38*hk).toFixed(3)+")");
-      ctx.fillStyle=g1;
-      ctx.beginPath();
-      ctx.moveTo(DX-46-26*hk,-20); ctx.lineTo(DX+46+26*hk,-20);
-      ctx.lineTo(DX+20,dy+14); ctx.lineTo(DX-20,dy+14); ctx.closePath(); ctx.fill();
-      const g2=ctx.createRadialGradient(DX,dy-2,2,DX,dy-2,56);
-      g2.addColorStop(0,"rgba(255,242,196,"+(0.40*hk).toFixed(3)+")");
-      g2.addColorStop(1,"rgba(255,214,110,0)");
-      ctx.fillStyle=g2; ctx.beginPath(); ctx.arc(DX,dy-2,56,0,7); ctx.fill();
-      ctx.restore();
-    }
-    // the shadow is the altimeter: it shrinks and pales as he climbs
-    const ss=1-hk*0.5;
-    ctx.fillStyle="rgba(0,0,0,"+(0.30-0.10*hk).toFixed(3)+")";
-    ctx.beginPath(); ctx.ellipse(DX,DY+15,15*ss,4.5*ss,0,0,7); ctx.fill();
-    if(hk>0.05){
-      ctx.strokeStyle="rgba(0,0,0,"+(0.10+0.14*(1-hk)).toFixed(3)+")"; ctx.lineWidth=1;
-      ctx.beginPath(); ctx.ellipse(DX,DY+15,15*ss+4,4.5*ss+1.8,0,0,7); ctx.stroke();
-      ctx.strokeStyle="rgba(255,255,255,"+(0.20*hk).toFixed(3)+")";       // tether: shadow to paw
-      ctx.setLineDash([3,5]);
-      ctx.beginPath(); ctx.moveTo(DX,DY+13); ctx.lineTo(DX,dy+14); ctx.stroke();
-      ctx.setLineDash([]); ctx.lineWidth=2;
-    }
-    // speed streaks while the pounce is still hot
-    if(PK.jump && !PK.jump.flop && PK.jump.sp>PK.spd*1.15){
-      const a=Math.atan2(PK.vy,PK.vx);
-      ctx.strokeStyle="#fff"; ctx.globalAlpha=0.3;
-      for(let i=0;i<5;i++){
-        const o=(i-2)*5, L=12+Math.random()*16;
-        ctx.beginPath();
-        ctx.moveTo(DX-Math.cos(a)*12+Math.sin(a)*o, dy-Math.sin(a)*12-Math.cos(a)*o);
-        ctx.lineTo(DX-Math.cos(a)*(12+L)+Math.sin(a)*o, dy-Math.sin(a)*(12+L)-Math.cos(a)*o);
-        ctx.stroke();
-      }
-      ctx.globalAlpha=1;
-    }
-    const sc=1+hk*0.30;
+  ctx.fillStyle="rgba(0,0,0,.28)";
+  ctx.beginPath(); ctx.ellipse(DX,DY+15,15,4.5,0,0,7); ctx.fill();
+  const spd=Math.abs(PK.vx)+Math.abs(PK.vy);
+  const img=RUNIMG[Math.floor(spd>20?t*10:t*3)%RUNIMG.length];
+  if(img.complete && !(PK.inv>0&&Math.floor(t*12)%2)){
     ctx.save(); ctx.imageSmoothingEnabled=false;
     if(PK.vx<0){ ctx.translate(DX*2,0); ctx.scale(-1,1); }
-    if(PK.wings){
-      const wimg=WINGIMG[pkWingFrame(t)];
-      if(wimg.complete&&wimg.naturalWidth){
-        const wh=(46+12*hk)*sc, ww=wh*WING.aspect;
-        const oy=7-11*(1-hk);            // folded, they have to ride high enough to clear his back
-        ctx.globalAlpha=PK.jump?1:0.92;
-        ctx.drawImage(wimg, DX-ww/2, dy+oy-wh*WING.anchorY, ww, wh);
-        ctx.globalAlpha=1;
-      }
-    }
-    const spd=Math.abs(PK.vx)+Math.abs(PK.vy);
-    const img=RUNIMG[Math.floor(spd>20?t*10:t*3)%RUNIMG.length];
-    if(img.complete && !(PK.inv>0 && !PK.jump && PK.noBlink<=0 && Math.floor(t*12)%2)){
-      ctx.drawImage(img,DX-20*sc,dy-16*sc,40*sc,34*sc);
-    }
+    ctx.drawImage(img,DX-20,DY-16,40,34);
     ctx.restore();
   }
   for(const dr of PK.drops){
@@ -700,51 +466,12 @@ function parkDraw(t){
     ctx.fillText(f4.txt,px2,py2-(0.9-f4.life)*24);
     ctx.globalAlpha=1;
   }
-  ctx.restore();
-  if(PK.wdrop){
-    const k=clamp(PK.wdrop.t/2.9,0,1), ez=1-Math.pow(1-k,2.2);
-    const y0=-150, y1=DY-34, wy=y0+(y1-y0)*ez;
-    ctx.save(); ctx.globalCompositeOperation="lighter";
-    const g3=ctx.createLinearGradient(0,-40,0,DY+30);
-    g3.addColorStop(0,"rgba(255,226,148,0)");
-    g3.addColorStop(0.5,"rgba(255,214,110,0.22)");
-    g3.addColorStop(1,"rgba(255,246,206,0.40)");
-    ctx.fillStyle=g3;
-    ctx.beginPath(); ctx.moveTo(DX-124,-40); ctx.lineTo(DX+124,-40);
-    ctx.lineTo(DX+28,DY+22); ctx.lineTo(DX-28,DY+22); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle="rgba(255,236,180,0.30)"; ctx.lineWidth=2;
-    for(let i=0;i<10;i++){
-      const a=(i/10)*6.283+t*0.55, L=30+18*Math.sin(t*3+i);
-      ctx.beginPath();
-      ctx.moveTo(DX+Math.cos(a)*22,wy+Math.sin(a)*22);
-      ctx.lineTo(DX+Math.cos(a)*(22+L),wy+Math.sin(a)*(22+L)); ctx.stroke();
-    }
-    ctx.restore();
-    const wimg=WINGIMG[6];
-    if(wimg.complete&&wimg.naturalWidth){
-      const wh=58+8*Math.sin(t*3), ww=wh*WING.aspect;
-      ctx.save(); ctx.imageSmoothingEnabled=false;
-      ctx.drawImage(wimg, DX-ww/2, wy-wh*WING.anchorY, ww, wh);
-      ctx.restore();
-    }
-    ctx.fillStyle="#e8c14a"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText("WINGS OF THE GOOD BOY", DX, h-22); ctx.textAlign="left";
-    if(k>0.93){ ctx.fillStyle="rgba(255,255,255,"+((k-0.93)/0.07).toFixed(3)+")"; ctx.fillRect(0,0,w,h); }
-  }
-  ctx.fillStyle="rgba(0,0,0,.38)"; ctx.fillRect(0,0,w,PK.wings?54:44);
+  ctx.fillStyle="rgba(0,0,0,.38)"; ctx.fillRect(0,0,w,44);
   ctx.fillStyle="#fff";
   ctx.textAlign="right"; ctx.fillText("WAVE "+PK.wave,w-10,34); ctx.textAlign="left";
   ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.strokeRect(10,26,90,8);
   ctx.fillStyle=PK.hp<PK.maxhp*0.3?"#f22":"#fff";
   ctx.fillRect(12,28,86*clamp(PK.hp/PK.maxhp,0,1),4);
-  if(PK.wings){
-    ctx.strokeStyle="#e8c14a"; ctx.lineWidth=2; ctx.strokeRect(10,38,90,7);
-    ctx.fillStyle = PK.jcd>0 ? "#6b5a20" : (PK.wst<WING.cost ? "#9a7a20" : "#e8c14a");
-    ctx.fillRect(12,40,86*clamp(PK.wst/PK.wstMax,0,1),3);
-    ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle="#e8c14a";
-    ctx.fillText(PK.jcd>0?PK.jcd.toFixed(1)+"s":"WINGS",106,45);
-    ctx.font="8px 'Press Start 2P',monospace";
-  }
   pkPadDraw(t);
 }
 function pkFlee(){
@@ -772,28 +499,17 @@ function pkPadDraw(t){
     ctx.beginPath(); ctx.arc(PK.joy.ox+PK.joy.dx*22,PK.joy.oy+PK.joy.dy*22,9,0,7); ctx.fill();
     ctx.globalAlpha=1;
   }
-  if(PK.wings && !PK.shop){
-    const bw=Math.min(180,w*0.5), bx=w/2-bw/2, by=h-24;
-    ctx.strokeStyle="#e8c14a"; ctx.lineWidth=2; ctx.strokeRect(bx,by,bw,10);
-    ctx.fillStyle="#e8c14a"; ctx.globalAlpha=PK.jcd>0?0.35:1;
-    ctx.fillRect(bx+2,by+2,(bw-4)*clamp(PK.wst/PK.wstMax,0,1),6);
-    ctx.globalAlpha=1;
-    ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="center"; ctx.fillStyle="#e8c14a";
-    ctx.fillText(PK.jcd>0 ? "WINGS "+PK.jcd.toFixed(1)+"s"
-               : PK.wst>=WING.cost ? DN("DOUBLE-TAP TO LEAP") : "WINGS TIRED", w/2, by-6);
-    ctx.textAlign="left";
-  }
   if(PK.shop){
-    ctx.strokeStyle="#fff"; ctx.lineWidth=3; ctx.strokeRect(w*0.08,h*0.08,w*0.84,h*0.82);
+    ctx.strokeStyle="#fff"; ctx.lineWidth=3; ctx.strokeRect(w*0.08,h*0.10,w*0.84,h*0.74);
     ctx.fillStyle="#fff"; ctx.font="9px 'Press Start 2P',monospace"; ctx.textAlign="center";
     ctx.fillText("PARK SHOP \u2014 SPEND RUN XP", w/2, h*0.20);
     ctx.font="8px 'Press Start 2P',monospace";
     PK.shop.forEach((o,i)=>{
       const y=h*(0.36+i*0.12);
-      ctx.fillStyle = o.gold ? (PK.xp>=o.c?"#e8c14a":"#7a5f18") : (PK.xp>=o.c?"#fff":"#f22");
-      ctx.fillText(o.n+"  ["+o.c+" "+(o.gold?"BONES":"XP")+"]", w/2, y);
+      ctx.fillStyle = PK.xp>=o.c ? "#fff" : "#f22";
+      ctx.fillText(o.n+"  ["+o.c+" XP]", w/2, y);
     });
-    ctx.fillStyle="#888"; ctx.fillText("TAP HERE TO SKIP", w/2, h*(0.36+PK.shop.length*0.12));
+    ctx.fillStyle="#888"; ctx.fillText("TAP HERE TO SKIP", w/2, h*0.72);
   }
   ctx.textAlign="left";
 }
@@ -806,7 +522,7 @@ function pkPadDraw(t){
     if(!PK.shop && px>r.width-96 && py<44){ pkFlee(); return; }
     if(PK.shop){
       const yF=(e.clientY-r.top)/r.height;
-      for(let i=0;i<PK.shop.length;i++){
+      for(let i=0;i<3;i++){
         if(Math.abs(yF-(0.36+i*0.12))<0.05){
           const o=PK.shop[i];
           if(PK.xp>=o.c){ PK.xp-=o.c; o.f(); beep(760,.07); toast(o.n+" \u2014 BOUGHT"); PK.shop=null; }
@@ -814,13 +530,9 @@ function pkPadDraw(t){
           return;
         }
       }
-      if(Math.abs(yF-(0.36+PK.shop.length*0.12))<0.055){ PK.shop=null; beep(400,.05); }
+      if(Math.abs(yF-0.72)<0.06){ PK.shop=null; beep(400,.05); }
       return;
     }
-    // double-tap anywhere on the pad: deploy
-    const nowS=performance.now()/1000;
-    if(nowS-PK.tapT<0.32){ PK.tapT=-9; pkLeap(); }
-    else PK.tapT=nowS;
     PK.joy={ox:e.clientX-r.left,oy:e.clientY-r.top,dx:0,dy:0};
     try{cv.setPointerCapture(e.pointerId);}catch(_){}
   });
@@ -832,6 +544,6 @@ function pkPadDraw(t){
     if(l>1){dx/=l;dy/=l;}
     PK.joy.dx=dx; PK.joy.dy=dy;
   });
-  const up=()=>{ PK.joy=null; PK.held=false; };   // letting go folds the wings
+  const up=()=>{ PK.joy=null; };
   cv.addEventListener("pointerup",up); cv.addEventListener("pointercancel",up);
 })();

@@ -2,39 +2,52 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.21a**.
+Currently **v0.284a**.
 
 ---
 
-## Build system (important — read before editing)
+## ⚠ WHICH FILES ARE REAL (read this first)
 
-Source files are separate; the shipped artifact is a single inlined HTML file.
+**The live game is `bones-v0.284a.html` — a single self-contained file.** Open it, edit inside
+its one big `<script>`, save it back out under the next version number. That is the whole
+workflow now.
 
 ```
-bones.html      markup + CSS + <script src="bones.js"></script> placeholder
-bones.js        main game (~107KB) — state, DOGCAM, care loop, UI, runner
-park.js         Dogpark mode (2x2 toroidal survivors-like)
-*.js (rest)     sprite frames as base64 data-URI arrays (large, do not hand-edit)
+bones-v0.284a.html   THE GAME. ~6.2MB, everything inlined. Edit this.
+bones-v0.283a.html   the previous build, kept as the recovery point.
+wingframes.js        the wings art, extracted from the owner's sheet (also inlined in the build)
 ```
 
-**Build command:**
+**Everything else in this repo — `bones.js`, `park.js`, `bones.html`, and the `*frames.js`
+sprite files — is a v0.20a snapshot from July 2026 and is NOT the game.** The project moved to
+single-file builds and the split sources were never updated; they are missing the sword, pals,
+charms, night mode, fog, the enemy pool, the PWA service worker, and roughly sixty versions of
+everything else. Do not read them to learn how the game works, and do not patch them expecting
+the change to ship. They are kept only because deleting someone's history is not a thing to do
+casually.
+
+A previous session lost a day to this. If a new build arrives from the owner, **commit it here
+first**, before touching anything.
+
+**Working on the single file:**
 
 ```bash
-cat wingframes.js jumpslide.js enemyframes.js megaframes.js parktiles.js statport.js hearts.js \
-    dogframes2.js dogframes3.js runframes.js frames.js portraits.js bones.js park.js \
-    > combined.js && node --check combined.js
+# pull the script out, work on it, put it back
+python3 - <<'EOF'
+h=open('bones-v0.284a.html').read()
+i=h.index('<script>'); j=h.index('</script>',i)
+open('cur.js','w').write(h[i+8:j])
+EOF
+node --check cur.js            # must pass before rebuilding
 ```
 
-`wingframes.js` must stay ahead of `park.js` — `WINGIMG` is built from `WINGFRAMES` at load.
-
-Then inline `combined.js` into `bones.html` in place of the `<script src="bones.js"></script>`
-line and write the result as the deliverable. Final file is ~1.8MB (art is inline base64).
-
 **Always after building:**
-1. `node --check combined.js` must pass.
-2. Verify every `onclick` target id in combined.js exists in bones.html (a null-onclick crash
+1. `node --check` on the extracted script must pass.
+2. Verify every `$("#id")` the script touches exists in the markup (a null-onclick crash
    shipped once this way).
-3. Bump the version span in bones.html: `+0.01` per update unless told otherwise.
+3. Bump the version span: `+0.001` per update unless told otherwise.
+4. Actually run it. Chromium + Playwright drives the real game end to end; several bugs in the
+   wings work were only visible by playing it, not by reading it.
 
 ---
 
@@ -89,33 +102,39 @@ line and write the result as the deliverable. Final file is ~1.8MB (art is inlin
 
 ---
 
-## DOGPARK: the wings (v0.21a)
+## DOGPARK UNLEASHED: the wings (v0.284a)
 
-`WINGFRAMES` (wingframes.js) is a 7-frame unfurl — 0 folded, 6 fully spread — extracted from the
-owner's sheet and **aligned on the harness base**, not per-frame normalised: the frames are
-*supposed* to grow, that is the unfurl. Cell 196x131, anchor x=98 y=127 (`WING.aspect`,
-`WING.anchorY`). Flap loop is 4,5,6,5.
+Built to sit beside the sword, deliberately as its opposite: the sword is a weapon, the wings are
+an exit. Same lifecycle, same idioms — search the single file for `THE WINGS`.
 
-The ability lives in park.js behind the `WING` tuning object:
+`WINGFRAMES` is a 7-frame unfurl (0 folded → 6 fully spread) extracted from the owner's sheet and
+**aligned on the harness base**, not normalised per frame: the frames are *supposed* to grow, that
+growth is the unfurl. Cell 196x131, anchor x=98 y=127 (`WING_ASPECT`, `WING_ANCHOR_Y`). Flap loop
+is 4,5,6,5.
 
-- Double-tap the pad → `pkLeap()`. Costs `WING.cost` stamina, then `WING.cd` seconds of cooldown.
-- **Hold** the second tap to stay up (`WING.hover` = 5s ceiling, `WING.minHover` floor so a flick
-  still gets a real jump). Release → dive → `pkLand()`.
-- Above `WING.clearZ` he and the horde cannot touch each other — no contact damage, no auto-bark,
-  no pickups, no gate banking. That mutual pass-through is the whole ability.
-- `pkLand()` is the stomp: falloff damage + knockback inside `PK.stompR`, and it vacuums loose
-  bones. Empty stamina instead routes to `pkFlop()` — a 22px hop and a 1.6s limp.
-- Fake height is `PK.z` in screen px. Anything new that reads position on the ground must check
-  `PK.z<WING.clearZ`, the same way distance maths must go through `wd()`.
-- Shop: "ANGEL WINGS" is pinned to slot 0 at 500 while unowned (purchase runs the `PK.wdrop`
-  descent ceremony); once owned, four wing upgrades join the normal pool. The shop draws up to
-  four rows now — the SKIP row moved to `0.36 + len*0.12`.
-- Dev bar has a WINGS toggle (`S.devWings`) that grants them at park start, so the leap is
-  testable without banking 500.
+- **Arrival.** Wave `WINGS_WAVE` (3) of an UNLEASHED run: `pkWingsDrop()` picks a site with
+  `pkSwordSite()` and `pkWingsCineUpdate` owns the frame — they descend slowly, fully spread,
+  inside a golden shaft, and settle hovering. No crater, no scorch: they do not scar the park.
+- **Claim.** Walk within `WINGS_TAKE_R` carrying `WINGS_COST` (500) bones. Same nag-toast pattern
+  as the blade when he is short.
+- **Leap.** Double-tap anywhere on the pad → `pkLeap()`. **Hold** the second tap to stay up
+  (`WING_HOVER` 5s ceiling, `WING_MIN_HOVER` floor so a flick still buys a real jump); release to
+  dive. Costs `WING_STAM_COST` from its own meter, then `WING_CD` seconds of cooldown. Empty tank
+  routes to `pkWingFlop()` — a 22px hop and a 1.6s limp.
+- **Immunity.** Above `WING_CLEAR_Z` he and the horde cannot reach each other. This is one line:
+  `pkInvuln()` already gates all fifteen damage sites in the park, so altitude was added there
+  rather than to each site. His own offence is gated the other way (bark, sword cut, whirlwind,
+  pickups, the gate) on `PK.z<WING_CLEAR_Z`.
+- **Landing.** `pkWingLand()` — falloff damage through `pkPalHit` (so kills route through
+  `pkDownEnemy` and drop bones normally), big knockback, four shockwave rings, dust and feathers.
+- **Upgrades.** Three capped shop entries once the wings are his: DEEP LUNGS (capacity), FAST
+  FEATHERS (regen), HEAVIER STOMP (damage + radius).
+- Dev bar: GRANT WINGS, so the leap is testable without banking 500.
 
-Note for whoever picks this up: the owner referred to "the same style as the sword". There is no
-sword anywhere in this source tree — the descent/golden-light presentation here was built from the
-description, not matched against existing code.
+**The trap, if you extend this:** a panel or a cutscene early-returns out of `parkUpdate`, which
+means a leap in progress has nothing left to land it — he hangs in the air and `pkLeap` refuses
+forever after, because `PK.jump` is still set. There is a guard at the top of `parkUpdate` that
+lands him first. Any new pause path needs to be added to it.
 
 ## Known gaps / backlog (owner's priorities)
 
