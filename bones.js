@@ -2248,6 +2248,11 @@ $("#devBad").onclick=()=>{
   toast("NEGLECT SIMULATED (DEV)",1); renderMeters();
 };
 $("#devDay").onclick=()=>{ CLK.h=23.98; toast("FAST-FORWARDING TO MIDNIGHT (DEV)"); };
+$("#devWings").onclick=()=>{                       // skip the 500-bone tithe while testing the leap
+  S.devWings=!S.devWings;
+  if(PK.active && S.devWings){ PK.wings=true; PK.wst=PK.wstMax; PK.jcd=0; }
+  toast(S.devWings?"WINGS GRANTED IN THE PARK (DEV)":"WINGS OFF (DEV)");
+};
 
 
 /* ---------- main loop ---------- */

@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.20a**.
+Currently **v0.21a**.
 
 ---
 
@@ -20,10 +20,12 @@ park.js         Dogpark mode (2x2 toroidal survivors-like)
 **Build command:**
 
 ```bash
-cat jumpslide.js enemyframes.js megaframes.js parktiles.js statport.js hearts.js \
+cat wingframes.js jumpslide.js enemyframes.js megaframes.js parktiles.js statport.js hearts.js \
     dogframes2.js dogframes3.js runframes.js frames.js portraits.js bones.js park.js \
     > combined.js && node --check combined.js
 ```
+
+`wingframes.js` must stay ahead of `park.js` — `WINGIMG` is built from `WINGFRAMES` at load.
 
 Then inline `combined.js` into `bones.html` in place of the `<script src="bones.js"></script>`
 line and write the result as the deliverable. Final file is ~1.8MB (art is inline base64).
@@ -86,6 +88,34 @@ line and write the result as the deliverable. Final file is ~1.8MB (art is inlin
   to skip ceremonies.
 
 ---
+
+## DOGPARK: the wings (v0.21a)
+
+`WINGFRAMES` (wingframes.js) is a 7-frame unfurl — 0 folded, 6 fully spread — extracted from the
+owner's sheet and **aligned on the harness base**, not per-frame normalised: the frames are
+*supposed* to grow, that is the unfurl. Cell 196x131, anchor x=98 y=127 (`WING.aspect`,
+`WING.anchorY`). Flap loop is 4,5,6,5.
+
+The ability lives in park.js behind the `WING` tuning object:
+
+- Double-tap the pad → `pkLeap()`. Costs `WING.cost` stamina, then `WING.cd` seconds of cooldown.
+- **Hold** the second tap to stay up (`WING.hover` = 5s ceiling, `WING.minHover` floor so a flick
+  still gets a real jump). Release → dive → `pkLand()`.
+- Above `WING.clearZ` he and the horde cannot touch each other — no contact damage, no auto-bark,
+  no pickups, no gate banking. That mutual pass-through is the whole ability.
+- `pkLand()` is the stomp: falloff damage + knockback inside `PK.stompR`, and it vacuums loose
+  bones. Empty stamina instead routes to `pkFlop()` — a 22px hop and a 1.6s limp.
+- Fake height is `PK.z` in screen px. Anything new that reads position on the ground must check
+  `PK.z<WING.clearZ`, the same way distance maths must go through `wd()`.
+- Shop: "ANGEL WINGS" is pinned to slot 0 at 500 while unowned (purchase runs the `PK.wdrop`
+  descent ceremony); once owned, four wing upgrades join the normal pool. The shop draws up to
+  four rows now — the SKIP row moved to `0.36 + len*0.12`.
+- Dev bar has a WINGS toggle (`S.devWings`) that grants them at park start, so the leap is
+  testable without banking 500.
+
+Note for whoever picks this up: the owner referred to "the same style as the sword". There is no
+sword anywhere in this source tree — the descent/golden-light presentation here was built from the
+description, not matched against existing code.
 
 ## Known gaps / backlog (owner's priorities)
 
