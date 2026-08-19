@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.286a**.
+Currently **v0.287a**.
 
 ---
 
@@ -13,7 +13,8 @@ its one big `<script>`, save it back out under the next version number. That is 
 workflow now.
 
 ```
-bones-v0.286a.html   THE GAME. ~6.2MB, everything inlined. Edit this.
+bones-v0.287a.html   THE GAME. ~6.2MB, everything inlined. Edit this.
+bones-v0.286a.html   previous build (trained attributes).
 bones-v0.285a.html   previous build (doggie log).
 bones-v0.284a.html   previous build (wings).
 bones-v0.283a.html   the build the owner handed over, kept as the recovery point.
@@ -36,7 +37,7 @@ first**, before touching anything.
 ```bash
 # pull the script out, work on it, put it back
 python3 - <<'EOF'
-h=open('bones-v0.286a.html').read()
+h=open('bones-v0.287a.html').read()
 i=h.index('<script>'); j=h.index('</script>',i)
 open('cur.js','w').write(h[i+8:j])
 EOF
@@ -103,6 +104,33 @@ node --check cur.js            # must pass before rebuilding
   to skip ceremonies.
 
 ---
+
+## DOGPARK CAMERA: fixed permanent zoom creep (v0.287a)
+
+`pkApplyZoom` had three sources compounding into one ceiling that were never supposed to share
+one: BIGGER BARK / FASTER BARK shop upgrades wrote a **permanent** `zoomFromBark` (+0.025/each,
+cap 0.25) meant years ago as "bigger bark → show more", and Whirlwind Slash wrote a **permanent**
++0.12 to that same field on every single cast — a few spins maxed it instantly. None of it ever
+released. Combined with `pkApplyUISplit` growing `#cam` toward ~71% of the screen at max wave
+zoom, a heavily-upgraded run at wave 10+ drew a genuinely tiny, sparse world.
+
+Fixed by separating **what owns permanent framing** from **what gets a temporary cinematic
+punch**, the same distinction the file's own comments already drew for Heavenly Judgment:
+
+- Bark upgrades touch only `barkR` / `barkMax` now. Zero camera effect, ever.
+- Whirlwind's punch is `pkZoomFromSpin()` — derived live from `pkWhirlwindGrowP()`, the same
+  0→1→0 envelope already driving the blade's own magical grow/float. It rides down with
+  `PK.whirlwindT` in `pkSwordSpinUpdate` and hits exactly 0 the instant the blade settles — no
+  separate timer to keep in sync by hand, unlike Judgment's `zoomFromJudgment` which still needs
+  its own explicit release.
+- `PK.zoomFromWave` is the **only** permanent source left. `pkApplyZoom` is now `1 - wave - temp`,
+  floored at `PK_ZOOM_FLOOR` as a last-resort safety net for the rare moment both cinematics land
+  at once.
+- `zoomFromBark` is deleted — init field, both shop entries, the old inline write in
+  `pkWhirlwindSlash`. Grep it before reintroducing anything like it.
+- `PK_ZOOM_FLOOR` 0.45→0.55 and `PK_BOTTOM_SHRINK_MAX` 0.5→0.30, now that bark upgrades can't eat
+  into the same budget the wave progression needs — the pad gives up at most 30% of its height
+  instead of half, so wave 10 stays readable.
 
 ## TRAINED ATTRIBUTES (v0.286a)
 
