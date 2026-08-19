@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.285a**.
+Currently **v0.286a**.
 
 ---
 
@@ -13,7 +13,8 @@ its one big `<script>`, save it back out under the next version number. That is 
 workflow now.
 
 ```
-bones-v0.285a.html   THE GAME. ~6.2MB, everything inlined. Edit this.
+bones-v0.286a.html   THE GAME. ~6.2MB, everything inlined. Edit this.
+bones-v0.285a.html   previous build (doggie log).
 bones-v0.284a.html   previous build (wings).
 bones-v0.283a.html   the build the owner handed over, kept as the recovery point.
 wingframes.js        the wings art, extracted from the owner's sheet (also inlined in the build)
@@ -35,7 +36,7 @@ first**, before touching anything.
 ```bash
 # pull the script out, work on it, put it back
 python3 - <<'EOF'
-h=open('bones-v0.285a.html').read()
+h=open('bones-v0.286a.html').read()
 i=h.index('<script>'); j=h.index('</script>',i)
 open('cur.js','w').write(h[i+8:j])
 EOF
@@ -102,6 +103,36 @@ node --check cur.js            # must pass before rebuilding
   to skip ceremonies.
 
 ---
+
+## TRAINED ATTRIBUTES (v0.286a)
+
+The middle layer the game was missing. Needs are how he feels right now, level is how far he has
+come; STRENGTH / STAMINA / HEALTH (`S.str` / `S.stam` / `S.vit`) are how capable he actually IS,
+and they do not care whether he ate this morning. Search the file for `TRAINED ATTRIBUTES`.
+
+- **Never in the six need meters, never white/red.** They are gold everywhere (`.abar`, `.arow`),
+  because "he is weak" must never read as "he is hungry".
+- **Two growth channels.** A skill point per level is raw +1, no curve — an assigned point is a
+  decision and should feel like one. Everything *earned* (agility drills, a park run) goes through
+  `trainAward()` → `trainGain()`'s full/half/quarter curve, is scaled by `trainEfficiency()` (low
+  energy/mood trains badly), and stops dead at `ATTR_FULL`.
+- **The point is paid at the tap-through**, where `XPANIM.lvl++` happens — not in `addXP`, which
+  only banks the level. Same reason everything else in this game reads `XPANIM.lvl`: a level
+  sitting unclaimed in the bar has not happened yet. `devSync` back-pays whatever it skips.
+- **Overfill is points-only.** Spending into a full attribute pushes to `ATTR_CAP` (150) and
+  bleeds back at 1 point per `ATTR_DRAIN_SEC` (20s) via `attrTick` in the main loop — everywhere,
+  including mid-run. `attrF()` returns 1.0 at full and 2.0 at the cap, so every effect doubles;
+  `attrF1()` clamps at 1 for things that would be silly doubled (need drain, rest), `attrF15()`
+  at 1.5 for cooldowns.
+- **One number per effect.** Everything reads `attrF(k)` — park `spd`/`maxhp`/`knock`/`barkR`,
+  `pkBarkDmg`, `pkSwordDmg`, `pkWingStompDmg`, `pkOverCap`, `pkArmorCap`, the wing cooldown,
+  park need drain, `pkExitCosts`, `tickStats` rest recovery, `startOuting` duration, and
+  `computeForm`'s spd/jmp. Add a new effect by multiplying, not by branching.
+- **Readouts:** the doggie log (needs + attributes + the spend button), the status bubble, the
+  menu save card, TODAY'S FORM on the pre-run screen, and the park result card's TRAINING line.
+- **Old saves back-pay.** `loadGame` detects `data.S.str===undefined` and grants `S.lvl-1` points,
+  so a long-running dog is not left staring at three bars he cannot move.
+- Dev bar: +5 SKILL PTS.
 
 ## THE DOGGIE LOG (v0.285a)
 
