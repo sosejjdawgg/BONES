@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.284a**.
+Currently **v0.285a**.
 
 ---
 
@@ -13,8 +13,9 @@ its one big `<script>`, save it back out under the next version number. That is 
 workflow now.
 
 ```
-bones-v0.284a.html   THE GAME. ~6.2MB, everything inlined. Edit this.
-bones-v0.283a.html   the previous build, kept as the recovery point.
+bones-v0.285a.html   THE GAME. ~6.2MB, everything inlined. Edit this.
+bones-v0.284a.html   previous build (wings).
+bones-v0.283a.html   the build the owner handed over, kept as the recovery point.
 wingframes.js        the wings art, extracted from the owner's sheet (also inlined in the build)
 ```
 
@@ -34,7 +35,7 @@ first**, before touching anything.
 ```bash
 # pull the script out, work on it, put it back
 python3 - <<'EOF'
-h=open('bones-v0.284a.html').read()
+h=open('bones-v0.285a.html').read()
 i=h.index('<script>'); j=h.index('</script>',i)
 open('cur.js','w').write(h[i+8:j])
 EOF
@@ -101,6 +102,22 @@ node --check cur.js            # must pass before rebuilding
   to skip ceremonies.
 
 ---
+
+## THE DOGGIE LOG (v0.285a)
+
+Notices used to flash past on `#camMsg`, a strip laid over the DOGCAM. Anything the player wasn't
+looking at was simply gone, and a long line scrolled sideways slower than it could be read. That
+whole subsystem is deleted — strip, marquee animation, the tap-ceiling that stopped it swallowing
+bowl taps, all of it.
+
+`toast()` now calls `dogLog()`, which pushes onto `DOGLOG` (newest first, `DOGLOG_KEEP` = 10).
+The `#doggieLog` button is the first child of `#home .body`, so it sits at the top of the controls
+under the MENU/TO-DO/SUPPLIES/SHOP row and everything else flows down from it. It shows the newest
+entry; identical repeats collapse into an `(xN)` counter instead of filling the log. Tapping opens
+`#dlogPanel` with all ten, timestamped, red ones still red.
+
+The floating `#toast` is still the fallback for the two places the control panel isn't ours: the
+title screen and a live park run (`PARK_HDR`).
 
 ## DOGPARK UNLEASHED: the wings (v0.284a)
 
