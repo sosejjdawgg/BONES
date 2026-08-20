@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.289a**.
+Currently **v0.290a**.
 
 ---
 
@@ -13,7 +13,8 @@ its one big `<script>`, save it back out under the next version number. That is 
 workflow now.
 
 ```
-bones-v0.289a.html   THE GAME. ~6.2MB, everything inlined. Edit this.
+bones-v0.290a.html   THE GAME. ~6.2MB, everything inlined. Edit this.
+bones-v0.289a.html   previous build (bury/lovehearts, park-only entry).
 bones-v0.288a.html   previous build (friends overhaul).
 bones-v0.287a.html   previous build (camera zoom fix).
 bones-v0.286a.html   previous build (trained attributes).
@@ -39,7 +40,7 @@ first**, before touching anything.
 ```bash
 # pull the script out, work on it, put it back
 python3 - <<'EOF'
-h=open('bones-v0.289a.html').read()
+h=open('bones-v0.290a.html').read()
 i=h.index('<script>'); j=h.index('</script>',i)
 open('cur.js','w').write(h[i+8:j])
 EOF
@@ -122,10 +123,17 @@ through `pkAwardXP`; any new one should do the same so it lands on the result ca
 
 ### The burial ceremony
 
-Tapping the bones counter opens the exchange; **BURY FOR XP** takes the whole affordable pile and
-runs `pkBuryStart` → `pkBuryUpdate` → `pkDrawBury`. The world stops (a `PK.bury` branch at the top
-of `parkUpdate`, ahead of the panel checks — an airborne leap is landed first, same guard the
-other panels use).
+**Two ways in, and the state is deliberately not on PK.** `BURY` is module-level with a `src`
+saying which pile it is spending, because the burial belongs to the dog rather than to a park run:
+
+- **Home** — tapping the wallet's gold bone (`#bonesRow`). Spends `S.snacks` (bone treats). It
+  states the XP *and* the real level gain before taking anything, and refuses while he is out.
+- **Park** — the exchange panel's BURY FOR XP row. Spends `PK.bones`.
+
+`pkBuryUpdate` is ticked once from `loop()` so it runs in any mode, and `pkDrawBury` is called
+from both `drawCam` and `parkDraw`. `parkUpdate` just early-returns while `BURY.on` (landing an
+airborne leap first, same guard the panels use). The v0.289a version was park-only and could not
+be reached from home at all.
 
 The point of it is the acceleration: `BURY_GAP0` (0.30s between bones) eases toward `BURY_GAP1`
 (0.028s) via `BURY_RAMP`, so it starts as a drip and ends as a pour. Measured over a 300-bone
