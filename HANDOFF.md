@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.288a**.
+Currently **v0.289a**.
 
 ---
 
@@ -13,7 +13,8 @@ its one big `<script>`, save it back out under the next version number. That is 
 workflow now.
 
 ```
-bones-v0.288a.html   THE GAME. ~6.2MB, everything inlined. Edit this.
+bones-v0.289a.html   THE GAME. ~6.2MB, everything inlined. Edit this.
+bones-v0.288a.html   previous build (friends overhaul).
 bones-v0.287a.html   previous build (camera zoom fix).
 bones-v0.286a.html   previous build (trained attributes).
 bones-v0.285a.html   previous build (doggie log).
@@ -38,7 +39,7 @@ first**, before touching anything.
 ```bash
 # pull the script out, work on it, put it back
 python3 - <<'EOF'
-h=open('bones-v0.288a.html').read()
+h=open('bones-v0.289a.html').read()
 i=h.index('<script>'); j=h.index('</script>',i)
 open('cur.js','w').write(h[i+8:j])
 EOF
@@ -105,6 +106,55 @@ node --check cur.js            # must pass before rebuilding
   to skip ceremonies.
 
 ---
+
+## PARK XP, BURIAL, LOVEHEARTS (v0.289a)
+
+### Bones are currency, not an XP drip
+
+Nothing about *picking up* a bone grants XP — not the drop, not the chain, not the magnet, not
+the golden bird. `pkGain` only touches `PK.bones`. A run becomes levels in exactly two ways:
+the bank paying out `pkRunXP()` (kills + side objectives, unchanged), and **burying**.
+
+`BURY_UNIT`/`BURY_XP` hold the 10→2 rate in one place. `pkLevelsFromXP()` walks `xpNeed()` from
+where he actually stands, so the button's `(~+N LVLS)` is a promise rather than a guess — it
+shows `~+0` rather than implying a level it cannot pay. Side objectives still award immediately
+through `pkAwardXP`; any new one should do the same so it lands on the result card.
+
+### The burial ceremony
+
+Tapping the bones counter opens the exchange; **BURY FOR XP** takes the whole affordable pile and
+runs `pkBuryStart` → `pkBuryUpdate` → `pkDrawBury`. The world stops (a `PK.bury` branch at the top
+of `parkUpdate`, ahead of the panel checks — an airborne leap is landed first, same guard the
+other panels use).
+
+The point of it is the acceleration: `BURY_GAP0` (0.30s between bones) eases toward `BURY_GAP1`
+(0.028s) via `BURY_RAMP`, so it starts as a drip and ends as a pour. Measured over a 300-bone
+burial the gap went 0.30 → 0.084. `PK.bones` drains one shovelful at a time so the counter on the
+pad is always the truth, and **the XP is awarded once, at the end**, for exactly the number the
+screen promised.
+
+### Lovehearts
+
+A rare wave event (`LOVE_WAVE_CHANCE` 10%, rolled once per wave alongside the other wave spawns,
+and any unfinished line is cleared on wave advance). 5–7 hearts on a sine-offset line through
+ground cleared with `pkClearAround`, away from the gate, the bandana dog and BONES.
+
+Only `nodes[next]` is collectible; the rest are drawn dim but **legible** with a dotted thread
+between them — at 32% alpha they vanished into the grass and it stopped reading as a trail at
+all. Each in-order pickup plays the next note of `LOVE_TUNE`; out of order says IN ORDER and
+costs nothing. He has to walk them, not fly (`PK.z<WING_CLEAR_Z`).
+
+Completing the line runs `pkLoveActivate`: everything within `LOVE_CONVERT_R` gets `e.love`, and
+`pkLoveEnemyTick` takes over their whole update via an early `continue` in the main enemy loop —
+which is *why* they can never damage him, rather than relying on remembering to check `e.love` at
+each of the fifteen contact-damage sites. They hunt the nearest non-love enemy and shove it
+through `pkPalHit`. When `LOVE_MODE_T` runs out every survivor is cleared; no permanent
+friendlies. `love`/`loveTgt`/`loveCd` are in `EN_FIELDS` so a pooled enemy is never reborn charmed.
+
+### Regen cap
+
+`REGEN_MAX_ON_FIELD` = 2. A third green pickup is noise, and stockpiling them removes the
+decision about when to go and get one.
 
 ## FRIENDS: pack, cut and rear guard (v0.288a)
 
