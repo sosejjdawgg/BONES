@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.292a**.
+Currently **v0.293a**.
 
 ---
 
@@ -13,7 +13,7 @@ its one big `<script>`, save it back out under the next version number. That is 
 workflow now.
 
 ```
-bones-v0.292a.html   THE GAME. ~6.2MB, everything inlined. Edit this.
+bones-v0.293a.html   THE GAME. ~6.3MB, everything inlined. Edit this.
 bones-v0.290a.html   previous build (burial reachable from home).
 bones-v0.289a.html   previous build (bury/lovehearts, park-only entry).
 bones-v0.288a.html   previous build (friends overhaul).
@@ -41,7 +41,7 @@ first**, before touching anything.
 ```bash
 # pull the script out, work on it, put it back
 python3 - <<'EOF'
-h=open('bones-v0.292a.html').read()
+h=open('bones-v0.293a.html').read()
 i=h.index('<script>'); j=h.index('</script>',i)
 open('cur.js','w').write(h[i+8:j])
 EOF
@@ -387,6 +387,30 @@ lands him first. Any new pause path needs to be added to it.
    adult sprite scaled down), senior bark/rest/shake, breed variants (Whippet, Husky — both
    are shown locked on the adopt screen), charm overlays drawn on the dog.
 7. Planned but unbuilt: catapult toy (extends the trick-shot minigame alongside the hoop).
+
+### The burial gets its own screen (v0.293a)
+
+Drawn over the DOGCAM the ceremony had the control panel sitting under it, which made a quiet
+moment look cluttered. It now owns **`#buryPanel`** — a direct child of `#app` at `z-index:68`
+holding a single `<canvas id="burycv">` — so it covers both screens on pure black. `pkDrawBury()`
+takes no arguments any more; it fits its own canvas and is called straight from `loop()`, not from
+`drawCam` or `parkDraw`.
+
+- **The hole is dead centre and it is the button.** `cx=w/2`, `cy=h*0.52`,
+  `R=Math.min(w,h)*0.20`. `buryHitHole()` gates every press; a tap on the black around it gets a
+  soft refusal beep and nothing else. That is what makes "HOLD THE HOLE" a real instruction.
+- **The prompt clears out of the way.** "HOLD TO BURY" and the dashed breathing ring only draw
+  while `ph==="hold" && !held`.
+- **The pile.** Every `BURY_PILE_STEP` (100) bones adds a layer, up to `BURY_PILE_MAX` (14), so a
+  big burial physically fills the hole. Drawn **clipped to the hole ellipse** so it can never
+  spill over the lip: a dim shadowed dome for the gaps, then three bones per layer scattered by
+  the golden angle and shaded by depth — the dome alone read as a smooth grey lump.
+- **Bones enter at `BURY_DROP_TOP` (0.20h)**, below the readout, and fade in over the first tenth
+  of the fall. Dropping them from the very top ran the whole stream straight through
+  "BURYING / n / N / BONES".
+- **There is always a door.** `< BACK` (`< DONE` once bones are in) sits top-left and calls
+  `pkBuryFinish()`. The panel covers everything, so leaving it exit-less meant a mis-tap trapped
+  you until the 9s `BURY_ABANDON` timer.
 
 ---
 
