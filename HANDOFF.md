@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.290a**.
+Currently **v0.292a**.
 
 ---
 
@@ -13,7 +13,8 @@ its one big `<script>`, save it back out under the next version number. That is 
 workflow now.
 
 ```
-bones-v0.290a.html   THE GAME. ~6.2MB, everything inlined. Edit this.
+bones-v0.292a.html   THE GAME. ~6.2MB, everything inlined. Edit this.
+bones-v0.290a.html   previous build (burial reachable from home).
 bones-v0.289a.html   previous build (bury/lovehearts, park-only entry).
 bones-v0.288a.html   previous build (friends overhaul).
 bones-v0.287a.html   previous build (camera zoom fix).
@@ -40,7 +41,7 @@ first**, before touching anything.
 ```bash
 # pull the script out, work on it, put it back
 python3 - <<'EOF'
-h=open('bones-v0.290a.html').read()
+h=open('bones-v0.292a.html').read()
 i=h.index('<script>'); j=h.index('</script>',i)
 open('cur.js','w').write(h[i+8:j])
 EOF
@@ -140,6 +141,39 @@ The point of it is the acceleration: `BURY_GAP0` (0.30s between bones) eases tow
 burial the gap went 0.30 → 0.084. `PK.bones` drains one shovelful at a time so the counter on the
 pad is always the truth, and **the XP is awarded once, at the end**, for exactly the number the
 screen promised.
+
+### Hold to bury, and the growth spurt (v0.292a)
+
+The burial is now a **hold**, and it levels him live while you hold it.
+
+- `BURY.ph` runs `open → hold → close`. Nothing is buried until the screen is held; letting go
+  wraps it up after `BURY_LETGO` (1.2s), which is a grace rather than a hair trigger so a slipped
+  thumb can grab straight back on. Both canvases feed one `BURY.held` flag, and a lost pointer
+  (`pointercancel`/`pointerleave`/window blur) counts as letting go.
+- XP is awarded **per bone** through `buryAwardXP`, which levels `S.lvl` directly rather than
+  banking behind the usual tap-gated bar — the whole point is the bar filling, popping white and
+  going round again. It keeps `XPANIM` in lockstep and clears `S.pendingStage`, so the ordinary
+  DOGCAM bar never afterwards demands a tap for a level this ceremony already celebrated.
+- The wrap-up says `BONES GREW N LEVELS!`.
+
+**The growth spurt (`#evoPanel`) is a direct child of `#app`, not of `#panel`.** Nested inside the
+control panel it only covered the half of the screen it lived in. It sits at `z-index:70`, above
+`#start` and `#choice`, with rotating rays, a portrait pop, a ring pulse and DOM confetti (canvas
+confetti cannot sit above the canvases).
+
+Two traps, both real bugs found by playing it:
+
+1. **Only stages 10 and 25 may interrupt a pour.** 5 and 50 change what game you are playing —
+   the park opening, the crossroads — so they queue on `BURY.deferQ` and fire once the hole is
+   filled. Letting stage 5 resolve mid-burial called `startPark()` while the burial still owned
+   the frame.
+2. **`parkUpdate`'s "world is frozen" return must come AFTER the `!PK.started` build block.**
+   Freezing the frame before the world exists left `PK.x`/`PK.WW` undefined while `parkDraw`
+   carried on, which is a non-finite value into every gradient in the park.
+
+Also: `#evoPanel>*` set `position:relative` on the confetti (two ids beat one class), which laid
+every spark out **in flow** and shoved the panel's contents off centre. The selector excludes
+`.evoSpark` now.
 
 ### Lovehearts
 
