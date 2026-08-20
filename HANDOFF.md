@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.293a**.
+Currently **v0.294a**.
 
 ---
 
@@ -13,7 +13,7 @@ its one big `<script>`, save it back out under the next version number. That is 
 workflow now.
 
 ```
-bones-v0.293a.html   THE GAME. ~6.3MB, everything inlined. Edit this.
+bones-v0.294a.html   THE GAME. ~6.3MB, everything inlined. Edit this.
 bones-v0.290a.html   previous build (burial reachable from home).
 bones-v0.289a.html   previous build (bury/lovehearts, park-only entry).
 bones-v0.288a.html   previous build (friends overhaul).
@@ -41,7 +41,7 @@ first**, before touching anything.
 ```bash
 # pull the script out, work on it, put it back
 python3 - <<'EOF'
-h=open('bones-v0.293a.html').read()
+h=open('bones-v0.294a.html').read()
 i=h.index('<script>'); j=h.index('</script>',i)
 open('cur.js','w').write(h[i+8:j])
 EOF
@@ -411,6 +411,35 @@ takes no arguments any more; it fits its own canvas and is called straight from 
 - **There is always a door.** `< BACK` (`< DONE` once bones are in) sits top-left and calls
   `pkBuryFinish()`. The panel covers everything, so leaving it exit-less meant a mis-tap trapped
   you until the 9s `BURY_ABANDON` timer.
+
+### The long game: cap 99, tripled XP, and a bed worth sleeping in (v0.294a)
+
+The whole progression used to be over in an evening. It now runs to **`LVL_CAP` (99)**, which is
+the single constant every guard reads — there is no `250` left anywhere.
+
+- **`xpNeed(l) = 3*(20+l*8)`.** Tripled. Level 1 costs 84, level 98 costs 2412.
+- **The cap is hard.** `addXP` returns at 99 and `buryAwardXP` returns before it adds anything, so
+  neither route banks XP past it. Both then clamp `S.xp` to `xpNeed(LVL_CAP)`, because the award
+  that carries him to 99 can arrive with far more than the last level needed and the bar would
+  otherwise hold a meaningless number for the rest of the save.
+- **Milestones are 5 / 10 / 25 / 99** in `addXP`, in `buryAwardXP`'s `evoQ`, and as `EVO_STAGES`
+  keys. Park unlock stays at 5; Junior 10, Prime 25, and the **Crossroads is 99**. `pkBuryEvoCheck`
+  defers 5 and 99 (not 5 and 50) — those are still the two that change what game you are playing.
+- Senior size is **0.9**, down from 0.94.
+- **`LVLREWARDS` and the gates that grant those items are stretched to match** — 3/8/14/18/25/35/
+  45/55/70/85. `CHARMS[].unlock`, the agility `req`, the breeder `req` and their "UNLOCKS LV.n"
+  copy all carry the same numbers; changing the reward table alone would have announced unlocks
+  that had already happened.
+
+**The bed.** `bedAdequate()` now decides more than a ceiling:
+
+- Rest is only ever at the bed. `toggleRest` always sets `bedTarget`, and the `rest` branch of
+  `camBehavior` walks him back if he is ever resting more than 0.05 away from `BED.x` while an
+  adequate bed exists.
+- A nap on a bed that fits recovers at **4.4/s** against 2.4 elsewhere, and lifts mood (+0.30/s)
+  and fun (+0.22/s) while he is on it — measured over 6s: energy 20→47.8, mood 40→44.0, fun
+  40→40.4, against 20→35.1 / 40→41.8 / 40→39.1 on a bed he has outgrown. The 70% ceiling for a
+  wrong or missing bed is untouched.
 
 ---
 
