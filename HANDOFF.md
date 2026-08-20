@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.287a**.
+Currently **v0.288a**.
 
 ---
 
@@ -13,7 +13,8 @@ its one big `<script>`, save it back out under the next version number. That is 
 workflow now.
 
 ```
-bones-v0.287a.html   THE GAME. ~6.2MB, everything inlined. Edit this.
+bones-v0.288a.html   THE GAME. ~6.2MB, everything inlined. Edit this.
+bones-v0.287a.html   previous build (camera zoom fix).
 bones-v0.286a.html   previous build (trained attributes).
 bones-v0.285a.html   previous build (doggie log).
 bones-v0.284a.html   previous build (wings).
@@ -37,7 +38,7 @@ first**, before touching anything.
 ```bash
 # pull the script out, work on it, put it back
 python3 - <<'EOF'
-h=open('bones-v0.287a.html').read()
+h=open('bones-v0.288a.html').read()
 i=h.index('<script>'); j=h.index('</script>',i)
 open('cur.js','w').write(h[i+8:j])
 EOF
@@ -104,6 +105,72 @@ node --check cur.js            # must pass before rebuilding
   to skip ceremonies.
 
 ---
+
+## FRIENDS: pack, cut and rear guard (v0.288a)
+
+Squirrel, cat and ape each got their own overhaul. **The bird flock is deliberately untouched.**
+
+### The squirrel is a pack
+
+One recruitment buys a *commander*. The `sq` pal object stays the single entry in `PK.pals` —
+so the Friends panel, the HUD row, the stay button and all the tier logic keep working — and
+grows a `units[]` of up to five squirrels that fight as a unit.
+
+`pkSqSync(p)` mirrors the pack back onto the controller every frame: `p.x/p.y` as the centroid,
+`p.hp/p.hpMax` as the sum over living units. **That mirroring is load-bearing, not cosmetic.**
+Eight separate places read a pal's position or health directly (heal sparks, the FRIEND DOWN
+marker, the world draw cull, the ape's own target scoring). Without it every one of them reads
+`undefined` off a pal that no longer has a position of its own. If you add a pack-like friend,
+copy this pattern.
+
+- Formation: a ring at `PACK_R` around BONES, leaning forward along his heading while he runs,
+  marching slowly (`PACK_PATROL_SPD`) while he stands still, and holding over the stay point when
+  told to stay. Siblings shove each other apart (`PACK_SEP`) so the ring never collapses.
+- Targeting is shared and resolved **once per frame** for the whole pack — nearest to BONES, not
+  nearest to each squirrel. Five squirrels each picking their own target is five pets, not a pack.
+- T4 lasers are staggered: `PACK_LASER_MAX` (2) beams live at once, so it reads as a firing line.
+  Each unit still runs all three existing safety layers unchanged (`pkPalAimSafe`, the angular
+  exclusion, and the beam physically stopping short of BONES). Verified: BONES is never hit.
+- A unit dies on its own; the commander is only gone once `units.length===0`. **One squirrel comes
+  back per wave** via `pkSqWaveRespawn()`, called from the wave-advance path. An upgrade also
+  grants one immediately. Healing tops up living units only.
+- Prices raised to 30/70/120/200 — a pack of five is not a 91-bone buy.
+
+### The cat cuts ahead
+
+Replaces the single-target pounce. It stations ahead of BONES (lead scales with his speed) and
+leaps one continuous line through the crowd, hitting up to `pkCatCut(tier)` = 3/5/7/10 enemies,
+tracked in a per-leap `hitSet` so nothing is hit twice. Hit resolution is a swept segment test —
+the same along/perp projection `pkSwordHeldUpdate` already uses.
+
+**Two traps, both found by playing it:**
+1. The station runs away at BONES' own speed, so a cat capped at its tier speed can never get in
+   front — it just trails him and never cuts. It now chases at `max(catSpd, PK.spd*1.4)`.
+2. The original "only cut once you have arrived at your station" gate meant it essentially never
+   cut, because it never arrived. Replaced by `PAL_CAT_RECOVER`, a short breath between cuts.
+
+### The ape is the rear guard
+
+- A `rejoin`/`rejoinAir` state: past `PAL_APE_LEASH*PAL_APE_REJOIN_F` he drops the cycle for a
+  short fast hop back to BONES, **with no smash on landing** — it is pure travel.
+- `pkApeSmashR(tier)` grows the blast 74 → 104. It is threaded through `drawPal` too, which uses
+  it in three places for the air telegraph and the landing ring.
+- `pkApeBestTarget` gives a mild score bonus to clusters *behind* BONES' heading.
+
+### Performance — read before touching this
+
+A pack of five multiplies every per-pal query by five, and three separate things had to be fixed
+to stay at parity. Measured by wrapping `pkPalsUpdate`+`pkPalDamage` (whole-frame timing in
+headless Chromium is far too noisy — the same build varied 23→35ms between runs):
+**0.255ms/frame before, 0.265ms/frame after**, with 150 enemies and a full T4 pack.
+
+1. `pkPalDamage` walked all of `PK.en` twice per pal. Now `pkEnemiesNear` for contact, and the
+   active beam list is gathered **once per frame** rather than re-scanned per pal.
+2. The cat re-scored every enemy in seek range every frame, and scoring is a grid query *per
+   candidate*. Throttled to `PAL_CAT_SCAN` and bounded by `PAL_CAT_SCORE_MAX`.
+3. A squirrel whose nut was still on cooldown was running a wide grid query for an answer nobody
+   would use, and a unit with no safe laser line re-asked every frame. Both now gated
+   (`PACK_LASER_RETRY`).
 
 ## DOGPARK CAMERA: fixed permanent zoom creep (v0.287a)
 
