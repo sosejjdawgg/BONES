@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.295a**.
+Currently **v0.296a**.
 
 ---
 
@@ -13,7 +13,7 @@ its one big `<script>`, save it back out under the next version number. That is 
 workflow now.
 
 ```
-bones-v0.295a.html   THE GAME. ~6.5MB, everything inlined. Edit this.
+bones-v0.296a.html   THE GAME. ~6.5MB, everything inlined. Edit this.
 bones-v0.290a.html   previous build (burial reachable from home).
 bones-v0.289a.html   previous build (bury/lovehearts, park-only entry).
 bones-v0.288a.html   previous build (friends overhaul).
@@ -41,7 +41,7 @@ first**, before touching anything.
 ```bash
 # pull the script out, work on it, put it back
 python3 - <<'EOF'
-h=open('bones-v0.295a.html').read()
+h=open('bones-v0.296a.html').read()
 i=h.index('<script>'); j=h.index('</script>',i)
 open('cur.js','w').write(h[i+8:j])
 EOF
@@ -479,6 +479,49 @@ instead; and a plated segment thresholds into one piece *per plate*, so the mask
 before labelling. Quantise with **FASTOCTREE, never MEDIANCUT** — median-cut drops the red eyes
 and the lava entirely, because on a mostly-grey sprite the saturated reds are too few pixels to
 earn a palette slot.
+
+### Dev mode: the wave-skip bug, and real coverage everywhere (v0.296a)
+
+**The bug.** `#pkDevSkip` ("SKIP WAVE") set `PK.waveSpawned=PK.waveQuota` and cleared `PK.en`, but
+the real clear check a few hundred lines down in `parkUpdate` — `pkWaveDone()>=pkWaveGoal()` — reads
+`PK.waveKills` (`PK.apeKills` on the ape wave), never `waveSpawned`. The button had been silently
+inert since whatever change moved the wave-goal off a spawn count onto a kill count; it cleared the
+field and then the wave just... didn't end. Fixed by setting the counter the check actually reads.
+
+**Dev mode is a single global toggle, not per-screen.** `toggleDevMode()` flips `#devbar`,
+`#pkDevbar` and (now) `#runDevbar` together — the PIN unlocks all three at once, and tapping any of
+the three corner gears again while already unlocked hides all three. That's the existing design
+`#pkDevToggle` established for the park; `#runDevToggle` on the run screen (new) follows the same
+rule rather than inventing a second one. `#devbar` also gained `position:relative;z-index:46` — it
+had grown past where the floating music button (`z-index:45`) sits and lost taps to it.
+
+**New in the park devbar:**
+- `SKIP TO BOSS (W9)` — one tap: wave 9 marked cleared, the real pipeline runs (outro, shop, wave
+  10, `bossPending`), close the shop and THE HOLLOW comes up.
+- `JUMP TO WAVE…` — `prompt()`-based, lands fresh on any wave 1-60 (mixed types, ape wave, whatever
+  needs testing) without playing there.
+- Both share `pkDevSetWave(n)`, a **fresh**-wave reset (quota/spawned/kills/mix/golden), deliberately
+  lighter than the real advance path — no bark/knockback creep, since that only means anything over
+  a played run, not a jumped-to one.
+- `MAX SWORD`, `MAX FRIENDS` — instant, free, no cutscene. `pkBuyPal()` itself never touches
+  `PK.bones` (the shop tap does that separately), so calling it straight from a dev button for free
+  was already safe.
+- `GOLDEN NOW`, `ALPHA SQUAD NOW` — force either encounter immediately regardless of the wave's
+  own timer.
+
+**New in the home devbar** (all stay on the home screen — none of them call `showScreen`, so the
+devbar never has to follow them anywhere): `AUTO AGILITY`, `FREE BEACH DAY`, `FREE COMP ENTRY`
+(bumps the level gate rather than bypassing `openPre` — the real panel still renders), `INSTANT
+LITTER`.
+
+**New: the run screen can unlock dev mode on its own.** `#devbar` lives inside `#home`, which
+`showScreen("run")` hides — so the corner toggle that already worked for the park needed a twin
+here. `#runDevToggle` + `#runDevbar` (`WIN RUN`, `FAIL RUN`) drive `endRun()` directly, covering
+daily/practice/comp result screens without having to actually clear or fail a course.
+
+**Left out, deliberately:** `#work` and `#paperboy` don't get their own devbar. Both already have a
+one-tap way back (CLOCK OUT), so a dedicated skip button was marginal value for real added risk —
+this was a scoping call, not an oversight.
 
 ---
 
