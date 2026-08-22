@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.296a**.
+Currently **v0.297a**.
 
 ---
 
@@ -13,7 +13,7 @@ its one big `<script>`, save it back out under the next version number. That is 
 workflow now.
 
 ```
-bones-v0.296a.html   THE GAME. ~6.5MB, everything inlined. Edit this.
+bones-v0.297a.html   THE GAME. ~8.1MB, everything inlined. Edit this.
 bones-v0.290a.html   previous build (burial reachable from home).
 bones-v0.289a.html   previous build (bury/lovehearts, park-only entry).
 bones-v0.288a.html   previous build (friends overhaul).
@@ -41,7 +41,7 @@ first**, before touching anything.
 ```bash
 # pull the script out, work on it, put it back
 python3 - <<'EOF'
-h=open('bones-v0.296a.html').read()
+h=open('bones-v0.297a.html').read()
 i=h.index('<script>'); j=h.index('</script>',i)
 open('cur.js','w').write(h[i+8:j])
 EOF
@@ -522,6 +522,51 @@ daily/practice/comp result screens without having to actually clear or fail a co
 **Left out, deliberately:** `#work` and `#paperboy` don't get their own devbar. Both already have a
 one-tap way back (CLOCK OUT), so a dedicated skip button was marginal value for real added risk —
 this was a scoping call, not an oversight.
+
+### Boss music, and panels that stop stealing the track (v0.297a)
+
+**`MUSIC_BOSS`** — THE HOLLOW's theme, encoded exactly like the other two: **MP3 CBR 64 kbps,
+44.1 kHz, joint stereo**. That is what `MUSIC_GOODMOOD` and `MUSIC_DOGPARK` already are; the
+convention was read off their frame headers, not guessed. There is no ffmpeg on the box —
+`pip install imageio-ffmpeg` provides a static binary.
+
+What "optimised" meant here, measured rather than assumed:
+- Trimmed to its own edges. The source carried 1.4s of dead air on the tail, which on a looping
+  track is a hole. (`MUSIC_DOGPARK` has ~3s of the same and still does — out of scope, but if you
+  ever want the park loop tighter, that is the free win.)
+- **+6.1 dB.** The source sat at p95-block −17.6 dB against DOGPARK's −10.8; it would have been
+  audibly the quieter fight. Now −11.9 dB, peaking −1.4 dB — and unlike DOGPARK, which has 1619
+  clipped samples, it never clips.
+- Lowpassed at 15 kHz. The source is HE-AAC, so everything up there is SBR-synthesised fizz that
+  LAME would otherwise spend bits on at 64k.
+- Left in stereo: L/R correlation is 0.62, so there is a real image to lose.
+
+**Panels over a live run no longer swap the music out.** Opening the wave shop used to hand the
+room to the little procedural menu melody, which threw the run's momentum away every single wave.
+The park track now keeps playing and moves behind a door instead — see `setMuffle`: two cascaded
+lowpasses to 520 Hz (one 12 dB/oct stage alone just reads as "quieter") plus a duck to 0.62.
+Measured through the live graph, that takes the spectral centroid 2569 Hz → 478 Hz.
+
+Three traps worth keeping:
+
+1. **`typeof PK` does not save you inside a `const`'s temporal dead zone — it throws.** Boot calls
+   `syncMoodMusic()` before `const PK` further down the file has initialised, so anything it
+   reaches that touches `PK` aborts the rest of the script and leaves every later `const` in TDZ
+   (the symptom is a baffling "Cannot access 'PK' before initialization" from a function that
+   looks nowhere near the problem). `syncMusicMuffle` tests the early `let parkMusicOn` **first**
+   for exactly this reason. The `typeof PK` idiom already elsewhere in the file only survives
+   because of call ordering.
+2. **`createMediaElementSource` permanently reroutes an element and silences its direct output.**
+   So the graph is built lazily, on the first muffle, and only while `AC.state==="running"`; with
+   no context to route through the music simply keeps playing unfiltered. The important half of
+   the feature (not swapping tracks) does not depend on the effect working.
+3. **It connects to `AC.destination`, not `MUSICBUS`.** An unrouted `<audio>` element bypasses the
+   bus and the master limiter, so going through them would have quietly signed the music up for
+   `sfxDuck` and compression the first time a shop opened — a mix change nobody asked for,
+   halfway through a run.
+
+`#settingsPanel` is deliberately still a menu-melody screen: it is the same global panel the home
+screen opens. The muffle applies to shop / convert / friends / gate / end-run.
 
 ---
 
