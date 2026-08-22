@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.297a**.
+Currently **v0.298a**.
 
 ---
 
@@ -13,7 +13,7 @@ its one big `<script>`, save it back out under the next version number. That is 
 workflow now.
 
 ```
-bones-v0.297a.html   THE GAME. ~8.1MB, everything inlined. Edit this.
+bones-v0.298a.html   THE GAME. ~8.1MB, everything inlined. Edit this.
 bones-v0.290a.html   previous build (burial reachable from home).
 bones-v0.289a.html   previous build (bury/lovehearts, park-only entry).
 bones-v0.288a.html   previous build (friends overhaul).
@@ -41,7 +41,7 @@ first**, before touching anything.
 ```bash
 # pull the script out, work on it, put it back
 python3 - <<'EOF'
-h=open('bones-v0.297a.html').read()
+h=open('bones-v0.298a.html').read()
 i=h.index('<script>'); j=h.index('</script>',i)
 open('cur.js','w').write(h[i+8:j])
 EOF
@@ -567,6 +567,57 @@ Three traps worth keeping:
 
 `#settingsPanel` is deliberately still a menu-melody screen: it is the same global panel the home
 screen opens. The muffle applies to shop / convert / friends / gate / end-run.
+
+### THE HOLLOW arrives, and the whole screen is the pad (v0.298a)
+
+**The arrival.** There is no cut to a fight that has already started. Closing the wave-9 shop now
+runs a 1.75s sequence, driven by one clock (`BOSS.introT`) with **overlapping** windows rather
+than five exclusive states — the beats are meant to bleed into each other:
+
+| window | beat |
+|---|---|
+| 0.00–0.35 | the world rolls 8° and punches in — it looks away |
+| 0.20–0.90 | rumble, escalating; dust shaken up out of the ground |
+| 0.55–1.10 | the floor cracks: the rift scales open, red light spreading |
+| 0.85–1.40 | it comes up through the hole, head forced to `roar`, one shake spike |
+| 1.40–1.75 | name, bars, board and hint assemble; drag goes live |
+
+Through the first three beats **the park is still there and visible** — that is the whole point of
+the effect. `#bossPanel`'s CSS background is now `transparent`; the scrim is painted on the canvas
+and only ramps to 0.86 between 0.55 and 1.25. No bullets, no damage, and no drag exist before
+1.40, so there is no way to be hit by a fight that has not started.
+
+Three things this needed that were not obvious:
+
+1. **The roll goes on `#game`, not `#park`.** `#park` is only the control pad — rolling it tips
+   the HUD while the DOGCAM above it stays dead level, which looks broken. `#game` holds both
+   screens, and `#bossPanel` is its sibling under `#app`, so the overlay never moves with it.
+2. **The scale is a real cover scale, computed from the element's own aspect** —
+   `max((w·cos+h·sin)/w, (h·cos+w·sin)/h)`. A rotated rectangle leaves triangles of background at
+   its corners, and on a 414×896 frame a generic fudge factor is nowhere near enough; the first
+   version showed bright white wedges. `#app` is painted black as the backstop.
+3. **Rise and death are one number played in opposite directions.** `sink` is 0 at full height and
+   1 fully inside the rift; the arrival runs it 1→0 and `pkBossKill` runs it 0→1, which is why the
+   two read as the same move reversed. The segment gate is `crack<0.40`, not `<1` — the erupt
+   deliberately overlaps the crack, and gating on a finished crack held the wolf underground for
+   most of its own entrance.
+
+Audio follows the same shape: the park track fades at t=0, the rumble plays against **nothing**,
+the breakthrough hits at 0.85, and the theme comes in at `BOSS_MUSIC_AT` (1.30). `pkBossHasRoom()`
+exists so the little procedural menu melody cannot rush in to fill that silence.
+
+**Controls: the whole overlay is the pad.** The board is a clamp on where BONES can END UP, not on
+where you are allowed to touch — dragging from the wolf's face works, which on a phone is most of
+the screen. It is deliberately **the same relative stick the park already uses** (`pkPad`'s own
+delta/30 clamped to unit length, driving velocity), not absolute position-follow: absolute would
+pin him to the nearest wall whenever a finger sat outside a small board, and it would be a second
+control language to learn one wave from the end of a run. Copy is now `DRAG ANYWHERE TO DODGE`,
+which also matches the pad's existing `DRAG ANYWHERE TO MOVE BONES`.
+
+Trap worth keeping: `hurt` is read by both the board border and the health bar. Wrapping those in
+separate `if(uiA>0)` blocks put it out of scope, and because `pkDrawBoss` is called straight from
+`loop()`, the throw took the whole rAF chain down with it — the game froze solid at the first
+frame of settle. Anything shared across those blocks has to live above them.
 
 ---
 
