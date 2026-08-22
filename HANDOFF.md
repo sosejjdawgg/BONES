@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.294a**.
+Currently **v0.295a**.
 
 ---
 
@@ -13,7 +13,7 @@ its one big `<script>`, save it back out under the next version number. That is 
 workflow now.
 
 ```
-bones-v0.294a.html   THE GAME. ~6.3MB, everything inlined. Edit this.
+bones-v0.295a.html   THE GAME. ~6.5MB, everything inlined. Edit this.
 bones-v0.290a.html   previous build (burial reachable from home).
 bones-v0.289a.html   previous build (bury/lovehearts, park-only entry).
 bones-v0.288a.html   previous build (friends overhaul).
@@ -41,7 +41,7 @@ first**, before touching anything.
 ```bash
 # pull the script out, work on it, put it back
 python3 - <<'EOF'
-h=open('bones-v0.294a.html').read()
+h=open('bones-v0.295a.html').read()
 i=h.index('<script>'); j=h.index('</script>',i)
 open('cur.js','w').write(h[i+8:j])
 EOF
@@ -440,6 +440,45 @@ the single constant every guard reads — there is no `250` left anywhere.
   and fun (+0.22/s) while he is on it — measured over 6s: energy 20→47.8, mood 40→44.0, fun
   40→40.4, against 20→35.1 / 40→41.8 / 40→39.1 on a bed he has outgrown. The 70% ceiling for a
   wrong or missing bed is untouched.
+
+### THE HOLLOW — the boss fight (v0.295a)
+
+Clear wave 9 in either DOGPARK or UNLEASHED, spend at the shop that follows, and a wolf-serpent
+comes up out of a rift and takes the screen. The park freezes whole; BONES is penned into a small
+black board underneath it and has to dodge, Undertale-style.
+
+- **Its own panel.** `#bossPanel` (z-index 67, direct child of `#app`) with one `<canvas
+  id="bosscv">`, for the same reason the burial has one: drawn over the two park canvases the
+  control pad sits underneath, and a boss with a HUD under its chin is not a boss. Updated and
+  drawn from `loop()`; `bossOn()` is added to every gate that already lists `PK.shop`.
+- **Entry is scripted, once.** Clearing wave 9 sets `PK.bossPending`; `parkUpdate` fires
+  `pkBossStart()` the frame no panel is up. `PK.bossDone` means it never repeats in a run.
+- **The body** is six sprites — rift, coilC/B/A, neck, head — stacked up a swaying spine and drawn
+  back to front, sized off the band so it always fits. The carry between segments is **damped
+  (`acc = seg.ang + acc*0.55`), not summed**: summing five sway angles leans the head 40-odd
+  degrees and the whole animal falls over sideways.
+- **The head is the telegraph.** Six cells — front / roar / left / right / rear / dip — picked by
+  `BOSS_HEAD[telegraph]`, so it always looks at what it is about to do a beat before it does it.
+  That look is the only warning there is. CROSS is a double head-shake rather than a new pose.
+- **Patterns** (`rain`, `sweepL/R`, `ring`, `cross`, `surge`) are spawner objects in box-local
+  coordinates, each with a clear safe gap. Phase 2 at 66% unlocks cross and speeds the sweeps;
+  phase 3 at 33% unlocks surge and can run two at once. A pattern ends when it stops **feeding**,
+  not when the board empties — waiting for the last bullet doubled every cycle to ~13s; stragglers
+  now finish crossing during the breath, where they still have to be dodged.
+- **There is no attack button.** The boss loses HP when a pattern finishes: 16 clean, 9 if it
+  landed a hit. Dodging *is* the damage, so the fight always ends and ends sooner the better it is
+  played. Measured: ~124s for a player who never moves once; roughly 50s played well.
+- BONES is a black dog on a black board, so he gets a warm pool, a one-pixel inverted rim, and the
+  **hitbox drawn honestly** as a red dot — what the bullets are actually tested against.
+- Dying in there hands off to the park's own `pkDeath()`. Dev button: `#devBoss`.
+
+**Art** is sliced from the supplied sheets by `scratchpad/slice.py` + `mkwolf.py` into `WOLF` /
+`WOLFIMG` (~490KB). Two traps worth keeping: flood-filling the background walks straight in
+through the wolf's dark fur outline, so the cutout is threshold + largest-blob + **hole-fill**
+instead; and a plated segment thresholds into one piece *per plate*, so the mask is **bridged**
+before labelling. Quantise with **FASTOCTREE, never MEDIANCUT** — median-cut drops the red eyes
+and the lava entirely, because on a mostly-grey sprite the saturated reds are too few pixels to
+earn a palette slot.
 
 ---
 
