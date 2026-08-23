@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.303a**.
+Currently **v0.304a**.
 
 ---
 
@@ -13,7 +13,7 @@ its one big `<script>`, save it back out under the next version number. That is 
 workflow now.
 
 ```
-bones-v0.303a.html   THE GAME. ~8.3MB, everything inlined. Edit this.
+bones-v0.304a.html   THE GAME. ~8.3MB, everything inlined. Edit this.
 bones-v0.290a.html   previous build (burial reachable from home).
 bones-v0.289a.html   previous build (bury/lovehearts, park-only entry).
 bones-v0.288a.html   previous build (friends overhaul).
@@ -41,7 +41,7 @@ first**, before touching anything.
 ```bash
 # pull the script out, work on it, put it back
 python3 - <<'EOF'
-h=open('bones-v0.303a.html').read()
+h=open('bones-v0.304a.html').read()
 i=h.index('<script>'); j=h.index('</script>',i)
 open('cur.js','w').write(h[i+8:j])
 EOF
@@ -759,6 +759,35 @@ misses, edge just touching hits, and the old 11.5px reach now passes through.
 
 `BOSS_BIRD_CATCH_R` was split out at 19 so shrinking the hitbox did not also shrink the golden
 bird's pickup radius — that one is a reward, not a threat, and wants to stay generous.
+
+### The park opens up instead of cutting to black (v0.304a)
+
+THE HOLLOW used to happen on a stage: `#bossPanel` painted a flat `rgba(0,0,0,0.86)` over
+everything, so the park was gone and the fight read as a mode switch. Same world now, bigger frame,
+darker light.
+
+- **The park opens to full screen.** `pkBossLayoutTick` drives `#cam` from its 42% split to 100%
+  over `BOSS_OPEN_T` (0.55s, smoothstepped), collapsing the pad under it — `#cam` is `flex:none`
+  and `#panel` is `flex:1`, so one height write does the whole thing. It reuses `pkApplyUISplit`,
+  the same call the wave zoom already uses, and restores to `BOSS.camFrom` (whatever the wave zoom
+  had left it at) rather than the CSS default.
+- **The park keeps drawing for the entire fight.** What replaced the black plate is a grade:
+  `BOSS_TINT_MAX` (0.55) of a green-black wash plus a `BOSS_VIGNETTE` radial. Trees, grass and
+  fireflies stay readable, so the wolf comes up through *somewhere*.
+- **The park stops drawing its player and its HUD**, though — two BONES on one screen reads as a
+  bug. `bossHidesDog()` is deliberately **not** `bossOn()`: he stays standing in the park through
+  the open and the rumble, and only goes at `BOSS_ERU_A` when the eruption covers it. Banners, the
+  exit nag, the shop pointer and his bark ring go with him.
+- **DOM chrome goes too.** `#cam`'s white sill, `#pkBottomBtns`, `#portrait` and the music button
+  all slide to the bottom of a full-screen park otherwise. `#app.bossfight` hides them; the sill
+  keeps its 5px and only loses its colour, so nothing reflows.
+- **The outro plays it backwards** — the pad slides back under a park that is brightening, rather
+  than the panel just vanishing.
+
+Trap: the gate around the player draw has to sit **inside** the declarations, not around them.
+`spd`, `img`, `hz` and `buzz` are all declared in that block and read again further down by the
+sprite and the sword, so wrapping the whole thing in `if(!bossUp){}` throws a ReferenceError every
+frame the park draws — and it boots fine, because nothing calls `parkDraw` until a run starts.
 
 ---
 
