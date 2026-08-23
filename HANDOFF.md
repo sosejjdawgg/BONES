@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.301a**.
+Currently **v0.302a**.
 
 ---
 
@@ -13,7 +13,7 @@ its one big `<script>`, save it back out under the next version number. That is 
 workflow now.
 
 ```
-bones-v0.301a.html   THE GAME. ~8.3MB, everything inlined. Edit this.
+bones-v0.302a.html   THE GAME. ~8.3MB, everything inlined. Edit this.
 bones-v0.290a.html   previous build (burial reachable from home).
 bones-v0.289a.html   previous build (bury/lovehearts, park-only entry).
 bones-v0.288a.html   previous build (friends overhaul).
@@ -41,7 +41,7 @@ first**, before touching anything.
 ```bash
 # pull the script out, work on it, put it back
 python3 - <<'EOF'
-h=open('bones-v0.301a.html').read()
+h=open('bones-v0.302a.html').read()
 i=h.index('<script>'); j=h.index('</script>',i)
 open('cur.js','w').write(h[i+8:j])
 EOF
@@ -710,6 +710,35 @@ the radius is 26), which also just looks better — the shot hunts the thing tha
 `pkBossPhaseCheck()` was factored out of `pkBossFinishPattern` because reflect damage can now
 cross the 66%/33% gates too, and a phase change that only fired at end-of-pattern would have been
 skipped.
+
+### MAW — bones spat from the mouth (v0.302a)
+
+A sixth pattern. Huge burning bones come out of THE HOLLOW's jaw, enter over the top of the board
+and fall on an arch with a slow lateral wander. `BOSS_MAW_R` is 2.4x a normal bullet, so they are
+unmistakable, and each one leaves a fire trail (`BOSS.trail`, drawn under the bullets so the bone
+always rides in front of its own flame, capped at 160 embers).
+
+- **Telegraph 0.50s** — the longest in the set, because it is the heaviest read. Head cell `roar`,
+  and `maw` joins ring/surge in the list that hangs the jaw open. The mouth catches light and a
+  dashed arc previews roughly where it will land; the arc is **bowed outward**, not dropped
+  straight, or it gets drawn down the length of his own chest.
+- **The mouth is read live.** `pkBossMouthBoxX()` projects `BOSS.headX` into board coordinates each
+  spawn, so bones really do come from under wherever he is currently looking, not from a fixed
+  centre.
+- **Never aimed.** The wander is `cos(phase + t*swayW)` off a per-bone random phase — deterministic
+  motion the player can read, with no term that references `BOSS.dog`. Verified: with the dog
+  parked at x=47 a bone spawned overhead ended at x=101 rather than curving in.
+- **1 / 2 / 3 bones per beat** by phase; out of `BOSS_P1` entirely, so it only shows up once the
+  player already knows what falling lanes look like.
+
+**`BOSS_HEAVY` is new and matters.** A phase-three double used to pick any second pattern that
+wasn't a duplicate. Two patterns that each demand watching (maw, ring, surge) at once is not a
+harder fight, it is an unreadable one — so a double now excludes a second heavy. Verified over 400
+rolls: 218 doubles, zero heavy-on-heavy, zero duplicates, maw only ever paired with rain / cross /
+sweepL / sweepR.
+
+Golden reflect handles them: a `maw` bone reflects as `big`, worth **double** damage (8 vs 4) with
+twice the fizz, a harder shake and a lower-pitched impact.
 
 ---
 
