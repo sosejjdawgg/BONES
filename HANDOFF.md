@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.302a**.
+Currently **v0.303a**.
 
 ---
 
@@ -13,7 +13,7 @@ its one big `<script>`, save it back out under the next version number. That is 
 workflow now.
 
 ```
-bones-v0.302a.html   THE GAME. ~8.3MB, everything inlined. Edit this.
+bones-v0.303a.html   THE GAME. ~8.3MB, everything inlined. Edit this.
 bones-v0.290a.html   previous build (burial reachable from home).
 bones-v0.289a.html   previous build (bury/lovehearts, park-only entry).
 bones-v0.288a.html   previous build (friends overhaul).
@@ -41,7 +41,7 @@ first**, before touching anything.
 ```bash
 # pull the script out, work on it, put it back
 python3 - <<'EOF'
-h=open('bones-v0.302a.html').read()
+h=open('bones-v0.303a.html').read()
 i=h.index('<script>'); j=h.index('</script>',i)
 open('cur.js','w').write(h[i+8:j])
 EOF
@@ -739,6 +739,26 @@ sweepL / sweepR.
 
 Golden reflect handles them: a `maw` bone reflects as `big`, worth **double** damage (8 vs 4) with
 twice the fizz, a harder shake and a lower-pitched impact.
+
+### Board speed capped, and the hitbox is the dot (v0.303a)
+
+**Speed.** v0.301a made the board read `PK.spd` directly, which fixed the 330 but inherited the
+park's whole range — 70 to 160 depending on level, mood, energy and STAMINA — and the top of that
+is far too much for a board a fraction of the park's size. `pkBossSpd()` is now the single place
+it is decided: **capped** at what a healthy dog does in the park (`BOSS_SPD_REF` 118 = the 95 base
+at full energy), **floored** at 0.72 of that so a neglected dog can still dodge, then **×0.80** for
+the smaller field. A typical run lands at 94.4 instead of 124. Friction and the stick are still the
+park's, untouched — only the top speed is reined in.
+
+**The hitbox is now literally the red dot.** It was drawn at `BOSS_DOG_R*0.62` while collision used
+the full `BOSS_DOG_R`, so a bullet landed from up to 12px away against a 4.3px target on screen —
+the game was hitting well outside what it showed. `BOSS_DOG_R` is **4.4** and the dot is drawn at
+exactly that, so a projectile only counts when it actually overlaps the circle you can see. Reach
+drops from 12 to 9.4 for a normal bullet and 19 to 16.4 for a MAW bone. Verified: edge just clear
+misses, edge just touching hits, and the old 11.5px reach now passes through.
+
+`BOSS_BIRD_CATCH_R` was split out at 19 so shrinking the hitbox did not also shrink the golden
+bird's pickup radius — that one is a reward, not a threat, and wants to stay generous.
 
 ---
 
