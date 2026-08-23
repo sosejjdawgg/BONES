@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.299a**.
+Currently **v0.300a**.
 
 ---
 
@@ -13,7 +13,7 @@ its one big `<script>`, save it back out under the next version number. That is 
 workflow now.
 
 ```
-bones-v0.299a.html   THE GAME. ~8.1MB, everything inlined. Edit this.
+bones-v0.300a.html   THE GAME. ~8.3MB, everything inlined. Edit this.
 bones-v0.290a.html   previous build (burial reachable from home).
 bones-v0.289a.html   previous build (bury/lovehearts, park-only entry).
 bones-v0.288a.html   previous build (friends overhaul).
@@ -41,7 +41,7 @@ first**, before touching anything.
 ```bash
 # pull the script out, work on it, put it back
 python3 - <<'EOF'
-h=open('bones-v0.299a.html').read()
+h=open('bones-v0.300a.html').read()
 i=h.index('<script>'); j=h.index('</script>',i)
 open('cur.js','w').write(h[i+8:j])
 EOF
@@ -634,6 +634,47 @@ Fixed by replacing the lerp with the same snap-then-decay block, unchanged in sh
 instead of wrapping the toroidal world. Verified against the real park block: full stick to
 `BOSS_DOG_SPD` (330) in one frame, a direction reversal answers just as instantly, and release
 decays at the same `*0.8`/frame park does.
+
+### BONES faces eight ways in DOGPARK (v0.300a)
+
+He used to be one side-on run cycle, flipped when he ran left, whichever way he was actually
+going. He now has all eight compass facings, from five supplied 2048x2048 sheets — **S, SE, E, NE,
+N** — with **W, NW and SW drawn as those same sheets mirrored**. `mkdirs.py` + `pkdirs.js` in the
+repo root regenerate the art; `PKDIRS` / `PKDIR_MAP` / `pkDirDraw` are the runtime side.
+
+What the sheets actually are, since it isn't obvious from looking: each is an 8x8 grid of 256px
+cells, but it is **an 8-frame cycle repeated eight times down the sheet**, not 64 unique frames
+(frame 8 matches frame 0 to within 0.001 on the two clean sheets; on the other three the
+period-8 difference is still smaller than the frame-to-frame difference, so it is the same cycle
+with render jitter). Only row 0 is used.
+
+Four things worth keeping:
+
+1. **Frames are cropped to the direction's UNION bbox, not per frame.** Tight-cropping each frame
+   independently makes the dog jitter, because every frame's crop origin moves.
+2. **`ax` is the anchor, and it is real data.** All five renders put the dog on the cell's centre
+   line (x=128, measured per frame at 124-130), so `ax` records where that line falls inside the
+   union crop. Sprites are bottom-aligned on the ground line, so his feet meet the shadow in every
+   direction.
+3. **The mirror is done by the transform, so the anchor is NOT flipped by hand.** A point `ax`
+   from the left pre-flip lands `(1-ax)` from the left after it, which is exactly what W/NW/SW
+   want — inverting it as well puts him half a body off.
+4. **The tail-on render came out about a third small**, so he shrank every time he ran away.
+   `PKDIRS.N.sc = 1.35` pulls it back onto the same body scale as the other four, measured
+   torso-against-torso. The others needed nothing.
+
+`pkFaceUpdate` has **hysteresis** (`PKDIR_HYST`) and it is not optional: without it, a thumb
+resting on a sector boundary strobes him between two sprites several times a second. Measured over
+400 jittered samples on the E/SE line: 0 changes. Below `PKDIR_MOVE` he keeps whichever way he
+last actually went rather than snapping to a default.
+
+THE HOLLOW's board uses the same set (`BOSS.faceI`, `BOSS_DOG_SC`) — he dodges in eight directions
+in there too, and leaving that one on the old flip-only frame would have looked like an oversight.
+`RUNFRAMES`/`RUNIMG` stay exactly as they were: the RUNNER minigame still uses them, and they are
+the fallback for the handful of frames before the strips have decoded.
+
+Art cost: 207KB for all 40 frames — five strips, RGB through FASTOCTREE at 32 colours with the
+real 8-bit alpha put back afterwards (a hard alpha cutoff makes edges this size crawl).
 
 ---
 
