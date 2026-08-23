@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.304a**.
+Currently **v0.305a**.
 
 ---
 
@@ -13,7 +13,8 @@ its one big `<script>`, save it back out under the next version number. That is 
 workflow now.
 
 ```
-bones-v0.304a.html   THE GAME. ~8.3MB, everything inlined. Edit this.
+bones-v0.305a.html   THE GAME. ~8.3MB, everything inlined. Edit this.
+bones-v0.304a.html   previous build (the park opens for THE HOLLOW).
 bones-v0.290a.html   previous build (burial reachable from home).
 bones-v0.289a.html   previous build (bury/lovehearts, park-only entry).
 bones-v0.288a.html   previous build (friends overhaul).
@@ -788,6 +789,53 @@ Trap: the gate around the player draw has to sit **inside** the declarations, no
 `spd`, `img`, `hz` and `buzz` are all declared in that block and read again further down by the
 sprite and the sword, so wrapping the whole thing in `if(!bossUp){}` throws a ReferenceError every
 frame the park draws — and it boots fine, because nothing calls `parkDraw` until a run starts.
+
+### The five beats, and the roar that opens the fight (v0.305a)
+
+THE HOLLOW is BUILT as seven spawners but it is meant to be READ as five commands, so the flair
+hangs off the **beat** rather than off the spawner. `BOSS_BEAT` is the whole mapping:
+
+| beat | patterns | what it looks like |
+|---|---|---|
+| **FETCH**  | `maw`            | head pulled `rear` then `roar`; the jaw goes wide and SLAMS (`BOSS.spit`); dust off the lip of the board as the bone enters; a puff, a pock and a floor-edge flash where it lands |
+| **BADDOG** | `cross`          | coils go rigid (`BOSS.stiff`), head thrown `left`/`right` on a 0.44s beat with a jaw clack, lane wash behind the bars, entry-side border flash. The bars were already the only bullets with no spin |
+| **BURY**   | `rain`, `surge`  | head `dip`ped, `BOSS.riftKick` surges the rift, `BOSS.coilSquash` compresses him over the floor, surge's warn grows a shaking "lid", embers trail, and everything that goes through the floor leaves a pock |
+| **PACK**   | `sweepL/R`, `ring` | `BOSS.coilBias` leans the whole chain at the active edge, that edge lights, a light runs the rim L→R→T→B (`BOSS.chase`), and ring's volley flies **locked** (`spin:a+PI/2, vr:0`) instead of tumbling |
+| **WALK**   | phase three      | not a pattern — a state. Sway drops to 0.70 amplitude at 0.64 speed, he leaves afterimages, maw pairs tumble mirrored, the last mouthful of a phase-three MAW is bigger and slower (`heavy`), and under 12% HP the squash becomes a sag |
+
+`bossHeadNow()` is what the draw reads: `BOSS.headCell` is still the pattern's base cell, and
+`BOSS.headOv`/`headOvT` is a short-lived override on top. `pkBossFinishPattern` clears **both** —
+leaving the override running let a BAD DOG snap hang 0.3s into the flat stare that follows.
+
+`pkBossFlair(dt)` runs **before** `pkBossSway(dt)`, because the sway reads `stiff`, `coilBias` and
+the jaw envelope it sets. Afterimages copy the spine pose (`pkBossGhost`) — the chain is rebuilt
+every frame, so there is nothing to look back at unless it is snapshotted.
+
+`SETTINGS.reduceMotion` keeps every head cell, jaw move and colour change — those ARE the
+telegraphs, and dropping them makes the fight unreadable rather than gentler. It drops travel:
+afterimages, the extra shake, the running light's motion, the lid jitter, the RGB split.
+
+**The roar.** The arrival grew a second: `BOSS_ROAR_A` 1.40 → `BOSS_ROAR_B` 2.40, pushing
+`BOSS_SET_A/B` to 2.40/2.75 and `BOSS_MUSIC_AT` to 2.38 (the theme now lands after the roar's
+silence, not during the eruption). Read as five beats of one clock:
+
+- **0.00–0.20** push in to `BOSS_ROAR_ZOOM` 1.62. The pivot is solved so the **head** lands at
+  `(w/2, h*0.40)` — `P = (T - head*k)/(1-k)` — rather than staying pinned wherever the chain
+  swayed it to. It is a transform on the **boss canvas only**: the park underneath does not move,
+  so it reads as him coming at you and never as the whole game zooming. The grade is painted
+  outside that save, so the tint stays flat while he grows through it.
+- **0.17–0.35** three struck frames (white / ice-blue / white), peak shake, and four SFX voices
+  landing within 70ms — sub 62Hz saw, mid 98Hz saw, 180Hz square crunch at +40ms, 40Hz tail at
+  +70ms. Separately they are beeps; together they have a body.
+- **0.42–0.74** a 2px RGB split on the **head only** (two extra copies of the same cell, offset and
+  hue-rotated, under `lighter`), blue-white speed lines out of the throat, and the dust/ember blast.
+- **0.70–1.00** ease back out, shake decays into ~0.12s of silence, then the theme and the board.
+
+Traps found here: the speed lines were started at a fixed 26px from the mouth point and were
+drawn straight across his own muzzle — they have to start off the head (`band*0.34`) or they read
+as scratches on the sprite. And the roar's blast lives in `BOSS.dust` tagged `rb:true`, skipped by
+the ground-dust pass and drawn in `pkBossRoarFx` instead, because dust drawn before the body is
+behind him and a roar throws things forward.
 
 ---
 
