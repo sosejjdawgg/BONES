@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.298a**.
+Currently **v0.299a**.
 
 ---
 
@@ -13,7 +13,7 @@ its one big `<script>`, save it back out under the next version number. That is 
 workflow now.
 
 ```
-bones-v0.298a.html   THE GAME. ~8.1MB, everything inlined. Edit this.
+bones-v0.299a.html   THE GAME. ~8.1MB, everything inlined. Edit this.
 bones-v0.290a.html   previous build (burial reachable from home).
 bones-v0.289a.html   previous build (bury/lovehearts, park-only entry).
 bones-v0.288a.html   previous build (friends overhaul).
@@ -41,7 +41,7 @@ first**, before touching anything.
 ```bash
 # pull the script out, work on it, put it back
 python3 - <<'EOF'
-h=open('bones-v0.298a.html').read()
+h=open('bones-v0.299a.html').read()
 i=h.index('<script>'); j=h.index('</script>',i)
 open('cur.js','w').write(h[i+8:j])
 EOF
@@ -618,6 +618,22 @@ Trap worth keeping: `hurt` is read by both the board border and the health bar. 
 separate `if(uiA>0)` blocks put it out of scope, and because `pkDrawBoss` is called straight from
 `loop()`, the throw took the whole rAF chain down with it — the game froze solid at the first
 frame of settle. Anything shared across those blocks has to live above them.
+
+### The boss controls weren't actually park's scheme (v0.299a)
+
+v0.298a's `pkBossDogMove` said in its own comment that it matched the park's control language,
+and the STICK maths (relative, delta/30, clamped to unit length) genuinely did. The MOVEMENT did
+not: it added `d.vx += (tx-d.vx)*k` — an exponential lerp toward the stick's target velocity —
+which the park's real move block (`parkUpdate`, ~line 10588) simply does not have. Park **snaps**
+velocity straight to `direction*topspeed` the instant the 0.1 deadzone clears, and only decays it
+(`*0.8` per frame, no `dt` scaling — copied verbatim) once the stick is released. The lerp was
+extra smoothing nobody asked for, and it's exactly what read as "slippery": every direction change
+lagged a beat behind the touch instead of answering it.
+
+Fixed by replacing the lerp with the same snap-then-decay block, unchanged in shape, box-clamped
+instead of wrapping the toroidal world. Verified against the real park block: full stick to
+`BOSS_DOG_SPD` (330) in one frame, a direction reversal answers just as instantly, and release
+decays at the same `*0.8`/frame park does.
 
 ---
 
