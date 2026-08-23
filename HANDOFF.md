@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.300a**.
+Currently **v0.301a**.
 
 ---
 
@@ -13,7 +13,7 @@ its one big `<script>`, save it back out under the next version number. That is 
 workflow now.
 
 ```
-bones-v0.300a.html   THE GAME. ~8.3MB, everything inlined. Edit this.
+bones-v0.301a.html   THE GAME. ~8.3MB, everything inlined. Edit this.
 bones-v0.290a.html   previous build (burial reachable from home).
 bones-v0.289a.html   previous build (bury/lovehearts, park-only entry).
 bones-v0.288a.html   previous build (friends overhaul).
@@ -41,7 +41,7 @@ first**, before touching anything.
 ```bash
 # pull the script out, work on it, put it back
 python3 - <<'EOF'
-h=open('bones-v0.300a.html').read()
+h=open('bones-v0.301a.html').read()
 i=h.index('<script>'); j=h.index('</script>',i)
 open('cur.js','w').write(h[i+8:j])
 EOF
@@ -675,6 +675,41 @@ the fallback for the handful of frames before the strips have decoded.
 
 Art cost: 207KB for all 40 frames — five strips, RGB through FASTOCTREE at 32 colours with the
 real 8-bit alpha put back afterwards (a hard alpha cutoff makes edges this size crawl).
+
+### The board is the park with the walls moved in (v0.301a)
+
+**The boss dog had a speed of its own and it was wrong.** `BOSS_DOG_SPD` was a hard 330 against a
+typical `PK.spd` of ~95-125 — about three times too fast, which is exactly what "slides all over
+the place" feels like. There is no board speed constant any more: `pkBossDogMove` reads `PK.spd`,
+so he runs at whatever that run is actually giving him, energy and mood and stamina included.
+Measured in a live fight: stick full over gives `d.vx === PK.spd` to the decimal.
+
+**The white border is a doorway, not a wall.** The clamp (which also zeroed velocity, so he stuck
+to the edge) is gone; the board wraps like the park's toroidal world. Two consequences that had to
+be handled or it would have looked broken:
+
+- **He is drawn on both sides of a seam.** Straddling the border with one draw slices him in half
+  at it instead of stepping him through it, so anyone within 30px of an edge gets a second copy at
+  `±B.w` / `±B.h` (and a third and fourth in a corner).
+- **Bullet collision is toroidal too**, via `bossWrapD` — but only on an axis where the bullet is
+  actually *on* the board. Wrapping unconditionally would make a bullet still outside the left
+  edge secretly adjacent to a dog hugging the right one.
+
+**THE GOLDEN BIRD visits the fight.** Every 18-28s of live combat (first at 8s) she crosses the
+board — and she crosses *the board*, not the panel, because the dog cannot leave it and an
+uncatchable bird is just decoration. Catching her sets `BOSS.golden` for 6s, during which any
+bullet that reaches him is **not** damage: it is removed and sent back up the neck at the head for
+`BOSS_REFLECT_DMG` (4) each. It is the only way the player deals damage on purpose rather than by
+surviving. Reflected hits do not spoil `cleanRun` — reflecting is skill, not a scrape.
+
+The reflected shots **home**. Aiming once at spawn and flying straight missed by ~12px every time,
+because the head sways for the whole flight and the shot arrived where the head had been; the
+trace showed closest approach 34px against a 22px hit radius. They now re-steer each frame (and
+the radius is 26), which also just looks better — the shot hunts the thing that threw it.
+
+`pkBossPhaseCheck()` was factored out of `pkBossFinishPattern` because reflect damage can now
+cross the 66%/33% gates too, and a phase change that only fired at end-of-pattern would have been
+skipped.
 
 ---
 
