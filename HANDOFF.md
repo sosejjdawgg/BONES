@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.305a**.
+Currently **v0.306a**.
 
 ---
 
@@ -13,7 +13,8 @@ its one big `<script>`, save it back out under the next version number. That is 
 workflow now.
 
 ```
-bones-v0.305a.html   THE GAME. ~8.3MB, everything inlined. Edit this.
+bones-v0.306a.html   THE GAME. ~8.3MB, everything inlined. Edit this.
+bones-v0.305a.html   previous build (the five beats, and the roar).
 bones-v0.304a.html   previous build (the park opens for THE HOLLOW).
 bones-v0.290a.html   previous build (burial reachable from home).
 bones-v0.289a.html   previous build (bury/lovehearts, park-only entry).
@@ -836,6 +837,64 @@ drawn straight across his own muzzle — they have to start off the head (`band*
 as scratches on the sprite. And the roar's blast lives in `BOSS.dust` tagged `rb:true`, skipped by
 the ground-dust pass and drawn in `pkBossRoarFx` instead, because dust drawn before the body is
 behind him and a roar throws things forward.
+
+### Lovey Dovey 2.0 — the brush (v0.306a)
+
+The mode stopped being a radius that fired once and became something he goes and DOES.
+
+- **Seven hearts, always** (`LOVE_NODES_MIN/MAX` both 7 — `LOVE_TUNE` has seven notes, so the
+  phrase now always completes), and the mode runs **15s** (`LOVE_MODE_T`).
+- **`LOVE_BRUSH_R` = 22.** Every frame the mode is up, one `pkEnemiesNear` at contact radius turns
+  anything he touches, instantly. The old `LOVE_CONVERT_R` burst still fires on activation.
+- **`pkLoveCanCharm(e)`** is the guest list, and it exists because of `e.boss`: the ape IS the
+  objective of its wave (`pkWaveDone` reads `apeKills`), so charming it strands the run with
+  nothing left to kill. Scenery, roosts, `standing` and the wave-ending kill in its send-off are
+  out for the same reason.
+- **Pink is a source-atop recolour laid over the real sprite**, never a filter chain. BONES and
+  several enemies are near-black, and `sepia/saturate/hue-rotate` has no saturation left to push
+  on black — it does nothing to exactly the sprites that need it. `pkDirDraw` gained an optional
+  `tint`/`tintA` for this, going through `pkPalIconTint` (cached per strip per colour).
+- **Outward bias**: the target score is `distance-from-lover − min(distance-from-BONES,180)*0.45`.
+  Nearest-only pulled the whole charmed pack back through him and the brawl happened on top of
+  the player. Note the 180 clamp: past that, candidates stop being separable by it.
+- **The scuffle marks BOTH sides** — pink/white/red sparks at the midpoint, a two-stroke clash
+  mark struck across the line between them (`HITFX` gained `clash`), a pink pulse on the lover,
+  the white blowout on the victim, hearts thrown off, and two voices (high blip, low thud).
+  Budgeted at `LOVE_SCUFFLE_CAP` bursts a frame or fifteen charmed squirrels bury the frame.
+- Mode end is unchanged: everything's `love` is cleared. No permanent friendlies, ever.
+
+### THE HOLLOW is the gate, burial is the reward (v0.306a)
+
+- **`bossPending` now requires `PK.plusMode && PK.wave===10`.** A regular Dogpark run never meets
+  him and therefore never unlocks anything on its own.
+- **`S.hollowBeaten`** is set in `pkBossKill` and is what opens burial — permanently, on the save,
+  across generations (the generation reset lists its own fields and this is not one of them).
+  `buryUnlocked()` gates `pkBuryStart`, the exchange row, and the wallet button.
+- **The ceremony is his hole**, not a garden plot: red-black earth, a crimson lip, glowing cracks
+  bent at a knee and kept inside the dirt ring (straight even spokes read as a sunburst stuck to
+  the outside), embers rising off the lip, fire far down the shaft. `BURY.dirt` gained `ember`,
+  which floats up instead of falling.
+- **`BURY_PILE_STEP` 100 → 300, `BURY_PILE_MAX` 14 → 6.** Fourteen layers of three hundred is 4200
+  bones, which nobody reaches, and a "full" hole that never fills is not a reward. Six is 1800.
+- **The cash-in**: the mound is consumed the instant the last layer lands (deferring it left a
+  window where the pile kept growing behind the fire), but the DRAW holds it full for the whole
+  `BURY_BURN` — full, then flame, then gone. The drop loop is gated on `burnT<=0`, so a fresh
+  mound starts underneath without the player letting go.
+- **The wallet button has three states**: Unleashed locked → a locked BURY row that says the cost;
+  unlocked but no kill → routes to `pkUnleashedAdvice` → `startPark(true)`; beaten → the ceremony.
+  The Unleashed gate is a LIVE `S.snacks >= DOGPARK_UNLEASHED_COST` check, exactly as
+  `reallyEnterDogpark` does it — which does mean a big burial can spend back below the unlock.
+  That is the existing rule for that door; this button does not invent a different one.
+- Dev: `#pkDevW9` now flips the run into `plusMode` (or the shortcut would never reach him), and
+  `#devHollow` toggles `S.hollowBeaten` so burial can be tested without a full run.
+
+**Testing note, learned the hard way here.** A busy `setTimeout` loop inside `page.evaluate`
+starves rAF in headless Chromium — the park runs at roughly a fifth of real speed, and a fixed
+wall-clock sleep gets nowhere near enough frames. Pin state from *inside* a `requestAnimationFrame`
+chain and poll from outside with `waitForFunction`. Three separate "bugs" in this session were
+that. Two more were the harness picking a roosting bird (not charmable by design) as its test
+enemy, and a cleared wave opening the shop, which makes `parkUpdate` return early and freezes
+everything downstream of it.
 
 ---
 
