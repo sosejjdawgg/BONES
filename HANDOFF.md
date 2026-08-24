@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.306a**.
+Currently **v0.307a**.
 
 ---
 
@@ -13,7 +13,8 @@ its one big `<script>`, save it back out under the next version number. That is 
 workflow now.
 
 ```
-bones-v0.306a.html   THE GAME. ~8.3MB, everything inlined. Edit this.
+bones-v0.307a.html   THE GAME. ~8.3MB, everything inlined. Edit this.
+bones-v0.306a.html   previous build (Lovey Dovey brush, the Hollow gate + burial).
 bones-v0.305a.html   previous build (the five beats, and the roar).
 bones-v0.304a.html   previous build (the park opens for THE HOLLOW).
 bones-v0.290a.html   previous build (burial reachable from home).
@@ -895,6 +896,33 @@ chain and poll from outside with `waitForFunction`. Three separate "bugs" in thi
 that. Two more were the harness picking a roosting bird (not charmable by design) as its test
 enemy, and a cleared wave opening the shop, which makes `parkUpdate` return early and freezes
 everything downstream of it.
+
+### Bark was killing freshly-charmed enemies during Lovey Dovey (v0.307a)
+
+Reported: "I can't damage enemies during Lovey Dovey, I only turn enemies against their own
+team... when I'm trying to brush up against them I'm just killing them."
+
+`pkBark()` auto-fires on proximity alone (`parkUpdate`, next to `PK.barkCd-=dt`) with no
+awareness of love mode at all — no check on `PK.loveMode`, no exclusion for `e.love`. `PK.barkR`
+(≈21–33, tuned by hunger/STR/upgrades) is usually **wider** than `LOVE_BRUSH_R` (22), and
+`pkLoveTick`'s brush-convert runs earlier in the same frame than the bark trigger. So walking up
+to charm something meant one of two things happened, both looking like "brushing kills them":
+either bark reached it first and killed it before the brush ever got a chance, or the brush
+converted it that same frame and bark — whose sweep never checked `e.love` — killed the brand
+new ally a beat later.
+
+Fixed in two places:
+- The auto-trigger now reads `if(!PK.loveMode && ... && !e.love && ...)`. Bark is fully suspended
+  for the whole 15s: the mode's whole pitch is charm-through-contact, not combat, so BONES simply
+  doesn't fight while it's running. `!e.love` is redundant with the mode check but kept as
+  defense-in-depth for the frame the mode is ending.
+- `pkBark()`'s own sweep loop skips `e.love` outright (`if(e.fleeing || e.love) continue;`), so an
+  ally can never be hit by bark through any future call path either.
+
+Verified in Chromium: activated Lovey Dovey for real (walked the seven-heart trail), spawned a
+1‑HP enemy, sat it directly on BONES for 206 sampled frames — stayed alive, stayed `love:true`,
+HP never moved. Bark resumes normally the instant the mode ends (confirmed against a fresh
+enemy). Full existing suite re-run clean against this build.
 
 ---
 
