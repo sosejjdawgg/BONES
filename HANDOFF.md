@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.307a**.
+Currently **v0.308a**.
 
 ---
 
@@ -13,7 +13,8 @@ its one big `<script>`, save it back out under the next version number. That is 
 workflow now.
 
 ```
-bones-v0.307a.html   THE GAME. ~8.3MB, everything inlined. Edit this.
+bones-v0.308a.html   THE GAME. ~8.3MB, everything inlined. Edit this.
+bones-v0.307a.html   previous build (bark no longer kills during Lovey Dovey).
 bones-v0.306a.html   previous build (Lovey Dovey brush, the Hollow gate + burial).
 bones-v0.305a.html   previous build (the five beats, and the roar).
 bones-v0.304a.html   previous build (the park opens for THE HOLLOW).
@@ -923,6 +924,78 @@ Verified in Chromium: activated Lovey Dovey for real (walked the seven-heart tra
 1‑HP enemy, sat it directly on BONES for 206 sampled frames — stayed alive, stayed `love:true`,
 HP never moved. Bark resumes normally the instant the mode ends (confirmed against a fresh
 enemy). Full existing suite re-run clean against this build.
+
+### WOLFIE, and the hole you wake him from (v0.308a)
+
+**He is WOLFIE now.** Every user-facing "THE HOLLOW" is renamed — `BOSS.name`, the fanfare, the
+kill toast, the burial titles, the Unleashed pitch, the dev button. The save key stays
+`S.hollowBeaten`: it is an internal id and renaming it would strand every existing save.
+
+**2x HP** (`BOSS_MAXHP` 100 → 200). The phase gates were already fractions of `maxhp`, so they
+land in the same proportional places; there was no absolute-HP threshold anywhere to rescale, and
+no fourth phase was specified so the 66%/33% three-phase split stands.
+
+**The health bar rides on his head.** It used to sit at `h*0.455`, between his chin and the board,
+where it read as more of the board's furniture. It is now one stack — name, bar, PHASE — pinned
+just above the top of whatever head cell is showing, so it tracks him as he sways. That needed
+room: `BOSS_DROP` (0.14 of the band, ~53px) lowers the whole chain, rift included, via
+`bossRiftY()`. **Both** the spine and the draw compute the rift line, and so do two arrival
+dust-spawn sites — all four go through the helper or the earth comes out of the wrong place.
+0.08 was the first guess and still landed the stack on the park's own WAVE/LEFT header.
+
+**Everything is 25% slower and 25% angrier.** `BOSS_SPD` (0.75) multiplies every projectile speed
+at every spawn — including the MAW's *gravity*, or a slower throw just hangs. `BOSS_AGGRO` (1.25)
+multiplies the idle sway's **size and speed**, the lean into a volley, the jaw rate, the head-snap
+beat and the clack. Both are single constants on purpose: the patterns were tuned one at a time
+and the screen had stopped being readable.
+
+**The overloaded phase.** `BOSS_FILL` names the four patterns that own the whole board on their
+own (sweeps, ring, cross). A phase-three double is now 35% likely (was 55%), never pairs two
+fillers or two heavies, and whatever it adds comes in `sparse:true` — every spawner reads that
+flag and thins itself to one lane / one wall / one mouthful. The ring's door widened from 0.45rad
+to 0.80 (0.95 sparse): a ring closing from every side with a 0.45 gap is a coin flip at any speed.
+
+**Side sweeps are burning birds** — the park's own bird frames, flipped to face travel, under a
+fire tint, trailing embers into the same pool the mouthfuls use. Motion, lane and hitbox are
+untouched, so the read is exactly as fair as it was.
+
+**MAW bones leave the mouth.** `pkBossMouthBox()` converts the head joint into board space once
+(it comes out well negative in y, which is the point). Two traps: the bone must be `out:true` or
+the top cull kills it instantly, and it must be drawn in **panel space outside the board's clip**
+until it crosses in, or it is invisible for the first half of its flight and still appears to pop
+in at the top edge. Flight time is solved under gravity — dividing by v0 alone gave a 14s lob.
+
+### The hole is the way in
+
+Clearing wave 9 no longer starts the fight, it opens a hole. `pkHoleArm()` sets `PK.holePending`;
+the same slot in `parkUpdate` that used to call `pkBossStart()` now calls `pkHoleOpen()`, so it
+still lands right after the wave-9 shop. The camera pan reuses the sword's exact mechanism
+(`pkHoleCamProgress()` alongside `pkSwordCamProgress()`).
+
+- **NOT NOW** ends the cine, pans back, and leaves `PK.hole` in the world. Waves carry on.
+  Walking within `HOLE_TOUCH` re-asks — `PK.hole.asked` flips back on when he steps away, so it
+  can ask again without nagging every frame he stands there.
+- **INVESTIGATE** plays the two lines, the bubble shrinks and drifts up (`c.rise`), and the hole
+  is left idling with `HOLD THE SCREEN TO THROW IN BONES`.
+- Holding opens the burial with the new `src:"offer"` — the run's carried bones, and the one
+  burial **not** gated on `buryUnlocked()`, because it is how you meet the boss that unlocks all
+  the others. Spending anything at all sets `PK.bossArmed` and Wolfie comes. Spending nothing
+  leaves the hole exactly where it was, so a player at 0 bones is never stuck.
+- `PK.bossArmed` is a separate flag from `PK.bossPending` so the dev button still starts him
+  directly.
+
+`pkHoleOpen()` clears `PK.waveBanner` — the wave-10 banner fires on the same frame and lands on
+top of everything the hole has to say.
+
+**Burial's grace became a countdown.** `BURY_LETGO` 1.2 → 3.0, drawn as a 3-2-1 over the hole with
+`TOUCH TO KEEP GOING`; putting a finger back down resets `bu.idle` and it vanishes. Ending a pour
+by accident mid-hoard with no warning was the worst thing that screen did. The hole also shows
+`LV before → LV after` under the art. Both apply to every burial, not just the offering.
+
+**Testing note.** `BURY.held` is sticky — nothing in the game resets it — so driving it from a
+self-scheduling `requestAnimationFrame` chain in a harness is unnecessary AND unstoppable from
+outside; two "the countdown never ran" failures were that, not the code. Set it once. A
+`Object.defineProperty` setter trap on the field is what settled it.
 
 ---
 
