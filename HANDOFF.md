@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.308a**.
+Currently **v0.309a**.
 
 ---
 
@@ -13,7 +13,8 @@ its one big `<script>`, save it back out under the next version number. That is 
 workflow now.
 
 ```
-bones-v0.308a.html   THE GAME. ~8.3MB, everything inlined. Edit this.
+bones-v0.309a.html   THE GAME. ~8.3MB, everything inlined. Edit this.
+bones-v0.308a.html   previous build (WOLFIE, and the hole you wake him from).
 bones-v0.307a.html   previous build (bark no longer kills during Lovey Dovey).
 bones-v0.306a.html   previous build (Lovey Dovey brush, the Hollow gate + burial).
 bones-v0.305a.html   previous build (the five beats, and the roar).
@@ -996,6 +997,43 @@ by accident mid-hoard with no warning was the worst thing that screen did. The h
 self-scheduling `requestAnimationFrame` chain in a harness is unnecessary AND unstoppable from
 outside; two "the countdown never ran" failures were that, not the code. Set it once. A
 `Object.defineProperty` setter trap on the field is what settled it.
+
+### The bark is a cone (v0.309a)
+
+A dog barks AT something. The bark was a silent circular aura that ate everything behind him,
+which left nothing to aim — the only input was standing near things. It now fires **forward**.
+
+- **`BARK_CONE = [80,115,155,215,360]`** — degrees by `PK.barkBigLvl`. Rank 0 is an 80° wedge;
+  the last rank is the full circle. `pkBarkArc()` / `pkBarkOmni()` read it.
+- **`pkInBarkCone(dx,dy,d,e)`** is the single predicate, used by BOTH the sweep inside `pkBark()`
+  and the auto-trigger in `parkUpdate` — they must agree or the bark fires at things it then
+  fails to hit. It widens by `atan2(pkHitR(e), d)`, so a wide sprite clipping the rim counts, by
+  less the further out it is.
+- **`PK.faceAng` is its own continuous angle**, updated from velocity above `PKDIR_MOVE` and held
+  when he stops. It is deliberately NOT `PK.faceI`: that is an eight-way sector index because the
+  sprite set has eight strips, and aiming a wedge off it snaps the shout to 45° steps and visibly
+  misses what the player is pointing at. `faceI` still picks the sprite; `faceAng` aims the cone.
+- **Bark stays automatic.** It fires when something enters the CONE instead of the circle. There
+  is no bark button and the pad is a joystick (wings already own double-tap), so "aim with
+  movement" is the skill rather than a new input.
+- **WIDER BARK** replaces BIGGER BARK on the same `barkBigLvl` / `BARK_LVL_CAP` 4-level track:
+  levels open the wedge instead of the radius, and 4/4 toasts `OMNI BARK — FULL CIRCLE`.
+  `BARK_LVL_CAP` must stay equal to `BARK_CONE.length-1`. Radius still grows from RED BANDANA
+  and the per-wave scaling, so angle and reach are separate axes.
+- **The charge is drawn as the shape it will fire**: three arcs (`N=3`) stacked along the wedge,
+  filling inside-out with the cooldown, opening from straight ahead as `k` rises. Four arcs at
+  4.5px merged into one white slab — `barkR` is only 21–62px, so three thin ones spread 0.52→1.0
+  of the radius is what actually reads as separate bars.
+- **The wave** reuses `PK.pulse` but is drawn along `PK.pulseAng`, captured at fire time so it
+  does not swing if he turns mid-pulse. At omni rank the spread is forced to `PI` — a 260° arc
+  where the ring used to be looked like a bug.
+
+Both `SETTINGS.barkStyle` modes (arc and "lines") follow the cone. Bark suppression during Lovey
+Dovey and the `PK.barkedTypes` missions are untouched — only the shape changed.
+
+**Testing note.** Cone geometry is worth solving rather than watching: `pkInBarkCone` is pure, so
+a harness can set `PK.faceAng`, sweep 72 bearings and assert the hit count rises monotonically per
+rank (29 → 35 → 43 → 55 → 72) with no frames and no throttling at all.
 
 ---
 
