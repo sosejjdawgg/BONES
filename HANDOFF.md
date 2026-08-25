@@ -1081,6 +1081,62 @@ hooks `bossAdd`, sweeps all patterns in phases 1 and 3, and asserts both `badN==
 *old* radius would have failed the same assertion (`oldWorst<0`), which is what proves the test
 has teeth.
 
+### The scream, and the cage (v0.311a)
+
+**A roar is drawn on the face.** The scream was thirty-four gradient strokes, the longest of them
+460px, started at a radius that put their apex down on his chest — so it read as lasers fired out
+of the rift. It is fourteen short rays now, and three things had to be right for that to work:
+
+- **They are triangles, not strokes.** A stroke has one width for its whole length, and the taper
+  from mouth to tip is the entire read. Each ray is a filled three-point path — wide at the base,
+  a point at the tip — with a gradient running white → ice-blue → transparent along it.
+- **They start on the head's OUTLINE, not at its centre.** This is the part that is not obvious:
+  the roar is a close-up, so the head cell (230×258 at `band/480`) draws at 180×202, i.e. ±0.24 ×
+  ±0.27 of the band. A ray anchored at the head joint and 25% of the band long is therefore
+  *entirely inside his own fur* — the first attempt at this was invisible in every single frame.
+  `bossScreamR0(a,band)` returns the ellipse radius at that bearing (`BOSS_SCREAM_HW/HH`), and the
+  ray starts a few px outside it.
+- **Straight down is trimmed.** It is the one bearing with his own armour in the way, and a ray
+  raking the length of the chest is exactly what this replaced. `trim = 1-0.50*sin(a)²` shortens
+  and dims those; sideways and upward rays, which have only air to cross, run full length.
+
+`BOSS_SCREAM_A/B` = 0.15–0.56 of the roar, opening on the SFX peak (`roarSfx` fires at 0.155) and
+gone long before the roar ends. One struck frame of white on the face leads it. The blast dust was
+also slowed (110+360 → 80+190 px/s) so it stays around the muzzle instead of raking the body.
+
+**The fight starts by TRAPPING you.** The roar used to end and leave a board sitting there, scaled
+in from 0.86 over 0.35s. It now runs a one-second cage on its own clock (`bossCageK()`, -1 unless
+it is actually running — the same shape as `bossRoarT`):
+
+| c | beat |
+|---|---|
+| 0.05 | a 34×29 white box **snaps shut** on BONES, white flash, corner sparks |
+| 0.05–0.35 | it **builds**: four corner brackets run out along both legs until they meet |
+| 0.35–0.85 | it **opens** to the real board, easeOutBack with a 5% overshoot |
+| 0.85–1.00 | it **locks**: two beats of border thickness, two rings thrown outward, UI fades in |
+
+`bossCageRect(B,s)` lerps from a tiny rect centred on `BOSS.cageX/cageY` (captured where he was
+standing when it bit) to the board. He is inside it for every value of s — and past 1 too, because
+the overshoot only ever pushes the walls further out, never in across him. While it is closing the
+walls are WALLS: `pkBossDogMove` clamps to the cage rect instead of wrapping, or he would step
+through a doorway in the box that exists to say he cannot.
+
+The board draw takes the cage rect for its fill, border and clip and keeps `translate(B.x,B.y)` for
+the contents, so nothing downstream — bullets, pocks, the dog, the seams — needed to know.
+`BOSS_INTRO` moved 2.75 → 3.40 so `pkBossTelegraph` still cannot run until it has locked; that is
+what keeps "no bullets until the grow completes" true without a second guard.
+
+**The easeOutBack constant is solved, not guessed.** Its overshoot is `4c₁³/27(c₁+1)²`, so
+`c₁=1.16` is the value that gives 5%. The first guess, 0.90, only reached 2.8% and did not read as
+a settle at all. reduceMotion gets a smoothstep with no overshoot.
+
+**Testing note.** A page screenshot cannot show a beat you set by hand: the game's own rAF redraws
+the canvas the moment the `evaluate` returns, so the image is whatever the real clock had reached.
+Draw and capture inside ONE evaluate (`cv.toDataURL()`) where nothing can interleave. Separately,
+`pkBossIntroTick` advances `introT` **itself**, so a harness that sets the clock and then steps
+lands a whole `dt` past the mark — three "failures" in the first cage run were all that, at the
+one boundary where a `dt` tips the intro into the fight.
+
 ---
 
 ## Suggested first prompt for Claude Code
