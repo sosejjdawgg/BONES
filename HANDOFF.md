@@ -1326,6 +1326,53 @@ fire: after a few thousand frames `PK.hp` hits zero, `pkDeath` clears `PK.active
 block silently runs on a dead board. Revive between beats and top him up inside the loops — doing
 so took the spawn audit from 119 spawns to 881.
 
+### Sides and a wave, and love that outlives the mode (v0.316a)
+
+**The charge is two lines now.** It used to draw three nested arcs, both sides and a breathing rim
+— a whole wedge of furniture parked over the park at all times. What the player actually needs
+before it fires is where the cone POINTS and how far it goes, so that is all that is drawn: the two
+side rays, fading along their own length (a cached linear gradient built in the frame already
+rotated onto the ray, so one object serves both sides at every rank). Alpha runs `BARK_SIDE_MIN`
+(0.14) idle → `BARK_ARC_MAX` (0.50) ready, and never above half. The circle rank gets almost
+nothing: one faint rim at `BARK_OMNI_HINT` and only once it is ready.
+
+**The wave is a front.** It leaves the mouth and travels to the end of the cone with a small
+overshoot, rather than starting at full reach and expanding past it — which is what the old ring
+did and why it never read as something thrown. Two dimmer copies trail behind, and it spans exactly
+the cone's half-angle so what sweeps is the shape that hit. **The sides blink out for the whole
+flight**: the signal is never as loud as the event.
+
+Hit logic is untouched — `pkInBarkCone` still decides, and `pcone2`'s reach/angle agreement checks
+still pass. This was a rendering change only.
+
+### Lovey Dovey keeps its friends
+
+**Love outlives the mode.** The window only ever governed whether NEW enemies turn; a converted one
+now stays pink, keeps its doubled health, and keeps fighting until killed or cleared. What ends
+with the mode is the dog's tint and the brush.
+
+**HP doubles once, and `e.loveHp` is the latch — not `e.love`.** Both entry points (the opening
+burst and the brush) go through `pkLoveTake`, so it cannot double twice; keying off `e.love` would
+have doubled again for anything that re-asserted the flag on an already-pink unit.
+
+**The stall this created, and the fix.** A wave ends on `PK.waveKills` reaching its quota, and a
+charmed enemy is not a kill. While love expired with the mode that could never bite — now a wave
+whose last few members are all pink would sit there with nobody left to fight and no way to finish.
+So once the quota is fully **spawned** and not one un-charmed enemy is left, the allies are sent off
+the same way a downed enemy is (`pkDownEnemy`), which credits the wave and drops their bones. It
+cannot misfire: one live foe anywhere resets the timer.
+
+The scuffle FX budget moved from `PK.loveMode.scuffle` to `PK.loveScuffle`. Hanging it off the mode
+meant every scuffle after the fifteen seconds went silent and sparkless, which is now most of them.
+
+**Testing note.** `pkEnemiesNear` reads a spatial grid that `parkUpdate` rebuilds **every frame**.
+A harness that drives `pkLoveTick`/`pkLoveEnemyTick` by hand without rebuilding it leaves the grid
+holding enemies from the live run that are no longer in `PK.en` — the allies then chase a ghost off
+across the park, scuffling with an object nothing else can see, and the test reports "they stopped
+fighting". Call `pkBuildEnGrid(PK.WW,PK.WH)` on every step. Separately: a canvas-call recorder must
+divide by the DPR that `fit()` puts on the context, or every screen-space comparison misses by
+exactly that factor and records nothing.
+
 ---
 
 ## Suggested first prompt for Claude Code
