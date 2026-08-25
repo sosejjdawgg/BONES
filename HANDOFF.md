@@ -1230,6 +1230,51 @@ hand *and* passes a token `dt` advances wall time without advancing anything mea
 cage read as crunching once when it was in fact crunching six times. Drive the intro on its own
 `dt` and let `introT` come out where it comes out.
 
+### The bark is a traffic cone (v0.314a)
+
+A 150-degree wedge is not a cone, it is a fan — three quarters of a disc stuck to the dog's nose.
+A traffic cone reads as one because it is **longer than it is wide**. So the angles came down hard
+and the reach went up to match:
+
+| rank | old | new | h/w |
+|---|---|---|---|
+| 1 | 70° × 1.00 | **34° × 1.44** | 1.64 |
+| 2 | 110° × 1.13 | **42° × 1.83** | 1.30 |
+| 3 | 150° × 1.28 | **50° × 2.21** | 1.07 |
+| 4 | 190° × 1.55 | **58° × 2.80** | 0.90 |
+| 5 | 360° × 1.55 | 360° × 1.55 | — circle |
+
+`h/w` is the drawn cone's height over its base width; above 1 it reads as a cone, and it stays
+above 0.9 even at the widest rank, widening progressively as the ladder climbs.
+
+**The pairs were solved, not guessed.** Each angle/reach pair was chosen so the *swept area* of
+every rank lands within 1% of what it was at every base radius the game produces (17 → 62). This
+changes the shape of the bark and nothing about its power — worth re-checking with the same
+arithmetic if either row is ever touched. `BARK_REACH_CAP` (180) bounds the finished reach because
+`PK.barkR` alone is capped at 62 and the multipliers would take it to 174; at 180 it trims nothing
+anywhere on the ladder, so it is a sanity bound rather than a balance lever.
+
+**The apex is the mouth.** `BARK_APEX` is 6px forward along the facing, applied to the hit test and
+to every stroke of the UI from the same constant, so the shape that is drawn and the shape that
+bites stay one object. Earlier versions kept the origin on the dog because a 6px lie was large
+against a 21px reach; at 30–60px it is not, and moving both together costs nothing. The **circle**
+rank is still measured from him — a ring whose centre had crept forward would leave a blind spot at
+his own tail.
+
+**The sides are always drawn.** Three floating arcs are three arcs; the two straight rays from the
+apex out to the outermost one are what close the silhouette into a cone. They used to appear only
+at full charge, which is exactly when the player least needs telling what the shape is. Arc ends
+land *on* the rays for free — same half-angle, same apex.
+
+**A footgun the harness found.** `pkInBarkCone` took `d` as a parameter and the circle branch
+trusted it while the cone branch recomputed its own (it measures from the mouth, not from
+`PK.x/PK.y`). The function's answer therefore depended on which caller asked — right for every
+real caller, wrong the moment anything else asked. Both branches derive their own distance now.
+
+**Testing note.** Scope a "what alpha is this drawn at" probe to the shape's own strokes — anything
+centred on, or leaving, the apex. Capturing every `stroke()` in `parkDraw` catches the wave
+banner's solid red rule and reads as the gauge being drawn at full opacity when it is not.
+
 ---
 
 ## Suggested first prompt for Claude Code
