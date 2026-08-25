@@ -1035,6 +1035,52 @@ Dovey and the `PK.barkedTypes` missions are untouched — only the shape changed
 a harness can set `PK.faceAng`, sweep 72 bearings and assert the hit count rises monotonically per
 rank (29 → 35 → 43 → 55 → 72) with no frames and no throttling at all.
 
+### The box is a cage (v0.310a)
+
+Three fixes that all come back to one idea: a screen owns the player's attention, and nothing may
+appear inside the space the player is defending.
+
+**INVESTIGATE opens the hole itself, not a preamble to it.** It used to answer the choice, resume
+the park, and play the two lines as a bubble over the world with a pad-hold hook waiting for the
+player to work out that they were meant to hold. There is now exactly one entry:
+`pkHoleEnter()` → `pkBuryStart("offer")` → `BURY.ph="talk"`. The dialogue moved *into* the burial
+panel as a real phase, plays `HOLE_SAY` there, and falls through to `"hold"` on its own. Deleted
+with it: `pkHoleHold()`, `pkDrawHoleTalk()`, the cine's `"talk"`/`"wait"` phases and the pad hook.
+`pkBuryStart` accepts `src==="offer"` below `BURY_UNIT` (the hole is allowed to be hungry and
+unsatisfied); the finish-on-empty check is guarded by `bu.shovels>0` so the talk phase can't end
+the offering before it starts.
+
+**Wolfie has one door.** Pouring bones levels the dog, and a level-up was reaching
+`pkBossStart()`, so the boss could begin *underneath* the burial panel. `pkBossStart` now refuses
+outright while `BURY.on || PK.holeCine`, setting `PK.bossArmed=true` instead so the intent
+survives; `BURY.on` also joined the list of takeovers that pause the park update. The single exit
+is `pkHoleOfferComplete(gave)` — gave bones arms him, gave nothing re-arms the hole to ask again.
+No other path may start him.
+
+**Nothing dangerous is born inside the box.** Every projectile now spawns outside the arena rect
+and flies in. `bossAdd` defaults `b.out=true`; a bullet clears the flag the first frame it is
+genuinely inside, and until then it is drawn, moves, and **does no damage** (`if(b.out) continue`
+before collision). Bullets that never enter are culled at a generous margin rather than lingering.
+
+The ring pattern was the real offender and it was not obvious: its radius was
+`max(B.w,B.h)*0.62`, which along the corner diagonals put spawn points **inside** the box —
+measured at −7px clearance in a 310×260 arena. It is now `hypot(B.w,B.h)*0.5+26`, the
+circumscribed circle plus a margin, worst-case clearance +19px. Mouth-fired maw bones are the one
+sanctioned exception: they start above the board, keep `out:true` through their arc, and can only
+hurt after crossing the lip.
+
+**`BOSS_EDGE`** maps each pattern to the edges it comes from (`rain:"t"`, `sweepL:"l"`,
+`sweepR:"r"`, `cross:"lt"`, `surge:"b"`, `ring:"lrtb"`). During `BOSS.ph==="telegraph"` those
+edges pulse as an orange ghost band on the border, so the warning names the side. `BOSS.teleEdge`
+clears in `pkBossFinishPattern` and `pkBossReset`.
+
+**Testing note.** A cage audit must run on a page where the boss actually starts. Testing it from
+inside the burial gives `BOSS.box {w:0,h:0}` — the new guard correctly refused the start, so
+`pkBossLayout` never sized the box and "nothing spawned inside" was vacuously true. The real run
+hooks `bossAdd`, sweeps all patterns in phases 1 and 3, and asserts both `badN===0` and that the
+*old* radius would have failed the same assertion (`oldWorst<0`), which is what proves the test
+has teeth.
+
 ---
 
 ## Suggested first prompt for Claude Code
