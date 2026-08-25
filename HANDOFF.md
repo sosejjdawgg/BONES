@@ -1178,6 +1178,58 @@ second is one you stop seeing), and each is seeded off its own position so a fie
 turns in lockstep. On the powerups the **halo stays a circle** and only the icon turns — light does
 not go edge-on, and squashing both together just made the whole pickup flicker.
 
+### The fire birds, the crunch, and the empty hole (v0.313a)
+
+**What the burning birds actually cost.** Every claw was drawn with a `createRadialGradient`, an
+arc fill, and — by a wide margin the expensive part — its own
+`ctx.filter = "sepia(1) saturate(7) hue-rotate(-28deg) brightness(1.25)"`. A sweep puts dozens on
+the board at once, so that was **dozens of separate filter passes every frame**. None of it ever
+changes, so `bossBirdFire()` bakes the glow and the fire tint into one small canvas per animation
+frame (at `S*DPR`, blitted at `S`, so it stays pixel-sharp) and the fight blits them: one
+`drawImage`, no gradient, no filter. It builds lazily and returns null until every source frame has
+decoded, falling back to the old crescent in the meantime.
+
+Budgets, all of them named constants: `BOSS_CLAW_MAX` 40 birds alive (enforced in `bossAdd`, so an
+over-cap bird is never created rather than created and culled), `BOSS_CLAW_GAP` 0.22s between
+volleys (was 0.16), `BOSS_TRAIL_MAX` 90 embers, `BOSS_CLAW_EMB` one ember per bird per ~7 frames
+(was every 3), which leaves each bird carrying 2–4. The embers were the fight's only high-churn
+allocation — thousands a second at the old rate — so `bossTrailAdd` takes them off a free list
+(`BOSS.trailPool`) and dead ones go back on it.
+
+Measured on the same saturated board, headless: **2.03ms → 0.62ms per `pkDrawBoss`**, 65 → 39
+birds, 160 → 65 embers, and per frame 40-ish `ctx.filter` sets down to 2. Treat the headless number
+as a floor on the win, not the size of it: `ctx.filter` is disproportionately more expensive on
+real mobile hardware, where each one can force its own render target.
+
+**The cage is twice as long.** `BOSS_CAGE_LEN` 1.00 → 2.00 and `BOSS_INTRO` 3.40 → 4.40. The four
+beats are *fractions* of `LEN`, so one number slows all of them and keeps their proportions: snap
+at 0.10s, build done at 0.70s, locked at 1.70s. It crunches now — `bossCrunch(big,n)` is a short
+square plus a narrow band of noise up in the metal range for a tick, and the same recipe an octave
+down with a wide grit band under it for the lock. `beep()` coalesces near-identical chirps by
+timbre and pitch bucket, so **each tick must be handed its own key** or the build falls silent
+after the first two.
+
+**Turning up with nothing is now a beat, not a soft fail.** An empty run used to open the pour with
+`shovels: 0` and quietly wind down. `pkBuryRage()` runs instead, off `BURY.ph === "rage"`: the
+taunt (`YOU BECKON ME, WITHOUT A SINGLE BONE!!!`) in the same bubble the hole already uses, a 0.6s
+tremble that ramps rather than holds, then the smash. `pkHoleOfferRage()` is the exit — deliberately
+not `pkHoleOfferComplete`, because nothing was offered and he is coming anyway.
+
+The eruption comes out of the hole's exact centre for free: `bu.fire` and `bu.dirt` are already
+stored **relative to (cx, cy)**, the same point the hole art is drawn about. The tremble is applied
+to `cx`/`cy` rather than to the transform — everything on that screen is positioned off the hole's
+centre, so moving the centre shakes the hole, the fire, the bubble and the readouts together while
+the black behind them stays put and never shows a seam.
+
+**The gauge is a signal; the wave is the event.** They are split by alpha: the charge arcs top out
+at `BARK_ARC_MAX` (0.50) however charged they are, and the pulse that actually fires is drawn
+solid. Nothing that has not happened yet is allowed to be as loud as the thing that has.
+
+**Testing note.** `pkBossIntroTick` advances `introT` itself, so a harness that steps the clock by
+hand *and* passes a token `dt` advances wall time without advancing anything measured in `dt` — the
+cage read as crunching once when it was in fact crunching six times. Drive the intro on its own
+`dt` and let `introT` come out where it comes out.
+
 ---
 
 ## Suggested first prompt for Claude Code
