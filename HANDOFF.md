@@ -1275,6 +1275,57 @@ real caller, wrong the moment anything else asked. Both branches derive their ow
 centred on, or leaving, the apex. Capturing every `stroke()` in `parkDraw` catches the wave
 banner's solid red rule and reads as the gauge being drawn at full opacity when it is not.
 
+### A bigger board, and MAW as a machine gun (v0.315a)
+
+**`BOSS_SCALE` (1.20) is the one number.** Everything on the board that has a size is expressed
+through it — the dog sprite AND `BOSS_DOG_R`, the bullets AND `BOSS_MAW_R`, the cached burning-bird
+frame, the bird catch radius, the gold pool, the wrap-seam threshold, the sprite fallback. Scaling
+art without the collision is how a fight starts lying, so they move together and the harness
+asserts each pair.
+
+Two bullets were drawn at fixed pixel sizes and so would not have followed: the `bar` (a hardcoded
+10×10) and the `ember` (a radius-9 gradient). Both derive from their own `b.r` now.
+
+**The red hitbox dot is gone.** It was the collision shown honestly, and the collision has not
+moved — still `BOSS_DOG_R` about `d.x/d.y` — but it read as a wound painted on the sprite. The gold
+pool underneath is centred on exactly the same point and was lifted 0.30 → 0.42 to carry that job
+alone.
+
+**MAW is a machine gun.** It was one huge bone at a time, deliberately slow to read. The beat it
+wanted was a Metal Slug boss opening up:
+
+- He **leans in**: `BOSS.mawLean` ramps over the whole beat (telegraph included, so the head is
+  already over the board when the first round leaves), growing the head 30% and dropping it toward
+  the play area. It is grown about its **top**, not its centre — scaling about the centre swells
+  the skull up over his own health bar, and the downward half of the growth is the half that was
+  wanted anyway.
+- The gun fires **bursts of 11 at 13 rounds a second**, 2 or 3 bursts by phase, and the **barrel
+  pans**: each burst picks a lane to sweep from and one to sweep to and interpolates between them.
+  A burst that scattered would be noise; this one you see coming and run out from under. Rounds are
+  small and fast (`BOSS_MAW_SHOT`) where the old mouthful was a lob — same gravity solve, far more
+  muzzle velocity. Phase three keeps one heavy shot as punctuation.
+- The telegraph previews the **field of fire** (the two extremes of the pan and the band between)
+  rather than the arc of one bone that no longer exists.
+
+**The mouth had to be found properly.** It was a flat 14px below the head joint — fine while the
+head was small, but the roar cell's open jaw is down *and to the side* of its centre, so at 30%
+bigger the stream poured out of his cheek. `pkBossMouthPanel()` takes a fraction of the head CELL,
+scales it by whatever the head is drawn at this frame and rotates it by the sway, exactly as the
+sprite is. `BOSS_MAW_CLEAR` clamps the lean against that **real jaw**, so a round can never be born
+inside the cage no matter how far he leans.
+
+**Budgets, because a burst is dozens on screen.** `BOSS_MAW_MAX` (30) is enforced in `bossAdd`, the
+ember interval went 0.035 → 0.10, and the per-bone `createRadialGradient` — the same bill the fire
+birds used to run up — is now one cached gradient built at the origin and scaled into place
+(`bossGrad`). A 12-round burst draws in 0.8ms.
+
+**Testing notes.** Two harness traps, both of which produced convincing-looking failures:
+`BOSS.phase` is **derived from HP** by `pkBossPhaseCheck`, so assigning it at full health is undone
+and the spawner captures the old value — drop the HP instead. And the test dog stands still under
+fire: after a few thousand frames `PK.hp` hits zero, `pkDeath` clears `PK.active`, and every later
+block silently runs on a dead board. Revive between beats and top him up inside the loops — doing
+so took the spawn audit from 119 spawns to 881.
+
 ---
 
 ## Suggested first prompt for Claude Code
