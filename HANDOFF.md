@@ -1137,6 +1137,47 @@ Draw and capture inside ONE evaluate (`cv.toDataURL()`) where nothing can interl
 lands a whole `dt` past the mark — three "failures" in the first cage run were all that, at the
 one boundary where a `dt` tips the intro into the fight.
 
+### Five bark tiers, and the sprite order (v0.312a)
+
+**The cone ladder is four cones and then a circle.** `BARK_CONE = [70,110,150,190,360]` with
+`BARK_RANGE = [1.00,1.13,1.28,1.55,1.55]` beside it — "wider" and "longer" are one ladder, not two
+competing shop rows. Tiers 1–4 stay directional; the fifth is rarer and is what the climb is for.
+
+`pkBarkR()` is the one number every part of the bark measures itself against: the predicate, the
+`pkEnemiesNear` sweep, the charge arcs and the wave. `PK.barkR` stays the **base** — what RED
+BANDANA and the per-wave scaling write to — and the rank multiplies it. Anything still reading
+`PK.barkR` directly would draw a different shape from the one that hits, which is precisely the
+bug the split exists to make impossible; the harness asserts the drawn reach and the hit test agree
+at every rank, in both directions.
+
+`BARK_LVL_CAP` must stay equal to `BARK_CONE.length-1`: the shop hides a capped row once
+`PK[capKey] >= cap`, so a shorter cap strands the last rank as unbuyable. The row now names itself
+per rank from `BARK_ROW` / `BARK_FX` (LOUDER BARK → STRONGER BARK → STRONGER AND LONGER → OMNI
+BARK), built fresh inside `pkShopOpen` so it reads the live level.
+
+**The charge gauge is a gauge.** Three nested arcs (`BARK_ARCS`), evenly spaced from `BARK_ARC_IN`
+out to the full reach, **one** stroke weight and **one** cap for all of them. The fill is carried
+entirely by alpha (`BARK_ARC_EMPTY` → 1.0) and by how far round the wedge each arc has opened — the
+previous version also grew `lineWidth` as it filled, and a gauge whose bars change thickness is a
+worse gauge. Nothing is coloured: the orange/pink/blue in the mock-up were tier labels, not art.
+
+The arcs are centred on the dog, not on the muzzle, because that is where the hit test's origin is.
+At `barkR` 21–54 a 6px forward offset would be a visible lie about the AOE.
+
+**Sprite order: BONES → enemies → pickups.** Enemies used to be drawn up with the trees, so they
+passed *under* BONES — which read as him walking over them and made a crowd around him impossible
+to count. The loop moved to just after `pkDrawWingsClaim`, which is also the marker the harness
+uses: no `drawEnemy` before it, every pickup draw after the last one. The thing you must not miss is
+never the thing that gets covered.
+
+**Pickups turn like Vice City pickups.** `pkPickupSq(t,seed)` is a horizontal scale by `cos` of the
+spin — the sprite narrows to nothing edge-on then opens out mirrored, which reads as a rotation
+rather than a flip. Two things make it work: the scale is floored at `PICKUP_EDGE` so it never
+collapses to a zero-width nothing at the two crossings (a pickup that blinks out four times a
+second is one you stop seeing), and each is seeded off its own position so a field of them never
+turns in lockstep. On the powerups the **halo stays a circle** and only the icon turns — light does
+not go edge-on, and squashing both together just made the whole pickup flicker.
+
 ---
 
 ## Suggested first prompt for Claude Code
