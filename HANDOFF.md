@@ -1456,6 +1456,42 @@ alarm worth recording: a static sum of `pall.js`'s sleeps reads 15,660 ms agains
 chains top `loveMode.t` back up to 8 every frame, so the wall clock never reaches it. Static timing
 audits of a harness that pins its own clock will lie to you.
 
+### The stick gets a throttle (v0.319a)
+
+**It was a direction and nothing else.** Any deflection past a tenth of the pad ran him at full
+speed: `PK.vx = mx/l * PK.spd`, with the magnitude divided straight back out. That is why the two
+gaits shipped in v0.318a could never both be reached — the comment above `PKDIR_RUN_AT` already
+promised "a half-deflected stick walks, a full one runs" and the movement code made it impossible.
+
+**`pkJoyThrottle(m)`** maps deflection to a fraction of top speed: nothing inside `JOY_DEAD` (0.16,
+because a thumb resting on glass is not an instruction), then `JOY_MIN` (0.34) rising to 1.0 along
+`m^JOY_CURVE` with the exponent at 1.5, which spends more of the pad's travel on the slow end where
+fine control is what you want it for. Applied as a factor, not a replacement, so ZOOMIES, OVERDRIVE
+and the wing-slow all still multiply through it as before.
+
+**`JOY_R` 30 → 46, and the ring now draws at the radius it measures.** The old ring was stroked at
+26 against a 30px travel radius — harmless when deflection was binary, wrong the moment it means
+speed. There is a second, dashed ring at `pkJoyRunAt()`: the throttle curve *inverted* at the gait
+threshold, so the mark cannot drift from the gait no matter what the upgrades have done to
+`PK.spd`. It lands at 0.634 of the pad, and the knob brightens and thickens as it crosses. The
+touch area was always the whole pad — pointerdown plants the stick wherever you press — so "bigger"
+here means throw, not hit-box.
+
+**A bug the throttle exposed.** The dog draw measured his speed as `|vx|+|vy|` — a Manhattan norm,
+41% larger on a diagonal than on an axis. While every deflection was full speed that never showed;
+with a throttle, the *same* stick position would have walked him east and run him north-east. The
+gait now reads `hypot`, in the units its own threshold is written in. The legacy `RUNIMG` fallback
+keeps the old measure, which is all it ever needed.
+
+**Airborne is deliberately untouched.** `pkFlyTick` takes the raw stick for steering and owns speed
+through `J.sp` — the pounce drives him up there, not the thumb. `pjoy.js` asserts a 0.30 and a 1.0
+deflection give an identical air speed, so a future change to the throttle cannot quietly leak into
+the leap.
+
+**Testing note.** The world draws on `#dogcv`; `#parkcv` is the pad. A drawImage spy on the wrong
+one returns an empty list, which reads exactly like "the walk sprites never got blitted" — the one
+failure in `pjoy.js` first time out, and it was the harness.
+
 ---
 
 ## Suggested first prompt for Claude Code
