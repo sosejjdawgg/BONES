@@ -1410,6 +1410,52 @@ bump as its own command, then launch. Two suites were also still asserting behav
 been deliberately reversed (enemies over BONES; the arc stack) — a stale green is worth no more than
 a stale red.
 
+### Walk cycles, shared DOGCAM art, and half the file (v0.318a)
+
+**The build went from 8.41 MB to 4.81 MB.** Three supplied music payloads (`MUSIC_GOODMOOD`,
+`MUSIC_DOGPARK`, `MUSIC_BOSS`) are now empty strings. Everything downstream is gated by
+`trackHas(a)` rather than by the element existing: the `<audio>` objects are still built (via
+`new Audio()`, carrying `.hasTrack`) so every `.play()` / `.pause()` / `.volume` site keeps working
+untouched, they simply never have a source. `syncMoodMusic` splits its three "which bed should be
+playing" questions into `wantHome/wantPark/wantBoss` and its three "which is available" answers into
+`homeCtx/parkCtx/bossCtx`; the procedural fallback is guarded on `!homeCtx && !parkCtx && !bossCtx`,
+so the generated menu/selection bed still plays and did not go away with the payloads.
+
+**Five walking strips, mirrored to eight facings.** `PKWALK` mirrors `PKDIRS` exactly — S, SE, E,
+NE, N stored, with W/NW/SW drawn by `PKDIR_MAP` flip — and `pkDirDraw` takes a `walk` flag that
+picks the set, falling back to the run strips if a direction is missing. Frame count comes from
+`dd.n` now (`nf = dd.n || 8`) because the walk strips are 25 frames where the run strips are 8.
+
+**"Up and northeast look smaller" — and why the fix goes in the builder, not the code.** The five
+source sheets are rendered at different effective sizes, so a single `sc` cannot serve them. `FIX`
+in `mkwalk.py` carries a per-direction multiplier (S 1.718, SE 1.535, E 1.186, NE 1.490, N 1.908)
+applied to `BASE_STORE=0.50` **when the pixels are stored**, so every direction ships at `sc:1` and
+the runtime does no per-direction correction at all. Calibrate against the *shipped run strip for
+the same direction*, never across directions: a cross-view silhouette comparison told me old-S
+needed 0.714 when it ships at 1.0 and looks right. Width is the invariant to match — height swings
+0.96–1.26 between gaits by pose alone, width only 0.87–1.00.
+
+**A finding for the run set, not a bug in the walk set.** Run-NE is 96.5% of run-SE's *width* but
+only 77.3% of its *height* — it is vertically squashed, rendered at a different camera elevation.
+No uniform scale can fix that (matching width leaves height at 60 against SE's 75); it needs a
+re-render. Walk-NE is 88% width / 101% height, i.e. correct.
+
+**Gait.** `PKDIR_RUN_AT=0.62` of top speed switches walk→run; `PKDIR_WALK_FPS=13`,
+`PKDIR_RUN_FPS=10`, `PKDIR_IDLE_FPS=3.5` via `pkGaitWalk`/`pkGaitFps`.
+
+**DOGCAM now shares the park's art.** `stripFrames(dd, img, n, after)` slices a park strip into the
+per-frame canvases DOGCAM expects and runs `lcdSet` over each, so `DOGIMG.walk` is the walking-E
+strip (25 frames) and `DOGIMG.come` the running-E strip (8). Left is the same art flipped.
+
+**Diagnostics on the intermittent failures.** Two things, neither of them the game. Median frame
+time is flat at 16.7 ms whether 1, 6 or 12 browsers are running, but the *worst* frame goes 17 ms →
+53 ms — tail latency under parallel load, which is why wall-clock-sensitive suites wobble rather
+than fail outright. Run the battery in groups of five. The other candidate turned out to be a false
+alarm worth recording: a static sum of `pall.js`'s sleeps reads 15,660 ms against a 15,000 ms
+`LOVE_MODE_T` and looks like a suite racing the timer it asserts on — but its `__pin`/`__brawl` rAF
+chains top `loveMode.t` back up to 8 every frame, so the wall clock never reaches it. Static timing
+audits of a harness that pins its own clock will lie to you.
+
 ---
 
 ## Suggested first prompt for Claude Code
