@@ -1492,6 +1492,43 @@ the leap.
 one returns an empty list, which reads exactly like "the walk sprites never got blitted" — the one
 failure in `pjoy.js` first time out, and it was the harness.
 
+### DOGCAM was drawing a black blob (v0.320a)
+
+**What `lcdify` actually does, and why the park art broke it.** It splits a frame in two at a
+percentile of its own luminance: below the threshold becomes ink `#0e0e12`, above becomes
+`#34343c` — which is *the exact colour of the DOGCAM wall*. So the light half disappears and what
+you see is a line drawing with a hollow body. That is the whole look, and it depends on the source
+spreading across a range. The hand-drawn frames do: the old walk sits evenly across luminance 3–12.
+
+The park strips do not. **88.7% of the walking sprite's pixels sit on one value** — in the park he
+is a near-black silhouette on grass with a rim light and never needed an interior. Every one of
+those pixels lands under the threshold (which `clamp(…,30,95)` floors at 30 anyway), so he came out
+96% ink: a solid black shape on a dark wall.
+
+**`lcdLine` is a second pass, used only for the two park-derived strips.** Ink goes where there is
+an *edge* — the silhouette border, plus any interior step at least `LCD_EDGE_K` (5%) of the frame's
+own range, which is relative rather than absolute precisely because a flat floor is what swallowed
+the dog. Everything else takes the wall tone. The running strip has real shading and keeps it; the
+walking strip has none and comes out as pure outline, so when the ink share falls below
+`LCD_LINE_MIN` the outline is dilated once and drawn boldly instead. `lcdify` itself is **not**
+touched — every other DOGCAM sprite, the senior set and the robot included, is drawn for it.
+
+**The metric, and the wrong one.** An ink-as-a-share-of-opaque-pixels budget scores the old idle
+frame — the one held up as the thing to imitate — at **97.9% ink**. True and useless: its body is
+wall-toned, so it vanishes. The measure that corresponds to "too black" is how much of the dog's
+box comes out dark once he is drawn on `#34343c` at the size DOGCAM draws him. The old frames sit
+at 28.3 / 27.9 / 48.7 there. New: walk 15–18.3, run 28.2–30.4 — the run landed on the reference
+without tuning, so `LCD_EDGE_K` was left where it was rather than fitted to a number that felt
+better. A first version of `pcam.js` asserted absolute ink percentages and failed on the *robot*,
+which has always been 64.2% and which nothing had touched. It now hashes every `lcdify` sprite in
+this build and in v0.319a and requires them equal — nine sets, all identical — and separately
+requires the park pair to have changed, so the suite cannot pass by doing nothing.
+
+**A limit worth knowing.** The walking sheets are flat silhouettes with no interior at all, so no
+threshold can recover leg or chest shading from them — the bold outline is the most that is
+honestly there. If DOGCAM's walk ever wants the old art's weight, that has to come from the source
+PNGs, not from this pass.
+
 ---
 
 ## Suggested first prompt for Claude Code
