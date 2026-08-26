@@ -1529,6 +1529,62 @@ threshold can recover leg or chest shading from them — the bold outline is the
 honestly there. If DOGCAM's walk ever wants the old art's weight, that has to come from the source
 PNGs, not from this pass.
 
+### Off the LCD, and up after the ball (v0.321a)
+
+**BONES draws at full colour now.** `lcdify` still exists and still runs — for the NOURISH-BOT
+only. The dog's own sets (`DOGIMG`, `BEGIMG`, `SENIORIMG`, and the two park-derived strips) come
+through untouched, so the gloss, the rim light and the tongue survive. Putting him back is one
+line. Note the bot is still two-tone and the dog is not; that was scoped deliberately and is the
+obvious next thing to revisit if the room stops looking of a piece.
+
+**Two new 25-frame sheets, built by `mkdogcam.py`.** They arrive at different render scales — the
+idle sheet draws his standing body 106px tall, the jump sheet 89 — so each is scaled by *its own*
+standing body height to a shared target and the correction is baked into the stored pixels. Same
+lesson `mkwalk.py` learned for the eight isometric directions: if two sheets disagree about how big
+he is, fix it where the pixels are stored, never at draw time.
+
+**The art does the jumping.** In the jump sheet his feet genuinely leave the floor — the bbox
+bottom sits at 167 while grounded and lifts to 125 at the apex, his crown travelling 56px against
+his feet's 36. Cropping to a *shared* bbox and anchoring on the ground line keeps all of that
+inside the sprite. `DOGCAMART` therefore ships three tables the game cannot infer: `foot` (the
+floor line inside the stored image), `lift[]` and `top[]` (per frame). Everything that needs to
+know where he is in the air reads them, so pose and height can never disagree.
+
+**`dogMouthPt()` is the single source of truth** for where his mouth is, at any frame of the arc.
+The catch test, the carried ball and the contact spark all come through it. `top[fi] + 0.28*body`
+is his muzzle, measured off the standing frames.
+
+**Two things the leap needed that were not obvious.**
+
+*The lift is nearly binary.* Feet on the floor at frame 6, 16 stored px up at frame 7. Played at
+face value that gives him exactly **one** jump height, and leaves a dead band between what he can
+reach standing and where that jump puts his mouth — a ball lobbed just over his ears went straight
+past. `LEAP_K` scales the sprite's own lift, pose untouched, so the height is continuous from a
+small hop to a full stretch. `LEAP_K_MIN` has to be *low* (0.06): standing his mouth is at 0.556
+and his crown near 0.455, while the ground-level catch only ever wanted `BALL.y>0.50`, so the whole
+band between belongs to the leap and nothing else.
+
+*Which way he turns.* Comparing the ball against `CAM.x` compares it against his **left edge**, and
+his sprite is nearly half the width of the room — a ball just right of that edge is still well
+behind his muzzle. The chase code below it documents this exact trap. Both mouths are costed and
+the nearer wins; turning round is free.
+
+**Ordering, twice.** `dogLeapTick` runs at the head of `camBehavior` and the ball is integrated
+near the end of it, so a catch test living inside the tick always measures last frame's ball
+against this frame's mouth — enough, at a throw's speed, to slide a dead-centre catch outside the
+radius. `dogLeapCatchTest()` is called after the physics instead. And `ballPath` integrates with
+the *same* constants the ball tick uses; the suite asserts predictor and world agree to 4 decimal
+places, because a plan made against different physics plans a catch that misses.
+
+**Snap** is a 70ms hitstop that freezes the ball with him (a ball that kept moving through the
+pause would tear itself out of the catch), two rings off the mouth, a shrinking ground shadow, and
+a three-note rise.
+
+**Test bookkeeping.** `pcam.js` is deleted — its entire subject was the v0.320a line-art pass, which
+this request removed. Two assertions in `pwalk.js` demanded the DOGCAM strips be quantized; they
+are inverted rather than deleted, since the failure now worth guarding against is a filter creeping
+back on. `pleap.js` is new.
+
 ---
 
 ## Suggested first prompt for Claude Code
