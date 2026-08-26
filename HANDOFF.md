@@ -1373,6 +1373,43 @@ fighting". Call `pkBuildEnGrid(PK.WW,PK.WH)` on every step. Separately: a canvas
 divide by the DPR that `fit()` puts on the context, or every screen-space comparison misses by
 exactly that factor and records nothing.
 
+### Readability pass (v0.317a)
+
+**The zoom starts later in plain DOGPARK.** It waited from wave 2, which held the opening waves too
+wide too early; it now waits until wave 6 and still finishes on the wave-10 clear. UNLEASHED is
+untouched — still wave 2, still a 0.025 step. The step is **derived** rather than fixed
+(`PK_ZOOM_TOTAL / waves-left-in-range`), so both modes end in the *same* framing: a later start
+means bigger steps, not a smaller park. `PK_ZOOM_TOTAL` is 0.225, which is exactly the nine
+UNLEASHED steps of 0.025, so that mode's numbers come out bit-for-bit unchanged.
+
+**BONES is the top of the sprite stack again.** v0.312a put enemies over him at the user's request;
+with twenty enemies and a floor of loot on screen, the one thing the player must never lose was the
+thing getting covered. Enemies, drops, powerups and nuts all draw before him now; pickups still
+draw over enemies. If it ever reads worse, this is one block move.
+
+**The rim.** `pkDogRim` returns an alpha and a blur, applied as the canvas' own `shadowColor` /
+`shadowBlur` **on the sprite pass he was already making** — no extra draw calls and no `ctx.filter`.
+Two things drive it: night (UNLEASHED is dark enough that a black dog on dark grass is genuinely
+hard to find) and *crowding*, since the thing that actually loses him is six squirrels standing on
+him. Deliberately subtle in daylight with nothing near: a permanent hard outline on the player
+character reads as a bug. At night it is already at 0.75 against a 0.95 ceiling, so a crowd can only
+add the remaining 0.20 — a real lift, just a bounded one.
+
+**The nuts were inside the night multiply.** `pkDrawNightTint` is a `multiply` pass over the whole
+world, and the nut draw sat *before* it — so every thrown nut was multiplied by `#141c3c` into the
+grass and was, as reported, impossible to see. Moving them after the tint fixes the cause; they also
+carry their own light at night now (one cached gradient via `pkGrad`, scaled into place, so a
+screenful costs one gradient rather than one each) and the shell colour goes from `#d99a4a` — almost
+the same value as night grass — to `#ffc978`.
+
+**Testing note, and a real trap.** A battery written as
+`sed ... && ( node a ) & ( node b ) & ( node c ) & wait` binds the `&&` to the **first** job only:
+b and c launch immediately, before the version bump lands, and they silently test the *previous*
+build while reporting PASS. Ten suites "passed" that way here and three of them were lying. Do the
+bump as its own command, then launch. Two suites were also still asserting behaviour that had since
+been deliberately reversed (enemies over BONES; the arc stack) — a stale green is worth no more than
+a stale red.
+
 ---
 
 ## Suggested first prompt for Claude Code
