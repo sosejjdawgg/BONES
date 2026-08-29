@@ -97,6 +97,7 @@ def pack(key, frames, s, groundY, colors):
 colors=int(sys.argv[1]) if len(sys.argv)>1 else 48
 out={}
 
+GRID_S=None      # the idle sheet's own scale, which every other same-scale sheet borrows
 for key,(fname,standing) in GRIDS.items():
     a=np.asarray(Image.open(SRC+fname).convert('RGBA'))
     fr=[a[r*CELL:(r+1)*CELL, c*CELL:(c+1)*CELL] for r in range(ROWS) for c in range(COLS)]
@@ -105,6 +106,7 @@ for key,(fname,standing) in GRIDS.items():
     groundY=int(np.median([ np.where(fr[i][:,:,3]>8)[0].max() for i in standing ]))
     d=pack(key, fr, BODY_TARGET/bodyH, groundY, colors)
     d['body']=round(bodyH*BODY_TARGET/bodyH)
+    if key=='idle': GRID_S=BODY_TARGET/bodyH
     out[key]=d
     print('%-6s grid  x%2d  body=%3d -> %3dx%3d n=%d foot=%3d peakLift=%2d  %6.1f KB'
           %(key,len(fr),bodyH,d['w'],d['h'],d['n'],d['foot'],max(d['lift']),d['bytes']/1024))
@@ -127,6 +129,32 @@ for key,cells in bandGround['cells'].items():
     print('%-6s band  x%2d  body=%3d -> %3dx%3d n=%d foot=%3d peakLift=%2d  %6.1f KB'
           %(key,len(cells),round(BAND_STAND),d['w'],d['h'],d['n'],d['foot'],max(d['lift']),d['bytes']/1024))
 
+
+# ---------------------------------------------------------------- the dance (4x4, celebration)
+# HE IS UP ON HIS HIND LEGS, AND HE HAS TO LOOK IT. Normalising this sheet to its own height the
+# way the grounded sets are normalised would draw a rearing dog at exactly the height of a standing
+# one, which is the same mistake that inflated the rear-view walk sheet by 38%. It is rendered at
+# the SAME nominal scale as the idle sheet - his 175px here against the standing dog's 105px is a
+# ratio of 1.67, which is what a labrador up on his back legs actually measures - so it borrows the
+# idle sheet's scale outright and reports the shared `body`. Stored taller than it is wide, like
+# the jump strip, and hung from its own floor line.
+DANCE = ('6483e185-image.png', 4, 4)
+
+def build_dance(colors):
+    fname,C,R_ = DANCE
+    a=np.asarray(Image.open(SRC+fname).convert('RGBA'))
+    ch, cw = a.shape[0]//R_, a.shape[1]//C
+    fr=[a[r*ch:(r+1)*ch, c*cw:(c+1)*cw] for r in range(R_) for c in range(C)]
+    fr=[f for f in fr if (f[:,:,3]>8).any()]
+    gy=int(np.median([ np.where(f[:,:,3]>8)[0].max() for f in fr ]))   # his hind paws, on the floor
+    d=pack('dance', fr, GRID_S, gy, colors)
+    d['body']=round(BODY_TARGET)          # ...so one scale rule covers him rearing as well as flat
+    return d
+
+out['dance']=build_dance(colors)
+_d=out['dance']
+print('%-6s grid  x%2d  body=%3d -> %3dx%3d n=%d foot=%3d peakLift=%2d  %6.1f KB'
+      %('dance',_d['n'],_d['body'],_d['w'],_d['h'],_d['n'],_d['foot'],max(_d['lift']),_d['bytes']/1024))
 
 # ------------------------------------------------------------ direction sheets (walk on a floor)
 # THE WALK PACK. Five sheets, five facings, a full twenty-five-frame cycle each. The tongue is the
@@ -188,7 +216,7 @@ js=["/* BONES ON DOGCAM - every state he has, side-on, full colour, one body sca
     "   fill from the border, never by a luminance cut, because a near-black dog and a dark ground",
     "   cannot be separated by brightness without punching holes through him. */",
     "const DOGCAMART={"]
-for k in ['idle','jump','come','rest','sit','beg','sniff']:
+for k in ['idle','jump','dance','come','rest','sit','beg','sniff']:
     d=out[k]
     js.append('  %s:{w:%d,h:%d,n:%d,foot:%d,body:%d,\n     lift:[%s],\n     top:[%s],\n     src:"%s"},'
               %(k,d['w'],d['h'],d['n'],d['foot'],d['body'],

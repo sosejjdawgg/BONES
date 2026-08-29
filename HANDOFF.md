@@ -1819,6 +1819,39 @@ settles. Everything else on the cam holds; the ball keeps flying, because freezi
 to celebrate would eat the throw. One show however many levels landed at once, and it bails
 entirely in the park, on a run, at the burial or in a boss fight.
 
+### The panel scroll, and the dance (v0.327a)
+
+**A flex column does not overflow — it squashes.** The menu is a flex column with a fixed header
+and a stack of buttons; on a short phone the stack was compressed and NEW GAME simply ended up off
+the bottom with nothing to scroll. `.pscroll` is the shared fix: `flex:1 1 auto` with
+**`min-height:0`**, which is the half that actually matters — without it a flex child refuses to
+shrink below its content and never scrolls, however much overflow you give it. `.pclose` stays
+OUTSIDE the scroller: it is absolutely positioned against the panel, and a child of a scroll
+container scrolls with the content, so putting it inside would carry CLOSE off the top.
+
+Settings had an inner `max-height:56vh` scroller with two buttons stranded below it. That inner
+scroller is gone — one scroller per panel, or the inner one eats the drag and the outer never
+moves. `pdeck.js` asserts both on a 640-tall viewport and counts nested scrollers.
+
+**The dance strip.** Sixteen frames of him up on his hind legs, 4×4, replacing the standing art
+the celebration was borrowing. It is rendered at the **same nominal scale as the idle sheet** — his
+175px against the standing dog's 105px, a ratio of 1.67, which is what a labrador up on his back
+legs actually measures — so it borrows the idle sheet's scale outright and reports the shared
+`body` of 80, storing 138px tall. Normalising it to its own height, the way the grounded sets are
+normalised, would have drawn a rearing dog at exactly the height of a standing one: the same
+mistake that inflated the rear-view walk sheet by 38%. The code's own bounce is halved and the
+shimmy is gone, because a sprite that is already dancing plus a big bounce reads as a dog being
+shaken rather than a dog dancing.
+
+**Three harness faults in one pass, worth the pattern.** The intercept trial swung 59/60 to 44/60
+between runs for the *same maxed dog* whose aim error is exactly zero — 60 trials × 140 frames is
+140 seconds of simulated cam, long enough for the FLY to turn up on its own random clock and pull
+him out of the lane. The trial now silences the fly, treats, poos and hearts. The CLOSE-button
+check measured against the window when the panel starts 42% down the screen. And the settings
+check read `#mReplayTutorial`, which is `display:none` unless the tutorial is replayable and so
+reports a 0×0 rect at the origin — it reads as "unreachable" however well the panel scrolls. Probe
+a hidden element and you will always fail; probe the last *visible* one.
+
 ---
 
 ## Suggested first prompt for Claude Code
