@@ -1928,6 +1928,42 @@ the floor and its markings and everything else paints over it. v0.328a had only 
 the dog and left it after the bot — so the bowls were painted over the robot standing in front of
 them. `pfetch.js` times `drawRoomFurniture`, `drawRobot` and the first dog blit and pins all three.
 
+### The throw learns to arc, and the board opens up (v0.330a)
+
+**It fired like a rifle, and the numbers say why.** At 1.85 floor units a second across the carpet
+a full pull crossed the whole room in half a second and hit the back wall before it had come down
+at all — flat, fast, over. The new values come out of the flight rather than out of taste: landing
+on the mark from the near edge is 0.74 floor units, a throw that takes ~1.1s to get there needs
+`vh = g·t/2 = 1.43` and, against the 0.55 drag, about 0.95 across. `SLING_DECK_K` 1.85 → **0.95**,
+`SLING_DECK_UP` 1.18 → **1.45**. Measured: a full pull now flies 1.1s and peaks at **1.54
+dog-heights**, three-quarters lands at z=0.37, half at z=0.62 — so aim is a thing again. It also
+means a thrown ball is genuinely above his head, which is what makes the intercept a jump.
+
+**The shadow was capped and stopped being a gauge.** It was two clamped subtractions that ran out
+at about a fifth of the arc, so the whole climb and fall read identically. A reciprocal
+(`0.017/(1+hz·3.2)`) has no ceiling to hit: it shrinks and dims smoothly all the way up and swells
+all the way back down.
+
+**Three targets, and you earn the other two.** One X is up while the ball is in your hand or in the
+air; land a shot and the other two come up and stay up, hands off, until you miss. `FETCH.hot` is
+set on the hit itself rather than off `FETCH.streak` — the streak only moves once he has actually
+brought the ball back, which is a long way after the moment you want the board to light up. Thick
+white crosses on a dark backing, breathing gently, and all three sit clear of the furniture by more
+than a foul radius so a shot on a target can never also foul on a bowl. `pfetch.js` had to be
+taught this: its scoring probe left `hot` on between unrelated cases, so a "near miss" of the
+middle X was scored a bullseye on a side one.
+
+**The ball is free and it wears out.** Two hundred throws and it goes, loudly — on the LANDING of
+the two-hundredth rather than at the release, because a thing that bursts should burst when it hits
+something. Twenty-two chunky shards, a white flash ring, POP, and a new one a second and a half
+later. A save from before this carries `ballOwned:false` and `deepAssign` restores it faithfully,
+so the load path grants one: otherwise an old game sits there being told to buy a ball in a shop
+that no longer sells the first one.
+
+Levels 1–5 take another 25% off (1.5 → **1.125**), and snapping at the fly is a jump now — the same
+`leapAirFrame` the real leap uses, on a 0.8s loop with a hop under it, instead of the pawing-at-the-air
+pose it had.
+
 ---
 
 ## Suggested first prompt for Claude Code
