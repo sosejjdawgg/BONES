@@ -1585,6 +1585,49 @@ this request removed. Two assertions in `pwalk.js` demanded the DOGCAM strips be
 are inverted rather than deleted, since the failure now worth guarding against is a filter creeping
 back on. `pleap.js` is new.
 
+### The rest of DOGCAM comes off the park strips (v0.322a)
+
+**The run, the fetch and the trot-when-called were still black, and the LCD was not why.** v0.321a
+took the filter off; these three all resolve to `DOGIMG.come`, which since v0.318a *was the DOGPARK
+run strip* — art deliberately drawn as a near-black silhouette because in the park he is small, on
+grass, under a rim light. On a dark living-room wall that reads as a hole in the screen. The filter
+was a red herring; the source art was the answer.
+
+**Every DOGCAM state now has its own full-colour set.** `mkdogcam.py` builds seven — `idle`, `jump`
+from the clean PNG grids, and `come`, `rest`, `sit`, `beg`, `sniff` from the two later sheets. All
+seven normalise to the same `body` (80 stored px) measured from their own standing frames, so he is
+133.9px tall in *every* pose and a lying dog is short and a rearing one tall because the art says
+so, not because a per-state constant does. `pdog.js` asserts that end to end through the real
+`drawCam`: one body height across 21 states, feet on the floor line in all 20 grounded ones, and
+the leap apex 60px clear of it.
+
+**Keying JPEGs.** The later sheets arrive as JPEG on a flat dark ground with a near-black subject.
+Background removal is a **flood fill inward from the border**, never a luminance cut — any global
+threshold that removes the ground punches holes straight through him.
+
+**A limit in the supplied art, and what was done about it.** Several frames carry a light filigree
+crust along the spine and haunches. It is not compression speckle and not an edge artefact: it is
+contiguous, *inside* the silhouette, and survives both median filtering and edge peeling, because
+it is drawn into the source. Both were tried and neither moved it. The only honest fix was to use
+the frames that do not have it, which is why `sniff` is 2 frames rather than 3.
+
+**Neither sheet contains a gallop.** `come` is the side-on stride from the second sheet's row 2 —
+three real leg positions, head up, motion marks. It reads as a trot, which at living-room scale is
+right for all three uses. A true run needs one more sheet.
+
+**`CAMFRAME` replaced the ternary chain.** The state→art answer changed for nine states at once,
+and a five-line chain of nested ternaries cannot be read or audited. It is a table now; anything
+not named falls through to a set of its own name, which is how `catch` and `shake` keep their old
+frames untouched. `SENIORIMG` is also still the old dark art — he goes grey-muzzled straight back
+into the Game & Watch look, and wants a sheet of his own.
+
+**Test bookkeeping.** Two more `pwalk.js` assertions pinned DOGCAM's run *to* the park strip — the
+exact arrangement this reverses. Inverted, not deleted: what is worth guarding now is that it never
+goes back. `pdog.js` is new. One caution, learned again: `pall.js` failed two Lovey Dovey checks in
+a batch of **six** parallel browsers and passed alone. Its heart/pulse counts are sampled maxima
+over rAF frames, and the tail-latency finding from v0.318a says the worst frame goes 17ms → 53ms
+under that load. Run the battery in groups of five.
+
 ---
 
 ## Suggested first prompt for Claude Code
