@@ -1852,6 +1852,48 @@ check read `#mReplayTutorial`, which is `display:none` unless the tutorial is re
 reports a 0×0 rect at the origin — it reads as "unreachable" however well the panel scrolls. Probe
 a hidden element and you will always fail; probe the last *visible* one.
 
+### The bowls and the bed go to the far wall (v0.328a)
+
+**Nothing here is sized by a constant any more.** The bowls take `rmSc` at their own depth and the
+bed is measured as a fraction of the FLOOR'S WIDTH there — so both come out right for wherever
+they stand, and would stay right if they were moved again. The bed used to be a flat fraction of
+the screen, identical at any depth, with a hardcoded `bx` lifted from the pre-room layout: that
+`bx` was pointing at a patch of carpet the bed had not occupied for three versions, which is what
+the poo drop and the SUPPLIES highlight were both aiming at.
+
+`BOWL_BIG` survives at 2× but its comment is now honest: it is a legibility allowance for two
+objects whose state you have to read at a glance, not a claim about where they are. At true scale
+on the back wall a bowl would be about twenty pixels across.
+
+**Painter's order flips with the geometry.** They were painted last on purpose — at the near edge
+he stood in front of his own bowls and hid the one thing you most need to read. On the far wall he
+is in front of them almost everywhere, and a bowl painted over a dog standing three feet nearer is
+plainly wrong. The furniture and the bot both go in before him now. `pfetch.js` pins the order by
+swapping out `drawRoomFurniture` (a top-level declaration, so the identifier `drawCam` calls and
+the window property are one binding) and timing it against the first dog blit.
+
+**The x's leave the middle of the wall clear**, because the target X is on that same wall and every
+throw is aimed at it. A bowl under the X would foul half the honest throws; as placed, the food
+bowl's foul disc misses the DIRECT band by a hair.
+
+**Two coordinate spaces had quietly merged.** `ROBOT.x` was a canvas fraction where it was drawn
+and a FLOOR x where it was compared against `CAM.x` — which held together only because the old
+bowls sat at the near edge, where the two nearly coincide. Move the bowls and it comes apart. It is
+a floor x everywhere now, projected at the point of drawing, and he is scaled by his depth like
+everything else standing on this floor. `POOS` had the same split and got the same treatment.
+
+**A top-level `const` that reads another one has to come after it.** `const ROBOT_Z=SPOT.food.z+0.13`
+was declared beside the bot's code, thousands of lines above `SPOT` — the temporal dead zone threw
+at load and took the entire rest of the script with it. It cost one screenshot to find and would
+have cost nothing if the battery had run first: every suite checks `pageerror`.
+
+Three assertions in `pfetch.js` were **inverted, not dropped** — "down by his XP bar", "double
+size" and the bed's position pinned the near-edge layout, which was the right answer while it lived
+there. Two harness faults on the way: the overhang check measured against the BACK WALL's edges
+when the furniture stands slightly forward of it, where the floor is already wider; and the
+draw-order spy only knew `DOGCAMIMG`, when the side sets are blitted as the per-frame canvases
+`stripFrames` cuts at load.
+
 ---
 
 ## Suggested first prompt for Claude Code
