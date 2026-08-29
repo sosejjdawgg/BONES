@@ -2045,6 +2045,51 @@ from v0.317a, which is most of the 11 MB.
 
 ---
 
+## v0.333a — the target runs away, and the bars that say there is more
+
+**The cross does not stay put.** Land a shot ON it - not merely near it, the generous CLOSE ring
+still scores CLOSE without touching anything - and it POPS on that frame and repaints itself
+somewhere else: another patch of carpet, or up a side wall. `MARK` carries `{x,z,hz,wall}` now, so
+the same object describes a spot on the floor and a spot on a wall, and `markScreenPt` projects
+both through the room's own three functions with nothing new added: a point at height `hz` on the
+plane `x=0` lands exactly on the drawn wall, because the wall IS the plane the floor edge is the
+base of. Which surface it is painted on is told by its shape - flat on the carpet because you are
+looking along it, square on the back wall, squashed the other way on a side wall.
+
+**Where it is allowed to go is not picked by eye.** `markPool()` sweeps real throws - the deck
+shot's own launch, the same gravity, the same walls, the same integration order - from five launch
+spots across the front of the room, and keeps every place a ball actually ended up. So every target
+is reachable BY CONSTRUCTION, and stays reachable if the throw is ever retuned. `pmark.js` then
+proves it the hard way: a hundred placements, each swept with real throws until one hits it using
+the game's own hit tests. A hundred out of a hundred, all of which moved.
+
+**The back wall is empty and that is a measurement, not a gap.** Loft and distance come off the
+SAME component of the aim - there is no trading one for the other - so a full-power lob arrives at
+z=0 exactly as it lands, and the back wall is only ever touched at carpet height. `markLegal`
+still spells out the back-wall rule, and `pmark` asserts the count is zero *the way round it
+actually is*, so if the throw is ever given more energy the suite fails and says to look again.
+That is the same inversion rule the rest of the battery follows.
+
+**A wall cross is scored in the air.** `ballWalls` now offers every wall contact to the target,
+which is the one place that knows which wall was touched and at what height. A strike closes the
+throw (`FETCH.live=false`) so the landing cannot score the same shot twice.
+
+**And the scrollbar is ours.** `::-webkit-scrollbar` is styled and that is right on a desktop, but
+iOS ignores it outright and every other engine draws an overlay that fades the moment you stop -
+so on the phone this is actually played on, a panel with more below the fold looked exactly like
+one without. That is how NEW GAME went missing once already. `sbarAttach` hangs a track and a thumb
+off the scroller's parent, sized to the fraction on screen and moved to the fraction scrolled,
+`pointer-events:none` so it can never swallow a tap, and it stands down if the platform does give a
+real laid-out bar. Swept six times a second because a panel opening or a list re-rendering changes
+whether there is anything to scroll and neither fires a scroll event.
+
+The tree panel is one scrolling column now (`#treeBody`) rather than three fixed slabs fighting
+over half a screen - which is what had the attribute bars in a 96px window nobody could tell was
+scrollable. A canvas inside a scroller needs an explicit height: set to flex it has nothing to flex
+against and collapses to nothing.
+
+---
+
 ## Suggested first prompt for Claude Code
 
 > Read HANDOFF.md, then bones.html and bones.js (skim park.js). Don't change anything yet —
