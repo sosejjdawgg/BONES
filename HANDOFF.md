@@ -2090,6 +2090,40 @@ against and collapses to nothing.
 
 ---
 
+## v0.334a — no dead ends
+
+**The reported trap, and why it was a class of bug rather than one bug.** A level is conferred, and
+900ms later the game offers the skill tree. `canPromptSkill()` was asked when the timer was SET -
+so DOGPARK could be started inside those 900ms, and the tree then opened on top of the park's
+control pad. Every panel here is a full-screen takeover of the bottom half of the phone, which is
+also where every control lives, so that is not "a menu left open": it is a game you can neither
+play nor leave. Its one exit, LATER, sits at the end of a scrolling column and was off the bottom
+of a taller phone.
+
+Three rules, which between them close the class:
+
+1. **A deferred open re-asks its question when it FIRES.** `awardSkillPoint`'s offer, `mystWhistle`'s
+   900ms roll-up, and `CAM.needCheck`'s status card all check again on arrival. A check made when a
+   timer is set answers a question about a moment in the past.
+2. **Changing screen sweeps what the player was browsing.** `uiCloseOverlays()` runs inside
+   `showScreen` on every real change, so it covers DOGPARK, work, the runner, the paperboy and
+   coming home, rather than being bolted onto one caller. It is a DENY-list on purpose - `UI_KEEP`
+   names the five flow modals the game itself raises and closes, some of them *after* the screen
+   has changed - because a panel added later should be swept unless somebody says otherwise. The
+   failure that leaves is a menu closing too eagerly, which you can see; the failure the other way
+   round is a game you cannot escape. `#status` and `#portrait` are swept too: not `.overpanel`,
+   but they take the screen just as hard.
+3. **Every exit is pinned to its panel**, not to the end of its content. `#skillPanel` and `#goout`
+   gained a `pclose`, which is absolutely positioned against the panel and so cannot scroll away.
+
+`ptidy.js` replays the exact trap - confer a level, start the park 120ms later, wait out the timer -
+and then asks `elementFromPoint` what is actually on top of the middle of the park pad. On v0.333a
+that answers `treecv`; it now answers `parkcv`. It also walks every panel, shows it, and asserts its
+way out is on screen and nothing is over it, which is the check that would have caught this in the
+first place - "has a close button in its markup" was always true.
+
+---
+
 ## Suggested first prompt for Claude Code
 
 > Read HANDOFF.md, then bones.html and bones.js (skim park.js). Don't change anything yet —
