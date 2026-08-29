@@ -176,13 +176,19 @@ DIRS = {
 }
 DIR_FRAMES = 25         # the whole cycle. Five frames of a twenty-five frame walk is every fifth
                         # pose, which is not a slow walk - it is a stagger.
-DIR_TARGET = 80.0       # stored px for the reference sheet's body; five facings times twenty-five
+DIR_TARGET = 80.0       # stored px for every facing's own body; five facings times twenty-five
                         # frames is a lot of pixels to carry
-DIR_REF = 'E'           # ...and every other facing is scaled by the SAME number, never normalised
-                        # to its own height. A rear view is shorter because you cannot see his head
-                        # over his back, not because he shrank; normalising each sheet to a common
-                        # height inflated N by 38% and he grew every time he turned away.
 
+# EACH SHEET IS NORMALISED TO ITS OWN HEIGHT, and the reason is worth writing down because the
+# opposite was tried first and shipped. The argument for one shared scale was that these were all
+# rendered at the same nominal size, so a rear view SHOULD come out shorter - you cannot see his
+# head over his back. Measure a genuinely view-invariant feature and that argument collapses: a
+# paw is as wide from the front as it is from the side, and the median paw width runs 16.0px on
+# the E sheet, 12.0 on SE, 9.5 on S, 9.0 on NE and 8.5 on N. The E dog is drawn nearly twice the
+# size of the N dog. A shared scale does not preserve their true relative sizes - it preserves the
+# SOURCE's inconsistency, and on screen he shrank by a third every time he turned away.
+# Normalising each sheet by its own standing height corrects for that, and side by side the five
+# facings then read as one animal.
 def dir_frames(fname, C, R):
     a=np.asarray(Image.open(SRC+fname).convert('RGBA'))
     cw, ch = a.shape[1]//C, a.shape[0]//R
@@ -192,16 +198,16 @@ def dir_frames(fname, C, R):
 _dirfr={k:dir_frames(f,C,R) for k,(f,C,R) in DIRS.items()}
 def _med_h(fr):
     return float(np.median([ (lambda y:y.max()-y.min()+1)(np.where(f[:,:,3]>8)[0]) for f in fr ]))
-DIR_S = DIR_TARGET/_med_h(_dirfr[DIR_REF])      # one scale for the whole pack
 
 for k in DIRS:
     fr=_dirfr[k]
+    med=_med_h(fr)
     gy=int(np.median([ np.where(f[:,:,3]>8)[0].max() for f in fr ]))   # this facing's own floor
-    d=pack(k, fr, DIR_S, gy, colors)
+    d=pack(k, fr, DIR_TARGET/med, gy, colors)
     d['body']=round(DIR_TARGET)                 # identical everywhere, so the draw has one rule
     out['dir_'+k]=d
-    print('%-6s dir   x%2d  body=%3d -> %3dx%3d n=%d foot=%3d  %6.1f KB'
-          %(k,d['n'],d['body'],d['w'],d['h'],d['n'],d['foot'],d['bytes']/1024))
+    print('%-6s dir   x%2d  src=%3d body=%3d -> %3dx%3d n=%d foot=%3d  %6.1f KB'
+          %(k,d['n'],round(med),d['body'],d['w'],d['h'],d['n'],d['foot'],d['bytes']/1024))
 
 total=sum(d['bytes'] for d in out.values())
 print('TOTAL %.1f KB raw, %.1f KB as base64'%(total/1024, total*4/3/1024))
@@ -226,10 +232,12 @@ js.append("const DOGCAMIMG={};")
 js.append("for(const k in DOGCAMART){ const i=new Image(); i.src=DOGCAMART[k].src; DOGCAMIMG[k]=i; }")
 js.append("")
 js.append("/* HIM WALKING THE FLOOR: five stored facings, twenty-five frames each, and W/SW/NW come")
-js.append("   free by mirroring E/SE/NE. Every facing is stored at ONE shared scale and reports the")
-js.append("   SAME `body`, so turning cannot resize him - what changes between them is only how much")
-js.append("   of a dog you can see from that angle. Anchored on each facing's own floor line, and")
-js.append("   none of these sheets leaves the ground, so nothing here can read as a hop. */")
+js.append("   free by mirroring E/SE/NE. The five source sheets are NOT drawn at one size - a paw is")
+js.append("   16px across on the side sheet and 8.5px on the rear one, and a paw does not change")
+js.append("   width with the angle you look at it from - so each is normalised to its own standing")
+js.append("   height and they all report the SAME `body`. Turning cannot resize him. Anchored on")
+js.append("   each facing's own floor line, and none of these sheets leaves the ground, so nothing")
+js.append("   here can read as a hop. */")
 js.append("const DOGDIR={")
 for k in ['E','SE','NE','S','N']:
     d=out['dir_'+k]

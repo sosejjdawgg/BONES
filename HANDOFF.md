@@ -1894,6 +1894,40 @@ when the furniture stands slightly forward of it, where the floor is already wid
 draw-order spy only knew `DOGCAMIMG`, when the side sets are blitted as the per-frame canvases
 `stripFrames` cuts at load.
 
+### One slingshot UI, one dog size, one draw order (v0.329a)
+
+**The five walk sheets are not drawn at the same size, and measuring a paw proves it.** v0.325a
+normalised each sheet to its own height; v0.327a replaced that with one shared scale off the E
+sheet, on the argument that all five were rendered at the same nominal size, so a rear view SHOULD
+come out shorter — you cannot see his head over his back. That argument is checkable, and it is
+wrong. A paw is as wide from the front as it is from the side, and the median paw width runs
+**16.0px on E, 12.0 on SE, 9.5 on S, 9.0 on NE, 8.5 on N**: the side dog is drawn nearly twice the
+size of the rear one. A shared scale does not preserve their true relative sizes — it preserves the
+source's inconsistency, and on screen he lost a third of his height every time he turned away.
+Back to per-sheet normalisation, which is what the eye said too: rendering all four candidate rules
+side by side (shared / own-height / paw / a blend) makes it obvious, and the comparison strip is
+kept as `dogcam-normalisation-v0.329a.png`. Paw-width normalisation over-corrects badly — a leg is
+deeper than it is wide, so a front view sees a narrower one. Stored heights now sit in 81–87px
+against 59–83 before, and `pdog.js` fails the pack if the widest and narrowest differ by 12%.
+
+**The room drew a second slingshot.** With the deck band doing the job a foot lower, the forks and
+the aim ray on `#dogcv` were two slingshots arguing over one gesture. Both are gone — and so is a
+third, older one that was easy to miss: a dashed tether from the ball's floor spot up to the ball,
+living inside `drawFloorKit` rather than with the rest of the aiming UI. `pdeck.js` counts dashed
+strokes on a mid-room drag and fails on any.
+
+**With nothing drawn at the moment of touch, the gesture needs teaching.** A red arrow points down
+off the ball with DRAG THE BALL DOWN under it, and it retires after five shots actually fired from
+the deck. It counts landed deck shots, not sessions, and rides on `S` so it survives a save — a
+prompt that returns on every reload is a prompt that never taught anybody anything. In-room
+releases deliberately do not count: the deck pull is the lesson.
+
+**Furniture goes in first now, not just before the dog.** It stands against the far wall, which
+makes it the furthest thing in the room that is not the room itself, so it is drawn straight after
+the floor and its markings and everything else paints over it. v0.328a had only moved it ahead of
+the dog and left it after the bot — so the bowls were painted over the robot standing in front of
+them. `pfetch.js` times `drawRoomFurniture`, `drawRobot` and the first dog blit and pins all three.
+
 ---
 
 ## Suggested first prompt for Claude Code
