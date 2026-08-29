@@ -156,6 +156,33 @@ _d=out['dance']
 print('%-6s grid  x%2d  body=%3d -> %3dx%3d n=%d foot=%3d peakLift=%2d  %6.1f KB'
       %('dance',_d['n'],_d['body'],_d['w'],_d['h'],_d['n'],_d['foot'],max(_d['lift']),_d['bytes']/1024))
 
+# ------------------------------------------------------------------- the roll (4x4, a trick)
+# A 4x4 sheet carrying the whole roll-over twice over with walk frames between: 0-1 walking, 2 head
+# going down, 3 tucked, 4-5 over on his back, 6 coming up, 7 rising, 8-10 walking again, 11-14 the
+# second, shorter pass, 15 walking. Only 2..7 is the trick; the walking frames are the sheet's own
+# bookends and there are better walk cycles already.
+# The scale reference is the UPRIGHT walking frames, not the median of the whole sheet - half of
+# these frames are a dog lying on his back, which is not a height you can normalise against.
+ROLL = ('1fab158f-image.png', 4, 4, [2,3,4,5,6,7], [0,1,9,15])
+
+def build_roll(colors):
+    fname,C,R_,keep,stand = ROLL
+    a=np.asarray(Image.open(SRC+fname).convert('RGBA'))
+    ch, cw = a.shape[0]//R_, a.shape[1]//C
+    all_fr=[a[r*ch:(r+1)*ch, c*cw:(c+1)*cw] for r in range(R_) for c in range(C)]
+    hh=lambda f:(lambda y:y.max()-y.min()+1)(np.where(f[:,:,3]>8)[0])
+    ref=float(np.median([hh(all_fr[i]) for i in stand]))
+    fr=[all_fr[i] for i in keep]
+    gy=int(np.median([ np.where(f[:,:,3]>8)[0].max() for f in all_fr ]))   # the floor he lies on
+    d=pack('roll', fr, BODY_TARGET/ref, gy, colors)
+    d['body']=round(BODY_TARGET)
+    return d
+
+out['roll']=build_roll(colors)
+_r=out['roll']
+print('%-6s grid  x%2d  body=%3d -> %3dx%3d n=%d foot=%3d peakLift=%2d  %6.1f KB'
+      %('roll',_r['n'],_r['body'],_r['w'],_r['h'],_r['n'],_r['foot'],max(_r['lift']),_r['bytes']/1024))
+
 # ------------------------------------------------------------ direction sheets (walk on a floor)
 # THE WALK PACK. Five sheets, five facings, a full twenty-five-frame cycle each. The tongue is the
 # giveaway for which way he faces, because a dog walking away shows none: 46ef5345 shows his face,
@@ -222,7 +249,7 @@ js=["/* BONES ON DOGCAM - every state he has, side-on, full colour, one body sca
     "   fill from the border, never by a luminance cut, because a near-black dog and a dark ground",
     "   cannot be separated by brightness without punching holes through him. */",
     "const DOGCAMART={"]
-for k in ['idle','jump','dance','come','rest','sit','beg','sniff']:
+for k in ['idle','jump','dance','roll','come','rest','sit','beg','sniff']:
     d=out[k]
     js.append('  %s:{w:%d,h:%d,n:%d,foot:%d,body:%d,\n     lift:[%s],\n     top:[%s],\n     src:"%s"},'
               %(k,d['w'],d['h'],d['n'],d['foot'],d['body'],

@@ -1964,6 +1964,42 @@ Levels 1–5 take another 25% off (1.5 → **1.125**), and snapping at the fly i
 `leapAirFrame` the real leap uses, on a 0.8s loop with a hop under it, instead of the pawing-at-the-air
 pose it had.
 
+### The trick tree (v0.331a)
+
+**Four unlocks, bought with the points the attributes already use.** The three attributes are a
+dial you turn; these are things he can suddenly *do*. FETCH is deliberately load-bearing — it is
+what puts a ball in the room at all, so the very first point anyone ever spends changes what the
+game is. `req` gives the tree a shape rather than a list: JUMP CATCH needs FETCH, ROLL needs SIT.
+The leap is gated on JUMP CATCH, which is why `pleap`, `panim` and `pdeck` all had to be taught
+their tricks at boot — an untaught dog correctly never leaves the floor, and every leap assertion
+would otherwise have passed for the wrong reason.
+
+A save from before the tree has no `tricks` at all, so the load path grants FETCH to anyone who
+already owned a ball. Taking his ball away because a feature arrived after he earned it would be a
+punishment for playing early.
+
+**Two gestures on his body**, read on release off the whole travel from where the finger went down
+— not off the last frame, which is a flick and not a swipe. Down is SIT, sideways is ROLL. A stroke
+that wanders is still a stroke: `GEST_MIN` makes it cover real distance and `GEST_AXIS` makes it be
+decisively one axis, or petting him would set him rolling.
+
+**The roll sheet carries the trick twice with walk frames between it** — 0-1 walking, 2 head going
+down, 3 tucked, 4-5 over on his back, 6 coming up, 7 rising, then it all happens again. Only 2..7
+is the trick. Its scale reference is the UPRIGHT walking frames rather than the sheet median: half
+of these frames are a dog lying on his back, which is not a height you can normalise against.
+
+**The dance moved to the tap.** A level is BANKED when the XP lands and CONFERRED when you tap the
+bar, and those can be minutes apart — dancing in `addXP` meant he celebrated a level nobody had
+claimed yet, usually while the player was looking at something else. It runs 5s now instead of 2.1,
+and he dances at `PARTY_SIDE` rather than where he stood, because the skill panel comes up over the
+bottom of the screen a moment later and a dog dancing behind a menu is a dog nobody sees.
+
+Also: back to **one** target (thicker, no ring around it, up only while the ball is in play — the
+three-target board lasted one version); `SPOT.near` moved to the middle of the near edge so being
+called and bringing a ball back land him in the same place; and the loft is no longer linear in the
+pull (`slingLoft`), so a haymaker goes proportionally higher while the horizontal stays linear and
+the landing spot stays predictable.
+
 ---
 
 ## Suggested first prompt for Claude Code
