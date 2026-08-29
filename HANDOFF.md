@@ -1714,6 +1714,63 @@ moment anything moved.
 mullion had been hardcoded at the OLD window's centre, so it was still standing on bare wall a
 third of a screen away from the glass.
 
+### The walk pack, and the slingshot (v0.325a)
+
+**Four separate faults were making his animations "all over the place", and none of them shows in
+a still frame.** All four were in the direction art or in how it was clocked.
+
+1. *The toward-camera sheet was wired up as N.* The tongue is the giveaway - a dog walking away
+   shows none - and `6722f635` has a face, a tongue and two eyes. He showed you his front while
+   walking to the back wall, and his back while walking toward you.
+2. *The three-quarter sheet was a gallop.* `1dc07507`'s frame heights spread 56% and its bottom
+   edge wandered 17px, because all four feet leave the floor in it. Anchored on one ground line
+   that is not a walk, it is a **hop**, and it fired on every diagonal step.
+3. *Only five frames of a twenty-five frame cycle were stored.* `DIR_FRAMES=5` took row 0. Playing
+   every fifth pose of a smooth cycle is not a slow walk, it is a stagger.
+4. *The cycle ran on the wall clock.* `DOGDIR_FPS=8` is right for exactly one speed, and the
+   wander, the errands, the chase and the fetch are four different speeds, so his feet skated at
+   three of them.
+
+The pack now carries five facings (E, SE, **NE**, S, N) of 25 frames each, W/SW/NW mirrored, and
+`DOGDIR_MAP` puts the away-diagonals on the real away-facing three-quarter instead of falling back
+to N. The phase is advanced by **how far he actually moved** (`CAM.walkPh`, `WALK_STRIDE`), so one
+set of art reads as an amble or a fast trot with nothing else to author.
+
+**Normalising each sheet to its own height was wrong.** A rear view is shorter because you cannot
+see his head over his back - not because he shrank. Scaling every sheet to a shared target inflated
+N by 38%, so he grew every time he turned away. All five are stored at ONE scale off the E sheet
+and report the same `body`, and what changes between them is only how much of a dog you can see.
+
+**The room's depth was being applied twice to the walk sheets.** `dogBodyF()` already carries it,
+and `dogDirDraw` multiplied `rmSc(z)` in on top: he swelled by a third the instant he started
+walking at the near edge and shrank by nearly half at the wall. pdog.js used to check the two
+families of art against *each other* rather than against one number, which is exactly the check
+that cannot see this; it is one size across every pose now.
+
+**`come` is a bound with all four feet off the carpet, and it was the standing fallback for eight
+states** - including `bark`, which is what you see after every fetch and every call. He ran on the
+spot through all of it. The walk sheets cover every frame he is actually crossing the floor, so
+anything reaching `CAMFRAME` is a dog stood still and belongs in `idle`.
+
+**He never stopped walking.** The wander picked its next target on the frame it reached the last
+one. It rests 0.9-3.3s at each end now, which is most of what makes the room look inhabited.
+
+**He left the floor for a ball at ankle height.** `LEAP_K_MIN` was 0.06 and the gate was 20% of a
+body, while the ground-level catch already takes anything up to 85% standing. Raised to 0.30 / 62%
+with the cooldown up to 1.15s. A dog jumping for something at chest height looks like a bug.
+
+**The flick is a slingshot.** Press the ball, pull it BACK across the glass, let go, and it pings
+away along the line you stretched. Power is the DRAW, not thumb speed - the old flick read
+velocity, so an identical gesture threw differently every time and there was nothing on screen
+saying what you were about to get. The band and a dotted aim ray are drawn from the anchor, rubber
+creaks once per notch of new stretch, it ticks while held under load, and it snaps on release.
+A held ball and its band draw **over** the room: you pull it to exactly the strip of carpet the bed
+sits on, and behind the furniture is no place for the thing you are aiming.
+
+`pfetch.js`'s flick assertions were **inverted, not deleted** - "a hard flick beats a slow push"
+became "the same draw at any speed gives the same shot", which is the property the new gesture is
+for. Same for its "four sheets of five".
+
 ---
 
 ## Suggested first prompt for Claude Code
