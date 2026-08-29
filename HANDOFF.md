@@ -2002,6 +2002,49 @@ the landing spot stays predictable.
 
 ---
 
+## v0.332a — the flyby, the patience, the floor under the wage, and one bare brace
+
+**Birds make a PASS now; they do not follow.** The old flock chose a lifetime scaled to the world's
+own size and wrapped around the torus while it ran — and the world grows every wave, so from wave 2
+the lifetime outlived the gap to the next flyby and the flock simply stayed, glued to him. A pass is
+a straight line with a beginning and an end: `PAL_BIRD_LANE` offsets the line sideways so it never
+runs through him, the wrap is gone, and `life` is the time to cross `2R` at their own speed, so they
+arrive, cross, and are gone whatever size the park has grown to. The gap only starts counting once
+the sky is empty (`if(p.birds.length===0) p.passT-=dt`), which is what makes it read as a flyby
+rather than a stream.
+
+**He gives the throw a chance to land.** `chaseHoldFor()` returns a hold that scales with how far
+the ball is from where he is standing — a third of a second for one at his feet, a second and a half
+for one aimed at the far cross — so the player can actually hit the target before the dog is on it.
+He always goes, always brings it back, and PLAY FETCH (`FETCH.eagerT`) clears the hold outright,
+because pressing PLAY FETCH means "go", not "wait". `BALL.needsFetch` is what marks a ball as
+outstanding, and only a real throw sets it: a ball whose position was assigned by hand is a ball
+nobody gave him, and he correctly ignores it. Any harness that fabricates a ball has to arm it.
+
+**Nobody works for free.** The delivery penalties were absolute numbers against a wage that is not,
+so a bad-but-productive shift could zero out. The deduction is now capped at `1-PB_KEEP` of the
+gross — 60% — so a shift that delivered always takes something home, and the results screen names
+the difference ("THE DEPOT ATE $n OF THAT") instead of silently showing £0. Absolute constants
+become lies the moment anything around them is rescaled; this is the second time that has bitten.
+
+**The CONFUSED chip over the XP bar was one character.** A deleted `#camMsg` rule left its closing
+`}` behind, which put the CSS parser into error recovery, and error recovery ate the whole of the
+*next* rule — `#portrait` lost its position, its size and its `display:none` and sat permanently
+over the XP bar. No suite could see a dropped rule, so `pflock` now counts `document.styleSheets`
+rules and asserts `#portrait` computes to `absolute`/`none`.
+
+**The tree is two branches off one free root.** `TRICKS` is a flat table with `x`/`y`/`side`, drawn
+by `treeLayout`/`drawTree` onto `#treecv`: gold `TREE_DOG` down the left for his body, green
+`TREE_CARE` down the right for his keeping, the white `bond` root between them holding both. Nine
+nodes are `soon` placeholders — they draw as two dots and refuse a point — waiting for specifics.
+One tap selects and explains in the card below, a second on the same node commits; a 30px circle is
+too small a target to spend a point on by accident.
+
+**And the music is back in the file** — `MUSIC_GOODMOOD` / `MUSIC_DOGPARK` / `MUSIC_BOSS` refilled
+from v0.317a, which is most of the 11 MB.
+
+---
+
 ## Suggested first prompt for Claude Code
 
 > Read HANDOFF.md, then bones.html and bones.js (skim park.js). Don't change anything yet —
