@@ -1628,6 +1628,60 @@ a batch of **six** parallel browsers and passed alone. Its heart/pulse counts ar
 over rAF frames, and the tail-latency finding from v0.318a says the worst frame goes 17ms → 53ms
 under that load. Run the battery in groups of five.
 
+### DOGCAM becomes a room (v0.323a)
+
+**It was a side elevation.** One floor LINE at 0.82 of the canvas, everything strung along it, one
+horizontal coordinate. It is a 3/4 room now: a trapezoid floor, narrow at the back wall and wide at
+the near corner, and everything on it lives at `{x,z}` — x across, z from 0 at the back wall to 1 at
+the edge by your feet. `rmX/rmY/rmHW/rmSc` do all of it and every object goes through them, so
+nothing can disagree about where the floor is. `rmZof/rmXof` invert it for turning a finger into a
+spot on the floor.
+
+**Scale is DERIVED from the floor, not picked.** If the floor widens 2.4× back-to-front but sprites
+only grow 2.1×, a ball of fixed size covers different amounts of floor at different depths and
+every physical quantity in the room — a catch radius, "close enough to the bowl", a bounce — quietly
+means something different depending where you are. `rmSc` is tied to `rmHW`, so one floor unit means
+one thing everywhere, and `pfetch.js` asserts the two ratios match.
+
+**Depth reads three ways at once**: higher on the glass, smaller, and a shadow that stays on the
+floor and shrinks with it. One cue is ambiguous; three are not. A **held** ball is drawn bigger
+again — drag it down the glass and it walks toward you and grows, drag it up and it goes back toward
+the wall. That gesture falls out of the projection rather than being special-cased.
+
+**The ball is genuinely three-dimensional**: `{x,z}` on the floor plus `hz`, its height above it.
+Screen position is derived every frame and never stored. `BALL.y` is still written for everything
+that reads it. The leap and its predictor moved into the same floor units, so the catch is measured
+on all three axes.
+
+**The fetch game.** A flick reads the last few points of the drag (a finger that stops dead for one
+frame before lifting would otherwise throw nothing); across the glass is across the floor, up the
+glass is both distance into the room and the arc. Scoring is on the ball's FIRST touch of the floor,
+not where it stops rolling. **A bank is a side wall** — the target sits against the back wall, so
+reaching it is the ordinary shot and counting that as a trick made every honest throw read as a
+bank. Streak = a throw worth something AND returned; at four he starts intercepting, through the
+same plan as any other leap so it stays a timing beat rather than a magnet.
+
+**Gain tuning is a real trap.** The first flick constants were so hot that even a slow deliberate
+push pinned against the velocity cap, so hard and gentle throws came out identical and the whole
+gesture was on-or-off. The constants now map "half the glass in a quarter second" onto "reaches the
+back wall", which is the band a thumb actually produces.
+
+**What the art pack cannot do.** Sixteen sheets arrived; the tongue is the giveaway for facing,
+because a dog walking away shows none. Only two sheets are away-facing and only one is a usable
+cycle — so there is N, S, E and a 3/4 that faces TOWARD, and **no NE at all**. W/SW mirror E/SE and
+the two away-diagonals fall back to N: a dog walking away-right showing his back is right enough,
+where showing his face would be plainly wrong. The 3/4 pick is `1dc07507`, not `13318be3` — the
+latter is a bound with all four feet off the floor, which does not belong beside a grounded trot.
+
+**Still on the old floor line**: treats, poos and the pup. They keep their glass-space physics and
+will sit slightly off the room's floor. The robot and both bowls and the bed were converted.
+
+**Testing.** `pfetch.js` and `proom.js` are new. Two harness lessons worth keeping: a synthetic drag
+fired in one synchronous burst gives every point the same timestamp, so the clamp bites and a gentle
+throw and a violent one measure identical — walk it in real time. And `pdog.js`'s drawImage spy only
+understood the five-argument blit; the directional strips go through the nine-argument form, so
+every walking state read as "the sprite vanished" until it learned both.
+
 ---
 
 ## Suggested first prompt for Claude Code

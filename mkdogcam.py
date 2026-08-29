@@ -127,6 +127,43 @@ for key,cells in bandGround['cells'].items():
     print('%-6s band  x%2d  body=%3d -> %3dx%3d n=%d foot=%3d peakLift=%2d  %6.1f KB'
           %(key,len(cells),round(BAND_STAND),d['w'],d['h'],d['n'],d['foot'],max(d['lift']),d['bytes']/1024))
 
+
+# ------------------------------------------------------------ direction sheets (walk on a floor)
+# WHAT THE PACK ACTUALLY CONTAINS. Sixteen sheets arrived; the tongue is the giveaway for which way
+# he faces, because a dog walking away shows none. Only two sheets are away-facing, and only one of
+# those is a usable cycle - so there is N, S, E and a 3/4 that faces TOWARD, and no NE at all. The
+# 3/4 pick is 1dc07507 rather than 13318be3: the latter is a bound with all four feet off the
+# floor, which does not belong in a walk beside a grounded trot.
+DIRS = {
+  'E' : ('5cc01367-image.png', 5, 5, 0),   # side-on, right
+  'SE': ('1dc07507-image.png', 5, 5, 0),   # 3/4 toward-right
+  'S' : ('704348e5-image.png', 5, 5, 0),   # toward the camera
+  'N' : ('6722f635-image.png', 5, 5, 0),   # away from the camera
+}
+DIR_FRAMES = 5          # one row, per the brief
+DIR_TARGET = 62.0       # stored px for his standing body - smaller than the side sets, because
+                        # eight facings times five frames is a lot of pixels to carry
+
+def build_dir(key, fname, C, R, row, colors):
+    a=np.asarray(Image.open(SRC+fname).convert('RGBA'))
+    cw, ch = a.shape[1]//C, a.shape[0]//R
+    fr=[a[row*ch:(row+1)*ch, c*cw:(c+1)*cw] for c in range(C)][:DIR_FRAMES]
+    fr=[f for f in fr if (f[:,:,3]>8).any()]
+    # Each sheet is drawn at its own scale AND these are running frames, so a single frame's height
+    # is part pose. The median across the row is the stable read of "how big is this dog".
+    med=float(np.median([ (lambda y:y.max()-y.min()+1)(np.where(f[:,:,3]>8)[0]) for f in fr ]))
+    s=DIR_TARGET/med
+    gy=int(np.median([ np.where(f[:,:,3]>8)[0].max() for f in fr ]))
+    d=pack(key, fr, s, gy, colors)
+    d['body']=round(med*s)
+    return d
+
+for k,(f,C,R,row) in DIRS.items():
+    d=build_dir(k,f,C,R,row,colors)
+    out['dir_'+k]=d
+    print('%-6s dir   x%2d  body=%3d -> %3dx%3d n=%d foot=%3d  %6.1f KB'
+          %(k,d['n'],d['body'],d['w'],d['h'],d['n'],d['foot'],d['bytes']/1024))
+
 total=sum(d['bytes'] for d in out.values())
 print('TOTAL %.1f KB raw, %.1f KB as base64'%(total/1024, total*4/3/1024))
 
@@ -148,5 +185,23 @@ for k in ['idle','jump','come','rest','sit','beg','sniff']:
 js.append("};")
 js.append("const DOGCAMIMG={};")
 js.append("for(const k in DOGCAMART){ const i=new Image(); i.src=DOGCAMART[k].src; DOGCAMIMG[k]=i; }")
+js.append("")
+js.append("/* HIM WALKING THE FLOOR, four stored facings. The pack has no NE and no 3/4-away of any")
+js.append("   kind - every three-quarter sheet in it shows his face - so W/SW mirror E/SE and the two")
+js.append("   away-diagonals fall back to N. That is honest: a dog walking away-right showing his back")
+js.append("   is right enough, where showing his face would be plainly wrong. `body` matches the side")
+js.append("   sets' contract so one scale rule covers every pose in the room. */")
+js.append("const DOGDIR={")
+for k in ['E','SE','S','N']:
+    d=out['dir_'+k]
+    js.append('  %s:{w:%d,h:%d,n:%d,foot:%d,body:%d,\n     top:[%s],\n     src:"%s"},'
+              %(k,d['w'],d['h'],d['n'],d['foot'],d['body'],','.join(map(str,d['top'])),d['u']))
+js.append("};")
+js.append("const DOGDIRIMG={};")
+js.append("for(const k in DOGDIR){ const i=new Image(); i.src=DOGDIR[k].src; DOGDIRIMG[k]=i; }")
+js.append("// octant -> stored sheet + mirror flag. 0=E, going clockwise on screen through S.")
+js.append("const DOGDIR_MAP=[{k:'E',f:0},{k:'SE',f:0},{k:'S',f:0},{k:'SE',f:1},")
+js.append("                  {k:'E',f:1},{k:'N',f:0},{k:'N',f:0},{k:'N',f:0}];")
+js.append("const _DOGCAMIMG_DONE=1;")
 open(OUT,'w').write("\n".join(js)+"\n")
 print('dogcam.js %.0f KB'%(os.path.getsize(OUT)/1024))
