@@ -1682,6 +1682,38 @@ throw and a violent one measure identical — walk it in real time. And `pdog.js
 understood the five-argument blit; the directional strips go through the nine-argument form, so
 every walking state read as "the sprite vanished" until it learned both.
 
+### Room layout pass (v0.324a)
+
+**Levels 1-5 cost half.** The opening levels are where the game is teaching you what the buttons
+do, and charging full price for the tutorial is charging for the tutorial. Full price from six.
+
+**He was being swallowed by the room.** The old rule shrank him by the floor's whole 2.41x AND by
+the puppy stage on top, so a level-1 dog halfway up the room drew at about 4% of the canvas.
+`DOG_BODY_MIN` is what he used to draw at his absolute LARGEST and is now his smallest - he never
+goes under it, puppy or not - with the depth falloff compressed to 1.60x and growth to 1.18x.
+
+**A size change makes absolute constants lie.** `LEAP_CATCH_R` and `LEAP_RUN` were floor units
+tuned when his body measured 0.108 of the room; he got 1.6x bigger and they did not, so the catch
+radius shrank *relative to him* and the band of throws worth leaving the floor for closed up. They
+are expressed against his own body now (`leapCatchR()`, `leapRun()`) and behave the same at any
+size. Worth remembering the next time anything in the room is rescaled.
+
+**Where the leap band actually starts.** His standing muzzle is 0.73 of a body; the lowest a
+scaled-down jump can put it is about 1.0 of a body, because the frames only climb so far back down.
+Anything peaking under a body-length is his to take on his feet, and that is correct - it is the
+same overreaction as a person jumping for something at chest height.
+
+**Furniture is at the near-left**, bowls at double size with the bed alongside, all at z=0.74 - not
+right at the edge, because they draw upward from their floor line and any closer runs the rims off
+the panel. They are painted ALWAYS after him: a dog standing in front of his own bowl hides the one
+thing you most need to read the state of. `camFurnRects` is the single source for draw and tap,
+which the old layout was not - the hit-test recomputed the same magic numbers and drifted the
+moment anything moved.
+
+**The window is flat on the back wall**, centred 80% along it and clear of the floor line. Its
+mullion had been hardcoded at the OLD window's centre, so it was still standing on bare wall a
+third of a screen away from the glass.
+
 ---
 
 ## Suggested first prompt for Claude Code
