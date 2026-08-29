@@ -1771,6 +1771,54 @@ sits on, and behind the furniture is no place for the thing you are aiming.
 became "the same draw at any speed gives the same shot", which is the property the new gesture is
 for. Same for its "four sheets of five".
 
+### The deck slingshot, the intercept's skill floor, the level-up show (v0.326a)
+
+**The ball can be dragged out of the room entirely.** The DOGCAM is only the top 42% of the phone
+and everything under it is black button deck, which is where a thumb actually wants to pull back
+to. `#slingcv` is a third canvas spanning the whole of `#game` at z-index 44, `pointer-events:none`
+and `display:none` until something is being aimed - the drag is captured by `#dogcv` on
+pointerdown, so it keeps receiving moves over the DOM below and no button ever sees them.
+
+**The lock is the whole trick.** The lock line is the bottom edge of the room and is never drawn.
+The first frame the finger crosses it, two things freeze for the rest of the drag: the room
+`{x,z}` the throw will leave from, and the point on the split it crossed at. After that the finger
+only sets direction and power. That separation is what lets you pull the ball right down over CALL
+BONES for a full-power shot without the launch point sliding down there with it. The room keeps
+drawing the shadow at the locked origin - it is the only thing saying where the shot starts while
+you aim from somewhere else entirely.
+
+Power is depth into the deck, continuous, and `botY` is short of the true bottom edge by 1.3 ball
+radii so a full draw is reachable by a thumb that stops at the bottom of the glass and the ball is
+never half off the picture. The band is laid down as **squares stepped along the line**, not a
+dashed stroke: a CSS dash at this scale is a grey smear next to everything else on the screen. It
+thickens and goes white → warm → red as the pull comes on. On release it collapses back into the
+lock point over 0.2s rather than blinking out.
+
+**Anything the plan knows about, the plan compensates for.** This one cost a wrong turn worth
+recording. The intercept was a magnet, so the first pass slowed his lane run, shrank his mouth and
+lengthened his wind-up by stamina and strength — and it changed *nothing*: `dogLeapPlan` reads all
+three and simply declined the leaps he could no longer make. Catch rate stayed at 24/24 for both an
+untrained and a maxed dog. Difficulty has to live where the plan does not look, so it lives in
+**execution**: `LEAP_ERR_B` puts an untrained dog's jump most of a body-length off where the ball
+will be, and `LEAP_TIME_ERR` mistimes the wind-up by up to half of it. Both are rolled once per
+leap and held (a dog who is off does not drift back on), and both are zero at full attributes,
+where the leap is exactly what every dog used to get for free. Measured over 60 crossings:
+untrained ~45%, mid ~92%, maxed ~97%.
+
+The wind-up being stamina-scaled has a second, correct consequence: an untrained dog is slow enough
+off the mark that a ball only just over his head has fallen out of the reachable band before he
+could be up there, so he declines it. `panim.js`'s single "he will not leap for a ball over his
+head" was **refined rather than relaxed** — it names whose legs now, and still fails either dog for
+leaving the floor at knee height. `pleap.js` maxes the attributes at boot and says why: it tests
+the leap machinery, and which dog's leap that is has to be stated.
+
+**Levelling up is a two-second show.** He stops the errand and bounces on the spot with a shimmy,
+72 pieces of chunky confetti fall (squashed on the vertical, which is what a flat piece of paper
+turning over does and costs nothing next to a real rotation), and the number overshoots to 1.25 and
+settles. Everything else on the cam holds; the ball keeps flying, because freezing a throw mid-air
+to celebrate would eat the throw. One show however many levels landed at once, and it bails
+entirely in the park, on a run, at the burial or in a boss fight.
+
 ---
 
 ## Suggested first prompt for Claude Code
