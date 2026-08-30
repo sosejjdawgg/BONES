@@ -2251,6 +2251,56 @@ stood out from anything.
 
 ---
 
+## v0.338a — the light, the glass, the bat, and his mouth
+
+**The rays were coming out of the wrong window.** `drawSunray` had the opening hand-typed as
+`0.72 / 0.14` wide by `0.18`, while the window is drawn from `WIN_X 0.585 / WIN_Y 0.075` by
+`WIN_W 0.135` — the shaft started a seventh of the room to the RIGHT of the glass and fanned a
+third too wide. Two places deriving one rectangle from two sets of magic numbers, and they drifted.
+There is one rectangle now, and the shaft's edges are found by projecting all four window corners
+onto the axis across the light and taking the extremes, so the silhouette stays right at any angle.
+`sunSky()` gives the sun an arc: elevation nothing at dawn and dusk and highest at noon, which sets
+how steeply the beam falls, plus a westward drift so morning and evening are not the same picture,
+and a colour that runs cool-white → pale gold → deep amber.
+
+**The window takes damage.** `winBackRect()` converts the drawn pane into the ball's own coordinates
+on the back wall — one conversion, from the room's projection, so the glass the ball breaks is the
+glass you can see (measured error: 1.4e-17). Three thrown hits: crack, crack, gone, with shards that
+fall out of the frame and bounce once. Only a thrown ball counts and only once per throw. Tapping
+the damage re-glazes it for $60.
+
+**And a hole in the room is an invitation.** One night in ten (`BAT_CHANCE`), if the window is
+broken and he is not already cursed, the night does not simply roll forward: a bat comes off the
+sill, circles the sleeping dog, bites, and leaves in a flash of lightning. He wakes a vampire.
+After that the sunlit patch on the floor is *solid* — the room already had a mechanism for "you
+cannot stand there", so the light is simply one more thing the furniture-avoidance pushes him out
+of, and every path he takes bends round it without any of them knowing why. The park costs him
+`VAMP_PARK_DPS` half a point a second in daylight; UNLEASHED runs at night and costs him nothing,
+which is the shape of the curse. The cure is 500 bones from the mysterious dog — the only row on
+his shelf that has ever been real, and it only appears when there is something to cure. (He deals
+in bones, not money, so the £500 is 500 ◆.)
+
+**His mouth is measured now, not guessed.** The carried ball was put at `CAM.x` — his floor CENTRE
+— at a height read off whichever of two sheets was named in the function, regardless of which sheet
+was on screen. So it floated at his shoulder while he trotted and sat inside his ribs from every
+angle. `dogSprite()` is now the single answer to "which frame is on screen", shared by the draw and
+by anything that needs to know where a part of him is; `dogMuzzleOf()` finds the muzzle in that
+frame by taking the forward-most opaque pixel in a band across the top half of his body. Two things
+that band got wrong on the way: anchoring it on the topmost pixel put it on his raised TAIL, and
+anchoring it on the sheet's floor line found his belly at the apex of a jump — it hangs off the
+foot line offset by the frame's own `lift[]`. Measured across every direction: 0.74–0.80 of the way
+to the sprite's front edge, 0.61–0.79 up his body, mirroring exactly, and dead centre on the two
+sheets that have no side-on snout. The muzzle is stable to 1px across a whole walk cycle.
+
+Also: the DOGPARK invitation lost the snarling portrait (`pic:null` drops the frame entirely rather
+than swapping in a happier face) and gained a NO THANKS — the gates stay open either way.
+
+One harness lesson worth keeping: `pdog` computed the sprite's anchor from the sheet-wide `a.foot`,
+which has not been how the walk sheets are hung since v0.335a. It passed or failed on which frame
+happened to be up — a flake that had been sitting there for three versions.
+
+---
+
 ## Suggested first prompt for Claude Code
 
 > Read HANDOFF.md, then bones.html and bones.js (skim park.js). Don't change anything yet —
