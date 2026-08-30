@@ -2301,6 +2301,63 @@ happened to be up — a flake that had been sitting there for three versions.
 
 ---
 
+## v0.339a — SLINGTOSS gets a fence, the tail lets go of the ball, and growing up goes first
+
+**The cross stops standing where you cannot hit it.** The band of carpet nearest the camera and the
+strips down either side are places a slingshot throw arrives at almost sideways: the target is
+legal, the ball can reach it, and whether you clear it is a coin flip you have no way to aim.
+`markLegal` fences them off — `NOGO_NEAR_Z 0.55`, `NOGO_EDGE_X 0.18`, and `NOGO_WALL_Z 0.50` so the
+side walls stop before their near ends too. The ball still goes everywhere; only the target is
+fenced. The pool comes out at 749 spots (655 carpet, 38 back wall, 28 each side), every one of them
+still hit by some real throw. The game is called **SLINGTOSS** now, in the care guide and out loud.
+
+That change moved a `pmark` assertion rather than deleting it: it used to demand 60+ spots per side
+wall, which was the old full-depth wall. It asks for 20+ now, and says in the file why the number
+came down — the fence working is not the wall disappearing.
+
+**He was carrying the ball with his tail, and the cache was why it looked fine half the time.**
+`face` was quietly doing two jobs: an ART fact (which end of the pixels the snout is on, constant
+per sheet) and a DRAW fact (which way he is pointed on screen). `dogSprite` passed the DRAW
+direction into `dogMuzzleOf`, so the scan hunted for the forward-most pixel at the wrong end and
+found his tail — and then `flip` negated it a second time on the way to the screen. Worse, the
+memo key was `key+"#"+fi`, blind to `face`, so whichever direction he happened to walk FIRST won
+the measurement for every direction for the rest of the session. That is the whole reason it looked
+correct in one screenshot and wrong in the next. `face` is now `1` for the side sheets and `0` for
+N/S in both branches, and the key carries it. Probed west-first, which is the order that used to
+poison it: `W -0.78 / E 0.78 / SW -0.79 / SE 0.79 / NW -0.74 / NE 0.74` — symmetric, which is what
+a mirrored sheet has to be.
+
+> A cache that cannot see one of its own arguments will hand back a measurement taken under
+> different rules, and it will do it consistently enough to look like a real result.
+
+**Growing up now happens before the party.** Tapping the XP bar started a five-second dance; 0.7s
+later the level was conferred and, if a stage was due, `fireStageCeremony` fired the 3.9s
+shrink/grow flicker AND opened the stage panel in the same breath. So the one moment in the game
+where you actually watch him get bigger played on a dog who was simultaneously hopping on the spot
+off to one side, underneath a full-screen panel, with the skill tree arriving on top 900ms after
+that. Nothing was broken; you simply could not see any of it.
+
+The order is now flicker → beat → panel → celebration → tree:
+
+- `xpLevelTap` checks whether the incoming level has a stage queued. If it does it skips the dance
+  and sets `XPANIM.danceOwed` — the dance is not cancelled, it is deferred.
+- `startEvo` takes an `after` callback, run 600ms past the end of the flicker, so the newly bigger
+  dog stands there for a beat before anything covers him. `fireStageCeremony` uses it to open the
+  panel.
+- `openEvoPanel`'s existing `onDone` hook (already wired through both CONTINUE and NO THANKS) pays
+  the owed dance out, 420ms after the panel closes so that any screen change it triggered has
+  happened and `partyStart`'s own guards can see where they are. The tree then follows into the
+  dance exactly as it does for a plain level.
+- `canPromptSkill()` could not see `#evoPanel` at all, because it is not an `.overpanel` — which is
+  why levels 5 and 99, the two stages with no flicker to hide behind, got the skill tree dropped
+  straight over their panel. It checks for it now.
+
+A plain level is untouched: it still dances on the tap and still takes the tree into the dance.
+`pevo.js` pins all six paths, including GO THERE NOW (he must not dance in the middle of a DOGPARK
+run) and the dev stage buttons (a ceremony with no level behind it owes no dance).
+
+---
+
 ## Suggested first prompt for Claude Code
 
 > Read HANDOFF.md, then bones.html and bones.js (skim park.js). Don't change anything yet —
