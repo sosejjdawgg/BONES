@@ -2177,6 +2177,42 @@ the ball rests at z=0.88. It is tested LAST now - anything you can pick up gets 
 
 ---
 
+## v0.336a — the music comes out, and the street points the right way
+
+**Four of the eleven megabytes were three MP3s.** `MUSIC_GOODMOOD`, `MUSIC_DOGPARK` and
+`MUSIC_BOSS` are empty strings again and the file is 6.9MB. Every player is guarded by its own
+`hasTrack` flag, so an empty string is a supported state rather than a hole — the settings toggle
+and the music button simply have nothing to play, which `ppb.js` checks by clicking them. Paste a
+`data:` URI back into the one line each to restore them. `pflock`'s music assertion is inverted, not
+dropped: it pinned "a track is still an empty string" as a failure when they were restored, and now
+pins the opposite with the reason attached.
+
+**The speed lines were horizontal on a road drawn at thirty degrees.** The one thing on that screen
+whose entire job is to say *which way you are moving* pointed somewhere else, and most of the
+streaks were sliding through empty gardens well away from the van. They now lie along the road's own
+axis, slide backwards up it exactly as the world does, and are placed relative to the CAMERA rather
+than the canvas, so they stay with the street whatever the framing is. `ppb.js` stubs the context,
+records every segment the draw actually strokes, and compares each with the road direction taken
+from `pbP` — worst case is 0.00°.
+
+**A near-coincidence worth not building on.** The first version of that used `(PB_IX,PB_IY)` as the
+road's direction directly, on the grounds that 0.866² + 0.5² = 1. It does not: 0.866 is √3/2
+*rounded*, so the basis is a unit vector to about two parts in a hundred thousand — close enough
+that nothing would ever have looked wrong, which is exactly what makes it worth catching.
+`PB_RX/PB_RY` and `PB_NX/PB_NY` are normalised once at the top, and the suite asserts the raw basis
+is *not* unit length so the normalising can't be quietly deleted as dead weight.
+
+**Framing**: `PB_S` 0.42 → 0.483 (+15%) and the camera anchor down the glass from 0.26 to 0.41, so
+the street runs through the middle of the pad instead of hugging the top-left corner with half the
+screen empty. The speedo moved up and its bonus line moved above the dial, out from under the music
+button that shares that corner.
+
+One bug the suite found on the way: `L.off` spawned in 0.25..1.15, a range nothing had ever read.
+The moment the new draw used it, streaks flew a quarter wider than the corridor they were meant to
+stay inside. It is 0..1 now and the draw decides what that is worth.
+
+---
+
 ## Suggested first prompt for Claude Code
 
 > Read HANDOFF.md, then bones.html and bones.js (skim park.js). Don't change anything yet —
