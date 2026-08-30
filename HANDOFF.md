@@ -2213,6 +2213,44 @@ stay inside. It is 0..1 now and the draw decides what that is worth.
 
 ---
 
+## v0.337a — the walls come into reach, and the dial gets a corner of its own
+
+**Why the wall shots felt wrong, measured before anything was changed.** A cross at knee height on
+a side wall needed 0.99 of the draw; one halfway up could not be hit at all from where the ball
+rests; the back wall was unreachable at any height. That is not a difficulty curve, it is a wall you
+cannot climb. Three changes, each aimed at one cause:
+
+1. **`SLING_LOFT_FLOOR` 0.30 → 0.85.** The loft used to be almost entirely the component of the aim
+   running away from you, so a sideways drag skimmed the carpet at three-tenths the height and had
+   no flight time to cross the room with. A straight-back shot is *untouched* — 0.30+0.70 and
+   0.85+0.15 both come to exactly 1 — so the throw the minigame is built around feels precisely as
+   it did. Only the off-axis ones get their arc back.
+2. **`SLING_DECK_K` 0.95 → 1.10.** At 0.95 a full lob arrived at the back wall exactly as it landed,
+   so that wall could only ever be touched at carpet height. This is the smallest step that puts a
+   full pull into it while still airborne, which is what brings it into the game at all.
+3. **The pool is difficulty-aware.** Every candidate now carries the `p` that produced it, and
+   `markLegal` rejects anything above `MARK_MAX_POW` (0.90) — except the back wall, which keeps its
+   own `MARK_MAX_POW_BACK` (0.99) because it is the furthest surface in the room and asking for a
+   haymaker to paint it is what that wall *is*. The launch sweep also narrowed from five spots to
+   three: the outer two were the ball carried right over to a wall first, which meant placing
+   targets that only made sense if you already knew to do that.
+
+The result, measured: side walls 0.62–0.89 of the draw across heights 0.07–0.36 (was 0.89–0.99 and
+capped at 0.30); the back wall 0.95–0.98 across 0.12–0.26; the carpet 0.35–0.89. Over 200
+placements the mix is roughly half carpet, a third side wall, an eighth back wall.
+
+Worth keeping: raising the loft floor past 0.85 was tried and rejected on the numbers — 1.00 bought
+two hundredths of extra wall height and cost the deliberate flat skim. The **cap** is what governs
+how high a target can be painted, not the loft.
+
+**Delivery driver.** The speedometer moved to the bottom-left, where the only neighbour is the route
+bar and the street never crosses — it had been sharing the bottom-right with the music button. And
+the vignette now draws UNDER the HUD instead of over it: the thing meant to make the dials easier to
+read was dimming them along with everything else, so the whole frame came down together and nothing
+stood out from anything.
+
+---
+
 ## Suggested first prompt for Claude Code
 
 > Read HANDOFF.md, then bones.html and bones.js (skim park.js). Don't change anything yet —
