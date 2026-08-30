@@ -2124,6 +2124,59 @@ first place - "has a close button in its markup" was always true.
 
 ---
 
+## v0.335a — the room is not a catapult, and his feet are on the floor
+
+**Six changes, and four of them were the same mistake**: a number that was right once and stopped
+being right when something around it changed.
+
+**No throw inside DOGCAM.** `SLING_K`, `SLING_UP` and `slingAim` are gone with the whole in-room
+release path. There were two throws with two different feels and only one of them - the deck
+slingshot - is what the game is about. Letting go up in the room now calls `ballDropHome`: the ball
+falls where it is and eases to `BALL_HOME_Z` at the near edge, straight below where you released
+it, ready for the band. `BALL.settle` is its own branch of the tick, cancelled by every pick-up,
+catch and burst - and a stale settle owns the ball's tick, which is what made the reach probe read
+"a hard throw cannot reach the back wall".
+
+**The roll travels.** `dogGesture` returns `rollL`/`rollR` rather than `roll`, because a roll with
+no direction has nowhere to go; `ROLL_TRAVEL` is smoothstepped over the roll's own clock so he
+gathers, carries and settles instead of sliding, and `roll` joined the mirror list so a leftward
+roll is not a dog sliding backwards across his own carpet.
+
+**Why he floated, and why he bobbed.** Each direction sheet was anchored on ONE foot line for all
+twenty-five frames - but the lowest paw in the art moves 6-7px across the cycle. Measured: the away
+sheet put his feet up to 7px above the carpet on some frames and the toward sheets up to 3px below
+it. `dogDirFeet(k)` now reads each frame's own lowest opaque row off the image, once per sheet and
+cached, so his lowest paw lands exactly on the floor line in every frame. Drawn feet now wander 1px
+across a cycle where they used to wander 6.
+
+**The away-diagonals were not fast, they were mis-paced.** A floor unit *across* the room is ~360
+screen pixels; a floor unit *into* it is ~219, because the floor is drawn in perspective. Pacing
+the cycle on floor distance ran his legs at the same rate whichever way he went while the dog
+visibly crawled walking away. The phase now advances on APPARENT travel divided by the size of a
+floor unit at that depth, so one stride means one thing in every direction: frames-per-screen-pixel
+went from 63% adrift to under 10%.
+
+**Nothing hovers.** `CAM.lz` is his height off the carpet and exactly two things put him there. It
+used to be every *other* state's job to clear it on the way in, and any exit nobody thought of left
+a dog frozen in mid-air. The floor owns it now: one line at the top of `camBehavior` says that if
+he is not leaping or snapping at a fly, he is standing on the carpet.
+
+**The fly is a jump with odds.** One roll at the APEX of each hop rather than a 1%-per-frame coin
+flip that could land anywhere in it - so the catch is visibly the jump. `flyCatchChance()` is 0.70
+as a puppy and +0.10 every two levels; a miss is the fly jinking out of the way, never a number on
+screen.
+
+**And the XP bar is the door to the tree** - full, it confers the level then opens it; not full, it
+just opens it, and `openSkillPanel` no longer refuses when there is nothing to spend, because a
+tree you cannot look at is a receipt rather than a plan. Points bank and keep; the panel no longer
+slams itself shut when you spend the last one.
+
+One trap worth remembering: the bar is painted across the bottom of the room and the near edge of
+the FLOOR is under it. Testing `fy>0.86` first ate the very tap that starts a slingshot, because
+the ball rests at z=0.88. It is tested LAST now - anything you can pick up gets first refusal.
+
+---
+
 ## Suggested first prompt for Claude Code
 
 > Read HANDOFF.md, then bones.html and bones.js (skim park.js). Don't change anything yet —
