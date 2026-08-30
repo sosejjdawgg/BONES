@@ -2391,6 +2391,56 @@ actually closes the menu, not just looks like it's on top of it.
 
 ---
 
+## v0.341a — the dev bar grows up
+
+Window → bat → vampirism was three gates deep and effectively untestable: a broken pane needs three
+*thrown* hits, the bat then needs a 1-in-10 nightly roll, and the roll only happens on the path
+that skips the night. The dev bar now reaches all of it — through the real functions, never around
+them.
+
+**Every new button calls the shipped hook.** The distinction matters and is what the harness
+checks: setting `S.winBroken=true` would satisfy any "is it broken" assertion while testing
+nothing. So `pdev.js` looks for the side effects only the real code produces — `WINFX.shards`
+filling (only `winShatter` does that, and only `winTakeHit`'s third-hit branch calls it),
+`S.vampire` being set from *inside* the bat's own bite phase, the CURE row rendered by
+`renderMystShop`'s own affordability test. CRACK/SMASH clear `TRICK.hitWin` first because
+`winTakeHit` refuses a second hit inside one throw — exactly what a fresh throw does.
+
+- **WINDOW / VAMPIRISM** — CRACK PANE, SMASH WINDOW (real shatter, 26 shards), FIX WINDOW,
+  NIGHT BAT, TOGGLE VAMP, CURE + SHOP, +500 BONES, NOON SUN / DUSK / 3 AM.
+- **NIGHT BAT** forces the pane out, puts him to sleep, winds the clock into bat hours and calls
+  `batStart` with the same `skipToMorning` callback the nightly path uses — so the morning still
+  waits on the bat and the curse still lands from `batTick`. Verified flying all four phases
+  (`in → circle → bite → out`), lightning at 0.96, and the clock back to exactly 06:00.
+- **A status chip** reads the real state back: `WIN 2/3 · VAMP ON · DAY 4 03:00 · BAT IN`, red when
+  the room is open or he is cursed. Refreshed by a capture-phase listener on the bars themselves
+  rather than by each handler — twenty-seven existing buttons predate the chip and none of them
+  knows to update it.
+- Park gains TOGGLE VAMP (the toast reports `pkVampSafe()`, so UNLEASHED says "safe" and daylight
+  says "burns: -0.5 HP/sec"), FORCE DAYLIGHT, FORCE UNLEASHED. Agility gains +1 LIFE and MAX SPEED.
+- **Delivery driver gets its own bar** (`#pbDevbar` + corner gear), joined to the same PIN. All
+  four bars are now one list walked by both the show and hide paths, so none can be left behind on
+  a screen you are not looking at.
+
+**Two bugs found on the way.**
+
+`batStart` never reset `BAT.bitten` — it is cleared at the *end* of the out phase, which is fine
+for a bat that always finishes. A dev tap makes interrupted runs reachable, and the next bat would
+then circle, land, and never bite. Cleared on the way in, where it belongs.
+
+And the bigger bar immediately re-created the exact complaint that prompted v0.340a: with 14 more
+buttons it took 289px of home's 520px, squeezing `.body` below the height of the main button grid
+so PLAY FETCH sat underneath it. The `38vh` cap was the wrong measurement — `#devbar` is a flex
+child of `#home`, which is only ~520px of an 896px phone, so 38vh was 65% of the box the bar
+actually lives in. Fixed at both ends: the cap is now a percentage of the parent, and `#home .body`
+carries a `min-height` so the **bar** is the sibling that gives way — it can afford to, because it
+scrolls and the grid does not. Checked at 896/760/640/568: every home control stays hit-testable,
+the bar shrinks 194 → 50px, and the footer toggle stays reachable throughout.
+
+> A cap measured against the viewport is not a cap on a box that only owns part of the viewport.
+
+---
+
 ## Suggested first prompt for Claude Code
 
 > Read HANDOFF.md, then bones.html and bones.js (skim park.js). Don't change anything yet —
