@@ -2358,6 +2358,39 @@ run) and the dev stage buttons (a ceremony with no level behind it owes no dance
 
 ---
 
+## v0.340a — the escape hatch cannot be blocked
+
+**Reported stuck state:** the dev menu open, a full-screen overlay (bedtime, in this case) comes
+up on top of the home screen, and the one thing that closes the dev menu — the secret
+version-number span tucked in the footer — is buried underneath it or scrolled off with the rest
+of the page. From there there was no way back without reloading.
+
+Two separate faults were stacked on top of each other:
+
+- `#devToggle` lived as an ordinary flow child of `#footer`, itself the last child of `#home`'s
+  flex column, with no `position` and no `z-index` of its own. Any `.overpanel` (`z-index:6`,
+  `position:absolute;inset:0`) painted straight over it — a non-positioned element loses to a
+  positioned one regardless of DOM order, so the overlay always won.
+- `#devbar` had no height cap. With ~26 buttons wrapping across several rows, it was tall enough
+  that, on a short viewport, it (and the footer sitting after it) could get pushed toward — or
+  past — the bottom edge of `#home`'s box before `.body`'s own flex-shrink had anywhere left to
+  give. The devbar was, in effect, capable of shoving its own close button out of reach.
+
+Fixed both ends: `#devToggle` is `position:absolute`, pinned to the home screen's corner, at
+`z-index:95` — above every overlay that screen can raise over itself (bedtime, status, portrait,
+a choice dialog). `#devbar` is capped at `max-height:34vh` with its own `overflow-y:auto`, added
+to `SBAR_SEL` so it gets the same visible custom scrollbar as the skill tree and every other
+scrolling panel. Opening it now scrolls internally and can never grow `#home` past its box, so it
+can never carry its own exit off screen with it. The same class of bug existed for the delivery
+driver and DOGPARK's own corner gear icons (`#runDevToggle`, `#pkDevToggle` — both `z-index:9`,
+sitting under those screens' own overlays like the boss and bury panels); both raised to match.
+
+`pdevesc.js` reproduces the exact reported state — dev menu open, bedtime panel raised on top —
+and asserts the toggle is on screen, hit-testable, and that tapping it through the overlay
+actually closes the menu, not just looks like it's on top of it.
+
+---
+
 ## Suggested first prompt for Claude Code
 
 > Read HANDOFF.md, then bones.html and bones.js (skim park.js). Don't change anything yet —
