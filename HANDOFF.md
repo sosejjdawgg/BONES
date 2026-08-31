@@ -2678,6 +2678,85 @@ floor, clear of the bowls, and explicitly *allowed* under the target X.
 
 ---
 
+## v0.346a — the music comes back, the night arrives slowly, and UNLEASHED becomes a night door
+
+**The stable beta ships with its music.** `MUSIC_GOODMOOD`, `MUSIC_DOGPARK` and `MUSIC_BOSS` were
+stripped in v0.336a to keep rebuild-and-test cycles cheap, and nothing had asserted on them since,
+so a silent build looked exactly like a working one. They are lifted back out of `bones-v0.335a.html`
+— the last build that had them — and `cur.js` goes from 6.9MB to 11.1MB. Three separate suites had
+pinned "the tracks are empty" as the correct answer; all three are **inverted, not deleted**, each
+with the argument written out. That line has now read *present → empty → present* across three
+versions, and the reason it flips is always the same one read in a different direction: an empty
+string is a *supported* state, so which one ships is a decision about file size, never about
+correctness.
+
+> The build cost was always the argument against, never a claim that silence was better. The moment
+> someone asks for the beta, the cost is worth paying.
+
+**Day does not flick into night any more.** `nightAmount()` was
+`h<23 ? 0 : clamp(h-23,0,1)` — one hour of dimming, and then a **snap back to broad daylight the
+instant the clock passed midnight**. That snap is the flick that was reported, and its other half
+is that the room was fully lit for the entire night. It is a real cycle now: dusk from 16:30
+smoothstepping down to 19:00, ten hours of full night, dawn back up between 05:00 and 07:00.
+
+The harness tests the *derivative*, not any single value: the curve is sampled every three game
+minutes right round the clock **including the wrap from 23:57 to 00:00**, and the largest single
+step must stay under 0.05. That is the only shape of test that would have caught the original bug,
+which was perfectly smooth everywhere except at one instant nobody sampled.
+
+**The moon rises as the dark completes** — literally, not approximately. `DUSK_END` *is*
+`MOON_RISE`, one constant, so the sky outside and the light inside cannot drift apart. The MOON
+constants had to move **above** the dusk block: `const DUSK_END=MOON_RISE` written before
+`const MOON_RISE=19` is a temporal-dead-zone throw at page load, and `node --check` passes it
+happily.
+
+**The night tint does not fall on the window, and the moon lights the room.** Capping
+`nightAmount` at a real 1 for ten hours turned the old full-canvas overlay into an opaque sheet —
+and it dimmed the moon along with the carpet, which is backwards: the window is the light source.
+The pane is cut out of the tint with `evenodd` and given a fraction of it on its own, and the moon
+throws a soft cool pool down into the room on its own gain and elevation. `pbed` caught the first
+half of this immediately: *"the moon is gone through a broken window"*, on a build where the damage
+draw was innocent and a flat grey sheet was the culprit.
+
+**The smash is a hole in the middle of the pane.** Three attempts are recorded in the source
+because each failure taught something different: first a flat near-black fill over the whole pane
+drawn *after* the sky (which erased the moon and made a smashed window a black void in daylight,
+when a hole should let *more* in); then two jagged bands hanging off the top and bottom edges,
+which read as a letterbox slot; and then the right shape with the **polarity backwards** — the
+remaining glass filled opaque black and the opening left bright, so it read as a white star stuck
+on a black pane. It is now glass as a translucent glaze, an opening shaded down toward its ragged
+edge, and teeth pointing inward with their sharp edges lit. The frame's centre bar and the blind
+slats are drawn *after* the damage, so both now draw as the pieces of themselves that survive
+outside the hole — an unbroken white bar running across a smashed pane is exactly what makes a hole
+read as a sticker.
+
+Measuring it needed a new instrument too. Point samples said the centre was 254 and the corners
+were 23 on a perfectly good hole — they had landed on the white mullion and on a blind slat. And
+the old "how many pixels are near-black" metric was calibrated to the version that filled the glass
+opaque; with a glaze there, the hole at midday averages ~115 and a threshold of 52 finds nothing.
+The suite differences the same pane broken against unbroken and separates two thresholds: the glaze
+moves every pixel a little, the break moves its own pixels a lot.
+
+**DOGPARK UNLEASHED is a night door; REGULAR is always open.** `unleashedHoursOk()` reads
+`CLK.h>=MOON_RISE || CLK.h<MOON_SET` — the *same* pair of constants the dusk fade ends on and the
+moon starts climbing at, so the sky and the door can never disagree about whether it is night.
+There are **two** player entry points into UNLEASHED — the park choice and the bone-treats pitch —
+and the suite drives both, because two entry points is exactly how a gate ends up half-applied. The
+button also names which of the two locks you are behind: a player standing in daylight with 6000
+bones is told the hour, not the price they have already paid.
+
+**Also fixed in the harnesses:** `pwalk` returned the audio element's `src` *attribute* in its
+failure message, so the moment the tracks came back, one failing line printed two megabytes of
+base64 into the log — it returns the 22-character prefix now. `pwalk` also exited 0 on failure, the
+same fault `pall` had. And its music check was asking `syncMoodMusic()` for a `play()` call while
+the title screen was still up, where the procedural menu bed correctly owns the room: it was
+testing the menu, not the music.
+
+> `syncMoodMusic()` only calls `play()` on a *transition*. A harness that calls it and waits for a
+> `play()` is measuring whether it got there first.
+
+---
+
 ## Suggested first prompt for Claude Code
 
 > Read HANDOFF.md, then bones.html and bones.js (skim park.js). Don't change anything yet —

@@ -1,6 +1,6 @@
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
 const fs=require('fs');
-const F='file://'+__dirname+'/bones-v0.338a.html';
+const F='file://'+__dirname+'/bones-v0.346a.html';
 const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
 
 /* Every state DOGCAM can put him in, driven through the real drawCam, measured three ways:

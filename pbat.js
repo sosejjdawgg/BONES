@@ -4,7 +4,7 @@
    pinning are the ones a screenshot cannot settle: does the beam actually leave the window, does
    the ball's damage land on the pane you can see, does the mouth track the frame on screen. */
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
-const F='file://'+__dirname+'/bones-v0.338a.html';
+const F='file://'+__dirname+'/bones-v0.346a.html';
 const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
 (async()=>{
   const b=await chromium.launch();
@@ -154,29 +154,40 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
 
   /* ---------- 4. WHAT IT COSTS HIM ---------- */
   const curse = await pg.evaluate(()=>{
-    const o={ dps:VAMP_PARK_DPS, cure:VAMP_CURE_COST };
+    /* THIS USED TO READ VAMP_PARK_DPS AND EXPECT A FLAT HALF-POINT. That was the whole complaint:
+       half a point a second is punishing on a puppy and beneath notice on a maxed-out dog, so the
+       curse now bills a SHARE of his current maximum. Inverted rather than deleted - the question
+       "does ten seconds of daylight cost the right amount" is still the right question, it just
+       has a different right answer now. */
+    const o={ pct:VAMP_PARK_PCT, cure:VAMP_CURE_COST };
     // the daylight park burns him; UNLEASHED runs at night and does not
+    /* THE BURN, WITH NOTHING PUTTING IT BACK. A cursed dog HEALS off bone pickups now, so ten
+       seconds of a live park is burn minus whatever he happened to hoover up on the way - which
+       came out at 35 most runs and 26 on one, and would have gone on failing at random forever.
+       The drops are cleared each frame so this measures the one thing it is named after; the heal
+       has a test of its own in pvamp. */
     startPark(false);
     PK.active=true; PK.hp=PK.maxhp; PK.vampAcc=0; S.vampire=true; PK.plusMode=false;
     const hp0=PK.hp;
-    for(let i=0;i<600;i++) parkUpdate(1/60);
-    o.dayLoss=hp0-PK.hp; o.safeDay=pkVampSafe();
+    for(let i=0;i<600;i++){ PK.drops.length=0; parkUpdate(1/60); }
+    o.dayLoss=hp0-PK.hp; o.safeDay=pkVampSafe(); o.max=PK.maxhp;
     PK.hp=PK.maxhp; PK.vampAcc=0; PK.plusMode=true;
     const hp1=PK.hp;
-    for(let i=0;i<600;i++) parkUpdate(1/60);
+    for(let i=0;i<600;i++){ PK.drops.length=0; parkUpdate(1/60); }
     o.nightLoss=hp1-PK.hp; o.safeNight=pkVampSafe();
     // ...and a dog who is not cursed pays nothing either way
     PK.hp=PK.maxhp; PK.vampAcc=0; PK.plusMode=false; S.vampire=false;
     const hp2=PK.hp;
-    for(let i=0;i<600;i++) parkUpdate(1/60);
+    for(let i=0;i<600;i++){ PK.drops.length=0; parkUpdate(1/60); }
     o.cleanLoss=hp2-PK.hp;
     PK.active=false; showScreen("home");
     return o;
   });
   console.log('CURSE ', JSON.stringify(curse));
-  ck(Math.abs(curse.dps-0.5)<1e-9, 'the drain is '+curse.dps+' a second, not a half');
-  ck(curse.dayLoss>=4 && curse.dayLoss<=6,
-     'ten seconds of daylight cost him '+curse.dayLoss+' rather than about five');
+  ck(Math.abs(curse.pct-0.02)<1e-9, 'the drain is '+curse.pct+' of max a second, not 2%');
+  ck(Math.abs(curse.dayLoss-curse.max*0.2)<=2,
+     'ten seconds of daylight cost him '+curse.dayLoss+' of a '+curse.max
+     +' pool, rather than the ~'+Math.round(curse.max*0.2)+' that 2% a second comes to');
   ck(curse.safeNight===true && curse.safeDay===false,
      'UNLEASHED is not the safe one: '+JSON.stringify(curse));
   ck(curse.nightLoss===0, 'the night run burned him for '+curse.nightLoss);
@@ -188,8 +199,17 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
     const p=sunPatch();
     if(!p) return {none:true};
     S.vampire=true;
+    /* THE BIAS IS NOW STATE-DEPENDENT, so the state has to be stated. Treating the patch as solid
+       in every state made it a wall he would rather fail than cross - a ball thrown through the
+       beam could not be fetched. It bends his path while he is pleasing himself and lets him
+       through when he has a job in hand, and vampSunTick charges him for the crossing. */
+    CAM.state="walk";
     const [px,pz]=camSolid(p.x,p.z,null);
     const pushed=Math.hypot(px-p.x,(pz-p.z)*1.5);
+    CAM.state="fetch";
+    const [rx,rz]=camSolid(p.x,p.z,null);
+    const chasing=Math.hypot(rx-p.x,(rz-p.z)*1.5);
+    CAM.state="walk";
     S.vampire=false;
     const [qx,qz]=camSolid(p.x,p.z,null);
     const free=Math.hypot(qx-p.x,(qz-p.z)*1.5);
@@ -202,11 +222,14 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
     document.querySelector('#mystList [data-cure]').click();
     const cured=!S.vampire, left=S.snacks;
     return { patch:[+p.x.toFixed(2),+p.z.toFixed(2)], pushed:+pushed.toFixed(3),
+             chasing:+chasing.toFixed(3),
              free:+free.toFixed(3), off, on, cured, left };
   });
   console.log('SHUN  ', JSON.stringify(shun));
   ck(!shun.none, 'there is no sunlit patch on the floor at midday');
-  ck(shun.pushed>0.10, 'the light does not move him at all: '+shun.pushed);
+  ck(shun.pushed>0.10, 'the light does not move a WANDERING dog at all: '+shun.pushed);
+  ck(shun.chasing===0,
+     'the light still blocks a dog with a job in hand — it is a wall again: '+shun.chasing);
   ck(shun.free===0, 'an uninfected dog is being shoved out of the sunshine too');
   ck(shun.off===false, 'the cure is on the shelf for a dog who is not cursed');
   ck(shun.on===true, 'the cure is not on the shelf for a dog who is');

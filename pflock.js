@@ -2,7 +2,7 @@
    Four things that all came from the same kind of mistake: a number that was right once and stopped
    being right when something around it changed, and nothing in the battery watching. */
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
-const F='file://'+__dirname+'/bones-v0.332a.html';
+const F='file://'+__dirname+'/bones-v0.346a.html';
 const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
 (async()=>{
   const b=await chromium.launch();
@@ -146,14 +146,22 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
      'the floor did not hold: '+pay.awful.net+' of 60 gross');
   ck(pay.rough.ded<pay.rough.raw, 'the cap never bites on a shift with real mistakes');
 
-  /* ---------- 5. the music is back in the file ---------- */
+  /* ---------- 5. the music is BACK IN the file ---------- */
+  /* INVERTED AGAIN, and the flip-flop is the point of writing it down. This line has now read
+     three ways: "the tracks are present" (they were), then "the tracks are empty" (v0.336a took
+     them out, four of eleven megabytes, and every rebuild paid for all of them), and now
+     "present" once more, because v0.346a is the stable beta and a stable beta ships with its
+     music. The build cost was always the argument against, never a claim that silence was
+     better; the moment someone asks for the beta, the cost is worth paying. pnight.js is where
+     the tracks are checked properly - decoded, not merely non-empty; this one only pins that
+     they are HERE, so the next size-cutting pass has to come through a failing test. */
   const music = await pg.evaluate(()=>({
     good:MUSIC_GOODMOOD.length, park:MUSIC_DOGPARK.length, boss:MUSIC_BOSS.length,
     on:SETTINGS.music
   }));
   console.log('MUSIC ', JSON.stringify(music));
-  ck(music.good>10000 && music.park>10000 && music.boss>10000,
-     'a track is still an empty string: '+JSON.stringify(music));
+  ck(music.good>200000 && music.park>200000 && music.boss>200000,
+     'a track is empty again - the music was stripped out of the beta: '+JSON.stringify(music));
   ck(music.on===true, 'music is off by default');
 
   await pg.waitForTimeout(200);

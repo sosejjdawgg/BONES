@@ -5,7 +5,7 @@
    The rest is framing - a scale and an anchor - and the music, which is now three empty strings
    that everything downstream is already written to cope with. */
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
-const F='file://'+__dirname+'/bones-v0.336a.html';
+const F='file://'+__dirname+'/bones-v0.346a.html';
 const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
 (async()=>{
   const b=await chromium.launch();
@@ -19,11 +19,14 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
   await pg.evaluate(()=>{ S.lvl=10; XPANIM.lvl=10; S.pendingStage.length=0; S.pbDone=true; });
   await pg.waitForTimeout(500);
 
-  /* ---------- 1. the tracks are gone, and nothing minds ---------- */
-  /* Every player here is guarded by its own hasTrack flag, so an empty string is a SUPPORTED
-     state rather than a hole. This is the assertion that was true before v0.332a, inverted back:
-     it pinned "a track is still an empty string" as a failure, and the tracks are deliberately
-     empty again, so it now pins the opposite and says why. */
+  /* ---------- 1. the tracks are HERE, and the mute button still works over them ---------- */
+  /* Inverted a third time, in v0.346a, and the reason is the same one that flipped it before,
+     read the other way round: every player is guarded by its own hasTrack flag, so BOTH an empty
+     string and a loaded track are supported states, and which one the build ships is a decision
+     about size rather than about correctness. v0.346a is the stable beta and ships with its
+     music. What this suite actually protects is the bit that must hold either way: the global
+     mute button, toggled twice with the tracks live, must not throw and must not leave the flags
+     lying. */
   const music = await pg.evaluate(()=>{
     const o={ good:MUSIC_GOODMOOD.length, park:MUSIC_DOGPARK.length, boss:MUSIC_BOSS.length,
               hasGood:MOOD_AUDIO.hasTrack, hasPark:MOOD_AUDIO_PARK.hasTrack,
@@ -36,10 +39,10 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
     return o;
   });
   console.log('MUSIC ', JSON.stringify(music));
-  ck(music.good===0 && music.park===0 && music.boss===0,
-     'a track still carries audio - the file is paying for it every rebuild: '+JSON.stringify(music));
-  ck(music.hasGood===false && music.hasPark===false && music.hasBoss===false,
-     'a player thinks it has a track when the string is empty: '+JSON.stringify(music));
+  ck(music.good>200000 && music.park>200000 && music.boss>200000,
+     'a track is empty - the music was stripped out of the beta: '+JSON.stringify(music));
+  ck(music.hasGood===true && music.hasPark===true && music.hasBoss===true,
+     'a player has a track loaded and does not know it: '+JSON.stringify(music));
   ck(music.threw===null, 'the music path threw with no tracks loaded: '+music.threw);
 
   /* ---------- 2. the framing moved by the amounts asked for ---------- */

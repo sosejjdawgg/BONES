@@ -4,7 +4,7 @@
    that is not to reason about the physics but to THROW at it. A scroll region is only useful if
    it can reach its own last child. Both are measured here, not argued. */
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
-const F='file://'+__dirname+'/bones-v0.333a.html';
+const F='file://'+__dirname+'/bones-v0.346a.html';
 const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
 (async()=>{
   const b=await chromium.launch();
@@ -31,35 +31,67 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
       by[m.wall||'floor']++;
       if(m.wall){ hzMax=Math.max(hzMax,m.hz); hzMin=Math.min(hzMin,m.hz); }
     }
-    return {n:P.length, by, hzMin:+hzMin.toFixed(3), hzMax:+hzMax.toFixed(3)};
+    const ps={floor:[],back:[],side:[]};
+    for(const m of P) ps[m.wall==='back'?'back':m.wall?'side':'floor'].push(m.p);
+    const rng=a=>a.length?[+Math.min(...a).toFixed(2),+Math.max(...a).toFixed(2)]:[null,null];
+    return {n:P.length, by, hzMin:+hzMin.toFixed(3), hzMax:+hzMax.toFixed(3),
+            floorP:rng(ps.floor), sideP:rng(ps.side), backP:rng(ps.back)};
   });
   console.log('POOL  ', JSON.stringify(pool));
   ck(pool.n>=600, 'the pool of places only holds '+pool.n+' spots');
   ck(pool.by.floor>=400, 'only '+pool.by.floor+' of them are on the carpet');
-  ck(pool.by.left>=60 && pool.by.right>=60,
+  /* THIS NUMBER CAME DOWN ON PURPOSE, from 60. The side walls used to run the full depth of the
+     room, and their near ends - the ones almost level with the camera - are precisely the shots
+     that were called out as problematic to hit. Fencing them off costs about half the spots on
+     each wall, and that is the fence working rather than the wall disappearing: what still has to
+     be true is that there is real variety left, which is what 20-odd distinct spots per wall,
+     spread across both depth and height, is. */
+  ck(pool.by.left>=20 && pool.by.right>=20,
      'the side walls got '+pool.by.left+'/'+pool.by.right+' spots between them, which is not '+
      'enough variety - the target will keep landing on the same handful');
-  ck(pool.hzMax>0.30, 'nothing on a wall is higher than '+pool.hzMax+
-     ' - every wall target is down at the skirting board');
-  /* THE BACK WALL IS EMPTY AND THAT IS THE MEASUREMENT, NOT A GAP. Loft and distance come off the
-     same component of the aim, so a full-power lob reaches z=0 exactly as it lands: the back wall
-     is only ever touched at carpet height. Asserted the way round it actually is, so that if the
-     throw is ever retuned to reach it, this fails and says so rather than quietly staying true. */
-  ck(pool.by.back===0,
-     'the back wall is reachable now ('+pool.by.back+' spots) - markLegal already allows it, so '+
-     'check how it looks and then update this assertion');
+  ck(pool.by.left+pool.by.right>=50,
+     'only '+(pool.by.left+pool.by.right)+' side-wall spots survive the no-go');
+  ck(pool.hzMax>0.34, 'nothing on a wall is higher than '+pool.hzMax+
+     ' - the tops of the walls have dropped out of the game again');
+  /* THE BACK WALL IS IN, AND THIS ASSERTION DID ITS JOB. It used to read "the back wall is empty
+     and that is the measurement" - a full-power lob reached z=0 exactly as it landed, so the wall
+     could only be touched at carpet height - and it said out loud that if the throw were ever
+     retuned this would fail and ask to be looked at. The throw WAS retuned (SLING_DECK_K 0.95 ->
+     1.10) precisely so the far wall could be a target, so here is the other half of the promise. */
+  ck(pool.by.back>=20,
+     'only '+pool.by.back+' spots on the back wall - it is meant to be in the game now');
+  ck(pool.backP[0]>0.88,
+     'the back wall is cheap now ('+pool.backP[0]+') - it is the furthest surface in the room and '+
+     'is supposed to be the power shot');
+  /* ...and everything that is NOT the far wall is a pull you would make without thinking. This is
+     the whole complaint - wall shots wanted an ungodly amount of power - expressed as a number. */
+  ck(pool.sideP[1]<=0.90,
+     'a side-wall target still asks for '+pool.sideP[1]+' of the draw');
+  ck(pool.floorP[1]<=0.90, 'a floor target asks for '+pool.floorP[1]+' of the draw');
 
-  /* ---------- 2. ...and none of them is under the furniture or off the wall ---------- */
+  /* ---------- 2. ...and none of them is under the furniture, off the wall, or IN THE NO-GO ----
+     The band nearest the camera and the two strips down the sides are places the throw arrives at
+     almost sideways: the cross is there, it is legal, and hitting it is a coin flip you have no
+     way to aim. They are out of the pool entirely now, and this is the assertion that keeps them
+     out - it is worth saying that these are DELIBERATELY smaller than the floor the ball may use.
+     The ball still goes everywhere; only the target is fenced. */
   const legal = await pg.evaluate(()=>{
     const bad=[];
     for(const m of markPool()){
       if(!m.wall){
-        for(const k of ['water','food','bed']){
+        /* THE BOWLS ONLY. The bed was in this list while it was a basket against the back wall
+           that a ball could foul on; it is a flat rug in the middle of the floor now, and a cross
+           on a rug is as hittable as one on the carpet. Keeping it here would have fenced off the
+           middle of the room and cost the target a third of its places. */
+        for(const k of ['water','food']){
           const p=SPOT[k];
           if(Math.hypot(m.x-p.x,(m.z-p.z)*1.4) < ROOM_R*2.4) bad.push(k+' '+m.x.toFixed(2));
         }
         if(m.z<0.05||m.z>0.74||m.x<0.10||m.x>0.90) bad.push('offfloor '+m.x.toFixed(2)+'/'+m.z.toFixed(2));
+        if(m.z>0.55) bad.push('nogo-near z='+m.z.toFixed(2));
+        if(m.x<0.18||m.x>0.82) bad.push('nogo-edge x='+m.x.toFixed(2));
       } else if(m.hz<=0.05 || m.hz>0.55) bad.push('wall hz '+m.hz.toFixed(2));
+      else if(m.wall!=='back' && m.z>=0.50) bad.push('nogo-wall z='+m.z.toFixed(2));
     }
     // ...and none of them is drawn off the top of the room or below its own floor line
     let above=0, below=0;
@@ -74,6 +106,18 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
   ck(legal.n===0, legal.n+' illegal spots in the pool: '+JSON.stringify(legal.bad));
   ck(legal.above===0, legal.above+' spots draw above the ceiling');
   ck(legal.below===0, legal.below+' spots draw below the floor');
+
+  /* ...and fencing it did not fence it out of existence. A no-go that swallows the carpet would
+     satisfy every assertion above by leaving three spots in the pool. */
+  const spread = await pg.evaluate(()=>{
+    const P=markPool().filter(m=>!m.wall);
+    const xs=P.map(m=>m.x), zs=P.map(m=>m.z);
+    return {n:P.length, x0:+Math.min(...xs).toFixed(2), x1:+Math.max(...xs).toFixed(2),
+            z0:+Math.min(...zs).toFixed(2), z1:+Math.max(...zs).toFixed(2)};
+  });
+  console.log('SPREAD', JSON.stringify(spread));
+  ck(spread.x1-spread.x0>0.5, 'the carpet targets only span '+(spread.x1-spread.x0)+' across');
+  ck(spread.z1-spread.z0>0.3, 'the carpet targets only span '+(spread.z1-spread.z0)+' deep');
 
   /* ---------- 3. IT IS REACHABLE. Not by argument - by throwing at it. ---------- */
   /* Place the target a hundred times and, for each placement, sweep real throws until one hits it
