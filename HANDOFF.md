@@ -2506,6 +2506,57 @@ sleep. `mystBusy()` was right; the harness was asking at the wrong moment.
 
 ---
 
+## v0.343a — nobody sends a vampire to bed, and the night gets a moon
+
+**The sleep window is gone, not moved.** v0.342a gave a cursed dog his own bedtime at midday, which
+was a smaller version of the same wrong idea: what makes no sense for a vampire is not *when* he is
+marched off to bed but that anything marches him at all. Removed entirely —
+
+- neither midnight nor midday raises `SLEEP.pending` for him (asserted across a full 24 hours,
+  hour by hour, not just at the two obvious times);
+- the idle picker's midday nap bias is gone;
+- the 06:00–18:00 energy drain is gone with it — it existed only to motivate the nap it fed;
+- `skipToMorning` ends at 06:00 for everyone again. The 18:00 wake matched a window that no longer
+  exists, so skipping the night is once more just "run the rest of the night off".
+
+He can still choose to rest; the bed still works. He is simply never *sent*. One subtlety worth
+the extra line: not raising the flag is not the same as never being served — a dog cursed *after*
+midnight already has one banked, and would have been marched to bed exactly once on his first
+night. The flag is dropped at the gate every path to the panel funnels through, so there is no
+ordering to get wrong.
+
+**A moon, 19:00 to 05:00.** Built as the mirror of `sunSky()`: one function that says where it is
+and how bright, and a draw that reads it. It rides an elevation arc — low at moonrise, highest at
+midnight, low again at moonset — and travels left to right across the pane, drawn in the window's
+own coordinates so it tracks the glass rather than a remembered rectangle. Blinds down, no moon.
+
+The whole difficulty is the **wrap**: 19:00–05:00 crosses midnight, so the obvious
+`u=(h-19)/10` makes every hour after midnight negative and the moon never appears at all. `since`
+is measured on a line that runs 19..24..29 instead. The suite samples right across the night rather
+than at one convenient hour, and asserts the arc explicitly (`elev` >0.97 at midnight, <0.25 at
+both ends).
+
+**Two harness faults found, both worth keeping.**
+
+`pall.js` printed `FAILS:` and then exited **0** — a run reporting six failures looked identical
+to a clean one from outside, which is exactly how a battery driven by exit codes misses a
+regression. It exits 1 now. That is how the second fault surfaced at all:
+
+`pall`'s love-trail walk teleported onto each of seven hearts and waited on the browser for the
+count to advance — seven Playwright round-trips polling at 50ms, all racing `LOVE_LIFE`'s
+22-second fuse. Under load the walk lost, the trail expired mid-way, and six assertions failed for
+a reason unrelated to what they tested (~1 run in 3). Checked against the previous build before
+touching anything, to be sure it was not the new work. The walk now drives `pkLoveTick` — the real
+function, at the real dt, with the ground check honoured — in one pass; only the transport between
+hearts is instant. 4/4 clean since.
+
+> An assertion that has tracked a behaviour through three reversals is doing its job. The `pdev`
+> bat-wake check has now read 06:00, then 18:00, then 06:00 again — each time because the answer
+> genuinely changed, and each time re-argued in the comment rather than deleted for being
+> inconvenient.
+
+---
+
 ## Suggested first prompt for Claude Code
 
 > Read HANDOFF.md, then bones.html and bones.js (skim park.js). Don't change anything yet —
