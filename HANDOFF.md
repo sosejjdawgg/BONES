@@ -2557,6 +2557,71 @@ hearts is instant. 4/4 clean since.
 
 ---
 
+## v0.344a — the bed he could never reach, and three things around it
+
+**The reported bug: a second, stale idea of where the bed is.** `camGoto` walked him to
+`SPOT.bed.x` (0.80). The rest state then measured him against `BED = {x:0.56}` — an orphan from
+the pre-room layout, with exactly one reader left — decided he was nowhere near his bed, and sent
+him back. He arrived; it sent him back; at frame rate, with the arrival chirp on every lap. That
+is the infinite "BONES HEADS TO BED" and the machine-gun beep.
+
+It only bites when `bedAdequate()` is true, which is why it showed up on a grown dog with a bed
+that fits him and not on a puppy.
+
+There is one answer now — `bedRestSpot()` — used by the walk and by `atBedSpot()`, which also
+measures both axes instead of x alone. This is the third time this exact shape of fault has been
+found here (the bed rect's `bx`, the sunray's hand-typed opening, and now this), so the harness
+asserts the orphan is *gone from the file*, not merely unused.
+
+Measured through the real `camBehavior`: zero rest→walk flips at puppy, junior and prime, and
+2 beeps instead of hundreds. Then again on the live `requestAnimationFrame` loop for 12 seconds:
+1 beep, 0 flips, log count 1 (it was ×10 in the report).
+
+**The window was a black void exactly when it was most open.** `winDrawDamage`'s broken branch
+filled the whole pane with flat near-black — and ran *after* the sky, so it painted over the moon,
+over anyone standing at the glass, and over the daylight. A hole in a window should show more of
+outside, not less. What is beyond the glass is now one routine, `drawWinOutside`, called once
+before anything that stands in front of it; the damage branch draws only the teeth still in the
+frame. Sampled off the real canvas: bright through whole *and* broken panes, night and day, dark
+only when the shutters are down.
+
+**He no longer leaps backwards.** `dogLeapPlan` asked only "can he physically be under it in
+time", which is why he would launch off a standing start and pluck a ball out of the air behind
+his own tail. A ball behind him now costs him the turn (`LEAP_BEHIND_TURN`) before his legs count
+for anything, and most of his closing reach (`LEAP_BEHIND_REACH`). The side quarters are
+deliberately free — a ball crossing his nose is one he can see.
+
+I first wrote this with a cut-off angle as well, and my own harness caught that it made the gate a
+*ban* rather than a penalty: everything in a wide rear cone was refused outright, including a lob
+dropping onto his own head, which he only has to turn for and not travel to. The constant is gone;
+the two costs do the work honestly. A long lob astern now fails because the arithmetic says he
+cannot get there, and a short one he can still take.
+
+**Bowls and bed are vessels now.** The bowls were two rectangles with a fill, which read as slots
+cut in the floor. Each is a truncated cone: a small ellipse at the foot, a wider one for the rim,
+a wall between them that darkens toward the carpet, and a well sunk into the top — water with a
+meniscus and a catch-light, kibble scattered on a golden-angle spiral. The bed is the same
+construction, wider and flatter, with a padded rim and a cushion sunk into it. Footprints are
+unchanged, so every tap still lands.
+
+Two art faults found by looking rather than by reasoning: a stroked ring around each bowl's foot
+read as a hoop lying on the carpet a little way underneath it, and chaining several `ellipse()`
+calls into one path joins them with straight lines — which drew a cat's-cradle across the bed.
+Both fixed by outlining only the rim, which is all the bowls ever needed.
+
+**Two harness faults, both mine, both worth the note.** `pbat`'s curse test measured *net* health
+over ten live seconds — burn minus whatever bones he hoovered up, since a cursed dog heals off
+pickups now. It read 35 most runs and 26 on one, and would have failed at random forever; it
+clears `PK.drops` each frame and measures the thing it is named after. And `pleap`'s throw helper
+never set `CAM.oct`, so with the new facing gate the dog stood with his tail to the lob for 180
+frames — the helper holds him idle and never sets `needsFetch`, so nothing would ever turn him. A
+dog being thrown a ball is looking at the thrower.
+
+> A position with two sources is not a position. It is a disagreement waiting for the frame that
+> asks both.
+
+---
+
 ## Suggested first prompt for Claude Code
 
 > Read HANDOFF.md, then bones.html and bones.js (skim park.js). Don't change anything yet —
