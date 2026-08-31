@@ -2622,6 +2622,62 @@ dog being thrown a ball is looking at the thrower.
 
 ---
 
+## v0.345a — the rug is the bed, and the bowls got bottoms
+
+**The basket is gone; his bed is the rug in the middle of the floor.** It was a wicker bed against
+the back wall, which put the one place he spends his nights in the furthest, smallest,
+most-occluded corner of the picture. `SPOT.bed` moved to `{x:0.50, z:0.42}` and everything that
+reads it followed — the walk, the rest test, the tap target, the SUPPLIES highlight, where the
+puppy naps, and where he fouls the carpet. There is still exactly one answer to "where is his bed",
+which is the whole lesson of the v0.344a sleep loop.
+
+- It **scales with the tier** in floor units (`bedFloorR`), read by the art and the tap target
+  alike, so a bed he has outgrown genuinely looks too small under him — a bath mat under a wolf.
+- He sleeps **dead centre** of it: `bedRestSpot()` is the bed's own position now, not a step in
+  front of a box.
+- The rug is no longer sold separately. It *is* the bed, bought and upgraded through the existing
+  DOG BED / BIGGER BED rows; the HOMEWARE rug row and `S.rugOwned` are gone, and the dev button
+  became BED TIER+.
+
+**Three things had to stop treating it as furniture,** because a rug in the middle of the room is
+not a basket against a wall:
+
+- `camSolid` no longer pushes him out of it. Left in, it would have fenced off the centre of the
+  floor and made his own bed the one place he could not stand.
+- `markLegal` no longer bans SLINGTOSS targets on it — a cross painted on a flat rug is as
+  hittable as one on the carpet. Keeping it cost the target pool a third of its places (510, back
+  up to 789 with every spot still proven reachable).
+- The **tap order** now puts the dog ahead of the bed. Testing the bed first was harmless while he
+  never stood on it; with him asleep in the middle of it, every tap meant to stroke him would have
+  hit the rug underneath and woken him instead.
+
+The `NO BED` and `TOO SMALL` warnings moved out of the floor pass and are drawn after the dog —
+painted with the rug, the label about his size was hidden underneath the very dog it was about.
+The old `drawDogBed` was deleted rather than left unreferenced; an orphan draw routine is the same
+hazard as the orphan `BED` position that caused the v0.344a loop, and this file has now been bitten
+by that twice.
+
+**The bowls have metal bottoms.** The well was a flat near-black disc, which against a dark carpet
+read as a hole cut through the bowl — you could see "through" it. It is a lit pan now: a
+cross-bowl gradient bright where the light falls and dark where the far wall shades it, the rim's
+shadow across the back, a turned ring and a sheen up the near side. Steel for water, brass for
+food.
+
+**Two harness faults, one of them nasty.** `pvamp`'s nap test restored `SPOT.bed` by *retyping*
+`0.80 / 0.085` — the bed's address at the time — so the moment the bed moved, that test silently
+dragged it back to the old corner for every test after it, and the suite reported the bed in the
+wrong place while the game had it right. It saves and puts back now.
+
+> A harness that hardcodes the value it is restoring is a harness that quietly un-ships the change
+> it exists to check.
+
+`pfetch`'s layout assertions were **inverted, not deleted**: three questions (does it stand on the
+back floor line, is it beside the bowls, is it clear of the target X) now have the opposite answer
+for the bed on purpose, and it gets its own set — well clear of the wall, centred, inside the
+floor, clear of the bowls, and explicitly *allowed* under the target X.
+
+---
+
 ## Suggested first prompt for Claude Code
 
 > Read HANDOFF.md, then bones.html and bones.js (skim park.js). Don't change anything yet —
