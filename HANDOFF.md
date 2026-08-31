@@ -2441,6 +2441,71 @@ the bar shrinks 194 → 50px, and the footer toggle stays reachable throughout.
 
 ---
 
+## v0.342a — the curse becomes a loop
+
+Vampirism was a debuff: a flat half-point a second in the park and a patch of floor he refused to
+walk on. It is a system now — something that costs him, something that pays him back, and something
+you can buy your way out of.
+
+**The burn is a share, not a number.** `VAMP_PARK_DPS=0.5` is gone; daylight in the park costs
+`VAMP_PARK_PCT` — 2% of his *current* maximum per second — so the curse means the same thing on a
+puppy and on a maxed-out dog. Verified by ratio rather than by value: ten seconds costs 19 at
+maxhp 100 and 39 at maxhp 200.
+
+**And bones are a meal.** `pkGain` heals `VAMP_BONE_HEAL` (0.25% of max per unit, floored at 1)
+while cursed, with a green `+N` beside the white bone count and a high sip of a beep. A daylight
+run stops being a countdown and becomes a chase. Night still costs nothing and still heals.
+`PK.fx` grew a `col` field for this — the draw loop set `fillStyle` once outside it, so every
+number in the park was white by construction.
+
+**The light is crossable now, and that is the point.** `camSolid` treated the sunlit patch as solid
+in *every* state, which quietly made it a wall: a ball thrown through the beam could not be
+fetched, and a recall across it could not be answered. The bias now applies only while he is
+pleasing himself (`idle/walk/sniff/rest`); a job in hand goes straight through, and `vampSunTick`
+charges him for the crossing — hunger −8, thirst −10, fun −12, mood −6 a second, a rising hiss on
+its own 0.35s clock, ember motes at his feet, and a hard dart to a spot outside the patch after
+0.15s of dawdling. He will not lie down for a nap in it either.
+
+**Shutters.** $100 in a new HOMEWARE section; `sunPatch()` and `drawSunray()` both return early
+when they are down, so the hazard and its artwork disappear together. $80 blackout lining makes
+`batWanted()` refuse even through a broken pane — but only while they are *shut*, which the suite
+checks in all three combinations. Worked by swiping the glass itself (down shuts, up opens, tap
+opens the panel), because the window was already the "tap the thing in the picture" idiom. The
+glazier moved inside that panel: with the slats down the damaged pane can no longer be tapped
+directly, and shutting the blinds must not cost you the repair.
+
+`openChoice` has exactly three buttons and no other dismiss, so the shutters panel picks the single
+most relevant job and keeps the third slot for LEAVE — a fourth option does not overflow, it
+silently evicts the exit.
+
+**The cursed body.** Strength and stamina read as full — in `attrF`, at read time, never written.
+Writing 100 into `S.str` would give him a brief buff and permanently erase whatever he had trained,
+and nobody would notice until they cured him. The suite asserts the disk values are untouched
+(31/42 in, 31/42 out) and that vitality is *not* included. `computeForm` treats hunger and energy
+as 100 for speed and jump only. He cannot fall sick at all. Hunger and thirst drain twice as fast,
+he is snappish below 40 of either (shorter rests, more barking), and he keeps his own hours:
+bedtime is raised as the clock *crosses* 12:00 rather than at midnight, and `skipToMorning` wakes
+him at 18:00.
+
+**Dev:** SKIP 3H / SKIP 12H run `tickStats(10, true)` in a loop rather than assigning `CLK.h` —
+assignment would skip the day roll, the streak, the mail and every meter that should have drained
+on the way, which is usually the state you were trying to reach. Plus TOGGLE BLINDS and GIVE RUG.
+
+Three existing assertions were **inverted rather than deleted**, all of them pinning behaviour this
+version deliberately changed: `pbat`'s flat-0.5 drain became a proportional one; `pbat`'s "the
+light moves him" gained a state, plus its opposite ("a dog with a job in hand goes through");
+`pdev`'s bat test expected a 06:00 wake, which is now 18:00 *because* the bat leaves him cursed —
+asserting 06:00 there would be asserting the bat had not worked.
+
+One harness failure was the new feature working correctly: MYST NOW refused because the CURE test
+left him cursed, the clock buttons walked past noon, and the new midday bedtime had put him to
+sleep. `mystBusy()` was right; the harness was asking at the wrong moment.
+
+> A cap, a rate or a bias measured against the wrong thing is not a smaller version of the right
+> one — it is a different rule that happens to agree at one size.
+
+---
+
 ## Suggested first prompt for Claude Code
 
 > Read HANDOFF.md, then bones.html and bones.js (skim park.js). Don't change anything yet —
