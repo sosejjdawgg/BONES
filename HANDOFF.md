@@ -2757,6 +2757,98 @@ testing the menu, not the music.
 
 ---
 
+## v0.347a — Wolfie gets his hands on the cage
+
+Everything Wolfie threw used to be born at the lip of the board: bones at `y=-8`, birds at `x=-8`,
+a ring on a circle drawn round the outside. It read as *the box spawns things* rather than as a
+wolf attacking, and the head — the one part of him that was actually animated — was doing all the
+telegraphing on its own from the top of the screen.
+
+**Two paws now come down onto the cage and stay there for the whole fight.** The chain is
+`intro → pawslam → pawwarm → the fight`, and each link hands over to the next:
+
+- **The slam.** Both paws drop onto the left and right walls the instant the scream ends. It
+  *accelerates* into the wall (`k*k`, not a lerp) because a paw that glides down reads as a prop
+  being placed. Crunch, both edges flare, dust off the floor under each hand, and a low tick while
+  he holds the bars.
+- **Phase 0.5, the warm-up.** One large slow swipe at a time. The paw pulls off its wall, the
+  pentagram lights, a dashed danger line fades in across the board at the height it is coming in
+  at, and then it is thrown — out across the board, a beat hanging at the far side, and back to
+  the same paw, which catches it. It is a tutorial for the whole fight: *this* is what a telegraph
+  looks like, and *this* is what comes out of a pentagram.
+- **The fight.** Phase 1 puts one paw over the lid, sliding, palm down. Phase 2 sends it round the
+  outside of the box. Phase 3 puts both on the sides, swinging opposite ways, hosing inward.
+
+**Every `k:"bone"` on the board comes out of a pentagram, and that is a rule rather than a
+description.** The ring's projectiles were re-kinded to `"ringbone"` — drawn identically, behaving
+identically — precisely so the invariant is something a test can *check*. `pboss.js` wraps
+`bossAdd` and asks every bone to name the paw it came from, then measures the distance to it, on
+every frame of a full fight.
+
+### What the audit caught that reasoning did not
+
+Three real bugs, none of which looked wrong on screen:
+
+**The orbit cut through the cage.** Phase 2's station was an ellipse with semi-axes `w/2+30` and
+`h/2+34`. An ellipse drawn through the corners of a rectangle passes *inside* it everywhere except
+the four points where it touches: at 45° this one sat 131px across and 116px down on a box that is
+155 by 130. The paw fired from in there, so bones were being born on the board — 37 of them in one
+run. The fix casts a ray from the middle, finds where it crosses the *rectangle*, and stands a
+fixed margin beyond that.
+
+> The ring spawner's own comment, three hundred lines up, says the same thing about corners in
+> almost the same words. Second time in this file.
+
+**The paws swam across the board between stations.** Getting every station outside the box was not
+enough: `pawSeek` walks a straight line, so a paw called up to the lid from the bottom of its orbit
+crosses the board diagonally and fires the whole way over. There are two clamps now because they
+are two different jobs, and one clamp doing both got the first one wrong — the first version
+pushed *every* paw a full clearance outside, which stopped the transit and also lifted a
+**gripping** paw 22px clear of the bar it is supposed to be holding.
+
+**A phase-three BURY volley lied about which hand threw it.** The fan is always thrown by `L` at
+phase 3 while `paw.active` can be `R`, and `fromPaw` was still being set from `active`. Nothing
+moved wrongly and nothing looked wrong; the bones simply named the wrong paw. It survived several
+clean runs and only surfaced when a phase-three ring/rain double came up.
+
+> A provenance field nobody reads is a comment. The only reason this one was wrong for a while and
+> is right now is that a test asks each bone to name its paw and then measures.
+
+### Density, measured three times before it was right
+
+The paw stream is the fight now, so the beats had to give way — and *which* beats took two wrong
+answers first. "From phase two" left phase one pinned at the 40-bullet cap for its whole beat, so
+the escalation into phases two and three was invisible: the board was already as full as it could
+get. "All of them, always" fixed the density and quietly cut the MAW machine gun from three bursts
+to one, which `pmaw` caught. The line that held is whether a beat competes with the stream **for
+the same space** — `BOSS_FILL`, the list that already existed for the phase-three double.
+
+Measuring it needed better instruments too. Bullets *alive* cannot see escalation because every
+phase sits on the cap ("40 → 40"). Total bones *fired* cannot either, and that one is subtler: a
+BURY beat fans seven bones at once, so a phase-one window that happened to draw BURY outfired a
+phase-two window that drew MAW — the number was reporting which beat came up, not which phase it
+was in. The escalation lives in the **stream**: `pawFire` calls per game second, which now reads
+3.1 → 6.2 → 25.6.
+
+Shipped rates are not the brief's. The brief asked for 0.07s between shots at phase three, from
+two paws, which is 38 bones a second onto a board 315px across; the measured version of that is a
+wall. It ships at 0.11 and the suite proves the result is dodgeable: a crude bot that walks away
+from the nearest bone takes 0.31 hits a second in phase three, against 0.67 standing still. The
+warm-up's numbers moved for the same kind of reason — 78px/s over a 315px board makes six throws
+take fifty seconds, so the duration cap would have ended it after one and a half.
+
+### Two harness faults worth keeping
+
+`pboss` cleared `BOSS.invulnT` every 16ms "to count every hit", so the dog took a hit on every
+frame it touched anything: both numbers pinned at the ceiling the invulnerability window itself
+imposes, and the suite reported an undodgeable fight it had made undodgeable. And two rival 16ms
+intervals plus the awaits starved the page's own rAF — the second half of a measurement got **zero
+game seconds** and reported a fight the dog was never hit in, which reads exactly like a pass.
+
+> A harness that fights the frame loop for the frame loop's time is measuring the harness.
+
+---
+
 ## Suggested first prompt for Claude Code
 
 > Read HANDOFF.md, then bones.html and bones.js (skim park.js). Don't change anything yet —

@@ -9,7 +9,7 @@
    5. UNLEASHED is a night door and REGULAR is not - and the lock has to actually refuse, so each
       case is driven through the real button and then asked whether a run started. */
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
-const F='file://'+__dirname+'/bones-v0.346a.html';
+const F='file://'+__dirname+'/bones-v0.347a.html';
 const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
 (async()=>{
   const b=await chromium.launch();

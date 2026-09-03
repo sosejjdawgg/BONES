@@ -4,7 +4,7 @@
    variable that two states set and every other state had to remember to clear. Plus two rules
    that were never stated - the room is not a catapult, and a rolling dog travels. */
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
-const F='file://'+__dirname+'/bones-v0.346a.html';
+const F='file://'+__dirname+'/bones-v0.347a.html';
 const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
 (async()=>{
   const b=await chromium.launch();
