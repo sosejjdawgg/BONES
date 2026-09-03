@@ -7,7 +7,7 @@
      3. phase 0.5 never has two swipes alive at once, and every throw is telegraphed first
    The rest measures whether it is playable: bullets alive, and how often a dodging dog is hit. */
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
-const F='file://'+__dirname+'/bones-v0.347a.html';
+const F='file://'+__dirname+'/bones-v0.348a.html';
 const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
 (async()=>{
   const b=await chromium.launch();
@@ -155,7 +155,7 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
   const fightAt = async (hpFrac, secs)=>pg.evaluate(async([f,S])=>{
     const sleep=ms=>new Promise(r=>setTimeout(r,ms));
     BOSS.hp=BOSS.maxhp*f; pkBossPhaseCheck();
-    const o={ lidFrames:0, sideFrames:0, orbitFrames:0, alive:[], hits:0, bones:0, paws:0,
+    const o={ lidFrames:0, sideFrames:0, freeFrames:0, orbitFrames:0, alive:[], hits:0, bones:0, paws:0,
               bothFire:0, pawX:[], pawY:[] };
     const hp0=PK.hp, pin=setInterval(()=>{ BOSS.hp=BOSS.maxhp*f; PK.hp=PK.maxhp=9999; },16);
     PK.hp=PK.maxhp=9999;             // measure the stream, not the death
@@ -167,7 +167,16 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
       o.paws=Math.max(o.paws, BOSS.bullets.filter(b=>b.k==="bone"||b.k==="pawswipe").length);
       o.bones=Math.max(o.bones, BOSS.bullets.filter(b=>b.k==="bone").length);
       if(L.y<B.y-6 || R.y<B.y-6) o.lidFrames++;
-      if(L.x<B.x-6 && R.x>B.x+B.w+6) o.sideFrames++;
+      /* THE POSTURE IS ONLY A POSTURE WHEN NOTHING ELSE IS ASKING. A BURY beat deliberately takes
+         one paw up over the lid at every phase, and how often BURY comes up is random - so a flat
+         "both on the sides for most of the window" swung between 99 and 295 frames out of 300
+         across runs and failed on the unlucky ones. It was measuring which beats the shuffle
+         dealt. Counted over the frames where BURY is NOT running, it is a fact about phase three
+         instead of a fact about the deck. */
+      if(!pawRainOn()){
+        o.freeFrames++;
+        if(L.x<B.x-6 && R.x>B.x+B.w+6) o.sideFrames++;
+      }
       o.pawX.push(Math.round(L.x-B.x)); o.pawY.push(Math.round(L.y-B.y));
       o.rx=(o.rx||[]); o.rx.push(Math.round(R.x-B.x));
     }
@@ -200,15 +209,17 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
 
   const p3 = await fightAt(0.20, 12);
   console.log('P3    ', JSON.stringify({phase:p3.phase,mode:p3.mode,paws:p3.paws,avg:p3.avgAlive,
-                                        fps:p3.firedPerSec,side:p3.sideFrames,n:p3.alive.length,
+                                        fps:p3.firedPerSec,side:p3.sideFrames,free:p3.freeFrames,n:p3.alive.length,
                                         lx:[Math.min(...p3.pawX),Math.max(...p3.pawX)],
                                         rx:[Math.min(...p3.rx),Math.max(...p3.rx)]}));
   ck(p3.phase===3 && p3.mode===3, 'phase 3 did not take: '+p3.phase+'/'+p3.mode);
   /* Not "always": a BURY beat deliberately takes one paw up over the lid at every phase, because
      a fan aimed at the floor thrown from beside the board is aimed at nothing. Half the frames is
      the honest bar for "both on the sides is the phase-three posture". */
-  ck(p3.sideFrames>p3.alive.length*0.45,
-     'the phase-3 paws are not on the sides for most of it: '+p3.sideFrames+'/'+p3.alive.length);
+  ck(p3.freeFrames>40, 'no BURY-free stretch to judge the phase-3 posture on: '+p3.freeFrames);
+  ck(p3.sideFrames>p3.freeFrames*0.80,
+     'the phase-3 paws are not on the sides when nothing else is asking: '
+     +p3.sideFrames+'/'+p3.freeFrames+' BURY-free frames');
   // the cap is on bones + swipes, which is what it says it is; birds and bars sit outside it
   ck(p3.paws<=40, 'the paw cap was breached: '+p3.paws+' bones/swipes alive');
   ck(p2.paws<=40, 'the paw cap was breached in phase 2: '+p2.paws);
@@ -290,6 +301,14 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
   const calm = await pg.evaluate(async()=>{
     const sleep=ms=>new Promise(r=>setTimeout(r,ms));
     const was=SETTINGS.reduceMotion; SETTINGS.reduceMotion=true;
+    /* THE BIRD IS SENT AWAY FIRST, and this is the second time this suite has had to learn it.
+       BOSS.fizz is not the paws' pool - pkBossReflect throws five sparks into it every time the
+       golden bird sends a shot back - so "reduceMotion threw sparks" fired on a build where the
+       paws were behaving perfectly and a bird happened to fly through the sample. Exactly the
+       mistake the trail assertion made two versions ago, in a different pool.
+       Both pools are shared. The fix is not a softer threshold, it is removing the other writer
+       so the number means what the sentence says. */
+    BOSS.bird=null; BOSS.golden=0; BOSS.birdNext=1e9; BOSS.reflect.length=0; BOSS.fizz.length=0;
     BOSS.hp=BOSS.maxhp*0.20; pkBossPhaseCheck();
     const pin=setInterval(()=>{ BOSS.hp=BOSS.maxhp*0.20; PK.hp=PK.maxhp=100000; },48);
     const o={trail:0, fizz:0, kick:0, fired:0, drew:0, err:null};
@@ -297,6 +316,7 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
     try{
       for(let i=0;i<160;i++){
         await sleep(40);
+        BOSS.bird=null; BOSS.golden=0; BOSS.birdNext=1e9;   // held away for the whole sample
         o.trail=Math.max(o.trail,BOSS.trail.length);
         o.fizz=Math.max(o.fizz,BOSS.fizz.length);
         o.kick=Math.max(o.kick,BOSS.paw.kick||0);

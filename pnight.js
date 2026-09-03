@@ -9,7 +9,7 @@
    5. UNLEASHED is a night door and REGULAR is not - and the lock has to actually refuse, so each
       case is driven through the real button and then asked whether a run started. */
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
-const F='file://'+__dirname+'/bones-v0.347a.html';
+const F='file://'+__dirname+'/bones-v0.348a.html';
 const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
 (async()=>{
   const b=await chromium.launch();
@@ -265,7 +265,14 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
     const un=btns.find(b=>/UNLEASHED/.test(b.textContent));
     if(!un) return {noButton:true, lab};
     un.click(); await sleep(500);
-    const started={park:PK.active, mode:MODE, plus:PK.plusMode};
+    /* THE NIGHT DOOR NOW OPENS ONTO A PICKER, not straight onto a run. v0.348a asks how many
+       bones to carry in on the way through, so "did tapping UNLEASHED start a run" stopped being
+       the right question - a build where the lock works perfectly answers no. The lock is still
+       what is under test: a refused tap never reaches the picker at all, so BOTH doors are
+       checked, and the picker is walked through when it appears. */
+    const sawCarry=document.getElementById('carry').classList.contains('show');
+    if(sawCarry){ CARRY_N=0; document.getElementById('carryGo').click(); await sleep(500); }
+    const started={park:PK.active, mode:MODE, plus:PK.plusMode, carry:sawCarry};
     PK.active=false; showScreen('home');
     for(const el of document.querySelectorAll('.overpanel.show')) el.classList.remove('show');
     return {lab, btn:un.textContent.trim(), ...started};
@@ -275,12 +282,14 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
   console.log('DAY   ', JSON.stringify(day));
   ck(!day.noButton, 'no UNLEASHED button in the park choice: '+JSON.stringify(day.lab));
   ck(day.park!==true, 'DOGPARK UNLEASHED STARTED AT MIDDAY - the night lock does nothing');
+  ck(day.carry===false, 'the daytime tap got as far as the carry picker - the lock is downstream of it');
   ck((day.btn||'').indexOf('\u{1F31A}')===0,
      'the daytime UNLEASHED button does not say it is locked: "'+day.btn+'"');
 
   await pg.waitForTimeout(400);
   const night = await tryUnleashed(21);
   console.log('NIGHT ', JSON.stringify(night));
+  ck(night.carry===true, 'the night tap did not reach the carry picker: '+JSON.stringify(night));
   ck(night.park===true && night.mode==='park', 'UNLEASHED will not start at 21:00 either: '+JSON.stringify(night));
   ck(night.plus===true, 'it started, but not in UNLEASHED mode: '+JSON.stringify(night));
 

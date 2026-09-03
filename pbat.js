@@ -4,7 +4,7 @@
    pinning are the ones a screenshot cannot settle: does the beam actually leave the window, does
    the ball's damage land on the pane you can see, does the mouth track the frame on screen. */
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
-const F='file://'+__dirname+'/bones-v0.347a.html';
+const F='file://'+__dirname+'/bones-v0.348a.html';
 const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
 (async()=>{
   const b=await chromium.launch();

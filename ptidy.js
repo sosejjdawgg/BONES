@@ -6,7 +6,7 @@
    It also replays the exact trap that was reported: a level conferred, DOGPARK started inside the
    900ms before the skill tree is offered, and the tree arriving on top of the park's controls. */
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
-const F='file://'+__dirname+'/bones-v0.347a.html';
+const F='file://'+__dirname+'/bones-v0.348a.html';
 const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
 (async()=>{
   const b=await chromium.launch();

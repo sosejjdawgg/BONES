@@ -2849,6 +2849,104 @@ game seconds** and reported a fight the dog was never hit in, which reads exactl
 
 ---
 
+## v0.348a — the hoard gets a price, and the run gets a shape
+
+**Burying is a percentage now.** `BURY_XP=2` per ten bones meant burying scaled *backwards*: 200
+bones was a fifth of a level at level 3 and a rounding error at level 40, so the one thing
+UNLEASHED exists for — go in deep, come out with a hoard, gamble it at the hole — paid less the
+further you got. At **0.5% of the current level's requirement per bone, 200 bones is exactly one
+level at every level, forever.** The rate is read *live, per shovel*, so a burial that levels him
+mid-pour re-bases onto the new requirement instead of paying a whole hoard out at the cheap rate
+it started at.
+
+Two things had to change to make that literally true rather than nearly true:
+
+- **The shovel is not rounded.** `xpNeed` is itself fractional (level 3 needs 49.5), so rounding a
+  shovel to whole XP lost up to half a point nineteen times over: 200 bones came to 40 XP against
+  a level of 49.5 and bought *nothing*, while the same 200 bones at level 25 — where the
+  arithmetic happens to come out whole — bought exactly one.
+- **`xpMet()` carries an epsilon, and it is load-bearing.** Twenty shovels of exactly a twentieth
+  of a level is exactly a level in arithmetic and `347.99999999999994` against `348` in binary
+  floating point. At level 12 a 200-bone burial came up one ulp short.
+
+> A rule that only works at the levels where the numbers happen to be round is not a rule. Both of
+> these were invisible on screen and would have read to a player as the game eating their hoard —
+> at some levels and not others, with no way to tell which.
+
+**Bones can be carried in.** Choosing UNLEASHED now opens a picker: a slider over the wallet in
+whole shovels, presets, and a live projection of what that pile is worth at the hole in XP *and*
+levels — with the 90% death penalty stated on the same panel. `carryTake()` is the single place
+the wallet is debited and it sits *inside* the `Object.assign` that starts the run, so bones can
+never be taken by a path that then fails to start one. REGULAR returns 0 from the same function,
+so the two modes cannot drift apart.
+
+**Six side objectives**, fixed, the same every run: find your friends (500), clear 100 birds (200),
+recruit a friend (200), teamwork makes the dream work (1000), the forest is burning (500), golden
+boy (500). Every one is something the park already did that nobody had a reason to go and do — the
+park had exactly one goal, survive the wave, and everything hanging off it was optional in the
+sense of *ignorable*. They pay at the **bank**, not on completion, which is the whole tension of
+the mode: clear all six, die on wave nine, carry none of it home.
+
+Three of the six are *states* rather than events — the crew is maxed, the grove is at its cap —
+and there is no single line where they become true, so they are polled once a frame rather than
+wired into six call sites that would each have to remember. The bird count rides on `pkDownEnemy`,
+the one door an enemy leaves the field by, for the same reason the wave goal does.
+
+**The box closes.** Wolfie used to sink into the floor and the overlay simply vanished mid-breath,
+with a toast — the hardest thing in the game ended with less ceremony than pouring a bowl of
+kibble. The cage now shuts one slab at a time, alternating top and bottom, converging on a slit in
+the middle: twelve clicks, each higher than the last, each with its own spark and kick, then a
+snap and a fold to nothing. Then the card that asks the only question UNLEASHED has: **bank it, or
+stay out and put it all back on the table.**
+
+**The goals list pays out like a Tony Hawk run.** The model is specific: it does not tell you what
+you scored, it shows each thing you set out to do crossing itself off, one at a time, with a noise.
+So the objectives are banked *here*, one row at a time, each slamming in, each shoving the XP bar
+along, a level landing wherever it lands. Tapping skips — and a skip awards everything still
+pending, so it never costs XP.
+
+### The harness, twice about the same mistake
+
+`pboss`'s reduceMotion check asserted that no pentagram sparks are thrown — and `BOSS.fizz` is not
+the paws' pool: `pkBossReflect` throws five into it every time the golden bird sends a shot back.
+It failed on a build where the paws were behaving perfectly, because a bird flew through the
+sample. **This is the second time in three versions the same suite has asserted on a shared pool**
+(the first was `BOSS.trail`, shared with the MAW's mouthfuls).
+
+> The fix for a shared pool is never a softer threshold. It is removing the other writer, so the
+> number means what the sentence says.
+
+Its phase-three posture check had the sibling problem: a BURY beat deliberately takes one paw up
+over the lid, and how often BURY comes up is random, so "both paws on the sides for most of the
+window" swung between 99 and 295 frames out of 300 and failed on the unlucky runs. It was
+measuring which beats the shuffle dealt. Counted over the frames where BURY is *not* running it is
+245/246, 82/88, 190/191 — a fact about phase three instead of a fact about the deck.
+
+Three other suites had assertions pinned to behaviour this version changed, and each was **updated
+with its argument written down** rather than deleted: `pall` pinned the flat two-XP shovel and now
+pins the 5% *rule* (and starts its burial at level 12, because 900 bones from level 6 now runs
+through level 10, which is a stage, so the burial correctly stops for a growth spurt the test
+never dismissed); `pnight` asked "did tapping UNLEASHED start a run", which a working build now
+answers *no* to because the night door opens onto the carry picker; `pperf` had to ask for
+saturation explicitly once the board-filling beats went sparse.
+
+And it found a real bug in v0.347a's own code on the way. `pawRainOn()` scanned `BOSS.spawn`,
+which is only emptied by `pkBossBeginPattern` — so after a BURY beat ended, that stale array kept
+reading as "BURY is running" all the way through the breath and the next telegraph, parking the
+paw over the lid for beats that had nothing to do with it. Draw a run where BURY comes up twice in
+a row and the paw never comes back down at all: the suite sampled 300 frames with the left paw on
+the lid and not one frame of phase three's actual posture.
+
+> The assertion that caught it only worked because it had just been *narrowed*. "Both paws on the
+> sides for most of the window" was passing on the same builds — loosely, noisily, for the wrong
+> reason. Making it precise is what made it able to fail.
+
+**Known flake, not a regression:** `pvamp`'s window-swipe test failed once in four runs and passed
+three consecutive times after. It dispatches synthetic pointer events and reads the result 60ms
+later; a slow frame loses the race. It predates this version.
+
+---
+
 ## Suggested first prompt for Claude Code
 
 > Read HANDOFF.md, then bones.html and bones.js (skim park.js). Don't change anything yet —
