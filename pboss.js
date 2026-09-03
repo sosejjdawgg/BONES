@@ -7,7 +7,7 @@
      3. phase 0.5 never has two swipes alive at once, and every throw is telegraphed first
    The rest measures whether it is playable: bullets alive, and how often a dodging dog is hit. */
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
-const F='file://'+__dirname+'/bones-v0.348a.html';
+const F='file://'+__dirname+'/bones-v0.349a.html';
 const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
 (async()=>{
   const b=await chromium.launch();
@@ -28,15 +28,27 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
     const origAdd=window.bossAdd;
     window.bossAdd=function(bb){
       const B=BOSS.box;
+      // a bullet this suite places ITSELF to photograph is not a spawn the game made: see the
+      // colour test below, which puts one in the middle of the board on purpose
+      if(bb.probe) return origAdd.call(this,bb);
       if(bb.x>2 && bb.x<B.w-2 && bb.y>2 && bb.y<B.h-2)
-        __W.inside.push({k:bb.k, x:Math.round(bb.x), y:Math.round(bb.y), ph:BOSS.ph});
+        // THE STACK GOES IN THE RECORD. A violation that reports only a coordinate costs an
+        // afternoon of reading spawners; one that names its caller costs a minute.
+        __W.inside.push({k:bb.k, x:Math.round(bb.x), y:Math.round(bb.y), ph:BOSS.ph,
+                         tele:BOSS.telegraph, spawns:BOSS.spawn.map(sp=>sp.kind),
+                         st:((new Error()).stack||"").split("\n").slice(1,5).join(" | ").slice(0,300)});
       if(bb.k==="bone"){
         // a bone must name the paw it came out of, and that paw must be somewhere real
         const q=bb.fromPaw && BOSS.paw[bb.fromPaw];
         if(!q) __W.bad.push({why:"no paw", ph:BOSS.ph, tele:BOSS.telegraph});
         else {
           const d=Math.hypot((q.x-B.x)-bb.x,(q.y-B.y)-bb.y);
-          if(d>34) __W.bad.push({why:"far from paw", d:Math.round(d), ph:BOSS.ph, tele:BOSS.telegraph});
+          // the paw's own position goes in the record: "a bone came from the wrong place" is not
+          // actionable without knowing where the hand actually was when it did
+          if(d>34) __W.bad.push({why:"far from paw", d:Math.round(d), ph:BOSS.ph, tele:BOSS.telegraph,
+                                 paw:bb.fromPaw, px:Math.round(q.x-B.x), py:Math.round(q.y-B.y),
+                                 bx:Math.round(bb.x), by:Math.round(bb.y),
+                                 pound:!!(BOSS.paw.pound&&BOSS.paw.pound.on)});
         }
       }
       __W.kinds[bb.k]=(__W.kinds[bb.k]||0)+1;
@@ -173,7 +185,11 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
          across runs and failed on the unlucky ones. It was measuring which beats the shuffle
          dealt. Counted over the frames where BURY is NOT running, it is a fact about phase three
          instead of a fact about the deck. */
-      if(!pawRainOn()){
+      /* ...AND NOT WHILE A PAW IS POUNDING, for exactly the reason BURY is excluded: the pound
+         takes a hand off its wall and puts it over the board on purpose. Counting those frames
+         against the posture measures how often the shuffle dealt a POUND, which is a fact about
+         the deck. Two exemptions now, and both are "something else is legitimately asking". */
+      if(!pawRainOn() && !(BOSS.paw.pound && BOSS.paw.pound.on)){
         o.freeFrames++;
         if(L.x<B.x-6 && R.x>B.x+B.w+6) o.sideFrames++;
       }
@@ -293,6 +309,162 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
   ck(dodge.movePerSec<1.4,
      'PHASE THREE IS NOT DODGEABLE: a dog that keeps moving is still hit '+dodge.movePerSec+' times a second');
   ck(dodge.stillPerSec>0.3, 'standing still in phase three is safe - the paws are not covering the board');
+
+  /* ---------- 4b. THE SPRITES, AND WHICH POSE MEANS WHAT ---------- */
+  /* The poses are not decoration - the brief makes them a language the player has to be able to
+     read: the mark is showing means he is not shooting, claws leading means he is. So the test is
+     not "does a sprite exist", it is "does the pose the picker chooses match the state". */
+  const art = await pg.evaluate(async()=>{
+    const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+    const out={loaded:{}, poses:{}};
+    for(const k in PAWIMG){
+      const im=PAWIMG[k];
+      out.loaded[k]={ok:!!(im.complete&&im.naturalWidth>0), w:im.naturalWidth, h:im.naturalHeight};
+    }
+    /* THE STATE HAS TO BE NEUTRAL FIRST. A pound left running by the section above outranks every
+       other pose - correctly - so this measured "gripping the wall" and got "fist", which is the
+       picker doing its job on a fight that was still mid-swing. */
+    BOSS.paw.pound=null; BOSS.stiff=0;
+    const q=BOSS.paw.L, keep={...q};
+    const at=(o)=>{ Object.assign(q,{spd:0,fireT:0,teleT:0,glow:0}, o); return pawPoseFor(q,"L"); };
+    const B=BOSS.box;
+    q.x=B.x; q.y=B.y+B.h*0.45;                       // gripping the left wall
+    out.poses.grip   = at({});
+    out.poses.firing = at({fireT:0.3});
+    out.poses.wind   = at({teleT:0.3});
+    out.poses.windFast = at({teleT:0.3, spd:900});   // a wind-up must never wear the blur
+    out.poses.swish  = at({spd:PAW_SWISH_SPD+60});
+    q.x=B.x+B.w*0.5; q.y=B.y+B.h*0.5;                // mid-board (only ever true in transit)
+    out.poses.moving = at({spd:PAW_MOVE_SPD+30});
+    Object.assign(q,keep);
+    return out;
+  });
+  console.log('ART   ', JSON.stringify(art));
+  for(const k of ['palm','glow','q34','q34b','fist','slam','swipe'])
+    ck(art.loaded[k] && art.loaded[k].ok, 'the "'+k+'" paw sprite did not decode: '+JSON.stringify(art.loaded[k]));
+  ck(art.poses.grip==='q34b', 'a paw gripping the wall is not in the three-quarter pose: '+art.poses.grip);
+  ck(art.poses.firing==='q34b', 'a FIRING paw is not in the three-quarter pose: '+art.poses.firing);
+  ck(art.poses.wind==='glow', 'a paw winding up does not show the burning mark: '+art.poses.wind);
+  ck(art.poses.windFast==='glow',
+     'a fast wind-up wears the motion blur instead of the mark: '+art.poses.windFast);
+  ck(art.poses.swish==='swipe', 'a fast paw is not streaked: '+art.poses.swish);
+  ck(art.poses.moving==='palm', 'a travelling paw does not show the mark: '+art.poses.moving);
+
+  /* ---------- 4c. THE POUND ---------- */
+  const pound = await pg.evaluate(async()=>{
+    const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+    const out={};
+    const run = async(mode)=>{
+      BOSS.hp=BOSS.maxhp*0.45; pkBossPhaseCheck();
+      const pin=setInterval(()=>{ BOSS.hp=BOSS.maxhp*0.45; PK.hp=PK.maxhp=100000; },48);
+      BOSS.paw.pound=null; BOSS.paw.poundNext=mode;
+      pkBossFinishPattern(); BOSS.telegraph="pound"; BOSS.telegraphT=0;
+      BOSS.dog.x=BOSS.box.w*0.5; BOSS.dog.y=BOSS.box.h*0.5;
+      BOSS.dog.vx=90; BOSS.dog.vy=0;                  // heading right, so LINE has something to plot
+      pkBossBeginPattern();
+      const seen={marksBeforeBang:0, bangs:0, phases:[], fistFrames:0, idxs:[],
+                  hitsInside:0, hitsOutside:0, spanX:0, spanY:0};
+      const hurt0=BOSS.hits;
+      let last=null;
+      for(let i=0;i<420;i++){
+        await sleep(30);
+        const po=BOSS.paw.pound;
+        if(!po) continue;
+        if(po.on){
+          if(pawPoseFor(BOSS.paw[po.side], po.side)==="fist") seen.fistFrames++;
+          if(po.ph!==last){ seen.phases.push(po.ph); last=po.ph; }
+          if(po.idx===0 && po.ph==="wind") seen.marksBeforeBang=po.pts.length;
+          seen.idxs.push(po.idx);
+          seen.mode=po.mode;
+          const xs=po.pts.map(p=>p.x), ys=po.pts.map(p=>p.y);
+          seen.spanX=Math.round(Math.max(...xs)-Math.min(...xs));
+          seen.spanY=Math.round(Math.max(...ys)-Math.min(...ys));
+          seen.pts=po.pts.map(p=>[Math.round(p.x),Math.round(p.y)]);
+        } else if(po.done){ break; }
+      }
+      seen.bangs=BOSS.hits-hurt0;
+      seen.ended=!BOSS.paw.pound.on;
+      seen.maxIdx=Math.max(...seen.idxs);
+      clearInterval(pin);
+      return seen;
+    };
+    out.lock=await run("lock");
+    await sleep(300);
+    out.line=await run("line");
+    out.R=POUND_R; out.step=POUND_STEP; out.hits=POUND_HITS; out.steps=POUND_STEPS;
+    return out;
+  });
+  console.log('POUND ', JSON.stringify({lock:{mode:pound.lock.mode, marks:pound.lock.marksBeforeBang,
+    phases:pound.lock.phases.slice(0,6), maxIdx:pound.lock.maxIdx, fist:pound.lock.fistFrames,
+    spanX:pound.lock.spanX, spanY:pound.lock.spanY, ended:pound.lock.ended},
+    line:{mode:pound.line.mode, marks:pound.line.marksBeforeBang, maxIdx:pound.line.maxIdx,
+    spanX:pound.line.spanX, spanY:pound.line.spanY, ended:pound.line.ended, pts:pound.line.pts},
+    R:pound.R, step:pound.step}));
+  ck(pound.lock.mode==='lock' && pound.line.mode==='line',
+     'the pound does not alternate its two shapes: '+pound.lock.mode+'/'+pound.line.mode);
+  // EVERY mark exists before the first bang: nothing about this attack may be a surprise
+  ck(pound.lock.marksBeforeBang===pound.hits,
+     'LOCK did not mark all its hits before the first one landed: '+pound.lock.marksBeforeBang);
+  ck(pound.line.marksBeforeBang===pound.steps,
+     'LINE did not mark its whole path before the first bang: '+pound.line.marksBeforeBang);
+  ck(pound.lock.phases[0]==='wind', 'the pound did not wind up first: '+pound.lock.phases.join('>'));
+  ck(pound.lock.fistFrames>10, 'the fist pose was never used for the pound: '+pound.lock.fistFrames);
+  ck(pound.lock.maxIdx>=pound.hits-1, 'LOCK stopped short: '+pound.lock.maxIdx+' of '+pound.hits);
+  ck(pound.line.maxIdx>=pound.steps-1, 'LINE stopped short: '+pound.line.maxIdx+' of '+pound.steps);
+  ck(pound.lock.ended && pound.line.ended, 'a pound never let go of its paw');
+  // LOCK hammers ONE place; LINE walks. That difference is the whole beat.
+  ck(pound.lock.spanX===0 && pound.lock.spanY===0,
+     'LOCK moved between hits: span '+pound.lock.spanX+'x'+pound.lock.spanY);
+  ck(pound.line.spanX+pound.line.spanY > pound.R*2,
+     'LINE did not actually travel: span '+pound.line.spanX+'x'+pound.line.spanY);
+  // ...and consecutive marks have to CLEAR each other or the path reads as one blob
+  {
+    const p=pound.line.pts||[];
+    let minGap=1e9;
+    for(let i=1;i<p.length;i++) minGap=Math.min(minGap, Math.hypot(p[i][0]-p[i-1][0], p[i][1]-p[i-1][1]));
+    console.log('GAP   ', minGap, 'vs mark radius', pound.R);
+    ck(minGap>pound.R*1.4, 'the marks in a LINE overlap each other: '+Math.round(minGap)+' apart, radius '+Math.round(pound.R));
+  }
+
+  /* ---------- 4d. THE BONES DO NOT LOOK LIKE THE ONES YOU COLLECT ---------- */
+  /* The reported confusion is that the boss throws the same white bone the park rewards you for
+     picking up. Measured off the canvas: the average colour of a bone on the board must be RED,
+     not neutral. */
+  const bone = await pg.evaluate(async()=>{
+    const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+    BOSS.bullets.length=0;
+    const B=BOSS.box;
+    /* AND GET THE DOG OUT OF SHOT. He was standing on the board's centre from the pound section,
+       so the camera photographed his sprite and his gold pool: 1936 of 1936 sampled pixels above
+       the black threshold, coming back a flat neutral grey and reporting that the bone had not
+       been recoloured at all. */
+    BOSS.dog.x=B.w*0.88; BOSS.dog.y=B.h*0.88;
+    BOSS.paw.pound=null;
+    /* PUSHED, NOT SPAWNED. bossAdd refuses any bone whose position is on the board - which is the
+       rule this suite exists to enforce - so asking it to place one in the middle for a photograph
+       gets it thrown out and the camera photographs bare floor. That is the audit working: it
+       caught this very line and reported it as a violation, complete with a stack that named the
+       harness rather than the game. What is under test here is the DRAW, so the bullet goes
+       straight into the array and skips a spawn rule it is not about. */
+    BOSS.bullets.push({x:B.w*0.5, y:B.h*0.5, vx:0, vy:0, r:BOSS_BULLET_R, k:"bone", spin:0, vr:0,
+                       fromPaw:"L", out:false, probe:true, emb:99});
+    await sleep(120);
+    pkDrawBoss();
+    const cv=document.getElementById('bosscv'), g=cv.getContext('2d');
+    const dpr=cv.width/cv.clientWidth;
+    const cx=Math.round((B.x+B.w*0.5)*dpr), cy=Math.round((B.y+B.h*0.5)*dpr);
+    const R=Math.round(11*dpr);
+    const d=g.getImageData(cx-R,cy-R,R*2,R*2).data;
+    let r=0,gr=0,b2=0,n=0;
+    for(let o=0;o<d.length;o+=4){ if(d[o]+d[o+1]+d[o+2]<24) continue; r+=d[o]; gr+=d[o+1]; b2+=d[o+2]; n++; }
+    BOSS.bullets.length=0;
+    return n? {r:Math.round(r/n), g:Math.round(gr/n), b:Math.round(b2/n), n} : {n:0};
+  });
+  console.log('BONE  ', JSON.stringify(bone));
+  ck(bone.n>40, 'nothing was drawn where the bone was put: '+bone.n);
+  ck(bone.r > bone.b*1.7,
+     'the boss bone is still neutral-coloured - it reads as the one you collect: rgb('+bone.r+','+bone.g+','+bone.b+')');
+  ck(bone.r > bone.g*1.25, 'the boss bone is not RED: rgb('+bone.r+','+bone.g+','+bone.b+')');
 
   /* ---------- 5. reduceMotion keeps the FIGHT and drops the FLOURISH ---------- */
   /* The setting must never make the boss unreadable in the name of being gentler: the telegraph,

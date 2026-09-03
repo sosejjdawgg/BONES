@@ -2947,6 +2947,101 @@ later; a slow frame loses the race. It predates this version.
 
 ---
 
+## v0.349a — the paws become art, and he learns to use his fist
+
+Seven paw sprites replace the vector paw. That is not a decoration change: four ellipses and a
+star read as a *logo*, and fur reads as a limb belonging to the animal on the other side of the
+cage. Each is keyed off pure black by flood-filling the background in from the border rather than
+by thresholding luminance — the claws are near-black and a threshold eats them — and quantised to
+96 colours apiece: **76KB for the whole set, against 356KB straight out of the resize**, with no
+visible difference at the size they are drawn.
+
+**Which pose means what is a language the fight now relies on the player learning**, and it is
+decided in one place so the rules hold everywhere:
+
+| pose | when |
+|---|---|
+| `palm` / `glow` | the pentagram is **showing** — he is travelling, or winding one up. Not firing. |
+| `q34` / `q34b` | claws leading, **no mark** — this is the pose that shoots, and the pose that holds a wall. Mirrored per side. |
+| `fist` | the pound. Nothing else uses it. |
+| `slam` | one moment only: coming up out of the floor. |
+| `swipe` | motion-streaked, so it may only ever be drawn while genuinely moving fast. |
+
+The paws come **up out of the ground** now rather than down out of the sky — the head has just come
+up through the floor, and hands following it up through the same floor is the only reading that
+makes them the same animal — and they settle *slam → glow → palm* rather than going from erupting
+to resting in a single frame.
+
+**The bones are dangerous.** Testers read the boss's white bones as harmless, and they were right
+to: the player spends the whole of DOGPARK running at white bones to pick them up, so the shape had
+been trained as a reward. Same silhouette, opposite reading — a hot core, a scorched red body, and
+fire coming off it in the wake, drawn with the exact colours the MAW's mouthfuls already use,
+because those are the projectiles nobody has ever been confused about. Measured off the canvas at
+rgb(71,25,12).
+
+**THE POUND** is the one beat that is not a projectile: the board itself becoming unsafe under a
+spot. Two shapes, alternating, and the second is the answer to the first — **LOCK** picks where you
+are, marks it, and hammers that spot four times, so the counter is simply to leave; **LINE** does
+the same wind-up and then *walks*, marching along the way you were heading, so leaving is no longer
+enough and you have to leave sideways. Every mark is drawn before the fist moves.
+
+### Three ways to get a marching line wrong
+
+Placing LINE took four attempts and each failure taught the next:
+
+1. **Clamp each mark.** The last three piled against the edge in a stack.
+2. **Slide the whole run.** At five marks 81px apart the run is 326 long and the board is 310 wide,
+   so sliding it only chose which *end* hung off.
+3. **Shrink the spacing to fit.** Runs into the minimum gap, and then the run is too long again and
+   the clamp piles the tail — the same bug, one layer down.
+4. **Measure the room first**, shrink the spacing to what is available, and if that hits the floor
+   take *fewer marks* rather than tighter ones — plus anchor the plan inside the rim, because the
+   dog is allowed to stand nearer the edge than a mark may sit.
+
+The ray-versus-rectangle helper had a sign bug that made all of this worse: written with a special
+case for the sign of the direction, it returned two *negative* distances for anything heading left
+or up, which `Math.max(0,…)` flattened to zero room — so every leftward line believed it was
+cornered and collapsed. Rewritten to take the larger root as forward and the smaller as backward,
+it cannot get the sign wrong because it never asks what the sign is. **121 placements, minimum gap
+now exactly the floor, nothing off-board.**
+
+### The spawn audit caught the harness
+
+One bone in four thousand frames was landing dead centre. Two structural gates and a clamp
+tightening later it was still there, so the audit was made to record a **stack** — and the stack
+named `pboss.js`. It was the colour test, which places a bone in the middle of the board on purpose
+to photograph it.
+
+> There was never a game bug. I had spent three rounds tightening real code against a violation my
+> own probe was committing, and the thing that ended it was making the report name its caller.
+
+Two of those rounds were worth keeping on their own merits — `pawClampOut`'s tolerance really was a
+hole (a paw within fourteen pixels of an edge was left alone *even when inside the box*), and
+`pawMuzzle` walking back along the shot really is better than teleporting the origin to whichever
+wall happens to be nearest. The door-level gate in `bossAdd` stays too, for the same reason the paw
+cap was moved there: **a rule enforced at its callers is a rule that holds until someone adds a
+caller.**
+
+And two harness faults of the same family as last version's: the pose test ran while a pound left
+over from the previous section was still swinging, and correctly got `fist` where it expected a
+grip; and the bone camera photographed *the dog*, who was standing on the board's centre from the
+pound test — 1936 of 1936 sampled pixels above the black threshold, coming back flat neutral grey
+and reporting that the bone had never been recoloured.
+
+### Tuning by measurement
+
+The swish threshold went both ways before it landed. At 430px/s the streaked pose showed on 22
+frames in 600 — too rare to read as anything. At 210 it showed on 360 in 600, which is worse: phase
+three's *median* paw speed is 267, so a threshold under that means the paws wear a motion blur
+while they are cruising and the pose stops meaning "fast". 380 sits between the median and the 90th
+percentile: it catches the middle of each swing and lets go at the ends.
+
+The speed itself is smoothed over a tenth of a second, because a raw per-frame `dist/dt` spikes
+past 2000px/s whenever a station changes under a long frame — the pose flickered on for single
+frames in the middle of a paw that was to all appearances holding still.
+
+---
+
 ## Suggested first prompt for Claude Code
 
 > Read HANDOFF.md, then bones.html and bones.js (skim park.js). Don't change anything yet —

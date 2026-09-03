@@ -5,7 +5,7 @@
    The rest is framing - a scale and an anchor - and the music, which is now three empty strings
    that everything downstream is already written to cope with. */
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
-const F='file://'+__dirname+'/bones-v0.348a.html';
+const F='file://'+__dirname+'/bones-v0.349a.html';
 const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
 (async()=>{
   const b=await chromium.launch();

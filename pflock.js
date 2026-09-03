@@ -2,7 +2,7 @@
    Four things that all came from the same kind of mistake: a number that was right once and stopped
    being right when something around it changed, and nothing in the battery watching. */
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
-const F='file://'+__dirname+'/bones-v0.348a.html';
+const F='file://'+__dirname+'/bones-v0.349a.html';
 const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
 (async()=>{
   const b=await chromium.launch();
