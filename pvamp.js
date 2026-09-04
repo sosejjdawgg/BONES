@@ -582,6 +582,65 @@ const said = (pg)=>pg.evaluate(()=>{
   ck(bed.rest.x===bed.at.x && bed.rest.z===bed.at.z,
      'he does not sleep in the CENTRE of it: '+JSON.stringify(bed));
 
+  /* ---------- THE GLASS MENDS ----------
+     A cracked pane used to stay cracked until you paid a glazier, so "three hits" meant three
+     hits ever, spread across as many days as you liked - which is why nobody could tell they
+     were doing it. It heals now: ten quiet seconds and it starts to knit, ten more and it is
+     clear. Three hits still takes the window out, but they have to land inside the same window
+     of time, which is a thing you can actually see yourself doing. */
+  const winheal = await pg.evaluate(()=>{
+    const run=(sec)=>{ for(let i=0;i<Math.round(sec*60);i++) winHealTick(1/60); };
+    const hit=()=>{ TRICK.hitWin=false; winTakeHit(); };
+    const out={delay:WIN_HEAL_DELAY, time:WIN_HEAL_TIME};
+    S.winCracks=0; S.winBroken=false; S.winHealT=0;
+
+    hit();
+    out.afterHit={n:S.winCracks, frac:winHealFrac()};
+    run(9.5);
+    out.beforeDelay={n:S.winCracks, frac:+winHealFrac().toFixed(3)};   // still nothing has moved
+    run(5.0);                                                          // 14.5s: half knitted
+    out.midway={n:S.winCracks, frac:+winHealFrac().toFixed(2)};
+    run(6.0);                                                          // 20.5s: clear
+    out.healed={n:S.winCracks, broken:S.winBroken, frac:winHealFrac()};
+
+    // three inside the window is still what takes it out
+    S.winCracks=0; S.winBroken=false; S.winHealT=0;
+    hit(); run(2); hit(); run(2); hit();
+    out.fast={n:S.winCracks, broken:S.winBroken};
+
+    // ...but three spread across the healing is not: each one starts from clear glass
+    S.winCracks=0; S.winBroken=false; S.winHealT=0;
+    hit(); run(21); hit(); run(21); hit();
+    out.slow={n:S.winCracks, broken:S.winBroken};
+
+    // ...and two, then a wait, then one, is one crack rather than a smash
+    S.winCracks=0; S.winBroken=false; S.winHealT=0;
+    hit(); hit(); run(21); hit();
+    out.twoThenWait={n:S.winCracks, broken:S.winBroken};
+
+    // a smashed window does not heal itself back into a pane
+    S.winCracks=3; S.winBroken=true; S.winHealT=0;
+    run(30);
+    out.smashed={broken:S.winBroken, n:S.winCracks};
+    S.winCracks=0; S.winBroken=false; S.winHealT=0;
+    return out;
+  });
+  console.log('HEAL  ', JSON.stringify(winheal));
+  ck(winheal.delay===10 && winheal.time===10, 'the heal is not 10s then 10s: '+winheal.delay+'/'+winheal.time);
+  ck(winheal.afterHit.n===1, 'one throw did not crack the glass');
+  ck(winheal.beforeDelay.n===1 && winheal.beforeDelay.frac===0,
+     'it started mending before the ten quiet seconds were up: '+JSON.stringify(winheal.beforeDelay));
+  ck(winheal.midway.n===1 && winheal.midway.frac>0.3 && winheal.midway.frac<0.7,
+     'it is not half-mended halfway through the mend: '+JSON.stringify(winheal.midway));
+  ck(winheal.healed.n===0 && winheal.healed.broken===false,
+     'twenty seconds of quiet did not clear the crack: '+JSON.stringify(winheal.healed));
+  ck(winheal.fast.broken===true, 'three hits inside the window did NOT break it: '+JSON.stringify(winheal.fast));
+  ck(winheal.slow.broken===false && winheal.slow.n===1,
+     'three hits spread across three heals still broke it: '+JSON.stringify(winheal.slow));
+  ck(winheal.twoThenWait.broken===false && winheal.twoThenWait.n===1,
+     'two cracks did not heal off before the third: '+JSON.stringify(winheal.twoThenWait));
+  ck(winheal.smashed.broken===true, 'a SMASHED window healed itself: '+JSON.stringify(winheal.smashed));
+
   await pg.waitForTimeout(300);
   ck(errs.length===0, 'page errors: '+errs.join(';'));
   await b.close();

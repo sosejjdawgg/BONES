@@ -452,7 +452,22 @@ body.reduce-motion .screen.screen-in{animation:none}
 #pkQuests{position:absolute;left:10px;right:10px;bottom:56px;z-index:4;pointer-events:none;
   font-family:'Press Start 2P',monospace;font-size:6.5px;line-height:1.6;text-align:left;
   text-shadow:0 1px 0 #000}
-#pkQuests .qh{color:#e8c14a;font-size:6px;margin-bottom:5px;letter-spacing:1px;opacity:.85}
+/* THE HEADER IS THE MENU. A real <button>, so it hit-tests itself against the END RUN row sitting
+   right underneath rather than trusting a div's bounding box — the same reason the pad's other
+   controls are native buttons. The list below stays pointer-transparent: only the header takes
+   taps, so a fold-out can never eat an input meant for the park. */
+#pkQuests .qh{display:inline-flex;align-items:center;gap:6px;pointer-events:auto;
+  background:rgba(0,0,0,.62);border:1px solid #6b5a24;
+  color:#e8c14a;font-family:inherit;font-size:6px;letter-spacing:1px;line-height:1.2;
+  padding:5px 8px;margin:4px 0 0 0;cursor:pointer;text-shadow:0 1px 0 #000}
+#pkQuests .qh .qarw{display:inline-block;width:6px}
+#pkQuests .qh .qcount{color:#8a7a3a}
+/* the small box lives in the HEADER, not the list, so the one thing worth seeing at a glance —
+   whether the whole set is finished — is still readable with the list folded away */
+#pkQuests .qbox{display:inline-block;width:7px;text-align:center;border:1px solid #6b5a24;
+  color:#4a4a52;line-height:1.1;font-size:7px}
+#pkQuests .qbox.all{border-color:#e8c14a;background:#e8c14a;color:#111}
+#pkQuests .qlist{padding-left:2px}
 #pkQuests .qrow{display:flex;justify-content:space-between;gap:8px;color:#b9b9c2;padding:1px 0}
 #pkQuests .qrow .qx{color:#6a6a72;flex:none}
 #pkQuests .qrow .qn{color:#e8c14a}
@@ -707,7 +722,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.350a</span>
+          <span id="devToggle">v0.351a</span>
         </div>
       </div>
 

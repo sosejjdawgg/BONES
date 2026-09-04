@@ -100,6 +100,44 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
          w:Math.round(BOSS.box.w), h:Math.round(BOSS.box.h)}
   }));
 
+  /* ---------- 0. THE CAGE BOUNDARY, ASKED DIRECTLY ----------
+     The spawn audit below catches a paw firing from inside the cage, but only if the fight
+     happens to walk one in there - and the case that actually shipped was a paw drifting through
+     a two-pixel band just inside a lip, which turned up about once in four thousand frames. Three
+     green runs of a random fight is not evidence that the band is closed. So the boundary is asked
+     as a question instead of waited for: put a paw one pixel inside each lip and check that the
+     clamp moves it out and the muzzle stays at the hand, and put one exactly ON its bar and check
+     that neither touches it. */
+  const edge = await pg.evaluate(()=>{
+    const B=BOSS.box, out={};
+    const mk=(x,y,ang)=>({x,y,ang,spd:0});
+    const off=BOSS_PAW_R*0.42;
+    // one pixel inside each of the four lips: every one must be pushed out
+    const spots=[[B.x+1, B.y+B.h*0.5], [B.x+B.w-1, B.y+B.h*0.5],
+                 [B.x+B.w*0.5, B.y+1],  [B.x+B.w*0.5, B.y+B.h-1]];
+    out.clamped=spots.map(([x,y])=>{ const q=mk(x,y,Math.PI); pawClampOut(q);
+                                     return pawInBox(q.x,q.y); });
+    // ...and once clamped, the muzzle is at the hand rather than walked across the board
+    out.muzzleD=spots.map(([x,y])=>{ const q=mk(x,y,Math.PI); pawClampOut(q);
+                                     const m=pawMuzzle(q,off);
+                                     return Math.round(Math.hypot((q.x-B.x)-m.x,(q.y-B.y)-m.y)); });
+    // a paw ON its own bar is the one pose the exemption exists for, and it must not be lifted
+    const grip=pawGrip("L"), qg=mk(grip.x,grip.y,0), was={x:qg.x,y:qg.y};
+    pawClampOut(qg);
+    out.gripHeld = qg.x===was.x && qg.y===was.y;
+    const gripR=pawGrip("R"), qr=mk(gripR.x,gripR.y,Math.PI), wasR={x:qr.x,y:qr.y};
+    pawClampOut(qr);
+    out.gripHeldR = qr.x===wasR.x && qr.y===wasR.y;
+    return out;
+  });
+  console.log('EDGE  ', JSON.stringify(edge));
+  ck(edge.clamped.every(v=>v===false),
+     'a paw one pixel inside a lip was left in the cage: '+JSON.stringify(edge.clamped));
+  ck(edge.muzzleD.every(d=>d<=Math.ceil(26.4*0.42)+1),
+     'the muzzle was walked away from the hand it belongs to: '+JSON.stringify(edge.muzzleD));
+  ck(edge.gripHeld===true && edge.gripHeldR===true,
+     'a paw holding its own bar was lifted off it by the clamp');
+
   /* ---------- 1. the slam ---------- */
   /* Driven through the real start and the real intro clock rather than by setting ph="pawslam",
      because "does the intro hand over to the slam" is half of what this suite is for. */

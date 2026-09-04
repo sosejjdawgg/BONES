@@ -2,7 +2,12 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.309a**.
+Currently **v0.351a**.
+
+> **The workflow below is out of date and has been since v0.350a.** The source of truth is
+> `src/` — edit `src/src.js`, run `./build.sh <version>`, test with `./test.sh`. See `CLAUDE.md`,
+> which is authoritative; everything under "WHICH FILES ARE REAL" describes the pre-split world
+> and is kept only as history.
 
 ---
 
@@ -3089,6 +3094,112 @@ session instead of re-storing 11MB per commit.
 
 `CLAUDE.md` carries the layout, the commands and the measurements, so the next session starts from
 source instead of re-deriving all of this.
+
+---
+
+## v0.351a — four fixes: friendly fire, a menu, glass that mends, and the evolution
+
+### 1. Nothing on your side hurts anything else on your side
+
+Lovey Dovey turns part of the horde pink, and since v0.306a that outlives the mode — they stay on
+your side for the rest of the wave. The friends never got the message. The squirrel pack shot
+them, the cat cut lines through them, the ape smashed them, the birds dived them, and their bodies
+ground the friends down on contact, which is a crew fighting itself in front of you.
+
+One predicate — `pkPalFoe(e)` = not fleeing, not charmed — asked at every door:
+
+- **picking a target:** `pkNearestEnemy`, `pkNearestHuntingEnemy`, `pkApeBestTarget`,
+  `pkCatCutTarget`, `pkPalLaserAim`, and `pkClusterScore` (so a knot of allies stops reading as a
+  crowd worth landing on)
+- **landing a hit:** the ape's smash, the laser sweep, the cat's swept leap, the friendly nut, and
+  a bird called off a target that turned pink mid-dive
+- **the other direction:** the contact loop in `pkPalDamage`, and the beam list it builds — a mad
+  squirrel charmed mid-sweep stops burning the crew
+
+`plove` now asks all of it, both ways, and checks that an *ordinary* enemy is still found and still
+hurts a friend, so this cannot pass by breaking the pals instead.
+
+`plove` also **exits 1 on failure** now. It printed its failures and exited 0, which the battery
+read as green — it was the only harness here that did.
+
+### 2. The side objectives fold into a menu
+
+Six rows, a wave banner and a rage bar is a lot of phone. The list folds into a gold, tappable
+`SIDE OBJECTIVES` header carrying a live `n/6` and a small box that ticks when all six are done.
+Folded is the resting state; completing one folds the list out by itself for five seconds so the
+strike-through is actually seen, then hands it back to whatever the player last chose.
+
+It folds **upward** — the list is written before the header in the DOM. The block is anchored by
+its bottom edge just above END RUN, and with the header first six rows unfolding pushed straight
+down through that button.
+
+### 3. Cracked glass mends
+
+A cracked pane stayed cracked until you paid a glazier, so "three hits breaks the window" meant
+three hits *ever*, which nobody could see themselves doing. Ten quiet seconds and it starts to
+knit; ten more and it is clear. The crack lines thin and fade with a travelling glint rather than
+popping out of existence one at a time.
+
+Three hits still takes the window out — they just have to land inside the same twenty seconds,
+which is a thing you can do on purpose. Any impact restarts the clock. A smashed window does not
+heal itself. The dev chip shows the countdown and then the mend percentage.
+
+### 4. The evolution is a real sequence
+
+It was 3.9 seconds of the room flickering while the dog changed size somewhere behind the
+furniture, and the honest complaint was that you could not tell it had happened.
+
+It is the Pokemon shape now, because that shape has been solving this exact problem since 1996:
+**stop the world**, take the character out of its scene, put it **side-on** against nothing, and
+flick the silhouette between the two forms faster and faster until it cannot hold. Six beats:
+
+| beat | what |
+|---|---|
+| `hush` | the room drains away; he turns side-on. "WHAT?" |
+| `rays` | the light starts turning behind him |
+| `morph` | the alternation — small, large, accelerating from 420ms to 75ms, one ping per swap |
+| `burst` | it gives: the screen goes white and the rays fly off it |
+| `reveal` | the white recedes and the new dog is standing there, lit |
+| `cheer` | "BONES IS NOW A JUNIOR!", confetti, and him bouncing on the spot |
+
+11.7 seconds, against 3.9. **The world genuinely stops**: `camBehavior` always froze the dog and
+the ball, but needs decay, the puppy, the robot, treats and the clock all carried on underneath —
+the ceremony played over a room still living its life.
+
+Side-on comes from `DOGDIR.E`, the only art in the game showing his whole profile; the
+front-facing room poses read as a blob the moment they lose their colour. The silhouette is one
+`source-in` white fill per frame, cached — no per-pixel loop and no canvas-filter support to
+depend on. He is a black labrador on a black screen, so the lit beats get a warm radial behind him
+and an oversized white cut-out under the art for a rim.
+
+**Reduced motion gets its own column, not a scaled-down one.** The alternation is a strobe, and a
+strobe is the one thing that setting exists to turn off, so it becomes a single slow dissolve
+between the two forms with no flashing anywhere, and the whole thing runs 7.4s.
+
+`pevo` still pins the order — sequence, panel, celebration, tree — and now also pins that all six
+beats are reached in order and that the room is frozen throughout. Its freeze sample had to move
+*inside* the loop: read after it, the ceremony has already ended and up to a frame of ordinary
+ticking has run, so the test was measuring its own timing.
+
+### ...and a boss bug the audit had been catching all along
+
+`pboss` fails about one run in three on **v0.350a too** — this was not new. A `k:"bone"` born 78px
+from the paw that threw it, during the pound beat.
+
+`pawClampOut` and `pawMuzzle` held two different definitions of "inside the cage". The clamp
+exempted a paw within **2px** of a lip — meant to let a gripping paw sit on its bar — while the
+muzzle tested strictly. On a box 259.8 tall, a paw drifting through y=259 was left there by the
+clamp and then had its muzzle walked 77px back along the shot to find air. The tolerance had
+already been cut once, from `R*0.55` to 2px; 2px was the same hole one order of magnitude smaller.
+
+Both now ask one `pawInBox(x,y)`, and so do the two spawn gates. Exact rather than tolerant:
+`pawGrip` returns *exactly* `B.x`, and `pawSeek` eases toward it without overshooting, so a paw
+holding its bar is on the line rather than inside it and is still untouched — the one pose the
+exemption existed for.
+
+`pboss` no longer waits for the random walk to find it: it puts a paw one pixel inside each of the
+four lips and asks the clamp and the muzzle directly, and checks a gripping paw is not lifted off
+its bar.
 
 ---
 

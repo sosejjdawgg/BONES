@@ -4,7 +4,5 @@ combined.js
 # the versioned copies are derived and rebuildable, so they no longer go into history —
 # that is what took the repo to 869MB.
 bones-v*.html
-!bones-v0.347a.html
-!bones-v0.348a.html
-!bones-v0.349a.html
+!bones-v0.349a.html          # the one still-tracked leftover from the v0.350a cleanup
 .out/

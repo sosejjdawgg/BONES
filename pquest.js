@@ -195,6 +195,55 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
   ck(quests.runXP>quests.questXP-1, 'the run total does not include the objectives: '+quests.runXP);
   ck(quests.doneRows===6, 'the goals list does not cross off what is done: '+quests.doneRows+' struck rows');
 
+  /* ---------- 3b. THE LIST IS A MENU ----------
+     Six rows plus a wave banner plus a rage bar is a lot of pad for a phone, so the list folds
+     into a gold SIDE OBJECTIVES header that carries its own n/6 and a small box that ticks when
+     the whole set is done. Folded is the resting state; a completion borrows it open for a few
+     seconds so the strike-through is actually seen, then hands it back. */
+  const menuTap = await pg.click('#pkQuests .qh').then(()=>true).catch(e=>String(e.message||e));
+  const menu = await pg.evaluate(async()=>{
+    const html=()=>$("#pkQuests").innerHTML;
+    const rows=()=>(html().match(/class="qrow/g)||[]).length;
+    const out={};
+    out.tapClosed=rows();                        // the real tap above folded the six away
+    out.header=!!$("#pkQuests .qh");
+    out.tickedAll=/qbox all/.test(html());       // all six done from the section above
+    out.count=($("#pkQuests .qcount")||{}).textContent;
+    $("#pkQuests .qh").click();
+    out.reopen=rows();
+    out.stillTicked=/qbox all/.test(html());
+    $("#pkQuests .qh").click();
+    out.reshut=rows();
+    out.shutStillTicked=/qbox all/.test(html());  // the tick is in the HEADER, so folding keeps it
+    // a fresh run: folded, nothing ticked, and the header already saying 0/6
+    pkQuestReset();
+    out.freshRows=rows();
+    out.freshTick=/qbox all/.test(html());
+    out.freshCount=($("#pkQuests .qcount")||{}).textContent;
+    // ...and a completion folds it out on its own, then puts it back
+    pkQuestHit("recruit");
+    out.peekRows=rows();
+    out.peekCount=($("#pkQuests .qcount")||{}).textContent;
+    for(let i=0;i<Math.ceil(QUEST_PEEK*60)+20;i++) pkQuestTick(1/60);
+    out.afterPeek=rows();
+    return out;
+  });
+  console.log('MENU  ', JSON.stringify({tap:menuTap, ...menu}));
+  ck(menuTap===true, 'the SIDE OBJECTIVES header is not tappable on the pad: '+menuTap);
+  ck(menu.header===true, 'there is no SIDE OBJECTIVES header at all');
+  ck(menu.tapClosed===0, 'tapping the header did not fold the list away: '+menu.tapClosed+' rows');
+  ck(menu.reopen===6, 'tapping again did not fold all six back out: '+menu.reopen);
+  ck(menu.reshut===0, 'the header only opens, it never closes again');
+  ck(menu.tickedAll===true, 'all six are done and the box is not ticked');
+  ck(menu.shutStillTicked===true, 'folding the list away took the tick with it');
+  ck(menu.count==='6/6', 'the header count is wrong with everything done: '+menu.count);
+  ck(menu.freshRows===0, 'a fresh run starts with the list already unfolded: '+menu.freshRows);
+  ck(menu.freshTick===false, 'a fresh run starts with the box already ticked');
+  ck(menu.freshCount==='0/6', 'a fresh run does not read 0/6: '+menu.freshCount);
+  ck(menu.peekRows===6, 'completing an objective did not fold the list out to show it');
+  ck(menu.peekCount==='1/6', 'the header did not count the completion: '+menu.peekCount);
+  ck(menu.afterPeek===0, 'the list never folded back after its peek: '+menu.afterPeek+' rows');
+
   /* ---------- 4. THE BOX CLOSES, IN ORDER ---------- */
   const box = await pg.evaluate(async()=>{
     const sleep=ms=>new Promise(r=>setTimeout(r,ms));

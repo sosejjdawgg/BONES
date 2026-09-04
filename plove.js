@@ -152,8 +152,92 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
   ck(fx.foeHurt===true, 'no fighting happened at all');
   ck(fx.clash>0, 'the scuffle went silent once the mode ended: '+fx.clash);
 
+  /* ---------- 5. NOBODY ON YOUR SIDE FIGHTS ANYBODY ELSE ON YOUR SIDE ----------
+     Love outlives the mode, so a charmed enemy walks with the crew for the rest of the wave — and
+     the crew went on shooting, cutting, smashing and diving at it, while its body ground them
+     down on contact. Both directions are asked here, at the doors rather than through the whole
+     park loop: the six places a friend picks a target, the four where one lands a hit, and the
+     one place an enemy body damages a friend. */
+  const ff = await pg.evaluate(async()=>{
+    PK.en.length=0; PK.pals.length=0; PK.loveMode=null; PK.loveTrail=null; PK.nuts.length=0;
+    const pink=[];
+    for(let i=0;i<6;i++){ const e=window.__mk(18+i*4, (i%2?8:-8), 40); e.hunting=true; pkLoveTake(e); pink.push(e); }
+    pkBuildEnGrid(PK.WW,PK.WH);
+    const probe={k:"cat",tier:4,x:PK.x,y:PK.y};
+
+    // the predicate itself
+    const foeNormal=window.__mk(300,300,9);
+    pkBuildEnGrid(PK.WW,PK.WH);
+    const pred={pink:pkPalFoe(pink[0]), plain:pkPalFoe(foeNormal), nul:pkPalFoe(null)};
+
+    // every targeting door, with nothing but allies in range
+    PK.en.length=0; for(const e of pink) PK.en.push(e);
+    pkBuildEnGrid(PK.WW,PK.WH);
+    const tgt={
+      near:   pkNearestEnemy(PK.x,PK.y,400),
+      hunt:   pkNearestHuntingEnemy(PK.x,PK.y,400),
+      ape:    pkApeBestTarget(PK.x,PK.y,400),
+      cat:    pkCatCutTarget(probe, PK.x+120, PK.y, 400),
+      laser:  pkPalLaserAim(probe),
+      cluster:pkClusterScore(pink[0],200)
+    };
+    const picked={near:!!tgt.near, hunt:!!tgt.hunt, ape:!!tgt.ape, cat:!!tgt.cat,
+                  laser:tgt.laser!==null, cluster:tgt.cluster};
+
+    // the ape's blast is the widest damage door there is: nothing pink may lose a point to it
+    const hp0=pink.map(e=>e.hp);
+    pkApePalSmash({x:PK.x,y:PK.y,tier:4}, PK.WW, PK.WH);
+    const smashed=pink.some((e,i)=>e.hp!==hp0[i]);
+
+    // ...and a friendly nut fired straight through them passes clean
+    PK.nuts.push({pal:true, x:pink[0].x, y:pink[0].y, vx:40, vy:0, life:2, dmg:9});
+    const nutHp=pink[0].hp;
+
+    // the other direction: six charmed bodies piled on a friend for two seconds
+    const pal={k:"cat", tier:1, x:PK.x, y:PK.y, hp:30, hpMax:30, contactT:0, palBurnT:0,
+               invulnT:0, kx:0, ky:0};
+    for(const e of pink){ e.x=PK.x; e.y=PK.y; }
+    PK.pals.push(pal);
+    pkBuildEnGrid(PK.WW,PK.WH);
+    for(let i=0;i<120;i++){ pkBuildEnGrid(PK.WW,PK.WH); pkPalDamage(1/60,PK.WW,PK.WH); }
+    const palHp=pal.hp;
+
+    // ...and the SAME pal against ordinary enemies still gets hurt, so this is not a dead loop
+    for(const e of pink){ e.love=false; e.loveTgt=null; }
+    pal.hp=30; pal.contactT=0; pal.invulnT=0;
+    for(let i=0;i<120;i++){ pkBuildEnGrid(PK.WW,PK.WH); pkPalDamage(1/60,PK.WW,PK.WH); }
+    const palHurt=pal.hp;
+
+    // ...and every targeting door finds them again the moment they are foes
+    for(const e of pink){ e.x=(PK.x+60)%PK.WW; e.y=PK.y; e.hunting=true; }
+    pkBuildEnGrid(PK.WW,PK.WH);
+    const back={near:!!pkNearestEnemy(PK.x,PK.y,400), hunt:!!pkNearestHuntingEnemy(PK.x,PK.y,400),
+                ape:!!pkApeBestTarget(PK.x,PK.y,400)};
+
+    PK.pals.length=0; PK.en.length=0; PK.nuts.length=0;
+    return {pred, picked, smashed, nut:{before:nutHp, after:pink[0].hp}, palHp, palHurt, back};
+  });
+  console.log('FF     ', JSON.stringify(ff));
+  ck(ff.pred.pink===false && ff.pred.plain===true && ff.pred.nul===false,
+     'pkPalFoe does not read charmed/plain/null correctly: '+JSON.stringify(ff.pred));
+  ck(ff.picked.near===false,   'a friend still picks a charmed enemy as its nearest target');
+  ck(ff.picked.hunt===false,   'the pack still picks a charmed enemy as its shared target');
+  ck(ff.picked.ape===false,    'the ape still aims his smash at the charmed crowd');
+  ck(ff.picked.cat===false,    'the cat still cuts a line through the charmed crew');
+  ck(ff.picked.laser===false,  'the laser squirrel still takes a firing line on an ally');
+  ck(ff.picked.cluster===0,    'charmed allies still count as a crowd worth hitting: '+ff.picked.cluster);
+  ck(ff.smashed===false,       'the ape smash took health off the charmed crew');
+  ck(ff.nut.after===ff.nut.before, 'a friendly nut hurt an ally');
+  ck(ff.palHp===30,            'the charmed crew ground a friend down on contact: '+ff.palHp);
+  ck(ff.palHurt<30,            'the contact loop hurts nobody at all now, charmed or not: '+ff.palHurt);
+  ck(ff.back.near===true && ff.back.hunt===true && ff.back.ape===true,
+     'the friends can no longer find an ORDINARY enemy either: '+JSON.stringify(ff.back));
+
   console.log('ERRORS:', errs.length?errs:'none');
   ck(errs.length===0, 'page errors: '+errs.join(';'));
   console.log(fails.length?('FAILS:\n - '+fails.join('\n - ')):'ALL LOVE CHECKS PASS');
   await b.close();
+  /* A suite that prints its failures and exits 0 is a suite the battery reads as green. It has
+     always been the odd one out; every other harness here exits 1. */
+  if(fails.length) process.exit(1);
 })();

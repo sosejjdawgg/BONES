@@ -669,6 +669,11 @@ const S = {
   /* THE WINDOW TAKES DAMAGE NOW. Three hits from the ball and it goes: one crack, two, then the
      glass is out of it. A broken window is a hole into the room at night, and things come in. */
   winCracks:0, winBroken:false, vampire:false,
+  /* ...but cracked glass MENDS. Seconds since the last impact: ten of them and the pane starts
+     knitting, ten more and it is clear again. So three hits is still what takes the window out —
+     it just has to be three hits inside the same twenty-second window, which turns "the window
+     broke at some point this week" into a thing you can actually see yourself doing. */
+  winHealT:0,
   /* ...AND THE ANSWER TO IT, which is a set of shutters. tier 1 blinds cut the shaft; tier 2
      blackout lining seals the frame well enough that a broken pane stops being an invitation.
      These live on S, so snapshot() (which serialises S whole) already saves them. */
@@ -1217,13 +1222,65 @@ function xpLevelTap(){
     });
   }
 }
-const EVO={active:false,t:0,from:1,to:1,label:"",lines:"",after:null};
+const EVO={active:false,t:0,from:1,to:1,label:"",lines:"",after:null,swaps:[],end:3.9};
+/* ==================== THE EVOLUTION ====================
+   It used to be 3.9 seconds of the room flickering while the dog changed size somewhere behind
+   the furniture, and the honest complaint about it was that you could not tell it had happened.
+   This is the Pokemon shape instead, because that shape has been solving exactly this problem
+   since 1996: STOP THE WORLD, take the character out of its scene, put it side-on against
+   nothing at all, and let the silhouette flick between the two forms faster and faster until it
+   cannot hold — then blow the screen out and show what he became.
+   Six beats, each with its own length so the pacing can be tuned without touching the drawing:
+     hush   the room drains away and he turns side-on
+     rays   the light starts turning behind him
+     morph  THE ALTERNATION. Small, large, small, large — accelerating, one ping per swap
+     burst  it gives; the screen goes white and the rays fly off it
+     reveal the white recedes and the new dog is standing there
+     cheer  the banner, the confetti, and him bouncing on the spot
+   REDUCED MOTION GETS ITS OWN COLUMN, not a scaled-down one. The alternation is a strobe, and a
+   strobe is the single thing that setting exists to turn off — so it becomes one slow dissolve
+   between the two forms with no flashing at all, and the whole thing runs shorter. */
+const EVO_PH=[["hush",1.3,0.9],["rays",1.3,0.8],["morph",4.8,2.2],
+              ["burst",0.6,0.5],["reveal",1.7,1.4],["cheer",2.0,1.7]];
+function evoLen(i){ return EVO_PH[i][SETTINGS.reduceMotion?2:1]; }
+function evoTotal(){ let s=0; for(let i=0;i<EVO_PH.length;i++) s+=evoLen(i); return s; }
+function evoAt(tt){
+  let s=0;
+  for(let i=0;i<EVO_PH.length;i++){
+    const L=evoLen(i);
+    if(tt<s+L) return {ph:EVO_PH[i][0], k:clamp((tt-s)/L,0,1)};
+    s+=L;
+  }
+  return {ph:"cheer", k:1};
+}
+/* WHEN IT SWAPS. Generated once at the start rather than derived per frame, because the DRAW and
+   the AUDIO both have to agree on it exactly — a ping landing between two flips is the one thing
+   that would make the acceleration read as noise. Geometric, floored at 75ms. */
+function evoSwaps(){
+  const out=[];
+  if(SETTINGS.reduceMotion) return out;         // a dissolve has no swaps to ping
+  const start=evoLen(0)+evoLen(1), len=evoLen(2);
+  let tt=start, gap=0.42;
+  while(tt<start+len-0.04){ out.push(tt); tt+=gap; gap=Math.max(0.075,gap*0.86); }
+  return out;
+}
 function startEvo(label,from,to,lines,after){
   EVO.active=true; EVO.t=0; EVO.from=from; EVO.to=to; EVO.label=label; EVO.lines=lines;
   EVO.after=after||null;
+  EVO.swaps=evoSwaps();
+  EVO.end=evoTotal();
   hidePortrait(); closeStatus();
-  for(let i=0;i<8;i++) setTimeout(()=>beep(300+i*90,.06,"square",.05), i*280);
-  setTimeout(()=>{ beep(660,.12); setTimeout(()=>beep(880,.14),110); setTimeout(()=>beep(1320,.2),230); },2400);
+  const L0=evoLen(0), L1=evoLen(1), mS=L0+L1, bS=mS+evoLen(2), rS=bS+evoLen(3);
+  beep(220,.5,"sine",.05);                                     // the room falling away
+  setTimeout(()=>beep(150,.6,"triangle",.05), L0*450);
+  for(let i=0;i<4;i++) setTimeout(()=>beep(330+i*110,.09,"square",.045), (L0+i*L1/4)*1000);
+  EVO.swaps.forEach((st,i)=>setTimeout(()=>beep(520+Math.min(i,34)*46,.045,"square",.038,{prio:0}), st*1000));
+  setTimeout(()=>{ beep(1900,.07,"square",.06); beep(120,.4,"sawtooth",.05); haptic([60,40,120]); }, bS*1000);
+  setTimeout(()=>{ beep(659,.12,"sine",.06);
+                   setTimeout(()=>beep(880,.12,"sine",.055),130);
+                   setTimeout(()=>beep(1175,.14,"sine",.05),260);
+                   setTimeout(()=>beep(1568,.34,"sine",.05),390); }, rS*1000);
+  haptic([30,60,30,60,140]);
 }
 function NAME(){ return (S.dogName||"BONES")+(S.gen>1?[" II"," III"," IV"," V"," VI"][Math.min(S.gen-2,4)]:""); }
 function DN(s){ return (S.dogName && S.dogName!=="BONES") ? String(s).replace(/BONES/g,S.dogName) : s; }
@@ -2651,6 +2708,29 @@ function winStrokeSkippingHole(ctx,rim,vertical,coord,from,to){
   seg(from, Math.min(to, sp[0]));
   seg(Math.max(from, sp[1]), to);
 }
+const WIN_HEAL_DELAY=10;          // quiet seconds before the glass starts to knit
+const WIN_HEAL_TIME=10;           // ...and how long the knitting itself takes
+/* 0 while it is simply cracked, ramping to 1 as it mends. The draw reads this and nothing else,
+   so the healing is one number rather than a second set of crack state to keep in step. */
+function winHealFrac(){
+  if(S.winBroken || !(S.winCracks>0)) return 0;
+  return clamp(((S.winHealT||0)-WIN_HEAL_DELAY)/WIN_HEAL_TIME,0,1);
+}
+function winHealTick(dt){
+  if(S.winBroken || !(S.winCracks>0)) return;
+  const was=S.winHealT||0;
+  S.winHealT=was+dt;
+  if(was<WIN_HEAL_DELAY && S.winHealT>=WIN_HEAL_DELAY){
+    beep(1500,.05,"sine",.025,{prio:0});     // the moment it starts to close, quietly
+  }
+  if(S.winHealT>=WIN_HEAL_DELAY+WIN_HEAL_TIME){
+    S.winCracks=0; S.winHealT=0;
+    beep(1200,.06,"sine",.035); setTimeout(()=>beep(1800,.09,"sine",.03),90);
+    toast("THE GLASS CLOSED OVER. GOOD AS NEW.");
+    dogLog("THE CRACKS HEALED");
+    if(typeof devRefresh==="function") devRefresh();
+  }
+}
 function winDrawDamage(ctx,winX,winY,winW,winH){
   const n=S.winBroken?0:(S.winCracks||0);
   if(S.winBroken){
@@ -2722,10 +2802,20 @@ function winDrawDamage(ctx,winX,winY,winW,winH){
   if(n<=0) return;
   ctx.save();
   ctx.beginPath(); ctx.rect(winX+1,winY+1,winW-2,winH-2); ctx.clip();
+  /* MENDING. The lines thin and fade rather than vanishing a crack at a time: a pane closing
+     over is one continuous thing, and popping a whole fracture out of existence read as a
+     glitch. A slow glint travels the remaining lines so it is clearly repair and not just the
+     draw giving up. */
+  const heal=winHealFrac();
+  const fade=1-heal;
+  if(heal>0){
+    ctx.globalAlpha=fade;
+    ctx.shadowColor="rgba(200,240,255,"+(0.5*Math.min(1,heal*2))+")"; ctx.shadowBlur=4;
+  }
   for(const L of winCrackLines(97+n*7, n)){
     for(const pass of [0,1]){
       ctx.strokeStyle = pass ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.55)";
-      ctx.lineWidth = pass ? 1.2 : 2.4;
+      ctx.lineWidth = (pass ? 1.2 : 2.4)*(0.35+0.65*fade);
       ctx.beginPath();
       ctx.moveTo(winX+L[0]*winW, winY+L[1]*winH);
       ctx.lineTo(winX+L[2]*winW, winY+L[3]*winH);
@@ -3847,7 +3937,7 @@ function callBones(){
 function camBehavior(dt){
   if(EVO.active){
     EVO.t+=dt;
-    if(EVO.t>=3.9){
+    if(EVO.t>=(EVO.end||3.9)){
       EVO.active=false; LVLFX=1.0;
       const af=EVO.after; EVO.after=null;
       if(EVO.lines) openChoice("BONES IS NOW "+EVO.label+"!", EVO.lines, "CONTINUE", null);
@@ -4004,6 +4094,7 @@ function camBehavior(dt){
   if(FETCH.showLand>0) FETCH.showLand=Math.max(0,FETCH.showLand-dt);
   if(MARKPOP.t>0) MARKPOP.t=Math.max(0,MARKPOP.t-dt);
   if(WINFX.shards.length) winShardTick(dt);
+  winHealTick(dt);
   if(MARK.showT>0) MARK.showT=Math.max(0,MARK.showT-dt);
   // the fly
   FLY.next-=dt;
@@ -5358,6 +5449,7 @@ function winTakeHit(){
   if(S.winBroken || TRICK.hitWin) return;
   TRICK.hitWin=true;
   S.winCracks=(S.winCracks||0)+1;
+  S.winHealT=0;                    // any impact restarts the delay: three inside one window breaks it
   haptic(30);
   if(S.winCracks>=3){
     S.winBroken=true; S.winCracks=3;
@@ -5465,7 +5557,7 @@ function openWindowRepair(){
            : "IT IS HOLDING, BUT NOT FOR LONG.")+"<br><br>GET IT GLAZED?",
     "RE-GLAZE IT \u2014 $"+WIN_FIX_COST, ()=>{
       if(S.money<WIN_FIX_COST){ toast("NOT ENOUGH MONEY FOR THE GLAZIER.",1); beep(160,.12); return; }
-      S.money-=WIN_FIX_COST; S.winCracks=0; S.winBroken=false; WINFX.shards.length=0;
+      S.money-=WIN_FIX_COST; S.winCracks=0; S.winBroken=false; S.winHealT=0; WINFX.shards.length=0;
       renderMeters(); renderShop&&renderShop();
       toast("NEW GLASS. THE ROOM IS SHUT AGAIN.");
       beep(700,.07); setTimeout(()=>beep(950,.09),90);
@@ -6470,7 +6562,8 @@ function drawCam(t){
                CAM.state==="zoomies"||CAM.state==="drinkgo"||CAM.state==="eatgo"||
                CAM.state==="beggo"||CAM.state==="treatgo");
   const dirReady = DOGDIRIMG.E && DOGDIRIMG.E.complete && DOGDIRIMG.E.naturalWidth;
-  const useDir = WALKY && CAM.moving && dirReady;
+  // the ceremony draws him itself, side-on and against nothing — see THE EVOLUTION
+  const useDir = WALKY && CAM.moving && dirReady && !EVO.active;
   /* dhF means "how tall is the DOG". For the old frames that was the whole sprite, so each pose
      needed its own number. The new sets carry `body`, so one number covers every pose and a lying
      dog is short and a rearing one tall because the ART says so, not because a constant does. */
@@ -6509,7 +6602,7 @@ function drawCam(t){
     dogDirDraw(ctx,w,h,CAM.x,CAM.z,CAM.oct|0,CAM.walkPh|0);
     const D=DOGDIR[DOGDIR_MAP[((CAM.oct|0)%8+8)%8].k];
     CAMDWF = D.w*(dogBodyF()/D.body*h)/w;
-  } else if(img.complete && img.naturalWidth){
+  } else if(!EVO.active && img.complete && img.naturalWidth){
     dw = dh*img.naturalWidth/img.naturalHeight;
     CAMDWF = dw/w;
     const bob = stt==="walk" ? Math.sin(t*10)*1.5 : 0;
@@ -6640,15 +6733,6 @@ function drawCam(t){
   } else if(ctx.canvas.style.transform){
     ctx.canvas.style.transform="";
   }
-  if(EVO.active){
-    const et=EVO.t-1.0;
-    let fl=0, cap="...WAIT, SOMETHING IS HAPPENING...";
-    if(et<0){ fl=0.10+0.08*Math.sin(EVO.t*4); }
-    else { cap=DN("WHAT? BONES IS CHANGING!"); fl = et<2.4 ? (Math.sin(et*18)>0.55?0.45:0) : Math.max(0,0.9*(1-(et-2.4)/0.5)); }
-    if(fl>0){ ctx.fillStyle="rgba(255,255,255,"+fl+")"; ctx.fillRect(0,0,w,h); }
-    ctx.fillStyle="#fff"; ctx.font="9px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText(cap, w/2, h*0.16); ctx.textAlign="left";
-  }
   // XP bar (crystal style): pulses near level-up
   if(S.pup.owned){
     const pk2 = PUP.st==="walk"||PUP.st==="go" ? "walk" : (PUP.st==="drink"||PUP.st==="eat") ? "sniff" : "idle";
@@ -6737,12 +6821,217 @@ function drawCam(t){
     ctx.fillStyle="#fff"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
     ctx.fillText("SCRUB! CLEAN "+Math.round(S.clean)+"%", w/2, h*0.14); ctx.textAlign="left";
   }
+  drawEvoSeq(ctx,w,h,t);        // last of the canvas: it owns the whole screen while it runs
   drawBurst(ctx,w,h,t);
   drawParty(ctx,w,h,t);
   drawSlingPrompt(ctx,w,h,t);
   drawFetchHud(ctx,w,h);
   $("#camstate").textContent = BURY.on ? "BURYING" : S.sick ? "SICK" : S.fun<30 ? "BORED" : {happy:"HAPPY",content:"OK",sad:"NEGLECTED",confused:"CONFUSED"}[portraitState()];
   $("#camstate").classList.toggle("sick", S.sick);
+}
+
+/* ==================== THE EVOLUTION, DRAWN ====================
+   Everything below owns the whole canvas for the length of EVO. It reads EVO.t and nothing else
+   — no state of its own is advanced here, so the sequence looks identical whether the frame rate
+   is 60 or 20, and the swap the audio pinged is exactly the swap that is on screen. */
+const EVOSIL={};
+/* A white cut-out of one walk frame, made once. source-in over the decoded sprite is the whole
+   trick: no per-pixel loop, no filter support to depend on, and the alpha edge of the pixel art
+   comes through exactly as drawn. */
+function evoSil(f){
+  if(EVOSIL[f]!==undefined) return EVOSIL[f];
+  const a=(typeof DOGDIR!=="undefined")?DOGDIR.E:null, img=DOGDIRIMG.E;
+  if(!a||!img||!img.complete||!img.naturalWidth) return null;   // not decoded yet: ask again next frame
+  const c=document.createElement("canvas");
+  c.width=a.w; c.height=a.h;
+  const x=c.getContext("2d");
+  x.imageSmoothingEnabled=false;
+  x.drawImage(img, f*a.w,0,a.w,a.h, 0,0,a.w,a.h);
+  x.globalCompositeOperation="source-in";
+  x.fillStyle="#fff"; x.fillRect(0,0,a.w,a.h);
+  EVOSIL[f]=c;
+  return c;
+}
+/* SIDE-ON, ALWAYS. The east walk sheet is the only art in the game that shows his whole profile,
+   which is exactly what an evolution silhouette needs — the front-facing room poses read as a
+   blob the moment they lose their colour. Sized by `body` and hung off `foot`, the same two
+   numbers the room uses, so he stands on the line rather than near it. */
+function evoDog(ctx,cx,base,bodyPx,frame,sil,alpha){
+  const a=(typeof DOGDIR!=="undefined")?DOGDIR.E:null, img=DOGDIRIMG.E;
+  if(!a||!img||!img.complete||!img.naturalWidth) return;
+  const sc=bodyPx/a.body, dw=a.w*sc, dh=a.h*sc;
+  const f=((frame|0)%a.n+a.n)%a.n;
+  ctx.save();
+  ctx.imageSmoothingEnabled=false;
+  ctx.globalAlpha=clamp(alpha,0,1);
+  if(sil){
+    const c=evoSil(f);
+    if(c) ctx.drawImage(c, cx-dw/2, base-a.foot*sc, dw, dh);
+  } else {
+    ctx.drawImage(img, f*a.w,0,a.w,a.h, cx-dw/2, base-a.foot*sc, dw, dh);
+  }
+  ctx.restore();
+}
+function evoRays(ctx,cx,cy,rot,n,alpha,len){
+  if(alpha<=0.004||len<=0) return;
+  ctx.save();
+  ctx.globalAlpha=alpha; ctx.fillStyle="#fff";
+  ctx.translate(cx,cy); ctx.rotate(rot);
+  const half=Math.PI/n*0.40;
+  for(let i=0;i<n;i++){
+    const a0=i*2*Math.PI/n;
+    ctx.beginPath(); ctx.moveTo(0,0);
+    ctx.lineTo(Math.cos(a0-half)*len, Math.sin(a0-half)*len);
+    ctx.lineTo(Math.cos(a0+half)*len, Math.sin(a0+half)*len);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+// a deterministic scatter — no particle array to keep, so the draw stays a pure function of EVO.t
+function evoHash(i,sd){ const r=Math.sin(i*12.9898+sd*78.233)*43758.5453; return r-Math.floor(r); }
+function evoCaption(ctx,w,y,txt,px,alpha,col){
+  ctx.save();
+  ctx.globalAlpha=clamp(alpha,0,1);
+  ctx.font=px+"px 'Press Start 2P',monospace"; ctx.textAlign="center";
+  ctx.fillStyle="#000";
+  for(const d of [[-2,0],[2,0],[0,-2],[0,2]]) ctx.fillText(txt, w/2+d[0], y+d[1]);
+  ctx.fillStyle=col||"#fff";
+  ctx.fillText(txt, w/2, y);
+  ctx.restore();
+  ctx.textAlign="left";
+}
+function drawEvoSeq(ctx,w,h,t){
+  if(!EVO.active) return;
+  const RM=SETTINGS.reduceMotion;
+  const P=evoAt(EVO.t);
+  const cx=w/2, base=h*0.76, cy=base-h*0.15;
+  const bodyTo=h*0.34, bodyFrom=bodyTo*(EVO.to>0?EVO.from/EVO.to:0.6);
+
+  /* THE CURTAIN. It closes over the room rather than cutting to black, because the one thing
+     that has to land is that the room is being taken AWAY from him. */
+  const cur = P.ph==="hush" ? Math.min(1,P.k*P.k*1.25) : 1;
+  ctx.save();
+  // opaque, not nearly-opaque: at 0.97 the window frame and the bed still ghosted through, and a
+  // room you can still faintly see is a room that has not been taken away
+  ctx.fillStyle="rgba(3,3,9,"+cur+")";
+  ctx.fillRect(0,0,w,h);
+
+  // which form is on screen, and how bright the change is burning
+  let sil=false, body=bodyFrom, glow=0, flash=0, dogA=1, frame=0;
+  const rayRot = EVO.t*(RM?0.16:0.55);
+  let rayA=0, rayLen=0, rayN=RM?10:14;
+  const diag=Math.hypot(w,h);
+
+  if(P.ph==="hush"){
+    body=bodyFrom; dogA=0.35+0.65*P.k;
+  } else if(P.ph==="rays"){
+    rayA=0.10*P.k; rayLen=diag*0.30*(0.4+0.6*P.k);
+    glow=0.20*P.k;
+  } else if(P.ph==="morph"){
+    rayA=0.10+0.15*P.k; rayLen=diag*(0.30+0.35*P.k);
+    glow=0.20+0.55*P.k;
+    if(RM){
+      /* NO STROBE. One dissolve: the small form fades out as the large one fades in, drawn as
+         ordinary art rather than a cut-out, so nothing on screen flickers at all. */
+      const kk=clamp((P.k-0.15)/0.7,0,1);
+      evoRays(ctx,cx,cy,rayRot,rayN,rayA,rayLen);
+      // the same still light the other beats get, so he is not a dark shape on a dark screen
+      const gr=ctx.createRadialGradient(cx, base-bodyTo*0.45, bodyTo*0.08, cx, base-bodyTo*0.45, bodyTo*1.55);
+      gr.addColorStop(0,"rgba(255,246,214,0.26)");
+      gr.addColorStop(0.55,"rgba(255,246,214,0.09)");
+      gr.addColorStop(1,"rgba(255,246,214,0)");
+      ctx.save(); ctx.fillStyle=gr; ctx.fillRect(0,0,w,h); ctx.restore();
+      evoDog(ctx,cx,base+bodyFrom*0.03,bodyFrom*1.06,0,true,0.34*(1-kk));
+      evoDog(ctx,cx,base,bodyFrom,0,false,1-kk);
+      evoDog(ctx,cx,base+bodyTo*0.03,bodyTo*1.06,0,true,0.34*kk);
+      evoDog(ctx,cx,base,bodyTo,0,false,kk);
+      ctx.restore();
+      evoCaption(ctx,w,h*0.17,DN("BONES IS EVOLVING!"),10,1,"#fff");
+      return;
+    }
+    let n=0, last=-9;
+    for(let i=0;i<EVO.swaps.length;i++){ if(EVO.swaps[i]<=EVO.t){ n++; last=EVO.swaps[i]; } else break; }
+    sil=true;
+    body = (n%2) ? bodyTo : bodyFrom;
+    // each flip throws a short white pop, and the pops grow as the flips get closer together
+    flash = Math.max(0, 0.34-(EVO.t-last)*3.4)*(0.4+0.6*P.k);
+  } else if(P.ph==="burst"){
+    sil=true; body=bodyTo;
+    rayA=0.55*(1-P.k); rayLen=diag*(0.65+2.2*P.k);
+    glow=1; flash=Math.min(1,P.k*2.4);
+    dogA=1-P.k*0.6;
+  } else if(P.ph==="reveal"){
+    body=bodyTo;
+    rayA=0.16*(1-P.k); rayLen=diag*0.8;
+    glow=0.75*(1-P.k);
+    flash=Math.max(0,1-P.k*2.2);
+  } else {                                  // cheer
+    body=bodyTo;
+    rayA=0.07; rayLen=diag*0.55;
+    glow=0.22;
+    frame=RM?0:Math.floor(EVO.t*12);        // trotting on the spot, delighted
+  }
+
+  evoRays(ctx,cx,cy,rayRot,rayN,rayA,rayLen);
+
+  // the ground he is standing on: one soft ellipse, so he is not floating in the void
+  if(glow>0.01){
+    ctx.save();
+    ctx.globalAlpha=Math.min(0.55,glow*0.5);
+    ctx.fillStyle="#fff";
+    ctx.beginPath(); ctx.ellipse(cx, base, body*0.9, body*0.13, 0,0,7); ctx.fill();
+    ctx.restore();
+  }
+
+  // the hop, and only in the cheer — everything before it he holds perfectly still
+  const hop = P.ph==="cheer" && !RM ? Math.abs(Math.sin(EVO.t*7))*h*0.035 : 0;
+  /* A LIGHT BEHIND HIM, AND AN EDGE AROUND HIM. He is a black labrador standing on a black
+     screen: drawn plain he is a dog-shaped hole, which was fine for the silhouette beats and
+     useless for every other one. A warm radial behind him lifts the ground he is on, and an
+     oversized white cut-out under the real art gives him the rim the pixel work does not have. */
+  if(!sil){
+    const gA = P.ph==="hush" ? 0.06+0.16*P.k : (0.22+0.20*Math.min(1,glow));
+    const g=ctx.createRadialGradient(cx, base-body*0.45, body*0.08, cx, base-body*0.45, body*1.55);
+    g.addColorStop(0,"rgba(255,246,214,"+gA+")");
+    g.addColorStop(0.55,"rgba(255,246,214,"+(gA*0.35)+")");
+    g.addColorStop(1,"rgba(255,246,214,0)");
+    ctx.save(); ctx.fillStyle=g; ctx.fillRect(0,0,w,h); ctx.restore();
+    evoDog(ctx,cx,base-hop+body*0.03,body*1.06,frame,true,0.34*dogA);
+    evoDog(ctx,cx,base-hop,body,frame,false,dogA);
+  } else {
+    evoDog(ctx,cx,base-hop,body,frame,true,dogA);
+  }
+
+  // reduced motion keeps the blowout as a soft wash rather than a full white screen
+  if(RM) flash=Math.min(flash,0.5);
+  if(flash>0.004){ ctx.fillStyle="rgba(255,255,255,"+Math.min(1,flash)+")"; ctx.fillRect(0,0,w,h); }
+  ctx.restore();
+
+  /* THE WORDS. Two beats before the change and two after it, so the sequence reads as a sentence
+     rather than one caption sitting there for eleven seconds. */
+  if(P.ph==="hush"){
+    if(P.k>0.30) evoCaption(ctx,w,h*0.17,DN("WHAT?"),12,Math.min(1,(P.k-0.30)*6),"#fff");
+  } else if(P.ph==="rays"||P.ph==="morph"){
+    evoCaption(ctx,w,h*0.17,DN("BONES IS EVOLVING!"),10,1,"#fff");
+  } else if(P.ph==="reveal"||P.ph==="cheer"){
+    const a=P.ph==="reveal"?clamp((P.k-0.25)/0.35,0,1):1;
+    evoCaption(ctx,w,h*0.15,DN("BONES IS NOW"),9,a,"#fff");
+    evoCaption(ctx,w,h*0.24,EVO.label+"!",13,a,"#e8c14a");
+  }
+
+  // confetti, over the banner and only once he has actually arrived
+  if(P.ph==="cheer" && !RM){
+    ctx.save();
+    for(let i=0;i<44;i++){
+      const x=evoHash(i,1)*w;
+      const y=((evoHash(i,2)+P.k*(0.5+evoHash(i,3)*0.6))%1)*h;
+      const sz=2+Math.floor(evoHash(i,4)*3);
+      ctx.globalAlpha=0.85;
+      ctx.fillStyle = evoHash(i,5)<0.4 ? "#fff" : (evoHash(i,5)<0.75 ? "#e8c14a" : "#ff6ba8");
+      ctx.fillRect(x, y, sz, sz);
+    }
+    ctx.restore();
+  }
 }
 
 /* ---------- home actions ---------- */
@@ -8345,7 +8634,9 @@ $("#devPoo").onclick=()=>{ if(POOS.length<3){ POOS.push({x:clamp(SPOT.bed.x+(Mat
    back, and one helper that every new button goes through. */
 function devRefresh(){
   const el=$("#devStatus"); if(!el) return;
-  const win = S.winBroken ? "SMASHED" : ((S.winCracks||0)+"/3");
+  const win = S.winBroken ? "SMASHED"
+    : ((S.winCracks||0)+"/3"+((S.winCracks||0)>0 ? (winHealFrac()>0 ? " MEND "+Math.round(winHealFrac()*100)+"%"
+                                                                   : " "+Math.max(0,Math.ceil(WIN_HEAL_DELAY-(S.winHealT||0)))+"s") : ""));
   const hh  = String(Math.floor(CLK.h)).padStart(2,"0");
   el.textContent = "WIN "+win+" · VAMP "+(S.vampire?"ON":"OFF")
                  + " · DAY "+CLK.day+" "+hh+":00"
@@ -8376,7 +8667,7 @@ $("#devWinSmash").onclick=()=>{
   devRefresh();
 };
 $("#devWinFix").onclick=()=>{
-  S.winCracks=0; S.winBroken=false; WINFX.shards.length=0;
+  S.winCracks=0; S.winBroken=false; S.winHealT=0; WINFX.shards.length=0;
   devPop("NEW GLASS. THE ROOM IS SHUT AGAIN. (DEV)");
 };
 /* THE BAT, ON DEMAND. Normally this needs a broken pane AND a 1-in-10 roll AND the night to be
@@ -8899,8 +9190,14 @@ function loop(now){
   const ff = atWorkNow();
   WORK_FF = ff ? WORK_CLOCK_FF : 1;
   NEED_FF = ff ? WORK_NEED_FF : 1;
-  tickStats(dt);
-  attrTick(dt);
+  /* THE WORLD STOPS FOR AN EVOLUTION. camBehavior has always frozen the dog and the ball, but
+     everything else carried on underneath it — needs draining, the puppy trotting about, the
+     robot, treats rotting — so the ceremony played over a room that was still living its life.
+     Nothing ticks now until he is finished changing. */
+  if(!EVO.active){
+    tickStats(dt);
+    attrTick(dt);
+  }
   syncMusicMuffle();   // a panel over a live run muffles it the same frame — see MUFFLE
   if(BURY.on){ pkBuryUpdate(dt); pkDrawBury(); }   // its own screen — see THE BURIAL
   if(bossOn()){ pkBossUpdate(dt); pkDrawBoss(); }  // ...and so is WOLFIE
@@ -8916,10 +9213,15 @@ function loop(now){
       SLEEP.pending=false; triggerBedtime();
     }
     // at work the dogcam runs on fast-forward, so BONES visibly races through his routine
-    if(!R.active && !PK.active){ camBehavior(dt*WORK_FF); pupTick(dt*WORK_FF); tickTreats(dt*WORK_FF); }
-    mystTick(dt);
-    if(CAM.workBlockT > 0) CAM.workBlockT = Math.max(0, CAM.workBlockT - dt);
-    robotTick(dt);
+    if(!R.active && !PK.active){
+      camBehavior(dt*WORK_FF);              // ...which owns the EVO clock itself, so it always runs
+      if(!EVO.active){ pupTick(dt*WORK_FF); tickTreats(dt*WORK_FF); }
+    }
+    if(!EVO.active){
+      mystTick(dt);
+      if(CAM.workBlockT > 0) CAM.workBlockT = Math.max(0, CAM.workBlockT - dt);
+      robotTick(dt);
+    }
     if(MODE==="park" && PK.active){
       parkUpdate(dt); parkDraw(t); PARK_HDR=true; syncParkHeader();
     }
@@ -9207,7 +9509,22 @@ const PK_QUESTS=[
   {id:"burning", n:"THE FOREST IS BURNING", d:"THE GROVE AT FULL BLAZE",   xp:500},
   {id:"golden",  n:"GOLDEN BOY",         d:"CATCH THE GOLDEN BIRD",        xp:500}
 ];
-function pkQuestReset(){ PK.quest={done:{}, order:[], birds:0}; pkQuestRender(); }
+/* open/pin/peek: `open` is what is on screen, `pin` is the player's own last choice, and `peek`
+   is a few seconds a completed objective borrows to fold the list out by itself. The list starts
+   folded — it is a menu now — but the header carries a live n/6 so it is never silent. */
+function pkQuestReset(){ PK.quest={done:{}, order:[], birds:0, open:false, pin:false, peek:0}; pkQuestRender(); }
+const QUEST_PEEK=5;               // seconds a completion holds the list open
+function pkQuestDoneCount(){ let n=0; for(const q of PK_QUESTS) if(pkQuestIs(q.id)) n++; return n; }
+function pkQuestAllDone(){ return pkQuestDoneCount()>=PK_QUESTS.length; }
+function pkQuestToggle(){
+  if(!PK.quest) return;
+  PK.quest.open=!PK.quest.open;
+  PK.quest.pin=PK.quest.open;      // an explicit tap is what a finished peek falls back to
+  PK.quest.peek=0;
+  beep(PK.quest.open?760:520,.05,"square",.035,{prio:0});
+  haptic(12);
+  pkQuestRender();
+}
 function pkQuestIs(id){ return !!(PK.quest && PK.quest.done[id]); }
 function pkQuestData(id){ for(const q of PK_QUESTS) if(q.id===id) return q; return null; }
 // what the finished ones are worth. Read at bank time and at death, never banked as it goes.
@@ -9226,6 +9543,8 @@ function pkQuestHit(id){
   setTimeout(()=>beep(1350,.12,"square",.045,{key:"questc"}),190);
   haptic([25,40,55]);
   dogLog("SIDE OBJECTIVE — "+q.n);
+  // fold it out on its own for a beat: a strike-through nobody sees is not a reward
+  PK.quest.open=true; PK.quest.peek=QUEST_PEEK;
   pkQuestRender();
   return true;
 }
@@ -9233,8 +9552,12 @@ function pkQuestHit(id){
    maxed, the grove is at its cap - and there is no single line of code where they become true,
    so they are polled once a frame instead of being wired into six different call sites that would
    each have to remember. Cheap: two array walks over at most a handful of things. */
-function pkQuestTick(){
+function pkQuestTick(dt){
   if(!PK.active || !PK.quest) return;
+  if(PK.quest.peek>0){
+    PK.quest.peek-=(dt||0);
+    if(PK.quest.peek<=0){ PK.quest.peek=0; PK.quest.open=!!PK.quest.pin; pkQuestRender(); }
+  }
   if(!pkQuestIs("crew")){
     let all=true;
     for(const k of ["sq","bird","cat","ape"]) if(pkPalTier(k)<(PAL_MAXTIER[k]||4)){ all=false; break; }
@@ -9249,7 +9572,14 @@ function pkQuestRender(){
   const el=$("#pkQuests"); if(!el) return;
   if(!PK.active || !PK.quest){ el.classList.add("hidden"); el.innerHTML=""; return; }
   el.classList.remove("hidden");
-  let h='<div class="qh">SIDE OBJECTIVES</div>';
+  const done_n=pkQuestDoneCount(), all=pkQuestAllDone(), open=!!PK.quest.open;
+  /* IT FOLDS UPWARD, so the LIST is written before the HEADER. The block is anchored by its
+     bottom edge just above END RUN; with the header first, six rows unfolding pushed straight
+     down through that button. Written this way the header never moves and the rows stack into
+     the empty pad above it. */
+  let h="";
+  if(open){
+  h+='<div class="qlist">';
   for(const q of PK_QUESTS){
     const done=pkQuestIs(q.id);
     // the count rides on the row that has one, so "clear 100 birds" is a progress bar in words
@@ -9259,7 +9589,15 @@ function pkQuestRender(){
     h+='<div class="qrow'+(done?' done':'')+'"><span>'+(done?'✓ ':'□ ')+q.n+prog+'</span>'+
        '<span class="qx">'+q.xp+'</span></div>';
   }
+  h+='</div>';
+  }
+  h+='<button type="button" class="qh"><span class="qarw">'+(open?"\u25b4":"\u25b8")+'</span>'+
+     'SIDE OBJECTIVES <span class="qcount">'+done_n+'/'+PK_QUESTS.length+'</span>'+
+     '<span class="qbox'+(all?' all':'')+'">'+(all?"\u2713":"&nbsp;")+'</span></button>';
   el.innerHTML=h;
+  // the header is rebuilt with the list, so the handler is re-bound here rather than once at boot
+  const hb=el.querySelector(".qh");
+  if(hb) hb.onclick=(ev)=>{ ev.stopPropagation(); ev.preventDefault(); pkQuestToggle(); };
 }
 
 // Dogpark-only relic pool — same lore/names as the Home Shop charms, but tuned to the verbs
@@ -13521,7 +13859,7 @@ function pkDownEnemy(e,ux,uy,o){
 // how many other live enemies are within r of this one — used to find the densest knot to land on
 function pkClusterScore(e,r){
   let n=0;
-  pkEnemiesNear(e.x,e.y,r,o=>{ if(o!==e && !o.fleeing) n++; });
+  pkEnemiesNear(e.x,e.y,r,o=>{ if(o!==e && pkPalFoe(o)) n++; });
   return n;
 }
 // The ape always aims for the middle of the biggest knot of enemies near BONES, not just whichever
@@ -13538,7 +13876,7 @@ function pkApeBestTarget(x,y,maxR){
   const bs=Math.hypot(PK.vx,PK.vy);
   const hx = bs>1 ? -PK.vx/bs : 0, hy = bs>1 ? -PK.vy/bs : 0;
   pkEnemiesNear(x,y,maxR,e=>{
-    if(e.fleeing) return;
+    if(!pkPalFoe(e)) return;
     const d=Math.hypot(wd(e.x-x,PK.WW),wd(e.y-y,PK.WH));
     if(d>maxR) return;
     let score=pkClusterScore(e,PAL_APE_SMASH_R);
@@ -13566,7 +13904,7 @@ function pkApePalSmash(p,WW,WH){
   }
   let hit=0;
   pkEnemiesNear(p.x,p.y,SMR,e=>{
-    if(e.fleeing) return;
+    if(!pkPalFoe(e)) return;
     const dx=wd(e.x-p.x,WW), dy=wd(e.y-p.y,WH), d=Math.hypot(dx,dy)||1;
     if(d>SMR) return;
     const ux=dx/d, uy=dy/d;
@@ -13590,6 +13928,14 @@ function pkApePalSmash(p,WW,WH){
   setTimeout(()=>beep(140,.18,"square",.06,{prio:1, key:"apesmash2"}),45);
   if(hit>0) setTimeout(()=>beep(300,.1,"square",.045,{prio:1, key:"apesmash3"}),90);
 }
+/* NOTHING ON YOUR SIDE HURTS ANYTHING ELSE ON YOUR SIDE. Lovey Dovey turns part of the horde
+   pink, and since love outlives the mode they stay on your side for the rest of the wave — but
+   the friends went on treating them as ordinary targets: the pack shot them, the cat cut them,
+   the ape smashed them, the birds dived them, and their bodies ground the friends down on
+   contact. One predicate, asked everywhere a friend picks a target or lands a hit, and at the
+   one place an enemy body damages a friend. Charmed is charmed: fleeing is still not a target
+   either, which is what this used to say on its own. */
+function pkPalFoe(e){ return !!e && !e.fleeing && !e.love; }
 function pkPalHit(e,dmg,ux,uy){
   if(e.fleeing) return;
   e.hp-=dmg;
@@ -13705,7 +14051,7 @@ function pkRecycleStragglers(dt,WW,WH){
 function pkNearestEnemy(x,y,maxR){
   let best=null, bd=maxR;
   pkEnemiesNear(x,y,maxR,e=>{
-    if(e.fleeing) return;
+    if(!pkPalFoe(e)) return;
     const d=Math.hypot(wd(e.x-x,PK.WW),wd(e.y-y,PK.WH));
     if(d<bd){ bd=d; best=e; }
   });
@@ -13716,7 +14062,7 @@ function pkNearestEnemy(x,y,maxR){
 function pkNearestHuntingEnemy(x,y,maxR){
   let best=null, bd=maxR;
   pkEnemiesNear(x,y,maxR,e=>{
-    if(e.fleeing || !e.hunting) return;
+    if(!pkPalFoe(e) || !e.hunting) return;
     const d=Math.hypot(wd(e.x-x,PK.WW),wd(e.y-y,PK.WH));
     if(d<bd){ bd=d; best=e; }
   });
@@ -13733,7 +14079,7 @@ function pkPalLaserAim(p){
   let best=null, bd=1e9;
   const range=pkLaserRange();
   pkEnemiesNear(p.x,p.y,range,e=>{
-    if(e.fleeing) return;
+    if(!pkPalFoe(e)) return;
     const dx=wd(e.x-p.x,PK.WW), dy=wd(e.y-p.y,PK.WH), d=Math.hypot(dx,dy);
     if(d>range) return;
     const a=Math.atan2(dy,dx);
@@ -13750,7 +14096,7 @@ function pkPalLaserAim(p){
 function pkCatCutTarget(p, stx, sty, seek){
   let best=null, bestScore=-1, bestD=Infinity, scored=0;
   pkEnemiesNear(p.x,p.y,seek,e=>{
-    if(e.fleeing || scored>=PAL_CAT_SCORE_MAX) return;
+    if(!pkPalFoe(e) || scored>=PAL_CAT_SCORE_MAX) return;
     const d=Math.hypot(wd(e.x-p.x,PK.WW),wd(e.y-p.y,PK.WH));
     if(d>seek) return;
     // only what lies toward the station, so he never wheels round to cut behind himself
@@ -13816,7 +14162,7 @@ function pkPalsUpdate(dt,WW,WH){
         } else if(bd.state==="dive"){
           bd.alt=Math.max(0,bd.alt-PAL_BIRD_ALT*dt/0.22);
           const tg=bd.tgt;
-          if(!tg || tg.fleeing || tg.hp<=0){ bd.state="climb"; bd.tgt=null; }   // target died mid-dive
+          if(!pkPalFoe(tg) || tg.hp<=0){ bd.state="climb"; bd.tgt=null; }   // died, or turned pink, mid-dive
           else if(bd.alt<=2){
             const dx=wd(tg.x-bd.x,WW), dy=wd(tg.y-bd.y,WH), d=Math.hypot(dx,dy)||1;
             pkPalHit(tg,pkBirdDmg(p.tier),dx/d,dy/d);
@@ -13938,7 +14284,7 @@ function pkPalsUpdate(dt,WW,WH){
           u.beamLen=len;
           if(blk.tree && len>=blk.dist-0.01) pkIgniteTree(blk.tree);
           pkEnemiesNear(u.x,u.y,len+20,e=>{
-            if(e.fleeing) return;
+            if(!pkPalFoe(e)) return;
             const dx=wd(e.x-u.x,WW), dy=wd(e.y-u.y,WH);
             const al=dx*ux+dy*uy, pe=Math.abs(dx*uy-dy*ux);
             if(al>6 && al<len && pe<MADSQ_WIDTH){
@@ -13980,7 +14326,7 @@ function pkPalsUpdate(dt,WW,WH){
         const len=Math.hypot(p.sdx,p.sdy)||1;
         const ux=p.sdx/len, uy=p.sdy/len;
         pkEnemiesNear(p.x,p.y,PAL_CAT_CUT_W+16,e=>{
-          if(e.fleeing || p.cut>=p.cutMax || p.hitSet.has(e)) return;
+          if(!pkPalFoe(e) || p.cut>=p.cutMax || p.hitSet.has(e)) return;
           const dx=wd(e.x-p.x,WW), dy=wd(e.y-p.y,WH);
           const perp=Math.abs(dx*uy-dy*ux), along=dx*ux+dy*uy;
           if(perp<PAL_CAT_CUT_W && along>-12 && along<22){
@@ -14144,13 +14490,13 @@ function pkPalDamage(dt,WW,WH){
   const beams=[];
   for(let i=0;i<PK.en.length;i++){
     const e=PK.en[i];
-    if(e.madsq && !e.fleeing && e.laserState==="sweep") beams.push(e);
+    if(e.madsq && pkPalFoe(e) && e.laserState==="sweep") beams.push(e);
   }
   // one body's worth of contact + beam damage, whether it belongs to a lone pal or a pack unit
   const hurtBody=(b,isApe)=>{
     let touching=false;
     pkEnemiesNear(b.x,b.y,14,e=>{
-      if(touching || e.fleeing) return;
+      if(touching || !pkPalFoe(e)) return;
       const dx=wd(e.x-b.x,WW), dy=wd(e.y-b.y,WH), d=Math.hypot(dx,dy)||1;
       if(d<14){
         touching=true;
@@ -15336,7 +15682,7 @@ function pkBossSpawner(kind){
            fans out of a hand instead of condensing out of the ceiling. */
         const rainSide=pawRainSide(), Q=BOSS.paw[rainSide];
         const mz=pawMuzzle(Q, BOSS_PAW_R*0.42);
-        if(mz.x>0 && mz.x<B.w && mz.y>0 && mz.y<B.h) return;   // ...same gate as pawFire
+        if(pawInBox(mz.x+B.x, mz.y+B.y)) return;               // ...same gate as pawFire
         const ox=mz.x, oy=mz.y, spd=118*fast*BOSS_SPD;
         for(let i=0;i<this.cols;i++){
           if(i>=gap0 && i<=gap0+1+wide) continue;
@@ -15662,15 +16008,26 @@ const PAW_MOVE_SPD=70;    // above this it is travelling, so the mark comes back
    regular paw" that was asked for. */
 const PAW_SWISH_SPD=380;
 const BOSS_PAW_SETTLE=0.62;   // how long the burst pose is held before it settles onto the wall
+/* ONE ANSWER TO "IS IT IN THE CAGE", asked by all four places that need it.
+   THE TOLERANCE WAS R*0.55, and that was a hole: a paw within fourteen pixels of any edge was
+   left alone even when it was INSIDE the box. It was cut to two pixels, and two pixels was the
+   SAME hole one order of magnitude smaller - because pawClampOut exempted a paw 2px inside the
+   lip while pawMuzzle, testing strictly, still called it inside and walked the muzzle back along
+   the shot to find air. On a box 259.8 tall, a paw drifting through y=259 was left there by the
+   clamp and then fired a bone from 77px away - about one bone in four thousand frames, which the
+   audit caught and three consecutive green runs did not. Two functions holding two definitions of
+   the same word is exactly what a shared predicate is for.
+   Exact, not tolerant: pawGrip returns EXACTLY B.x (or B.x+B.w) and pawSeek eases toward it
+   without ever overshooting, so a paw holding its bar sits ON the line rather than inside it and
+   is still untouched - which is the one pose this exemption ever existed to protect. */
+function pawInBox(x,y){
+  const B=BOSS.box;
+  return x>B.x && x<B.x+B.w && y>B.y && y<B.y+B.h;
+}
 function pawClampOut(q){
-  const B=BOSS.box, d=2;
+  const B=BOSS.box;
   if(!B.w) return;
-  /* THE TOLERANCE WAS R*0.55, and that was a hole. A paw within fourteen pixels of any edge was
-     left alone even when it was INSIDE the box - so a hand hugging the inside of the right wall
-     at the top of an orbit transit was legal, and the muzzle had to be walked forty-odd pixels
-     back out of the cage to find air. Two pixels: a paw on its own wall sits at exactly B.x and
-     is untouched, and anything actually in the box is put out of it. */
-  if(q.x<=B.x+d || q.x>=B.x+B.w-d || q.y<=B.y+d || q.y>=B.y+B.h-d) return;
+  if(!pawInBox(q.x,q.y)) return;
   const m=BOSS_PAW_CLEAR;
   const dl=q.x-B.x, dr=B.x+B.w-q.x, dt=q.y-B.y, db=B.y+B.h-q.y;
   const mn=Math.min(dl,dr,dt,db);
@@ -15690,7 +16047,7 @@ function pawMuzzle(q,off){
   const B=BOSS.box;
   const c=Math.cos(q.ang), sn=Math.sin(q.ang);
   let x=q.x-B.x+c*off, y=q.y-B.y+sn*off;
-  const inside=()=>x>0 && x<B.w && y>0 && y<B.h;
+  const inside=()=>pawInBox(x+B.x, y+B.y);   // the same word, the same answer — see pawInBox
   if(inside()){
     const step=Math.max(6, off);
     for(let i=0;i<48 && inside();i++){ x-=c*step; y-=sn*step; }
@@ -16136,7 +16493,7 @@ function pawFire(side){
      this should be unreachable - which is exactly why it is here rather than a comment. The rule
      "no projectile is born on the board" is worth one branch at the one place bones are born,
      instead of a chain of reasoning about stations and clamps that has to stay true forever. */
-  if(mz.x>0 && mz.x<B.w && mz.y>0 && mz.y<B.h) return;
+  if(pawInBox(mz.x+B.x, mz.y+B.y)) return;
   bossAdd({ x:mz.x, y:mz.y, vx:c*spd, vy:sn*spd,
             r:BOSS_BULLET_R, k:"bone", spin:Math.random()*6.283, vr:8, fromPaw:side });
   Q.glow=1; Q.sx=0.88; Q.sy=1.12; Q.fireT=0.45;
@@ -17774,7 +18131,7 @@ function parkUpdate(dt){
   // health total across frames rather than by touching all nine.
   if(PK.hp<PK.hpSeen){ PK.hurtT=HURT_TIME; PK.shake=Math.max(PK.shake||0,0.22); }
   PK.hpSeen=PK.hp;
-  pkQuestTick();          // the objectives that are STATES rather than events, asked once a frame
+  pkQuestTick(dt);        // the objectives that are STATES rather than events, asked once a frame
   // A panel or a cutscene stops the world dead — and a stopped world has nothing left to land
   // him with, so a leap in progress would hang at whatever altitude it had reached and brick the
   // ability for the rest of the run (pkLeap refuses while PK.jump is set). Put him down first,
@@ -18693,7 +19050,7 @@ function parkUpdate(dt){
       const sp=Math.hypot(n.vx,n.vy)||1;
       let spent=false;
       for(const e of PK.en){
-        if(e.fleeing) continue;
+        if(!pkPalFoe(e)) continue;
         if(Math.hypot(wd(e.x-n.x,WW),wd(e.y-n.y,WH))<13){
           pkPalHit(e,n.dmg||PAL_NUT_DMG,n.vx/sp,n.vy/sp);
           spent=true; break;

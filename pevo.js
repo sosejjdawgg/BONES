@@ -55,22 +55,42 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
   ck(t1.tree===false, 'the skill tree is up over the flicker');
   ck(t1.lvl===10, 'the level was not conferred: '+t1.lvl);
 
-  /* ...and it plays for its full length. A flicker that is over in half a second is "sequenced"
-     without being "given ample time", which is the other half of what was asked for. */
+  /* ...and it plays for its full length. In v0.351a "its full length" stopped being 3.9 seconds
+     of flicker and became the six-beat Pokemon sequence, so this no longer counts a bare minimum
+     of frames - it rides the whole thing out and pins that every beat was reached in order and
+     that the world was genuinely stopped underneath it. The old ">=1.5s of something" assertion
+     would still pass on a sequence that skipped straight from hush to cheer. */
   const held = await pg.evaluate(async()=>{
     const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
-    let frames=0;
-    for(let i=0;i<26;i++){ await sleep(100); if(EVO.active) frames++; else break; }
-    return {frames, t:+EVO.t.toFixed(2)};
+    const hunger0=S.hunger, day0=CLK.day+CLK.h;
+    let frames=0; const seen=[]; let lastPh=''; let froze=true;
+    for(let i=0;i<150;i++){
+      await sleep(100);
+      if(!EVO.active) break;
+      frames++;
+      // sampled INSIDE the window: read after the loop and the ceremony has already ended, so
+      // up to a frame of ordinary ticking has run and the test measures its own timing
+      if(S.hunger!==hunger0 || (CLK.day+CLK.h)!==day0) froze=false;
+      const ph=evoAt(EVO.t).ph;
+      if(ph!==lastPh){ seen.push(ph); lastPh=ph; }
+    }
+    return {frames, t:+EVO.t.toFixed(2), end:+EVO.end.toFixed(2), seen, froze};
   });
   console.log('HELD  ', JSON.stringify(held));
-  ck(held.frames>=15, 'the flicker was over after only ~'+(held.frames*100)+'ms');
+  ck(held.frames>=55, 'the sequence was over after only ~'+(held.frames*100)+'ms');
+  ck(held.t>=held.end-0.6, 'it ended early at t='+held.t+' of '+held.end);
+  // every beat, in order, and none of them skipped
+  ck(JSON.stringify(held.seen)===JSON.stringify(['hush','rays','morph','burst','reveal','cheer']),
+     'the sequence did not pass through its six beats in order: '+JSON.stringify(held.seen));
+  // THE WORLD STOPS. Needs draining or the clock ticking under the ceremony is the whole
+  // complaint the sequence was written to answer.
+  ck(held.froze===true, 'the room kept running underneath the evolution');
 
   /* ...and the panel arrives AFTER it, not with it. Generous, because EVO.t is advanced by the
      frame's own dt and runs a little behind the wall clock - the question here is ORDER, and a
      harness that measures order with a stopwatch set to the exact expected duration is measuring
      its own patience instead. */
-  await pg.waitForTimeout(2600);
+  await pg.waitForTimeout(1400);
   const t2 = await snap();
   console.log('PANEL ', JSON.stringify(t2));
   ck(t2.evo===false, 'the flicker never ended');
@@ -168,7 +188,7 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
     PARTY.on=false; XPANIM.danceOwed=false; S.lvl=25;
     fireStageCeremony(25);
     const a={evo:EVO.active};
-    await sleep(4900);
+    await sleep(EVO.end*1000+1800);        // the sequence is eleven seconds long now, not four
     a.panel=document.getElementById('evoPanel').classList.contains('show');
     a.party=PARTY.on;
     document.getElementById('evoPanel').classList.remove('show');
