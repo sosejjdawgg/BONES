@@ -22,6 +22,19 @@ case "${1:-all}" in
   smoke) SUITES="$SMOKE" ;;
   *)     SUITES=$(echo "$ALL" | tr ' ' '\n' | grep -- "$1" | tr '\n' ' ') ;;
 esac
+# THE BUILD MUST BE THE SOURCE. The one way this layout can hurt us is silently: edit
+# src/src.js, forget to rebuild, and the battery then passes against the PREVIOUS build
+# while reporting on code that is not what is in src/. Or the reverse - someone edits the
+# built HTML and the next build wipes it without a word. Both are caught here, by rebuilding
+# to a temp file and comparing, before a single suite runs. It costs under a second.
+FRESH=$(mktemp); trap 'rm -f "$FRESH"' EXIT
+cat src/head.html src/assets.js src/src.js src/tail.html > "$FRESH"
+if ! cmp -s "$FRESH" bones-latest.html; then
+  echo "STALE BUILD: bones-latest.html is not what src/ builds."
+  echo "  run ./build.sh <version> first — the tests would otherwise pass against old code."
+  exit 2
+fi
+
 mkdir -p .out
 T0=$(date +%s); FAIL=0; N=0
 for t in $SUITES; do

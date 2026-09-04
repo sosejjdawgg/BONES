@@ -20,7 +20,17 @@ p*.js             the harnesses. The ones in SUITES are the battery; the rest ar
 bones-latest.html the current build — this is the file to upload to itch and to send to the phone
 ```
 
-**Edit `src/src.js`, then `./build.sh <version>`.** Do not edit the built HTML: it is overwritten.
+**Edit `src/src.js`, then `./build.sh <version>`.** Do not edit the built HTML: it is overwritten,
+and `./test.sh` will refuse to run if it has drifted from `src/`.
+
+### The loop, every session
+
+1. `./test.sh smoke` — confirm the tree is green before touching anything
+2. edit `src/src.js`
+3. `./build.sh 0.351a`
+4. `./test.sh smoke` while iterating, `./test.sh all` before shipping
+5. update `HANDOFF.md`, commit, push
+6. send `bones-latest.html` to the user — that is the file for itch.io
 
 ## Why it is split, with the numbers
 
@@ -48,6 +58,11 @@ about thirteen minutes to **249s**.
 
 Suites point at `bones-latest.html`, so a version bump no longer means editing a filename in
 thirty-six files.
+
+`test.sh` **refuses to run against a stale build.** It rebuilds to a temp file and compares before
+any suite starts. This is the one way the split can hurt: edit `src/src.js`, forget `./build.sh`,
+and the battery passes against the *previous* build while reporting on code that is not in `src/`.
+A green run that means nothing is worse than a red one. Costs under a second.
 
 ## Things that were measured, so they do not get re-litigated
 
