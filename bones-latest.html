@@ -722,7 +722,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.351a</span>
+          <span id="devToggle">v0.352a</span>
         </div>
       </div>
 
@@ -16148,6 +16148,25 @@ const BOSS_MAW_HEAD=0.30, BOSS_MAW_DROP=0.16, BOSS_MAW_CLEAR=60;
    throw would just hang in the air), keeps the SHAPES exactly as they were and only gives the
    player time to see them. */
 const BOSS_SPD=0.75;
+/* SLOWER, AND IT WINDS UP TO IT. Two separate things, asked for together.
+   FIFTEEN PERCENT off the top speed of every bone he throws — the numbers at each spawn site are
+   now the CEILING rather than the muzzle velocity.
+   AND AN ACCELERATION under it: a bone leaves the mark at a little over half its top speed and
+   climbs to it across most of a second, so what you read as it comes out of the pentagram is the
+   shape of the volley rather than a wall arriving at once. It also buys back most of what the
+   15% costs on the far side of the board, which is why "ensure enough projection" is not a
+   contradiction: the bones are gentler where they are born and no slower where they land.
+   THE CEILING ITSELF CLIMBS with the fight, so phase one never sees full speed and phase three
+   always does — the escalation is in the projectiles now, not only in the fire rate. Applied at
+   bossAdd rather than at the fifteen places that push a bone, for the usual reason. */
+const BOSS_BONE_SLOW=0.85;
+const BOSS_BONE_PH=[0,0.80,0.90,1.00];        // indexed by phase; [0] unused
+const BOSS_BONE_ACC0=0.55;                    // ...the fraction it is born at
+const BOSS_BONE_ACC_T=0.85;                   // ...and how long it takes to reach the ceiling
+function bossBoneCap(){ return BOSS_BONE_SLOW*BOSS_BONE_PH[Math.min(3,Math.max(1,BOSS.phase))]; }
+// which kinds this governs: the BONES. Mouthfuls fly on an arc whose landing point is the whole
+// point of them, birds are a wall with a lane in it, and the swipe is the warm-up's own tempo.
+function bossBoneAcc(k){ return k==="bone"||k==="ringbone"||k==="bar"; }
 
 /* ---------- THE FIVE BEATS -------------------------------------------------------------------
    The fight is BUILT as seven spawners but it is READ as five commands - the five a dog already
@@ -16207,7 +16226,26 @@ const BOSS_AGGRO=1.25;
 const PAWIMG={};
 for(const k in PAWSRC){ const im=new Image(); im.src=PAWSRC[k]; PAWIMG[k]=im; }
 function pawReady(k){ const im=PAWIMG[k]; return im && im.complete && im.naturalWidth>0; }
-const BOSS_PAW_SLAM   = 1.15;   // intro slam: the drop, the impact, and the beat holding the bars
+/* THE HANDS, BEFORE THERE IS A FIGHT. Four beats, and not one of them throws anything — the
+   whole point is that you watch him get ready.
+     the scream   fists up either side of his head, clenched, held for the length of the roar
+     open         they spring open, empty. Nothing on the palms yet.
+     mark         the pentagrams burn up through the fur. Still nothing thrown.
+     drop         and then they come down on the bars, which is what starts phase one.
+   It used to be "they burst up out of the floor and grab the cage", over in a second, and it
+   told you nothing. This is the same information spread across three, and the middle beat — open
+   palms with the marks lighting — is the only moment in the fight where the thing that does all
+   the damage stands still and shows you what it is. */
+const PAWSLAM_OPEN=0.80, PAWSLAM_MARK=1.35, PAWSLAM_DROP=0.30, PAWSLAM_RING=0.55;
+const PAWSLAM_HELD=0.45;   // ...the fraction of the opening beat they stay CLENCHED for
+const BOSS_PAW_SLAM   = PAWSLAM_OPEN+PAWSLAM_MARK+PAWSLAM_DROP+PAWSLAM_RING;
+const BOSS_FIST_AT    = BOSS_ROAR_A-0.22;   // the hands are up before the mouth opens
+/* MEASURED AT FULL PUSH-IN, not at rest. The fists are drawn inside the roar's zoom so they scale
+   with the face they belong to — which is the point of hanging them off BOSS.headX at all — and at
+   1.62x a spread that looks right on the un-zoomed head puts both hands off the sides of a phone.
+   78 lands them on his cheeks at the top of the push-in and just outside the ruff before it. */
+const BOSS_FIST_SPREAD= 78;                 // ...how far either side of the head they hang
+const BOSS_FIST_DROP  = 34;                 // ...and how far below its middle, at the jaw
 const BOSS_PAW_CYCLE  = 10;     // one paw cycle; each one that passes winds the fire rate up
 const BOSS_PAW_R      = 22*BOSS_SCALE;
 const BOSS_PENTA_R    = 7*BOSS_SCALE;
@@ -16247,7 +16285,8 @@ const BOSS={
   active:false, name:"WOLFIE",
   hp:BOSS_MAXHP, maxhp:BOSS_MAXHP,
   phase:1, t:0,
-  ph:"intro",                      // intro | telegraph | pattern | breath | outro
+  ph:"intro",                      // intro | telegraph | pattern | breath | cool | outro
+  coolT:0, coolOwed:false,
   telegraph:null, telegraphT:0, patternT:0, patternLen:0, breathT:0,
   invulnT:0, cleanRun:true, shake:0, flash:0, headCell:"front", shakeCell:0,
   segments:{ rift:{pulse:0}, coil3:{ang:0}, coil2:{ang:0}, coil1:{ang:0}, neck:{ang:0}, head:{ang:0, jaw:0} },
@@ -16267,7 +16306,7 @@ const BOSS={
   stiff:0, coilBias:0, coilSquash:0,
   jawClack:0, jawKick:0, spit:0, eyeFlash:0, riftKick:0, walkRoar:0,
   snapT:0, snapN:0, chase:-1, ghostT:0,
-  edge:{l:0,r:0,t:0,b:0}, pocks:[], puff:[], lane:[], ghosts:[],
+  edge:{l:0,r:0,t:0,b:0}, pocks:[], puff:[], lane:[], ghosts:[], scratch:[], scratchT:0,
   // --- the paws. `mode` is 0.5 through the warm-up and then tracks BOSS.phase.
   paw:{
     slamT:0, slamDone:false, mode:0.5, cycle:0, t:0, fireT:0,
@@ -16302,11 +16341,13 @@ function pkBossReset(){
   BOSS.cageTickT=0; BOSS.cageTickN=0; BOSS.mawLean=0; BOSS.mawFlash=0;
   BOSS.cageX=null; BOSS.cageY=null; BOSS.seal=0;
   BOSS.beat=null; BOSS.headOv=null; BOSS.headOvT=0; BOSS.teleEdge="";
+  BOSS.coolT=0; BOSS.coolOwed=false;
   BOSS.stiff=0; BOSS.coilBias=0; BOSS.coilSquash=0;
   BOSS.jawClack=0; BOSS.jawKick=0; BOSS.spit=0; BOSS.eyeFlash=0; BOSS.riftKick=0; BOSS.walkRoar=0;
   BOSS.snapT=0; BOSS.snapN=0; BOSS.chase=-1; BOSS.ghostT=0;
   BOSS.edge.l=BOSS.edge.r=BOSS.edge.t=BOSS.edge.b=0;
   BOSS.pocks.length=0; BOSS.puff.length=0; BOSS.lane.length=0; BOSS.ghosts.length=0;
+  BOSS.scratch.length=0; BOSS.scratchT=0;
   pkPawReset();
   pkBossWorldTransform(0,0,0,0);
 }
@@ -16687,6 +16728,17 @@ function pkBossSway(dt){
    doing. Called before the sway, because the sway reads what it sets. */
 function bossHeadNow(){ return (BOSS.headOvT>0 && BOSS.headOv) ? BOSS.headOv : BOSS.headCell; }
 function bossHeadSet(cell,t){ BOSS.headOv=cell; BOSS.headOvT=t; }
+/* WHAT THE CLAWS LEAVE. Four short rakes laid across the floor of the board wherever a paw has
+   dragged, fading out over a second and a half. They are decoration and nothing else — no
+   collision, no state anything reads — but they are what turns "a shape crossed the screen" into
+   "something scratched its way across the cell", which is the whole difference the brief asks for.
+   Board-local, drawn inside the cage's clip with the pock marks. */
+const SCRATCH_MAX=30, SCRATCH_LIFE=1.5, SCRATCH_EVERY=0.055;
+function bossScratchAdd(x,y,dir){
+  if(BOSS.scratch.length>=SCRATCH_MAX) BOSS.scratch.shift();
+  BOSS.scratch.push({x, y, dir:dir<0?-1:1, life:SCRATCH_LIFE, max:SCRATCH_LIFE,
+                     sp:(Math.random()-0.5)*8, len:18+Math.random()*14, w:4.2+Math.random()*2.2});
+}
 function bossPock(x,y,r){
   if(BOSS.pocks.length>28) BOSS.pocks.shift();
   BOSS.pocks.push({x, y, r:r||3+Math.random()*3, life:1.6+Math.random()*0.6, max:2.2});
@@ -16754,6 +16806,7 @@ function pkBossFlair(dt){
   else BOSS.chase=-1;
 
   for(let i=BOSS.pocks.length-1;i>=0;i--) if((BOSS.pocks[i].life-=dt)<=0) BOSS.pocks.splice(i,1);
+  for(let i=BOSS.scratch.length-1;i>=0;i--) if((BOSS.scratch[i].life-=dt)<=0) BOSS.scratch.splice(i,1);
   for(let i=BOSS.lane.length-1;i>=0;i--)  if((BOSS.lane[i].t-=dt)<=0)     BOSS.lane.splice(i,1);
   for(let i=BOSS.puff.length-1;i>=0;i--){
     const p=BOSS.puff[i];
@@ -16794,6 +16847,13 @@ function pkBossGhost(dt,spine){
    blits them. Everything below is the budget that keeps it that way. */
 const BOSS_CLAW_MAX=40;        // hard ceiling on birds alive; a safety net, not the usual limiter
 const BOSS_CLAW_GAP=0.22;      // ...and a slightly longer wait between volleys (was 0.16)
+/* THE WALL. Six abreast, and the step is the load-bearing number: the dog collides with a bird at
+   BOSS_BULLET_R+BOSS_DOG_R, so a gap under twice that cannot be squeezed through. At a 260-tall
+   board 0.075 is 19.5px against a 22.6px diameter — sealed, with room to spare for a bigger box.
+   The wall is 0.375 of the height, so it shuts off well under half the cell and the way past it is
+   always open; the point is that you have to LEAVE, not that you have to thread it. */
+const BOSS_CLAW_WALL_N=6, BOSS_CLAW_WALL_STEP=0.075;
+const BOSS_CLAW_WALL_GAP=0.85; // a wall a beat, not a scatter every fifth of a second
 const BOSS_TRAIL_MAX=90;       // embers alive across the whole fight
 const BOSS_CLAW_EMB=0.11;      // one ember per bird per ~7 frames, so each carries 2-4 at a time
 const BIRDFIRE={fr:null, S:34*BOSS_SCALE};
@@ -16882,6 +16942,12 @@ function bossAdd(b){
   }
   // never spawn over the ceiling: a bird that cannot be drawn cheaply should not exist
   if(b.k==="claw" && bossClawCount()>=BOSS_CLAW_MAX) return;
+  // ...and the speed it was pushed at becomes the speed it is aiming for — see BOSS_BONE_SLOW
+  if(bossBoneAcc(b.k)){
+    const cap=bossBoneCap();
+    b.tvx=b.vx*cap; b.tvy=b.vy*cap; b.accT=0;
+    b.vx=b.tvx*BOSS_BONE_ACC0; b.vy=b.tvy*BOSS_BONE_ACC0;
+  }
   // ...and the same for the gun: a burst that cannot be drawn cheaply should not exist
   if(b.k==="maw" && !b.heavy && bossKindCount("maw")>=BOSS_MAW_MAX) return;
   BOSS.bullets.push(b);
@@ -16890,6 +16956,11 @@ function bossAdd(b){
    crunch is the same recipe an octave down, longer, and with a wide grit band under it. beep()
    coalesces near-identical chirps by timbre and pitch bucket, so each tick is handed its own key
    or the build would fall silent after the first two. */
+/* HE GETS HIS BREATH BACK. A phase change used to be one flash and a louder fight; there was
+   nowhere in it to notice you had survived a third of him. Three seconds where nothing is thrown
+   and the marks go out — taken at the END of the beat he was in, never mid-pattern, so a spawner
+   is never cut off with bullets half-fed. */
+const BOSS_PHASE_COOL=3.0;
 const BOSS_CAGE_TICK=0.085;
 function bossCrunch(big,n){
   if(!SETTINGS.sound) return;
@@ -16984,32 +17055,46 @@ function pkBossSpawner(kind){
         beep(320,.04,"square",.03);
       }};
   }
+  /* A WALL, NOT A COMB. The birds used to be five lanes spread across the whole height with a hole
+     cut wherever the safe band happened to be, and each one WAVED on its own sine — so what
+     crossed the board was five independent wobbling dots and the "safe" gap opened and closed
+     under them. Nothing about it read as a formation.
+     They fly DEAD STRAIGHT now, packed close enough that nothing fits between them, and the stack
+     seals off a slab of the cell while leaving the rest of it open. The gap between them is the
+     whole design: BOSS_CLAW_WALL_STEP*B.h has to be smaller than the dog's own collision diameter
+     against a bird, or the wall is a comb again and the player will find that out the hard way.
+     Fewer volleys, because each one is now a wall rather than a scatter — at the old cadence six
+     birds a beat would have run straight into BOSS_CLAW_MAX and the cap would have punched random
+     holes in it, which is worse than no wall at all. */
   if(kind==="sweepL"||kind==="sweepR"){
     const dir = kind==="sweepL" ? 1 : -1;                       // sweepL enters from the left
-    return {kind, t:0, gap:BOSS_CLAW_GAP/fast, next:0, life:4.6+Math.random()*2.2, band:0.18+Math.random()*0.5,
+    return {kind, t:0, gap:BOSS_CLAW_WALL_GAP/fast, next:0, life:4.6+Math.random()*2.2, band:0.18+Math.random()*0.5,
       tick(dt){
         this.t+=dt; this.next-=dt; if(this.next>0) return;
         this.next=this.gap;
-        // one clear horizontal band that wanders, so standing still never works twice
-        const safe=0.5+Math.sin(this.t*0.8)*0.28;
-        if(this.sparse){                               // one lane only, well clear of the rest
-          const fy=safe>0.5 ? 0.1 : 0.9;
+        /* SPARSE IS A SHORTER WALL, NOT A SINGLE BIRD — and this matters more than it looks,
+           because a sweep is ALWAYS in BOSS_FILL, so `sparse` is the branch that actually runs in
+           the shipped fight. A lone bird on a sine wave is precisely what the brief is replacing;
+           thinning the wall to four and waiting longer between them keeps the density decision
+           v0.347a measured while still putting a formation on the board. */
+        const wallN = this.sparse ? BOSS_CLAW_WALL_N-2 : BOSS_CLAW_WALL_N;
+        if(this.sparse) this.next=this.gap*1.5;
+        // where the sealed slab sits this volley: it marches, so the open lane keeps moving
+        const span=BOSS_CLAW_WALL_STEP*(wallN-1);
+        const top=0.07+(0.5+0.5*Math.sin(this.t*0.9))*(1-span-0.14);
+        for(let i=0;i<wallN;i++){
+          const fy=top+i*BOSS_CLAW_WALL_STEP;
+          /* `base` is the bird's own wingbeat offset, and it is the only job it has left: it used
+             to double as the centre line of a per-bird sine wave, and dropping the wave without
+             dropping this fed NaN into the frame index and killed the whole draw. */
           bossAdd({x: dir>0 ? -8 : B.w+8, y:B.h*fy, vx:150*fast*dir*BOSS_SPD, vy:0,
-                   r:BOSS_BULLET_R, k:"claw", swish:this.t, amp:B.h*0.06, base:B.h*fy, spin:0, vr:9*dir});
-          beep(430,.03,"sawtooth",.02);
-          this.next=this.gap*3;
-          return;
-        }
-        for(let i=0;i<5;i++){
-          const fy=0.1+i*0.2;
-          if(Math.abs(fy-safe)<0.16) continue;
-          bossAdd({x: dir>0 ? -8 : B.w+8, y:B.h*fy, vx:150*fast*dir*BOSS_SPD, vy:0, r:BOSS_BULLET_R, k:"claw",
-                   swish:this.t, amp:B.h*0.06, base:B.h*fy, spin:0, vr:9*dir});
+                   r:BOSS_BULLET_R, k:"claw", spin:0, vr:9*dir, base:i*3.1});
         }
         if(dir>0) BOSS.edge.l=Math.max(BOSS.edge.l,0.55);
         else      BOSS.edge.r=Math.max(BOSS.edge.r,0.55);
         BOSS.eyeFlash=Math.max(BOSS.eyeFlash,0.11);
         beep(430,.03,"sawtooth",.025);
+        setTimeout(()=>beep(360,.04,"sawtooth",.02),55);
       }};
   }
   if(kind==="ring"){
@@ -17176,11 +17261,12 @@ function pkPawReset(){
   P.warmT=0; P.warmSide="L"; P.warmShots=0; P.warmPh="wait"; P.warmT2=0;
   P.teleY=0; P.teleK=0; P.active="L"; P.kick=0; P.kickX=0; P.kickY=0; P.firstVolley=true;
   P.pound=null; P.poundNext="lock";
-  P.shotN=0;
+  P.shotN=0; P.slamStage=0; P.slamFrom=null;
   for(const k of ["L","R"]){
     const q=P[k];
     q.x=0; q.y=0; q.ang=k==="L"?0:Math.PI; q.lift=1; q.glow=0; q.slam=0; q.grip=1;
     q.sx=1; q.sy=1; q.live=0; q.spd=0; q.fireT=0; q.teleT=0;
+    q.fistT=0; q.faceDir=0;
   }
 }
 // where a paw waits between beats: on its own wall, palm turned in at the board
@@ -17191,6 +17277,11 @@ function pawGrip(side){
 function pawSwipeAlive(){
   for(const b of BOSS.bullets) if(b.k==="pawswipe") return true;
   return false;
+}
+// the one this side threw, so a paw can only ever ride its own
+function bossSwipeOf(side){
+  for(const b of BOSS.bullets) if(b.k==="pawswipe" && b.side===side) return b;
+  return null;
 }
 /* IS A BURY BEAT RUNNING. It matters to where the paw stands, not just to what it fires: the rain
    fan is aimed at the floor of the board, and at phase two the orbit swings the paw UNDER the box
@@ -17381,26 +17472,66 @@ function pkPawCommon(dt){
 function pkPawSlamTick(dt){
   const B=BOSS.box, P=BOSS.paw;
   P.slamT+=dt;
-  /* OUT OF THE GROUND, NOT OUT OF THE SKY. They used to drop from above the lid, which is where a
-     hand goes when it is being PUT somewhere - and the head has just come up through the floor, so
-     the hands following it up through the same floor is the only reading that makes them the same
-     animal. They burst up past the bottom lip wearing the spread pose, overshoot, and settle back
-     onto the walls. */
-  const t=P.slamT, low=B.y+B.h+130;
+  const t=P.slamT;
+  const from=P.slamFrom || {L:{x:B.x,y:B.y-150}, R:{x:B.x+B.w,y:B.y-150}};
+  const T_OPEN=PAWSLAM_OPEN, T_MARK=T_OPEN+PAWSLAM_MARK, T_DROP=T_MARK+PAWSLAM_DROP;
   for(const side of ["L","R"]){
-    const q=P[side], g=pawGrip(side);
-    q.ang=g.ang; q.x=g.x;
-    if(t<0.35){
-      // fast out of the floor and DECELERATING - it is thrown up, not lifted
-      const e=1-(1-t/0.35)*(1-t/0.35);
-      q.y=low+(g.y-24-low)*e; q.lift=1-e;
-    } else if(t<BOSS_PAW_SETTLE){
-      const e=(t-0.35)/(BOSS_PAW_SETTLE-0.35);
-      q.y=(g.y-24)+24*e; q.lift=0;         // ...the overshoot dropping back onto the wall
-    } else { q.y=g.y; q.lift=0; q.grip=1; }
+    const q=P[side], g=pawGrip(side), f=from[side];
+    q.spd=0;
+    if(t<T_OPEN){
+      /* THEY UNCLENCH. Held where the scream left them: a small lift as the fingers go, a hard
+         squash on the frame they let go, and no light on the palms at all yet. */
+      const k=t/T_OPEN;
+      q.x=f.x; q.y=f.y-12*Math.sin(k*Math.PI);
+      q.ang=side==="L"?0:Math.PI;
+      q.fistT = t<T_OPEN*PAWSLAM_HELD ? 1 : 0;
+      q.glow=0; q.teleT=0; q.lift=0;
+    } else if(t<T_MARK){
+      // THE MARK, burning up out of the palm across the whole beat, and nothing else happening.
+      const k=(t-T_OPEN)/PAWSLAM_MARK;
+      q.fistT=0;
+      q.teleT=Math.max(q.teleT,0.12);            // the pose picker reads this as "showing the mark"
+      q.glow=Math.min(1, 0.12+k*1.15);
+      q.x=f.x+(side==="L"?-1:1)*12*k;
+      q.y=f.y+26*k+Math.sin(BOSS.t*3.4+(side==="L"?0:1.7))*2.4;
+    } else if(t<T_DROP){
+      // ...AND DOWN. Eased IN rather than out: it accelerates the whole way into the bars.
+      const k=(t-T_MARK)/PAWSLAM_DROP, e=k*k;
+      q.fistT=0; q.teleT=0;
+      const sy=f.y+26;
+      q.x=f.x+(g.x-f.x)*e; q.y=sy+(g.y-sy)*e;
+      q.ang=g.ang; q.lift=1-e;
+    } else {
+      q.fistT=0; q.x=g.x; q.y=g.y; q.ang=g.ang; q.lift=0; q.grip=1;
+    }
     pawClampOut(q);
   }
-  if(!P.slamDone && t>=0.35){
+  /* ONE-SHOTS, staged rather than tested against a float every frame: each beat announces itself
+     exactly once however long the frame was. */
+  if(P.slamStage<1 && t>=T_OPEN*PAWSLAM_HELD){
+    P.slamStage=1;
+    for(const side of ["L","R"]){
+      const q=P[side];
+      q.sx=1.26; q.sy=0.80;
+      bossPuff(q.x-B.x, q.y-B.y, bossCalm()?4:11, false);
+    }
+    beep(300,.10,"square",.045,{key:"pawopen"});
+    setTimeout(()=>beep(420,.08,"square",.035,{key:"pawopen2"}),70);
+    haptic(20);
+  }
+  if(P.slamStage<2 && t>=T_OPEN){
+    P.slamStage=2;
+    // the charge under the suspense: five steps climbing across the whole of the mark beat
+    for(let i=0;i<5;i++)
+      setTimeout(()=>beep(120+i*72,.16,"sawtooth",.045,{key:"pawmark"+i}), i*(PAWSLAM_MARK*1000/5.4));
+    BOSS.eyeFlash=Math.max(BOSS.eyeFlash,0.24);
+  }
+  if(P.slamStage<3 && t>=T_MARK-0.16){
+    P.slamStage=3;
+    beep(760,.09,"square",.05,{key:"pawdropcue"});   // the breath before it comes down
+    haptic(16);
+  }
+  if(!P.slamDone && t>=T_DROP){
     P.slamDone=true;
     BOSS.shake=Math.max(BOSS.shake,0.85);
     BOSS.flash=Math.max(BOSS.flash,0.55);
@@ -17413,24 +17544,18 @@ function pkPawSlamTick(dt){
     BOSS.eyeFlash=Math.max(BOSS.eyeFlash,0.30);
     for(const side of ["L","R"]){
       const q=P[side];
-      /* SLAM, THEN GLOW, THEN PALM. The burst pose gets BOSS_PAW_SETTLE, then the blazing palm
-         gets teleT while the mark cools, and only then does it drop to the calm palm it holds for
-         the rest of the warm-up. Without the middle beat the hands went from erupting to resting
-         in one frame. */
-      q.slam=1; q.sx=1.24; q.sy=0.76; q.glow=1; q.teleT=1.5;
+      q.slam=1; q.sx=1.24; q.sy=0.76; q.glow=1;
       bossPuff(q.x-B.x, q.y-B.y, bossCalm()?7:18, false);
       if(!bossCalm()) bossFizz(q.x,q.y,13,Math.random()<0.5?"#ff5a2a":"#fff");
-      // the hole it came UP through: earth thrown upward off the bottom lip it burst past
-      bossPock(side==="L"?7:B.w-7, B.h-5, 8+Math.random()*6);
-      bossPuff(side==="L"?7:B.w-7, B.h-4, bossCalm()?6:16, true);
+      bossPock(side==="L"?7:B.w-7, B.h*0.45, 7+Math.random()*5);
     }
     BOSS.cageTickT=BOSS_CAGE_TICK; BOSS.cageTickN=0;
   }
-  // the bars still ringing: a low tick while he holds them, then the warm-up
+  // the bars still ringing under his hands, and then the warm-up
   if(P.slamDone && t<BOSS_PAW_SLAM){
     BOSS.cageTickT-=dt;
     if(BOSS.cageTickT<=0){ BOSS.cageTickT=0.20; bossCrunch(false,BOSS.cageTickN++); }
-    BOSS.shake=Math.max(BOSS.shake,0.15*(1-(t-0.35)/(BOSS_PAW_SLAM-0.35)));
+    BOSS.shake=Math.max(BOSS.shake,0.15*(1-(t-T_DROP)/PAWSLAM_RING));
   }
   if(t>=BOSS_PAW_SLAM){
     BOSS.ph="pawwarm"; P.mode=0.5;
@@ -17446,9 +17571,32 @@ function pkPawWarmTick(dt){
   P.warmT+=dt; P.warmT2+=dt;
   const alive=pawSwipeAlive();
   const spent = P.warmShots>=BOSS_WARM_MAX || P.warmT>=BOSS_WARM_DUR;
+  /* THE HAND GOES WITH IT. The swipe used to be a thing the paw threw and then stood still and
+     watched cross the board, which is why the sprite read as wrong: a claw mark travelling on its
+     own with a paw parked on the wall behind it. The paw now RIDES its own swipe — out, round at
+     the far side, and back — so what crosses the cell is the hand, and the streak sprite becomes
+     the swoosh trailing it rather than the whole attack. */
+  const ride = P.warmPh==="fly" ? bossSwipeOf(P.warmSide) : null;
 
   for(const side of ["L","R"]){
     const q=P[side], g=pawGrip(side);
+    if(ride && side===P.warmSide){
+      const px=B.x+ride.x, py=B.y+ride.y;
+      // measured, not assumed: the pose picker keys the streak off real travel
+      q.spd = dt>0 ? Math.hypot(px-q.x,py-q.y)/dt : 0;
+      q.x=px; q.y=py;
+      q.faceDir = ride.vx<0 ? -1 : 1;      // the claws turn round with it at the far wall
+      q.ang = ride.vx<0 ? Math.PI : 0;
+      q.glow=Math.max(q.glow,0.55); q.teleT=0;
+      // ...and it rakes the floor the whole way across
+      BOSS.scratchT-=dt;
+      if(BOSS.scratchT<=0){
+        BOSS.scratchT=SCRATCH_EVERY;
+        bossScratchAdd(ride.x, ride.y+(Math.random()-0.5)*6, ride.vx);
+      }
+      continue;                             // deliberately NO pawClampOut: it is meant to be in there
+    }
+    q.faceDir=0;
     let st=g;
     // the paw about to throw pulls off its wall toward the player: the wind-up, and the reason
     // the danger line below is believable
@@ -17875,7 +18023,15 @@ function pkBossFinishPattern(){
   BOSS.flash=Math.max(BOSS.flash,0.7);
   pkBossPhaseCheck();
   if(BOSS.hp<=0){ pkBossKill(); return; }
-  BOSS.ph="breath"; BOSS.breathT=0.5+Math.random()*0.2;
+  if(BOSS.coolOwed){
+    BOSS.coolOwed=false;
+    BOSS.ph="cool"; BOSS.coolT=BOSS_PHASE_COOL;
+    // a long descending exhale, and the pentagrams go out for the length of it
+    beep(150,.9,"sawtooth",.05,{key:"bosscool"});
+    setTimeout(()=>beep(96,1.0,"sawtooth",.04,{key:"bosscool2"}),420);
+    for(const k of ["L","R"]) BOSS.paw[k].glow=0;
+  }
+  else { BOSS.ph="breath"; BOSS.breathT=0.5+Math.random()*0.2; }
   // between beats he goes flat: no lean, no rigidity, no running light. Phase three's stare is
   // this same nothing, held on a body that is barely swaying - which is the point of it.
   BOSS.telegraph=null; BOSS.headCell="front"; BOSS.beat=null; BOSS.chase=-1;
@@ -18077,6 +18233,26 @@ function pkBossIntroTick(dt,w,h){
       BOSS.seal=Math.min(1, Math.max(BOSS.seal, (c-BOSS_CAGE_GROWN)/(1-BOSS_CAGE_GROWN)));
     }
   }
+  /* THE FISTS COME UP FOR THE SCREAM. Clenched, one either side of the head, and they stay there
+     for the whole roar — so the first thing the hands ever do is hold perfectly still. They ride
+     the head's own position and scale, which means the push-in carries them with it and they can
+     never drift off the face they belong to. */
+  if(t>=BOSS_FIST_AT){
+    const P=BOSS.paw;
+    const k=clamp((t-BOSS_FIST_AT)/0.34,0,1), e=k*k*(3-2*k);
+    const hx=BOSS.headX||w/2, hy=BOSS.headY||h*BOSS_BAND*0.4;
+    const sc=(BOSS.headSc||0.78)/0.78;
+    for(const side of ["L","R"]){
+      const q=P[side], dir=side==="L"?-1:1;
+      q.x=hx+dir*BOSS_FIST_SPREAD*sc;
+      q.y=hy+BOSS_FIST_DROP*sc+(1-e)*120;      // they come up into frame rather than appearing
+      q.ang=side==="L"?0:Math.PI;
+      q.fistT=1; q.glow=0; q.teleT=0; q.lift=0; q.slam=0; q.grip=0; q.spd=0; q.fireT=0;
+      // ...and they shake with the rest of him rather than hanging there steady through a roar
+      const sh=(bossRoarT()>=0 && !bossCalm()) ? 0.035 : 0;
+      q.sx=1+Math.sin(BOSS.t*30+dir)*sh; q.sy=1-Math.sin(BOSS.t*30+dir)*sh;
+    }
+  }
   if(!BOSS.musicCued && t>=BOSS_MUSIC_AT){ BOSS.musicCued=true; syncMoodMusic(); }
   if(t>=BOSS_INTRO){
     pkBossWorldTransform(0,0,0,0);   // hand the world back level before the fight owns the screen
@@ -18086,11 +18262,9 @@ function pkBossIntroTick(dt,w,h){
        fade-in - pkPawSlamTick owns their position from here. */
     BOSS.ph="pawslam";
     const P=BOSS.paw;
-    P.slamT=0; P.slamDone=false; P.mode=0.5;
-    for(const side of ["L","R"]){
-      const q=P[side], g=pawGrip(side);
-      q.x=g.x; q.y=BOSS.box.y-118; q.ang=g.ang; q.lift=1; q.grip=0;
-    }
+    P.slamT=0; P.slamDone=false; P.slamStage=0; P.mode=0.5;
+    // the suspense starts from exactly where the scream left the fists, so there is no cut
+    P.slamFrom={ L:{x:P.L.x, y:P.L.y}, R:{x:P.R.x, y:P.R.y} };
   }
 }
 
@@ -18164,6 +18338,17 @@ function pkBossUpdate(dt){
   } else if(BOSS.ph==="breath"){
     BOSS.breathT-=dt;
     if(BOSS.breathT<=0) pkBossTelegraph();
+  } else if(BOSS.ph==="cool"){
+    /* COOLING. Nothing is thrown and nothing is telegraphed; the hands go back to their walls and
+       the marks stay out. Bullets already in the air keep flying — the beat he just finished is
+       still yours to dodge, which is what stops this reading as a free pause. */
+    BOSS.coolT-=dt;
+    for(const k of ["L","R"]) BOSS.paw[k].glow=Math.min(BOSS.paw[k].glow,0.06);
+    if(!bossCalm() && Math.random()<0.35){
+      const q=BOSS.paw[Math.random()<0.5?"L":"R"];
+      bossFizz(q.x,q.y,1,"#553a2a");                    // smoke coming off them, not fire
+    }
+    if(BOSS.coolT<=0) pkBossTelegraph();
   } else if(BOSS.ph==="pattern"){
     BOSS.patternT+=dt;
     for(const sp of BOSS.spawn) if(BOSS.patternT<sp.life) sp.tick(dt);
@@ -18175,7 +18360,7 @@ function pkBossUpdate(dt){
   // ...and the paws move for the whole beat, telegraph through breath, so they are never parked
   // waiting for a pattern to hand them a job. pkBossFinishPattern can end the fight, so the check
   // is on where we ACTUALLY are now rather than on where we were a line ago.
-  if(BOSS.ph==="telegraph"||BOSS.ph==="pattern"||BOSS.ph==="breath") pkPawFightTick(dt);
+  if(BOSS.ph==="telegraph"||BOSS.ph==="pattern"||BOSS.ph==="breath"||BOSS.ph==="cool") pkPawFightTick(dt);
 
   // bullets. Box-local, small array, no world scans.
   for(let i=BOSS.bullets.length-1;i>=0;i--){
@@ -18237,6 +18422,12 @@ function pkBossUpdate(dt){
                      0.28+Math.random()*0.34, 1.5+Math.random()*1.8);
       }
     } else {
+      // it is still winding up to its top speed — see BOSS_BONE_SLOW
+      if(b.tvx!==undefined){
+        b.accT=Math.min(BOSS_BONE_ACC_T,(b.accT||0)+dt);
+        const k=BOSS_BONE_ACC0+(1-BOSS_BONE_ACC0)*(b.accT/BOSS_BONE_ACC_T);
+        b.vx=b.tvx*k; b.vy=b.tvy*k;
+      }
       b.x+=b.vx*dt; b.y+=b.vy*dt; b.spin+=(b.vr||0)*dt;
       // the burning birds leave a wake, thrown backwards along the lane they are crossing
       if(b.k==="claw"){
@@ -18323,6 +18514,7 @@ function pkBossPhaseCheck(){
     BOSS.shake=Math.max(BOSS.shake,BOSS.phase>=3?0.72:0.62);
     haptic(BOSS.phase>=3 ? [60,50,90,50,150] : [50,60,50]);
     BOSS.flash=Math.max(BOSS.flash,0.45);
+    BOSS.coolOwed=true;                       // ...cashed in at the end of this beat, never mid-pattern
     beep(110,.35,"sawtooth",.07); setTimeout(()=>beep(150,.3,"sawtooth",.06),160);
     /* THE PAWS ANSWER IT. Both flex hard against the bars and both pentagrams throw - a phase
        change is the fight getting worse, and the two things doing the hurting are the two things
@@ -18379,7 +18571,7 @@ function pkBossGoldenTick(dt){
   /* "pawwarm" is in here on purpose. The warm-up is twenty-odd seconds with one slow threat on
      the board, and without her it is twenty seconds of walking away from a paw. She also makes
      the reflect path on a swipe reachable at all - it is specified, so it has to be possible. */
-  const fighting = BOSS.ph==="telegraph"||BOSS.ph==="pattern"||BOSS.ph==="breath"||BOSS.ph==="pawwarm";
+  const fighting = BOSS.ph==="telegraph"||BOSS.ph==="pattern"||BOSS.ph==="breath"||BOSS.ph==="cool"||BOSS.ph==="pawwarm";
   // she only visits a fight in progress — never the arrival, never the death
   if(fighting){
     BOSS.birdNext-=dt;
@@ -18664,13 +18856,21 @@ function drawPentagram(ctx,r,glow,calm){
    shoots and does not point at what it is shooting at reads as scenery. `lean` is how much of the
    station's angle an upright pose is allowed to borrow: enough to tilt toward the board, not
    enough to lie down. */
+/* MIRRORED, NOT ROTATED — and this reverses v0.349a, which had the three-quarter poses turned by
+   the full aim angle on the argument that "a paw that shoots and does not point at what it is
+   shooting at reads as scenery". It does point: the trouble is that a hand on the RIGHT wall aims
+   left, and rotating a paw by 163 degrees lays it on its back. What came out was a hand lying
+   sideways against the bars on one side and upright on the other. A real hand on a cage is the
+   other hand turned over, so `face` poses take their side from the MIRROR and keep only a small
+   tilt into the board — which is also all the aim a paw pinned to a wall can express. `swipe`
+   keeps the full rotation: a streak has to lie along the direction it is travelling. */
 const PAWPOSE={
   palm : {rot:false, lean:0.22, base:0,           sc:2.45},
   glow : {rot:false, lean:0.22, base:0,           sc:2.70},
-  fist : {rot:false, lean:0.42, base:0,           sc:2.55},
+  fist : {face:true, lean:0.14,                   sc:2.55},
   slam : {rot:false, lean:0.10, base:0,           sc:2.95},
-  q34  : {rot:true,  lean:1,    base:-0.30,       sc:2.60},
-  q34b : {rot:true,  lean:1,    base:-0.30,       sc:2.60},
+  q34  : {face:true, lean:0.30,                   sc:2.60},
+  q34b : {face:true, lean:0.30,                   sc:2.60},
   swipe: {rot:true,  lean:1,    base:0,           sc:3.05}
 };
 /* The art faces RIGHT and its claws point UP. `ang` is where the palm is aimed - 0 is at the
@@ -18686,7 +18886,11 @@ function drawPawSprite(ctx,x,y,ang,R,pose,glow,sx,sy,calm,flip){
   const scale=(R*def.sc)/Math.max(w0,h0);
   const w=w0*scale, h=h0*scale;
   let rot;
-  if(def.rot) rot=ang+def.base;
+  if(def.face){
+    // the mirror already says which way it faces, so the tilt only has to lean it at the board
+    rot=(flip?-1:1)*def.lean;
+  }
+  else if(def.rot) rot=ang+def.base;
   else {
     // an upright pose leans toward wherever the palm is aimed, and never past a quarter turn
     let a=ang; while(a>Math.PI) a-=6.283; while(a<-Math.PI) a+=6.283;
@@ -18719,7 +18923,16 @@ function drawPawSprite(ctx,x,y,ang,R,pose,glow,sx,sy,calm,flip){
    Read it top to bottom: the rarest, loudest state wins. */
 function pawPoseFor(q,side){
   const P=BOSS.paw;
-  if(BOSS.ph==="pawslam" && P.slamT<BOSS_PAW_SETTLE) return "slam";
+  // the scream, and the beat of the fists unclenching after it: a closed hand outranks everything
+  if(q.fistT>0)                                       return "fist";
+  // riding its own swipe across the board — claws leading, turned the way it is going
+  if(q.faceDir)                                       return "q34b";
+  /* THE SPREAD IS THE IMPACT. It used to be the arrival — five splayed toes bursting up out of
+     the floor — and that beat no longer exists, so it moved to the only other place a hand is
+     splayed: the moment it lands flat on the bars. Measured from the landing rather than from the
+     start of the sequence, which is three seconds earlier now. */
+  if(BOSS.ph==="pawslam" && P.slamDone &&
+     P.slamT < PAWSLAM_OPEN+PAWSLAM_MARK+PAWSLAM_DROP+BOSS_PAW_SETTLE*0.55) return "slam";
   if(P.pound && P.pound.on && side===P.pound.side)    return "fist";
   /* THE WIND-UP OUTRANKS THE MOTION, and it has to. Pulling off the wall to throw is itself fast
      enough to trip the swish threshold, so the first version wore a motion blur through the one
@@ -18730,9 +18943,17 @@ function pawPoseFor(q,side){
   // MOTION STREAKS MAY ONLY BE DRAWN WHILE MOVING. The sprite has the blur painted into it, so a
   // parked paw wearing it looks broken rather than fast.
   if(q.spd>PAW_SWISH_SPD)                             return "swipe";
-  if(q.fireT>0)                                       return side==="L" ? "q34b" : "q34";
+  /* WHICH THREE-QUARTER VIEW. The two sheets are two different angles on the same hand, so they
+     are picked by the STATION rather than by the side: over the lid he is reaching straight down
+     at the floor of the board (q34), on a wall he is reaching across it (q34b). The side is
+     carried by the mirror — see pawFacing — which is why both walls can share one sheet. */
+  if(q.fireT>0)                                       return pawOverLid(side) ? "q34" : "q34b";
   if(q.spd>PAW_MOVE_SPD)                              return "palm";   // ...on the move: mark out
-  return pawOnStation(side) ? (side==="L"?"q34b":"q34") : "palm";
+  return pawOnStation(side) ? (pawOverLid(side)?"q34":"q34b") : "palm";
+}
+function pawOverLid(side){
+  const q=BOSS.paw[side], B=BOSS.box;
+  return B.w>0 && q.y<=B.y+3 && q.x>B.x-3 && q.x<B.x+B.w+3;
 }
 // holding a wall or the lid is a FIRING station, so it wears the firing pose even between shots
 /* ON A FIRING STATION - the walls and the lid. The tolerance matters: a gripping paw sits at
@@ -18744,9 +18965,25 @@ function pawOnStation(side){
   if(P.mode<1) return false;
   return q.x<=B.x+3 || q.x>=B.x+B.w-3 || q.y<=B.y+3;
 }
+/* WHICH WAY A HAND FACES. One answer, used for the mirror AND for the tilt, so a paw can never
+   be turned over one way and leaned the other. Normally it is simply which half of the cage it is
+   on — left half faces right, right half faces left — which covers the walls, the lid slide and
+   the phase-two orbit without a special case for any of them. A paw riding its own swipe overrides
+   it with the direction of travel, so the claws turn round at the far wall and come back leading. */
+function pawFacing(side){
+  const q=BOSS.paw[side], B=BOSS.box;
+  if(q.faceDir) return q.faceDir;
+  // ...and during the scream there IS no box yet — the cage is not built until well after the
+  // roar — so the fists face each other across his head instead, which is the same question
+  if(!(B.w>0)) return q.x < (BOSS.headX||0) ? 1 : -1;
+  return q.x < B.x+B.w/2 ? 1 : -1;                // +1 = the board is to its right
+}
 // the left hand is the right hand, turned over
 function pawFlip(side,pose){
-  if(pose==="q34"||pose==="q34b"||pose==="swipe") return side==="L";
+  // every `face` pose, which now includes the clenched fist: a pair of fists that are not mirror
+  // images of each other are two left hands, and both of them lean the same way
+  if(pose==="q34"||pose==="q34b"||pose==="fist") return pawFacing(side)>0;
+  if(pose==="swipe") return side==="L";
   return false;
 }
 
@@ -19027,6 +19264,24 @@ function pkDrawBoss(){
     ctx.beginPath(); ctx.ellipse(pk.x,pk.y-1.5,pk.r*0.65,pk.r*0.26,0,0,7); ctx.fill();
     ctx.restore();
   }
+  // ...and the claw marks dragged across it, which fade rather than being cleaned up
+  for(const sc of BOSS.scratch){
+    const k=Math.min(1,sc.life/sc.max), a=k*k;      // eased, so the tail of the fade is long
+    ctx.save();
+    ctx.lineCap="round";
+    for(let i=0;i<4;i++){
+      const oy=(i-1.5)*4.2;
+      ctx.globalAlpha=(0.60-0.06*i)*a;
+      ctx.strokeStyle = i%2 ? "#ff8a3a" : "#c8281a";
+      ctx.lineWidth   = (i%2 ? 1.5 : 2.2);
+      ctx.beginPath();
+      ctx.moveTo(sc.x-sc.dir*sc.len*0.5, sc.y+oy+sc.sp);
+      ctx.lineTo(sc.x+sc.dir*sc.len*0.5, sc.y+oy-sc.sp*0.45);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  ctx.globalAlpha=1;
   /* THE WARM-UP'S DANGER LINE. A dashed band straight across the board at the height the swipe
      is coming in at, fading up over the whole wind-up. It is the single most important thing on
      the screen during phase 0.5: it is the promise that a telegraph means something, and every
@@ -19155,9 +19410,13 @@ function pkDrawBoss(){
       // glow AND tint are already in the cached frame: one blit, no gradient, no filter
       const fire=bossBirdFire();
       if(fire){
-        const S=BIRDFIRE.S, f=fire[Math.floor(t*11+b.base)%fire.length];
+        /* A DRAW THAT THROWS TAKES THE WHOLE GAME WITH IT — loop() does not re-arm after an
+           exception, so one bad frame index froze the fight solid. Wrapped and floored: a bird
+           with a missing offset flaps out of step, which nobody will ever notice. */
+        const S=BIRDFIRE.S, n=fire.length;
+        const f=fire[((Math.floor(t*11+(b.base||0))%n)+n)%n];
         if(b.vx>0) ctx.scale(-1,1);            // the art faces left; flip it to fly right
-        ctx.drawImage(f,-S/2,-S/2,S,S);
+        if(f) ctx.drawImage(f,-S/2,-S/2,S,S);
       } else {                                  // frames not decoded yet: keep the old crescent
         ctx.save(); ctx.rotate(b.vx<0?Math.PI:0);
         ctx.strokeStyle="#ffb45a"; ctx.lineWidth=3; ctx.lineCap="round";
@@ -19233,15 +19492,20 @@ function pkDrawBoss(){
      live: on the bars, over the lid, round the corner. Drawn after the cage so a gripping paw
      sits ON the bar rather than behind it, and before the bullets so a bone leaving the pentagram
      passes in front of the hand that threw it. */
-  if(BOSS.ph!=="intro" && BOSS.ph!=="outro" && uiA>0.001){
+  /* ...and during the SCREAM as well, which uiA alone will not allow: the cage's fade-in does not
+     start until the roar is over, so the fists beside his head get their own alpha. */
+  const pawA = BOSS.ph==="intro"
+    ? clamp((BOSS.introT-BOSS_FIST_AT)/0.34,0,1)
+    : uiA;
+  if(BOSS.ph!=="outro" && pawA>0.001){
     const calm=bossCalm();
-    ctx.save(); ctx.globalAlpha=uiA;
+    ctx.save(); ctx.globalAlpha=pawA;
     for(const side of ["L","R"]){
       const q=BOSS.paw[side];
       if(!q.x && !q.y) continue;               // never placed yet: nothing to draw
       // the shadow it throws on the bar it is holding, so the hand has weight on the metal
       if(q.slam>0.02 && !calm){
-        ctx.save(); ctx.globalAlpha=uiA*q.slam*0.5; ctx.globalCompositeOperation="lighter";
+        ctx.save(); ctx.globalAlpha=pawA*q.slam*0.5; ctx.globalCompositeOperation="lighter";
         const sg=ctx.createRadialGradient(q.x,q.y,0,q.x,q.y,BOSS_PAW_R*2.2);
         sg.addColorStop(0,"rgba(255,120,40,0.7)"); sg.addColorStop(1,"rgba(255,60,0,0)");
         ctx.fillStyle=sg; ctx.beginPath(); ctx.arc(q.x,q.y,BOSS_PAW_R*2.2,0,7); ctx.fill();
@@ -19270,10 +19534,15 @@ function pkDrawBoss(){
       ctx.fillStyle=g2; ctx.beginPath(); ctx.arc(sx,sy,b.r*2.1,0,7); ctx.fill();
       ctx.restore(); ctx.globalAlpha=1;
     }
-    // the thrown swipe is by definition fast, so it always wears the streaked pose
-    drawPawSprite(ctx, sx, sy, ang, b.r, "swipe",
+    /* THE SWOOSH SITS BEHIND THE HAND. The paw rides this bullet now — same position, same frame —
+       so drawing the streak dead on top of it made one unreadable smear. Pushed back along the
+       travel and taken down in weight, it becomes what it should always have been: the wake. */
+    const bk=Math.sign(b.vx||(b.side==="L"?1:-1));
+    ctx.save(); ctx.globalAlpha=0.72;
+    drawPawSprite(ctx, sx-bk*b.r*0.80, sy, ang, b.r*0.92, "swipe",
                   Math.min(1,0.55+0.45*fl+(b.ph==="back"?0.2:0)),
                   1+0.10*fl, 1-0.08*fl, bossCalm(), b.vx<0);
+    ctx.restore(); ctx.globalAlpha=1;
   }
   /* --- the mouthfuls still in the air ABOVE the board. Same reason the reflected shots are down
      here: the board clips everything drawn inside it, so a bone arcing down from the jaw would be

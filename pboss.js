@@ -147,6 +147,47 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
   console.log('START ', JSON.stringify({ph:arriving.ph, box:arriving.box}));
   ck(arriving.ph==='intro', 'the fight did not start in the intro: '+arriving.ph);
 
+  /* ---------- 1a. THE SCREAM: FISTS, EITHER SIDE OF HIS HEAD ----------
+     The first thing the hands ever do is hold still. Sampled inside the roar window, which the
+     skip below jumps straight over — so it has to be asked here or not at all. */
+  const fists = await pg.evaluate(async()=>{
+    const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+    BOSS.introT=BOSS_ROAR_A+0.10;
+    await sleep(260);
+    const P=BOSS.paw;
+    return {pose:{L:pawPoseFor(P.L,"L"), R:pawPoseFor(P.R,"R")},
+            fistT:P.L.fistT, thrown:BOSS.bullets.length,
+            dxL:Math.round(BOSS.headX-P.L.x), dxR:Math.round(P.R.x-BOSS.headX),
+            dyL:Math.round(P.L.y-BOSS.headY), dyR:Math.round(P.R.y-BOSS.headY),
+            flip:{L:pawFlip("L","fist"), R:pawFlip("R","fist")},
+            t:+BOSS.introT.toFixed(2), roar:+bossRoarT().toFixed(2)};
+  });
+  console.log('FISTS ', JSON.stringify(fists));
+  ck(fists.roar>=0, 'the fists were not sampled inside the roar: '+fists.t);
+  ck(fists.pose.L==='fist' && fists.pose.R==='fist',
+     'the hands are not clenched during the scream: '+JSON.stringify(fists.pose));
+  ck(fists.dxL>40 && fists.dxL<190 && fists.dxR>40 && fists.dxR<190,
+     'the fists are not either side of his head: '+fists.dxL+' / '+fists.dxR);
+  ck(Math.abs(fists.dxL-fists.dxR)<12, 'the fists are not level with each other');
+  ck(Math.abs(fists.dyL)<110 && Math.abs(fists.dyR)<110, 'the fists are nowhere near his head');
+  ck(fists.flip.L!==fists.flip.R, 'the two fists are not mirror images of each other');
+  ck(fists.thrown===0, 'something was thrown during the scream');
+
+  /* THE RECORDER GOES ON FIRST. The opening beat of the suspense is a third of a second long and
+     a round-trip to node costs more than that, so sampling after the hand-over measures whatever
+     is left rather than what happened. Armed here, read back at the end of the sequence. */
+  await pg.evaluate(()=>{
+    window.__SUS={seq:[], glowPre:0, thrown:0, inBox:0, sawGlow:false};
+    window.__susT=setInterval(()=>{
+      if(BOSS.ph!=="pawslam") return;
+      const B=BOSS.box, q=BOSS.paw.L, p=pawPoseFor(q,"L");
+      if(__SUS.seq[__SUS.seq.length-1]!==p) __SUS.seq.push(p);
+      if(p==="glow") __SUS.sawGlow=true;
+      if(p==="palm" && !__SUS.sawGlow) __SUS.glowPre=Math.max(__SUS.glowPre,q.glow);
+      __SUS.thrown=Math.max(__SUS.thrown, BOSS.bullets.length);
+      if(B.w>0 && q.x>B.x && q.x<B.x+B.w && q.y>B.y && q.y<B.y+B.h) __SUS.inBox++;
+    },16);
+  });
   // skip to just before the scream ends, then watch the hand-over
   await pg.evaluate(()=>{ BOSS.introT=BOSS_INTRO-0.12; });
   ck(await waitFor(()=>BOSS.ph!=="intro", 6000), 'the intro never ended');
@@ -154,6 +195,25 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
   console.log('SLAM  ', JSON.stringify(slam));
   ck(slam.ph==='pawslam', 'the intro did not hand over to the paw slam: '+slam.ph);
   ck(slam.mode===0.5, 'the warm-up mode was not armed by the slam: '+slam.mode);
+  /* ---------- 1b. THE SUSPENSE: FIST -> OPEN -> MARK -> SLAM, AND NOTHING THROWN ----------
+     The order is the whole beat. A sequence that reached the same end state by a different route
+     would look completely different and pass every "did it end up on the wall" check there is. */
+  await pg.evaluate(async()=>{
+    const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+    for(let i=0;i<400 && BOSS.ph==="pawslam";i++) await sleep(25);
+    clearInterval(window.__susT);
+  });
+  const susp = await pg.evaluate(()=>({...window.__SUS}));
+  console.log('SUSP  ', JSON.stringify(susp));
+  const at=(p)=>susp.seq.indexOf(p);
+  ck(at('fist')===0, 'the suspense does not open on the clenched fists: '+susp.seq.join('>'));
+  ck(at('palm')>at('fist'), 'the fists never opened into empty palms: '+susp.seq.join('>'));
+  ck(at('glow')>at('palm'), 'the marks did not light AFTER the palms opened: '+susp.seq.join('>'));
+  ck(at('slam')>at('glow'), 'the hands never slammed onto the bars at the end: '+susp.seq.join('>'));
+  ck(susp.glowPre<0.25, 'the palms were already burning before the mark beat: '+susp.glowPre);
+  ck(susp.thrown===0, 'something was thrown during the suspense - it is meant to be empty');
+  ck(susp.inBox===0, 'a hand went inside the cage during the wind-up');
+
   // both paws are on their own wall by the time the slam is over
   ck(await waitFor(()=>BOSS.ph!=="pawslam", 12000), 'the slam never ended');
   const gripped = await state();
@@ -169,7 +229,8 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
   /* ---------- 2. the warm-up: one swipe at a time, always telegraphed ---------- */
   const warm = await pg.evaluate(async()=>{
     const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-    const seen={maxSwipes:0, sawTele:0, sawFly:0, dirs:{}, teleY:[], caught:0, bones:0};
+    const seen={maxSwipes:0, sawTele:0, sawFly:0, dirs:{}, teleY:[], caught:0, bones:0,
+                rideMax:0, rideIn:0, faces:{}, scratchMax:0, parkedFrames:0};
     const t0=BOSS.paw.warmShots;
     for(let i=0;i<1400;i++){
       await sleep(40);
@@ -178,7 +239,21 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
       seen.maxSwipes=Math.max(seen.maxSwipes, sw.length);
       for(const b of sw) seen.dirs[b.side]=(seen.dirs[b.side]||0)+1;
       if(BOSS.paw.warmPh==="tele"){ seen.sawTele++; if(BOSS.paw.teleK>0.9) seen.teleY.push(Math.round(BOSS.paw.teleY)); }
-      if(BOSS.paw.warmPh==="fly") seen.sawFly++;
+      if(BOSS.paw.warmPh==="fly"){
+        seen.sawFly++;
+        /* THE HAND GOES WITH THE SWIPE. "The paw should follow its trail across the cell rather
+           than stay in position" is the whole of the note, so it is measured as a distance from
+           the thing it threw rather than as "did it move at all". */
+        const b=BOSS.bullets.find(x=>x.k==="pawswipe" && x.side===BOSS.paw.warmSide);
+        const q=BOSS.paw[BOSS.paw.warmSide], B=BOSS.box;
+        if(b){
+          seen.rideMax=Math.max(seen.rideMax, Math.hypot((B.x+b.x)-q.x,(B.y+b.y)-q.y));
+          if(q.x>B.x && q.x<B.x+B.w) seen.rideIn++;
+          if(Math.abs(q.x-pawGrip(BOSS.paw.warmSide).x)<3) seen.parkedFrames++;
+          seen.faces[q.faceDir]=(seen.faces[q.faceDir]||0)+1;
+        }
+      }
+      seen.scratchMax=Math.max(seen.scratchMax, BOSS.scratch.length);
       seen.bones += BOSS.bullets.filter(b=>b.k==="bone").length;
     }
     seen.caught=BOSS.paw.warmShots-t0;
@@ -194,6 +269,17 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
   ck(warm.bones===0, 'a pentagram bone was fired during the warm-up - it is swipes only');
   ck(warm.ph!=="pawwarm", 'the warm-up never ended (warmT '+warm.warmT+'s)');
   ck(warm.mode===1, 'the warm-up did not hand over to phase 1: mode '+warm.mode);
+  /* 22px, not 2. The paw is placed ON the bullet every frame, so the only lag this can ever see is
+     one sample's worth of travel between the two being read - at 150px/s and a 40ms poll that is
+     six pixels of honest jitter. What it has to rule out is the old behaviour, which parked the
+     hand on the wall while the swipe crossed 300px of board. */
+  ck(warm.rideMax<22, 'the paw does not travel with its own swipe: it fell '+Math.round(warm.rideMax)+'px behind');
+  ck(warm.rideIn>20, 'the paw never actually crossed into the cell: '+warm.rideIn+' frames inside');
+  ck(warm.parkedFrames<10, 'the paw sat on its wall for '+warm.parkedFrames+' frames of a swipe');
+  // out, round, and back: the claws turn with it rather than dragging backwards
+  ck(warm.faces['1']>0 && warm.faces['-1']>0,
+     'the claws never turned round at the far wall: '+JSON.stringify(warm.faces));
+  ck(warm.scratchMax>6, 'the swipe left no scratch marks on the floor: '+warm.scratchMax);
   const noTele = await pg.evaluate(()=>__W.throwsNoTele);
   ck(noTele===0, noTele+' swipes were thrown without a wind-up');
 
@@ -503,6 +589,133 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
   ck(bone.r > bone.b*1.7,
      'the boss bone is still neutral-coloured - it reads as the one you collect: rgb('+bone.r+','+bone.g+','+bone.b+')');
   ck(bone.r > bone.g*1.25, 'the boss bone is not RED: rgb('+bone.r+','+bone.g+','+bone.b+')');
+
+  /* ---------- 4d. THE COOLING BEAT BETWEEN PHASES ----------
+     Three seconds where nothing is thrown, taken at the END of the beat he was in. Both halves
+     matter: a cooldown that fires mid-pattern strands a spawner with its bullets half-fed, and a
+     cooldown that still fires is not a cooldown. */
+  const cool = await pg.evaluate(async()=>{
+    const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+    BOSS.paw.pound=null; BOSS.stiff=0;
+    BOSS.hp=BOSS.maxhp*0.90; BOSS.phase=1; BOSS.coolOwed=false; BOSS.coolT=0;
+    const pin=setInterval(()=>{ PK.hp=PK.maxhp=100000; },48);
+    BOSS.hp=BOSS.maxhp*0.50; pkBossPhaseCheck();
+    const owed=BOSS.coolOwed;
+    let entered=false, sawCool=0, exitedTo=null, t0=0, t1=0, f0=0, midPattern=null;
+    for(let i=0;i<900;i++){
+      await sleep(20);
+      BOSS.hp=BOSS.maxhp*0.50;
+      if(BOSS.ph==="cool"){
+        /* NOT spawn.length: a finished pattern leaves its spawner object in the array until the
+           next one clears it, so that number is "was there a last pattern", not "is one running".
+           What has to be true is that the beat had FINISHED feeding when the cooldown took over. */
+        if(!entered){ entered=true; t0=BOSS.t; f0=__W.fired;
+                      midPattern=BOSS.patternT<BOSS.patternLen ? 1 : 0; }
+        sawCool++; t1=BOSS.t;
+      } else if(entered){ exitedTo=BOSS.ph; break; }
+    }
+    const fired=__W.fired-f0;
+    clearInterval(pin);
+    BOSS.coolOwed=false; BOSS.coolT=0;
+    return {owed, entered, sawCool, exitedTo, fired, midPattern,
+            len:+(t1-t0).toFixed(2), want:BOSS_PHASE_COOL};
+  });
+  console.log('COOL  ', JSON.stringify(cool));
+  ck(cool.owed===true, 'a phase change did not owe a cooldown');
+  ck(cool.entered===true, 'the fight never cooled down after the phase change');
+  ck(cool.len>cool.want*0.6 && cool.len<cool.want*1.5,
+     'the cooldown was '+cool.len+'s, not ~'+cool.want+'s');
+  ck(cool.fired===0, 'he fired '+cool.fired+' bones while he was supposed to be cooling');
+  ck(cool.midPattern===0, 'the cooldown cut a pattern off while it was still feeding');
+  ck(cool.exitedTo==='telegraph', 'the cooldown did not hand back to a telegraph: '+cool.exitedTo);
+
+  /* ---------- 4e. THE BONES ARE SLOWER, AND THEY WIND UP TO IT ----------
+     Two claims, and each one is invisible in the other's measurement: a bullet sampled at birth
+     says nothing about the ceiling, and a ceiling says nothing about whether it accelerated. */
+  const spd = await pg.evaluate(async()=>{
+    const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+    const out={acc0:BOSS_BONE_ACC0, slow:BOSS_BONE_SLOW};
+    for(const [name,frac] of [["p1",0.90],["p2",0.50],["p3",0.20]]){
+      BOSS.hp=BOSS.maxhp*frac; pkBossPhaseCheck();
+      BOSS.coolOwed=false; BOSS.coolT=0; if(BOSS.ph==="cool") BOSS.ph="breath";
+      /* THE BOARD HAS TO BE EMPTIED FIRST. Bones live for seconds, so a phase-one window opened
+         on the tail of a phase-two beat measures phase two's ceiling and reports that phase one
+         is already at the top - which is exactly what the first run of this said. */
+      BOSS.bullets.length=0;
+      await sleep(120);
+      const pin=setInterval(()=>{ BOSS.hp=BOSS.maxhp*frac; PK.hp=PK.maxhp=100000; },48);
+      let top=0, coded=0, born=[];
+      for(let i=0;i<320;i++){
+        await sleep(20);
+        coded=pawBulletSpd();
+        for(const b of BOSS.bullets){
+          if(b.k!=="bone" || b.tvx===undefined) continue;
+          const v=Math.hypot(b.vx,b.vy), tv=Math.hypot(b.tvx,b.tvy);
+          top=Math.max(top,v);
+          if((b.accT||0)<0.06 && tv>1) born.push(v/tv);
+        }
+      }
+      clearInterval(pin);
+      out[name]={phase:BOSS.phase, top:Math.round(top), coded:Math.round(coded),
+                 ratio:coded>0?+(top/coded).toFixed(2):null,
+                 born:born.length?+(born.reduce((a,c)=>a+c,0)/born.length).toFixed(2):null,
+                 n:born.length};
+    }
+    return out;
+  });
+  console.log('SPEED ', JSON.stringify(spd));
+  ck(spd.p3.ratio!==null && Math.abs(spd.p3.ratio-spd.slow)<0.06,
+     'phase three does not top out at 15% below the coded speed: '+spd.p3.ratio);
+  ck(spd.p1.top<spd.p2.top && spd.p2.top<spd.p3.top,
+     'the top speed does not climb with the phases: '+spd.p1.top+' / '+spd.p2.top+' / '+spd.p3.top);
+  ck(spd.p1.ratio<spd.slow-0.08, 'phase one is already at the ceiling: '+spd.p1.ratio);
+  for(const k of ['p1','p2','p3'])
+    ck(spd[k].n>0 && Math.abs(spd[k].born-spd.acc0)<0.10,
+       'a bone in '+k+' is born at '+spd[k].born+' of its top speed, not '+spd.acc0);
+
+  /* ---------- 4f. THE BIRDS ARE A WALL ----------
+     The load-bearing number is the gap: a stack the dog can squeeze between is a comb with extra
+     steps, and it is the sort of thing that only shows up as "that felt unfair" months later. */
+  const birds = await pg.evaluate(async()=>{
+    const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+    BOSS.hp=BOSS.maxhp*0.90; pkBossPhaseCheck(); BOSS.coolOwed=false; BOSS.coolT=0;
+    const pin=setInterval(()=>{ BOSS.hp=BOSS.maxhp*0.90; PK.hp=PK.maxhp=100000; },48);
+    const B=BOSS.box;
+    let wavy=0; const walls=[];
+    for(let round=0;round<3;round++){
+      BOSS.bullets.length=0; BOSS.spawn.length=0;
+      BOSS.ph="telegraph"; BOSS.telegraph=round%2?"sweepR":"sweepL"; BOSS.telegraphT=0;
+      pkBossBeginPattern();
+      for(let i=0;i<120;i++){
+        await sleep(20);
+        const cl=BOSS.bullets.filter(b=>b.k==="claw");
+        for(const b of cl) if(b.swish!==undefined) wavy++;
+        const byX={};
+        for(const b of cl){ const k=Math.round(b.x/5); (byX[k]=byX[k]||[]).push(b.y); }
+        for(const k in byX){
+          const ys=byX[k].slice().sort((a,c)=>a-c);
+          if(ys.length<3) continue;
+          let mn=1e9; for(let j=1;j<ys.length;j++) mn=Math.min(mn,ys[j]-ys[j-1]);
+          walls.push({n:ys.length, gap:mn, span:ys[ys.length-1]-ys[0]});
+        }
+      }
+    }
+    clearInterval(pin);
+    BOSS.bullets.length=0; BOSS.spawn.length=0;
+    return {wavy, n:walls.length,
+            maxGap: walls.length?+Math.max(...walls.map(w=>w.gap)).toFixed(1):null,
+            maxSpan:walls.length?+Math.max(...walls.map(w=>w.span)).toFixed(1):null,
+            minN:   walls.length?Math.min(...walls.map(w=>w.n)):null,
+            seal:+((BOSS_BULLET_R+BOSS_DOG_R)*2).toFixed(1), h:Math.round(B.h)};
+  });
+  console.log('BIRDS ', JSON.stringify(birds));
+  ck(birds.wavy===0, birds.wavy+' bird-frames were still riding a sine wave');
+  ck(birds.n>0, 'no bird wall was ever formed');
+  ck(birds.minN>=3, 'a "wall" of '+birds.minN+' birds is not a wall');
+  ck(birds.maxGap<birds.seal,
+     'the dog can squeeze between the birds: '+birds.maxGap+'px gap against a '+birds.seal+'px body');
+  ck(birds.maxSpan<birds.h*0.62,
+     'the wall seals off the whole cell rather than part of it: '+birds.maxSpan+' of '+birds.h);
 
   /* ---------- 5. reduceMotion keeps the FIGHT and drops the FLOURISH ---------- */
   /* The setting must never make the boss unreadable in the name of being gentler: the telegraph,

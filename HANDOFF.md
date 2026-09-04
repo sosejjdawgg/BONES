@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.351a**.
+Currently **v0.352a**.
 
 > **The workflow below is out of date and has been since v0.350a.** The source of truth is
 > `src/` — edit `src/src.js`, run `./build.sh <version>`, test with `./test.sh`. See `CLAUDE.md`,
@@ -3200,6 +3200,131 @@ exemption existed for.
 `pboss` no longer waits for the random walk to find it: it puts a paw one pixel inside each of the
 four lips and asks the clamp and the muzzle directly, and checks a gripping paw is not lifted off
 its bar.
+
+---
+
+## v0.352a — the hands get an introduction, and the fight learns to breathe
+
+### The scream, and the three beats after it
+
+The chain used to be: roar, then two paws burst up out of the floor and grabbed the cage, all
+inside a second and a quarter. It was over before it registered.
+
+Now the hands are part of the scream. Clenched fists come up either side of his head at
+`BOSS_ROAR_A-0.22` and hold there for the whole roar — they hang off `BOSS.headX/headY` and are
+drawn inside the push-in, so they scale with the face they belong to and cannot drift off it. The
+spread had to be set from the ZOOMED head, not the resting one: at 1.62x a spread that looks right
+un-zoomed puts both hands off the sides of a phone.
+
+Then three beats, and not one of them throws anything:
+
+| beat | | |
+|---|---|---|
+| `open` | 0.80s | the fists unclench. Empty palms, no light on them at all |
+| `mark` | 1.35s | the pentagrams burn up through the fur, over a five-step charge |
+| `drop` | 0.30s | and they come down on the bars, eased IN so it accelerates into them |
+
+The middle beat is the only moment in the fight where the thing that does all the damage stands
+still and shows you what it is. `pboss` pins the whole order — `fist > palm > glow > slam` — and
+pins that the board is empty throughout and that no hand ever enters the cage during it. It also
+had to arm its recorder *before* the hand-over: the opening beat is a third of a second and a
+round-trip to node costs more than that, so sampling afterwards measures what is left.
+
+The spread `slam` sprite moved with the beat it belonged to. It was the arrival pose — five splayed
+toes coming up out of the floor — and that arrival no longer exists, so it is now the impact: the
+frame the hand lands flat on the bars.
+
+### The paw goes with its own swipe
+
+Phase 0.5 threw a claw mark across the board and left the hand parked on the wall watching it,
+which is why the sprite read as wrong: what crossed the cell was not attached to anything.
+
+The paw now **rides** the swipe — out, round at the far wall, and back — so the thing scratching
+across the cell is the hand. `pawFacing` takes an override from the direction of travel, so the
+claws turn round at the far side and come back leading rather than dragging. It deliberately skips
+`pawClampOut` while riding: it is meant to be in there.
+
+The streak sprite became the **swoosh**, pushed back along the travel and down in weight. Drawn
+dead on top of the hand — same bullet, same position — it was one unreadable smear.
+
+And it leaves marks. `BOSS.scratch` is four short red rakes laid down every 55ms wherever a paw has
+dragged, fading over a second and a half, drawn board-local with the pock marks. No collision, no
+state anything reads — but it is what turns "a shape crossed the screen" into "something scratched
+its way across the cell".
+
+`pboss` measures the ride as a distance from the thing it threw (under 22px, against a 300px board
+it used to sit out) rather than as "did it move at all", and checks the claws turned round.
+
+### Hands sit against the cage, mirrored — reversing v0.349a
+
+v0.349a rotated the three-quarter poses by the full aim angle, on the argument that a paw that
+does not point at what it is shooting at reads as scenery. It does point: the trouble is that a
+hand on the RIGHT wall aims left, and rotating a paw by 163° lays it on its back. What shipped was
+a hand lying sideways against the bars on one side and upright on the other.
+
+A real hand on a cage is the other hand turned over. `face` poses now take their side from the
+MIRROR and keep only a 0.30rad tilt into the board:
+
+- `pawFacing(side)` is the single answer to "which way is this hand facing" — which half of the
+  cage it is on, or its travel direction while riding a swipe — and it drives the mirror **and**
+  the sign of the tilt, so a paw can never be turned over one way and leaned the other.
+- the fist is a `face` pose too. It was not, and two fists that are not mirror images of each other
+  are two left hands leaning the same way.
+- both three-quarter sheets kept a job: over the lid he is reaching down at the floor (`q34`), on a
+  wall he is reaching across it (`q34b`). The side is carried by the mirror, which is what lets
+  both walls share one sheet.
+
+`swipe` keeps the full rotation — a streak has to lie along the direction it is travelling.
+
+### Three seconds of cooling between phases
+
+A phase change was one flash and a louder fight; there was nowhere in it to notice you had survived
+a third of him. `BOSS.coolOwed` is set when the phase advances and cashed in at the **end** of that
+beat, never mid-pattern — a cooldown that fires while a spawner is feeding strands it with its
+bullets half-thrown. Three seconds where nothing is thrown and the marks go out; bullets already in
+the air keep flying, which is what stops it reading as a free pause.
+
+### The bones are 15% slower, and they wind up to it
+
+Two things, and each is invisible in the other's measurement.
+
+The numbers at every spawn site are the **ceiling** now, not the muzzle velocity. A bone leaves the
+mark at 55% of its top speed and climbs to it over 0.85s, and the ceiling itself climbs with the
+fight:
+
+| | coded | top speed | of coded |
+|---|---|---|---|
+| phase 1 | 98 | 66 | 0.68 |
+| phase 2 | 120 | 92 | 0.77 |
+| phase 3 | 158 | 134 | 0.85 |
+
+Applied at `bossAdd` rather than at the fifteen places that push a bone, for the usual reason. The
+acceleration buys back most of what the 15% costs on the far side of the board, which is why
+"slower" and "enough projection" are not a contradiction: gentler where they are born, no slower
+where they land. Phase three still saturates — 34.8 bones alive on average against the 40 cap.
+
+### The burning birds became a wall
+
+They were five lanes spread across the whole height with a hole cut wherever the safe band happened
+to be, and each one waved on its own sine — five independent wobbling dots whose gap opened and
+closed underneath them.
+
+They fly dead straight now, stacked 0.075 of the board apart. That number is load-bearing: the dog
+collides with a bird at `BOSS_BULLET_R+BOSS_DOG_R`, so a 19.5px gap against a 22.6px body cannot be
+squeezed through. The wall seals 23% of the cell and marches between volleys, so the way past is
+always open — the point is that you have to leave, not that you have to thread it.
+
+`sparse` is a shorter wall rather than a single bird, and that matters more than it looks: a sweep
+is always in `BOSS_FILL`, so `sparse` is the branch that actually runs in the shipped fight. A lone
+bird on a sine wave was precisely what the note was about.
+
+> **And a lesson worth the space it takes.** `base` was doing two jobs on a bird — the centre line
+> of its sine wave, and the offset into its wingbeat animation. Dropping the wave without dropping
+> the second fed `NaN` into a frame index, `drawImage` threw, and `loop()` does not re-arm after an
+> exception: the entire game froze solid on the first bird of the first sweep. It cost a
+> full battery run to find, because what the harness reported was "phase 2 and 3 fired nothing" —
+> a symptom four steps downstream. The frame pick is wrapped and floored now, and a bird with a
+> missing offset flaps out of step instead of taking the fight down with it.
 
 ---
 
