@@ -3042,6 +3042,56 @@ frames in the middle of a paw that was to all appearances holding still.
 
 ---
 
+## v0.350a — plumbing. No gameplay changes.
+
+Development had got slow and the assumed cause was the size of the single file. It was measured
+instead, and the assumption was wrong on nearly every count.
+
+**The game is not slow.** First frame at 103ms, steady 60fps by 441ms. Parsing the 11.3MB build
+takes 639ms; the entire top-level script executes in **251ms**. itch.io and the phone are fine.
+
+**Removing the music does not help.** A music-stripped build reached Playwright-ready in 12.87s
+against 12.93s for the full one. Stubbing all 166 images (11.3MB → 5.5MB) gave 12.75s. Stripping
+*both*, down to 1.23MB, gave 12.7s. The music had been taken out once on the assumption that it
+was the cost; it was not, and it goes back in and stays.
+
+> Three separate "obvious" causes — file size, audio, images — each disproved by one measurement.
+> The remaining ~13s is a Playwright readiness cost, not a page cost: `page.evaluate` is live at
+> 55ms.
+
+**What was actually slow was the battery**, and specifically a fixed ~17s boot preamble that every
+one of 36 suites pays before it checks anything. Six suites: **111s serially, 21s six-wide.** The
+full battery went from about thirteen minutes to **249s**.
+
+### The repo was the other half
+
+869MB working tree, 366MB of `.git`, and **66 committed builds totalling 486MB** — cloned at every
+session start. Down to the last three plus a single `bones-latest.html`.
+
+And the thing that mattered most: **there was no source of truth in the repo at all.** `head.html`,
+`cur.js` and the build script lived only in an ephemeral scratchpad, so every session began by
+splitting the shipped 11MB HTML back apart to work on it. That is now committed.
+
+### The split
+
+`cur.js` was 11.3MB, of which **10.09MB (89%) was base64 sitting on 86 lines**; the code is 1.21MB.
+The big lines turned out to be *inside* multi-line object literals, so a line-level split was never
+going to work — `tools/split.py` walks top-level statements instead and classifies each one.
+
+`src/assets.js` is provably pure data, and the splitter refuses to write it otherwise: it strips
+comments and every string literal and then checks the residue for calls, arrow functions,
+`function`, `new` and operators. All zero — 33 declarations, nothing but literals. That is what
+makes it safe to concatenate assets *first*, so every asset binding exists before any code runs,
+while code that consumes an asset stays in `src.js` and still runs after.
+
+Searching now costs 1.2MB instead of 11.3MB, and git can delta the small file that changes every
+session instead of re-storing 11MB per commit.
+
+`CLAUDE.md` carries the layout, the commands and the measurements, so the next session starts from
+source instead of re-deriving all of this.
+
+---
+
 ## Suggested first prompt for Claude Code
 
 > Read HANDOFF.md, then bones.html and bones.js (skim park.js). Don't change anything yet —

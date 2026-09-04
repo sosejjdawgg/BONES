@@ -4,7 +4,7 @@
    pinning are the ones a screenshot cannot settle: does the beam actually leave the window, does
    the ball's damage land on the pane you can see, does the mouth track the frame on screen. */
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
-const F='file://'+__dirname+'/bones-v0.349a.html';
+const F='file://'+__dirname+'/bones-latest.html';
 const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
 (async()=>{
   const b=await chromium.launch();
@@ -166,19 +166,36 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
        came out at 35 most runs and 26 on one, and would have gone on failing at random forever.
        The drops are cleared each frame so this measures the one thing it is named after; the heal
        has a test of its own in pvamp. */
+    /* KEEP THE WORLD RUNNING FOR THE WHOLE MEASUREMENT. parkUpdate returns early whenever the
+       world is legitimately paused - a cleared wave's send-off, a panel, a cutscene - and a wave
+       clearing part-way through 600 frames silently removes those frames from the sample. The
+       burn then reads low (26 of an expected 35) and the failure describes the DRAIN RATE, which
+       is not what changed: what changed is how many frames were counted. Whether the wave clears
+       depends on spawn rolls, so this fails perhaps one run in twenty, which is the worst
+       frequency there is - often enough to erode trust, rare enough to look like something else.
+       The unpause is the measurement's own business: what is under test is 2% a second while the
+       world is RUNNING. */
+    const run=(n)=>{ for(let i=0;i<n;i++){
+      PK.drops.length=0;
+      PK.waveOutro=null; PK.shop=null; PK.friendsOpen=false; PK.convertOpen=false;
+      PK.gateAsk=false; PK.endRunAsk=false; PK.settingsOpen=false;
+      PK.holeCine=null; PK.swordCine=null; PK.wingsCine=null; PK.bossPending=false;
+      PK.holePending=false; PK.bossArmed=false;
+      parkUpdate(1/60);
+    } };
     startPark(false);
     PK.active=true; PK.hp=PK.maxhp; PK.vampAcc=0; S.vampire=true; PK.plusMode=false;
     const hp0=PK.hp;
-    for(let i=0;i<600;i++){ PK.drops.length=0; parkUpdate(1/60); }
+    run(600);
     o.dayLoss=hp0-PK.hp; o.safeDay=pkVampSafe(); o.max=PK.maxhp;
     PK.hp=PK.maxhp; PK.vampAcc=0; PK.plusMode=true;
     const hp1=PK.hp;
-    for(let i=0;i<600;i++){ PK.drops.length=0; parkUpdate(1/60); }
+    run(600);
     o.nightLoss=hp1-PK.hp; o.safeNight=pkVampSafe();
     // ...and a dog who is not cursed pays nothing either way
     PK.hp=PK.maxhp; PK.vampAcc=0; PK.plusMode=false; S.vampire=false;
     const hp2=PK.hp;
-    for(let i=0;i<600;i++){ PK.drops.length=0; parkUpdate(1/60); }
+    run(600);
     o.cleanLoss=hp2-PK.hp;
     PK.active=false; showScreen("home");
     return o;

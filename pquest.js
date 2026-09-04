@@ -9,7 +9,7 @@
      4. the box closes, in order, and the card asks the question
      5. the payout awards every objective's XP once, and a skip costs nothing */
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
-const F='file://'+__dirname+'/bones-v0.349a.html';
+const F='file://'+__dirname+'/bones-latest.html';
 const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
 (async()=>{
   const b=await chromium.launch();

@@ -1,0 +1,39 @@
+# The battery. One suite per line; everything else matching p*.js in this directory is a
+# stale one-off probe from some earlier session and is NOT run.
+# Marked "smoke" are the ones worth running after every edit.
+pboss     smoke
+pquest    smoke
+pnight    smoke
+pfix      smoke
+phole     smoke
+pall      smoke
+pbed
+pvamp
+pbat
+pdev
+pdevesc
+pmark
+pevo
+ptidy
+pdog
+panim
+pfetch
+proom
+pleap
+pdeck
+ptrick
+pflock
+pwalk
+pjoy
+pperf
+pmaw
+pvfx
+plove
+pbark2
+pcone2
+pcage
+proar
+pcone
+pvis
+pfeet
+ppb

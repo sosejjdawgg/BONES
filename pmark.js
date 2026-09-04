@@ -4,7 +4,7 @@
    that is not to reason about the physics but to THROW at it. A scroll region is only useful if
    it can reach its own last child. Both are measured here, not argued. */
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
-const F='file://'+__dirname+'/bones-v0.349a.html';
+const F='file://'+__dirname+'/bones-latest.html';
 const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
 (async()=>{
   const b=await chromium.launch();

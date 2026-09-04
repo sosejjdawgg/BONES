@@ -7,7 +7,7 @@
      3. phase 0.5 never has two swipes alive at once, and every throw is telegraphed first
    The rest measures whether it is playable: bullets alive, and how often a dodging dog is hit. */
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
-const F='file://'+__dirname+'/bones-v0.349a.html';
+const F='file://'+__dirname+'/bones-latest.html';
 const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
 (async()=>{
   const b=await chromium.launch();
