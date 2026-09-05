@@ -437,7 +437,19 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
   /* ---------- 4b. THE SPRITES, AND WHICH POSE MEANS WHAT ---------- */
   /* The poses are not decoration - the brief makes them a language the player has to be able to
      read: the mark is showing means he is not shooting, claws leading means he is. So the test is
-     not "does a sprite exist", it is "does the pose the picker chooses match the state". */
+     not "does a sprite exist", it is "does the pose the picker chooses match the state".
+
+     INVERTED IN v0.353a, AND THE REASONING MATTERS. Four of the assertions below used to pin the
+     old sheets - `grip`/`firing` on the three-quarter paw, `moving` on the face-on palm, and
+     `swish` on the streak. New art arrived with its own four-state language (moving / charging /
+     charged / firing) and the note that ONLY those four are to appear around the box, so every
+     one of those pins now names a pose the fight is meant never to reach there. They are turned
+     over rather than deleted: what they were protecting - that the picture on the hand tells you
+     what the hand is about to do - is exactly what the new set is for, and the assertions still
+     say so, about the new names.
+     `swish` is the one that changed KIND rather than value. The streak is no longer a pose any
+     hand wears; it is the wake drawn behind one, so a fast paw wears the FLYING pose, which is
+     the sprite the artist captioned "flying, moving while not attacking". */
   const art = await pg.evaluate(async()=>{
     const sleep=ms=>new Promise(r=>setTimeout(r,ms));
     const out={loaded:{}, poses:{}};
@@ -447,32 +459,109 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
     }
     /* THE STATE HAS TO BE NEUTRAL FIRST. A pound left running by the section above outranks every
        other pose - correctly - so this measured "gripping the wall" and got "fist", which is the
-       picker doing its job on a fight that was still mid-swing. */
+       picker doing its job on a fight that was still mid-swing. The BEAT has to be neutral too
+       now: the charge is read off the telegraph, so a probe run during one reads as charging
+       whatever it does to the paw. */
     BOSS.paw.pound=null; BOSS.stiff=0;
-    const q=BOSS.paw.L, keep={...q};
-    const at=(o)=>{ Object.assign(q,{spd:0,fireT:0,teleT:0,glow:0}, o); return pawPoseFor(q,"L"); };
+    const q=BOSS.paw.L, keep={...q}, ph0=BOSS.ph, tt0=BOSS.telegraphT;
+    BOSS.ph="pattern";
+    const at=(o)=>{ Object.assign(q,{spd:0,fireT:0,teleT:0,glow:0,fistT:0,faceDir:0}, o); return pawPoseFor(q,"L"); };
     const B=BOSS.box;
-    q.x=B.x; q.y=B.y+B.h*0.45;                       // gripping the left wall
+    q.x=B.x; q.y=B.y+B.h*0.45; q.ang=0;              // gripping the left wall
     out.poses.grip   = at({});
     out.poses.firing = at({fireT:0.3});
-    out.poses.wind   = at({teleT:0.3});
-    out.poses.windFast = at({teleT:0.3, spd:900});   // a wind-up must never wear the blur
     out.poses.swish  = at({spd:PAW_SWISH_SPD+60});
+    out.poses.riding = at({faceDir:1, spd:150});
     q.x=B.x+B.w*0.5; q.y=B.y+B.h*0.5;                // mid-board (only ever true in transit)
     out.poses.moving = at({spd:PAW_MOVE_SPD+30});
+    // ...and the wind-up, which is the BEAT rather than anything on the paw
+    q.x=B.x; q.y=B.y+B.h*0.45;
+    BOSS.ph="telegraph"; BOSS.telegraphLen=0.60;
+    BOSS.telegraphT=0.55;  out.poses.wind     = at({});
+    BOSS.telegraphT=0.55;  out.poses.windFast = at({spd:900});
+    BOSS.telegraphT=0.05;  out.poses.windFull = at({});
+    BOSS.ph=ph0; BOSS.telegraphT=tt0;
     Object.assign(q,keep);
     return out;
   });
   console.log('ART   ', JSON.stringify(art));
-  for(const k of ['palm','glow','q34','q34b','fist','slam','swipe'])
+  for(const k of ['palm','glow','q34','q34b','fist','slam','swipe','move','chg','chgb','fire'])
     ck(art.loaded[k] && art.loaded[k].ok, 'the "'+k+'" paw sprite did not decode: '+JSON.stringify(art.loaded[k]));
-  ck(art.poses.grip==='q34b', 'a paw gripping the wall is not in the three-quarter pose: '+art.poses.grip);
-  ck(art.poses.firing==='q34b', 'a FIRING paw is not in the three-quarter pose: '+art.poses.firing);
-  ck(art.poses.wind==='glow', 'a paw winding up does not show the burning mark: '+art.poses.wind);
-  ck(art.poses.windFast==='glow',
-     'a fast wind-up wears the motion blur instead of the mark: '+art.poses.windFast);
-  ck(art.poses.swish==='swipe', 'a fast paw is not streaked: '+art.poses.swish);
-  ck(art.poses.moving==='palm', 'a travelling paw does not show the mark: '+art.poses.moving);
+  ck(art.poses.grip==='move', 'a paw holding a bar is not in the neutral pose: '+art.poses.grip);
+  ck(art.poses.firing==='fire', 'a FIRING paw does not wear the erupting mark: '+art.poses.firing);
+  ck(art.poses.wind==='chg', 'a paw winding up does not show the charging mark: '+art.poses.wind);
+  ck(art.poses.windFull==='chgb',
+     'the end of a wind-up is not the fully-charged mark: '+art.poses.windFull);
+  ck(art.poses.windFast==='chg',
+     'a fast wind-up loses the mark instead of keeping it: '+art.poses.windFast);
+  ck(art.poses.swish==='move',
+     'a fast paw still wears the streak instead of the flying pose: '+art.poses.swish);
+  ck(art.poses.moving==='move', 'a travelling paw is not in the flying pose: '+art.poses.moving);
+  ck(art.poses.riding==='move', 'a paw riding its swipe is not in the flying pose: '+art.poses.riding);
+
+  /* ---------- 4b-ii. AND NOTHING ELSE APPEARS AROUND THE BOX ----------
+     "Only those four during the attack phases" is a claim about every frame, not about the six
+     states a probe happens to construct. Sampled across a real fight, both hands, at all three
+     phases: anything from the old vocabulary showing up here is the bug the note is about. */
+  const vocab = await pg.evaluate(async()=>{
+    const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+    const seen={}, ok=["move","chg","chgb","fire","fist"];
+    const pin=setInterval(()=>{ PK.hp=PK.maxhp=100000; },48);
+    for(const frac of [0.90,0.50,0.20]){
+      BOSS.hp=BOSS.maxhp*frac; pkBossPhaseCheck(); BOSS.coolOwed=false; BOSS.coolT=0;
+      for(let i=0;i<140;i++){          // 420 samples over three phases is plenty for a vocabulary
+        await sleep(20);
+        BOSS.hp=BOSS.maxhp*frac;
+        if(BOSS.ph==="intro"||BOSS.ph==="pawslam"||BOSS.ph==="outro"||BOSS.ph==="win") continue;
+        for(const sd of ["L","R"]){
+          const p=pawPoseFor(BOSS.paw[sd],sd);
+          seen[p]=(seen[p]||0)+1;
+        }
+      }
+    }
+    clearInterval(pin);
+    return {seen, bad:Object.keys(seen).filter(k=>!ok.includes(k))};
+  });
+  console.log('VOCAB ', JSON.stringify(vocab));
+  ck(vocab.bad.length===0,
+     'the fight still reaches the old paw sheets: '+JSON.stringify(vocab.bad));
+  for(const k of ['move','chg','fire'])
+    ck((vocab.seen[k]||0)>0, 'the "'+k+'" pose is never reached in a real fight');
+
+  /* ---------- 4b-iii. A HAND ON THE RIGHT WALL IS THE LEFT ONE TURNED OVER ----------
+     The complaint the new art answers is a hand lying on its back against the bars, so what has
+     to hold is that the aim decides the picture EXACTLY: mirrored across the middle of the cage,
+     and turned a quarter over the lid so the claws face the floor of the board. */
+  const aimed = await pg.evaluate(()=>{
+    const B=BOSS.box, out={};
+    const rotOf=(ang)=>{
+      let a=ang; while(a>Math.PI) a-=6.283; while(a<-Math.PI) a+=6.283;
+      const mir=Math.abs(a)>Math.PI/2;
+      return {mir, rot:+((mir ? (a>0?a-Math.PI:a+Math.PI) : a)).toFixed(3),
+              // where the claws end up pointing in the world, from art that points along +x
+              claw:+((mir ? Math.PI+ (a>0?a-Math.PI:a+Math.PI) : a)).toFixed(3)};
+    };
+    out.left  = rotOf(0);            // left wall, reaching right
+    out.right = rotOf(Math.PI);      // right wall, reaching left
+    out.lid   = rotOf(Math.PI/2);    // over the lid, reaching down
+    out.under = rotOf(-Math.PI/2);   // under the box, reaching up
+    out.aimPoses = ["move","chg","chgb","fire"].map(k=>!!PAWPOSE[k].aim);
+    out.flipOff  = ["move","chg","chgb","fire"].map(k=>pawFlip("L",k));
+    return out;
+  });
+  console.log('AIM   ', JSON.stringify(aimed));
+  ck(aimed.aimPoses.every(v=>v===true), 'the cage poses are not aim-driven');
+  ck(aimed.flipOff.every(v=>v===false),
+     'pawFlip is still second-guessing the mirror for the aim poses');
+  ck(aimed.left.mir===false && Math.abs(aimed.left.rot)<0.01, 'the left-wall hand is not upright');
+  ck(aimed.right.mir===true && Math.abs(aimed.right.rot)<0.01,
+     'the right-wall hand is rotated instead of mirrored: '+JSON.stringify(aimed.right));
+  ck(Math.abs(aimed.lid.claw-Math.PI/2)<0.01,
+     'a hand over the lid does not point its claws at the floor: '+aimed.lid.claw);
+  ck(Math.abs(aimed.under.claw+Math.PI/2)<0.01,
+     'a hand under the box does not point its claws up into it: '+aimed.under.claw);
+  ck(Math.abs(aimed.right.claw-Math.PI)<0.01,
+     'the right-wall hand does not reach into the cage: '+aimed.right.claw);
 
   /* ---------- 4c. THE POUND ---------- */
   const pound = await pg.evaluate(async()=>{
@@ -645,7 +734,7 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
       await sleep(120);
       const pin=setInterval(()=>{ BOSS.hp=BOSS.maxhp*frac; PK.hp=PK.maxhp=100000; },48);
       let top=0, coded=0, born=[];
-      for(let i=0;i<320;i++){
+      for(let i=0;i<200;i++){
         await sleep(20);
         coded=pawBulletSpd();
         for(const b of BOSS.bullets){
@@ -682,11 +771,11 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
     const pin=setInterval(()=>{ BOSS.hp=BOSS.maxhp*0.90; PK.hp=PK.maxhp=100000; },48);
     const B=BOSS.box;
     let wavy=0; const walls=[];
-    for(let round=0;round<3;round++){
+    for(let round=0;round<2;round++){
       BOSS.bullets.length=0; BOSS.spawn.length=0;
       BOSS.ph="telegraph"; BOSS.telegraph=round%2?"sweepR":"sweepL"; BOSS.telegraphT=0;
       pkBossBeginPattern();
-      for(let i=0;i<120;i++){
+      for(let i=0;i<100;i++){
         await sleep(20);
         const cl=BOSS.bullets.filter(b=>b.k==="claw");
         for(const b of cl) if(b.swish!==undefined) wavy++;

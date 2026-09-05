@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.352a**.
+Currently **v0.353a**.
 
 > **The workflow below is out of date and has been since v0.350a.** The source of truth is
 > `src/` — edit `src/src.js`, run `./build.sh <version>`, test with `./test.sh`. See `CLAUDE.md`,
@@ -3325,6 +3325,96 @@ bird on a sine wave was precisely what the note was about.
 > full battery run to find, because what the harness reported was "phase 2 and 3 fired nothing" —
 > a symptom four steps downstream. The frame pick is wrapped and floored now, and a bird with a
 > missing offset flaps out of step instead of taking the fight down with it.
+
+---
+
+## v0.353a — four sprites, four states, and nothing else on the cage
+
+New paw art arrived with its own vocabulary, captioned by the artist:
+
+| | |
+|---|---|
+| **1** | flying, moving while not attacking |
+| **2** | charging attack |
+| **2A** | fully charged |
+| **3** | attacking (projectile bones based) |
+
+...and the note that **only these are to appear around the box during the attack phases**. Both
+complaints behind it were about the same thing: the swiping paw was wearing the old three-quarter
+sheet, which reads as a paw mid-step rather than a hand working a cage, and the hand parked on the
+wall was not much better.
+
+### `aim` — what the new art makes possible and the old could not
+
+The old sheets' claws pointed down-and-right, so any attempt to turn one to its aim needed a base
+offset and a clamp, and v0.352a settled for mirroring plus a fixed 0.30rad tilt. The new art's
+claws point along **+x**, which is the same axis `ang` is measured from — so the pose can be turned
+to the aim *exactly*:
+
+```
+a = ang folded to (-pi, pi]
+mirror = |a| > pi/2                       // the far side of the cage is this hand turned over
+rot    = mirror ? a -/+ pi : a            // ...and the fold is the whole of the rotation
+```
+
+Left wall unturned, right wall the same hand mirrored, over the lid turned a quarter so the claws
+face the floor of the board, under the box turned the other quarter. No base, no lean, no clamp,
+and `pboss` checks all four by where the claws end up pointing in the world.
+
+`ax`/`ay` put the **pentagram** on the paw's station rather than the middle of the picture. The art
+is two-thirds forearm; centring the whole image hung the mark a third of a hand inside the cage
+while the bones still left the wall. Measured off the art at 0.60/0.54.
+
+### The four states, and where they come from
+
+- **move** — travelling, holding a bar, and riding a swipe. The artist's caption is "flying,
+  moving while not attacking", which is exactly the swipe: the hand crosses the cell with its
+  claws out and no mark lit.
+- **chg / chgb** — read off `pawChargeK()`, which is the **telegraph the fight already had**. Every
+  beat winds up before it fires and until now the paws did not show it: they streamed, stopped,
+  and streamed again with the same picture on the palm throughout. No new timer, and the charge is
+  a fraction of `BOSS.telegraphLen` so it tracks whatever a beat's wind-up is worth.
+- **fire** — `q.fireT`, which pawFire already sets.
+
+`swipe` stopped being a pose. It is still drawn — it is the wake behind the riding hand — but no
+hand wears it any more, so a paw is never a motion blur.
+
+The face-on palms stay for the **arrival**, which happens either side of his head where you are
+looking at him rather than at the cage: a palm turned to camera showing you the mark is the right
+picture there, and a three-quarter hand reaching sideways is not. The moment the fight starts the
+four-pose language takes over completely, and `pboss` samples both hands across all three phases
+and fails on anything from the old vocabulary reaching a fight frame.
+
+### Four assertions inverted, with the reasoning
+
+`grip`/`firing` pinned the three-quarter sheet, `moving` pinned the face-on palm, `swish` pinned
+the streak. All four now name poses the fight is meant never to reach. They are turned over rather
+than deleted: what they protected — that the picture on the hand tells you what the hand is about
+to do — is exactly what the new set is for, and they still say so, about the new names.
+
+`swish` is the one that changed **kind** rather than value: the streak is no longer a pose at all,
+so a fast paw wears the flying pose, which is the sprite the artist captioned for it.
+
+### The art pipeline, since it will come up again
+
+The four sheets arrived as JPEGs with a red annotation numeral drawn in the top-left corner. The
+numeral is a flat `(180,52,52)` with no texture, so it comes out by colour-matching inside the
+top-left region and dilating by 15px to take the JPEG halo with it — a rectangle would have
+clipped fur, and a global red key would have eaten the fire. `2A` needed a wider net than the
+others because "2 A" is two glyphs and reaches further right.
+
+Alpha is a luminance key against the black ground (`alpha = lum*255/46`), then trim to the alpha
+bbox, resize the long side to 190, and quantize to 96 colours with `FASTOCTREE` — which is what
+the existing paw sheets are, and takes each file from 48KB to about 10KB.
+
+### ...and pboss got too big for its slot
+
+Every assertion passed and the suite still failed the battery: with four new sections it ran long
+enough that its Chromium was reaped while sharing the box with five others, and Playwright reported
+"Target page, context or browser has been closed". The sample counts in the new sections were
+chosen for headroom rather than need, so they came down (420 vocabulary samples instead of 780,
+two bird rounds instead of three) and the battery is 417s with all 36 green. Worth remembering:
+**a suite can fail by being too expensive, and it does not look like a test failure when it does.**
 
 ---
 

@@ -15005,7 +15005,7 @@ const BOSS={
   phase:1, t:0,
   ph:"intro",                      // intro | telegraph | pattern | breath | cool | outro
   coolT:0, coolOwed:false,
-  telegraph:null, telegraphT:0, patternT:0, patternLen:0, breathT:0,
+  telegraph:null, telegraphT:0, telegraphLen:0.32, patternT:0, patternLen:0, breathT:0,
   invulnT:0, cleanRun:true, shake:0, flash:0, headCell:"front", shakeCell:0,
   segments:{ rift:{pulse:0}, coil3:{ang:0}, coil2:{ang:0}, coil1:{ang:0}, neck:{ang:0}, head:{ang:0, jaw:0} },
   box:{x:0,y:0,w:0,h:0},
@@ -16672,7 +16672,7 @@ function pawFire(side){
 function pkBossTelegraph(){
   const k=pkBossPickPattern();
   BOSS.telegraph=k;
-  BOSS.telegraphT=BOSS_TELE[k]||0.32;
+  BOSS.telegraphT=BOSS.telegraphLen=BOSS_TELE[k]||0.32;
   BOSS.ph="telegraph";
   BOSS.headCell=BOSS_HEAD[k]||"front";
   BOSS.teleEdge=BOSS_EDGE[k]||"";     // the lip it will come over, lit for the whole wind-up
@@ -17582,6 +17582,23 @@ function drawPentagram(ctx,r,glow,calm){
    other hand turned over, so `face` poses take their side from the MIRROR and keep only a small
    tilt into the board — which is also all the aim a paw pinned to a wall can express. `swipe`
    keeps the full rotation: a streak has to lie along the direction it is travelling. */
+/* THE FOUR POSES THAT LIVE ON THE CAGE, and by v0.353a they are the only ones: a hand around the
+   box is moving, charging, charged, or firing, and nothing else.
+     move  claws out, no mark          — travelling, holding a bar, riding a swipe
+     chg   the mark lit                — winding up, through the telegraph
+     chgb  the mark at full burn       — the last of the wind-up
+     fire  the mark erupting           — a bone stream is coming out of it
+   `aim:true` is what the new art makes possible and the old could not. Its claws point along +x,
+   which is the same axis `ang` is measured from, so the pose can be turned to the aim EXACTLY —
+   folded into the right half-plane with the mirror carrying the side. A hand on the left wall is
+   unturned, the right wall is the same hand turned over, and a hand over the lid is turned a
+   quarter so its claws point down at the floor of the board. No base offset, no lean, no clamp.
+   `ax`/`ay` put the PENTAGRAM on the paw's station rather than the middle of the picture — the
+   art is two-thirds forearm, and centring the whole image hung the mark a third of a hand inside
+   the cage while the bones still left the wall. Measured off the art: the mark sits at 0.60/0.54.
+   The face-on palms (palm/glow) and the spread stay for the ARRIVAL, which happens either side of
+   his head where you are looking at him rather than at the cage. `swipe` is no longer a pose any
+   hand wears: it is the wake drawn behind one. */
 const PAWPOSE={
   palm : {rot:false, lean:0.22, base:0,           sc:2.45},
   glow : {rot:false, lean:0.22, base:0,           sc:2.70},
@@ -17589,7 +17606,11 @@ const PAWPOSE={
   slam : {rot:false, lean:0.10, base:0,           sc:2.95},
   q34  : {face:true, lean:0.30,                   sc:2.60},
   q34b : {face:true, lean:0.30,                   sc:2.60},
-  swipe: {rot:true,  lean:1,    base:0,           sc:3.05}
+  swipe: {rot:true,  lean:1,    base:0,           sc:3.05},
+  move : {aim:true, ax:0.60, ay:0.54,             sc:3.80},
+  chg  : {aim:true, ax:0.60, ay:0.54,             sc:3.90},
+  chgb : {aim:true, ax:0.58, ay:0.52,             sc:4.05},
+  fire : {aim:true, ax:0.61, ay:0.55,             sc:4.15}
 };
 /* The art faces RIGHT and its claws point UP. `ang` is where the palm is aimed - 0 is at the
    right-hand wall, PI/2 is straight down - so an upright pose is turned by a fraction of (ang) and
@@ -17603,8 +17624,17 @@ function drawPawSprite(ctx,x,y,ang,R,pose,glow,sx,sy,calm,flip){
   const w0=im.naturalWidth, h0=im.naturalHeight;
   const scale=(R*def.sc)/Math.max(w0,h0);
   const w=w0*scale, h=h0*scale;
-  let rot;
-  if(def.face){
+  let rot, mir=flip;
+  if(def.aim){
+    /* FOLDED, NOT CLAMPED. `a` is where the palm is aimed; anything past a quarter turn is the
+       far side of the cage, which is the same hand turned over rather than a hand rotated onto
+       its back. Fold it back across the vertical and let the mirror carry the difference: the
+       art's claws lie along +x, so what comes out points exactly where it is aiming. */
+    let a=ang; while(a>Math.PI) a-=6.283; while(a<-Math.PI) a+=6.283;
+    mir=Math.abs(a)>Math.PI/2;
+    rot = mir ? (a>0 ? a-Math.PI : a+Math.PI) : a;
+  }
+  else if(def.face){
     // the mirror already says which way it faces, so the tilt only has to lean it at the board
     rot=(flip?-1:1)*def.lean;
   }
@@ -17614,10 +17644,12 @@ function drawPawSprite(ctx,x,y,ang,R,pose,glow,sx,sy,calm,flip){
     let a=ang; while(a>Math.PI) a-=6.283; while(a<-Math.PI) a+=6.283;
     rot=clamp(a*def.lean, -0.95, 0.95);
   }
+  // the pentagram, not the middle of the picture, is what sits on the station — see PAWPOSE
+  const ox=-w/2-((def.ax||0.5)-0.5)*w, oy=-h/2-((def.ay||0.5)-0.5)*h;
   ctx.save();
   ctx.translate(x,y);
   ctx.rotate(rot);
-  ctx.scale((flip?-1:1)*(sx||1), (sy||1));
+  ctx.scale((mir?-1:1)*(sx||1), (sy||1));
   if(glow>0.02 && !calm){
     // the heat under the hand: same pool of red the pentagram burns in, so a lit paw sits in its
     // own light instead of being a bright cut-out on black
@@ -17628,11 +17660,11 @@ function drawPawSprite(ctx,x,y,ang,R,pose,glow,sx,sy,calm,flip){
     ctx.restore();
   }
   ctx.imageSmoothingEnabled=true;
-  ctx.drawImage(im, -w/2, -h/2, w, h);
+  ctx.drawImage(im, ox, oy, w, h);
   // ...and a wash of the same red OVER it while it is charged, so the fur takes the light
   if(glow>0.25 && !calm){
     ctx.save(); ctx.globalCompositeOperation="lighter"; ctx.globalAlpha=(glow-0.25)*0.42;
-    ctx.drawImage(im, -w/2, -h/2, w, h);
+    ctx.drawImage(im, ox, oy, w, h);
     ctx.restore();
   }
   ctx.restore();
@@ -17643,8 +17675,9 @@ function pawPoseFor(q,side){
   const P=BOSS.paw;
   // the scream, and the beat of the fists unclenching after it: a closed hand outranks everything
   if(q.fistT>0)                                       return "fist";
-  // riding its own swipe across the board — claws leading, turned the way it is going
-  if(q.faceDir)                                       return "q34b";
+  // riding its own swipe across the board — the FLYING pose, claws leading, and the `aim` fold
+  // turns them the way it is going without needing to be told twice
+  if(q.faceDir)                                       return "move";
   /* THE SPREAD IS THE IMPACT. It used to be the arrival — five splayed toes bursting up out of
      the floor — and that beat no longer exists, so it moved to the only other place a hand is
      splayed: the moment it lands flat on the bars. Measured from the landing rather than from the
@@ -17657,17 +17690,20 @@ function pawPoseFor(q,side){
      moment the player most needs to see the mark - it was telegraphing with the telegraph hidden.
      teleT is set only by things that are genuinely WINDING UP, never by the flash a shot leaves,
      which is why this cannot be read off q.glow. */
-  if(q.teleT>0)                                       return "glow";
-  // MOTION STREAKS MAY ONLY BE DRAWN WHILE MOVING. The sprite has the blur painted into it, so a
-  // parked paw wearing it looks broken rather than fast.
-  if(q.spd>PAW_SWISH_SPD)                             return "swipe";
-  /* WHICH THREE-QUARTER VIEW. The two sheets are two different angles on the same hand, so they
-     are picked by the STATION rather than by the side: over the lid he is reaching straight down
-     at the floor of the board (q34), on a wall he is reaching across it (q34b). The side is
-     carried by the mirror — see pawFacing — which is why both walls can share one sheet. */
-  if(q.fireT>0)                                       return pawOverLid(side) ? "q34" : "q34b";
-  if(q.spd>PAW_MOVE_SPD)                              return "palm";   // ...on the move: mark out
-  return pawOnStation(side) ? (pawOverLid(side)?"q34":"q34b") : "palm";
+  /* THE ARRIVAL KEEPS THE FACE-ON PALMS. Everything from the scream to the hands landing on the
+     bars happens either side of his head, where you are looking at HIM: a palm turned to camera
+     showing you the mark is the right picture there, and a three-quarter hand reaching sideways
+     is not. The moment the fight starts, the four-pose cage language takes over completely. */
+  if(BOSS.ph==="intro" || BOSS.ph==="pawslam")        return q.teleT>0 ? "glow" : "palm";
+  /* AROUND THE BOX: MOVING, CHARGING, CHARGED, FIRING. Nothing else, which is the whole of the
+     v0.353a note — the old three-quarter sheets read as a paw mid-step rather than a hand working
+     the cage, and they are out of the fight entirely. `swipe` went with them as a POSE: it is
+     still drawn, but only ever as the wake behind a hand, never worn by one. */
+  const chg=pawChargeK();
+  if(chg>0)                                           return chg>=PAW_CHG_FULL ? "chgb" : "chg";
+  if(q.teleT>0)                                       return "chgb";   // the warm-up's own wind-up
+  if(q.fireT>0)                                       return "fire";
+  return "move";
 }
 function pawOverLid(side){
   const q=BOSS.paw[side], B=BOSS.box;
@@ -17702,8 +17738,20 @@ function pawFlip(side,pose){
   // images of each other are two left hands, and both of them lean the same way
   if(pose==="q34"||pose==="q34b"||pose==="fist") return pawFacing(side)>0;
   if(pose==="swipe") return side==="L";
+  // `aim` poses work theirs out from the angle itself, inside drawPawSprite — see PAWPOSE
   return false;
 }
+/* HOW CHARGED THE HANDS ARE, 0 to 1. The fight already has a wind-up on every beat — the
+   telegraph — and until now the paws did not show it: they streamed, stopped, and streamed again
+   with the same picture on the palm throughout. The four-pose set makes the wind-up visible, so
+   it is read off the beat that was always there rather than a new timer. */
+function pawChargeK(){
+  if(BOSS.ph==="telegraph")
+    return clamp(1-BOSS.telegraphT/Math.max(0.05,BOSS.telegraphLen||0.32), 0, 1);
+  if(BOSS.ph==="pawwarm" && BOSS.paw.warmPh==="tele") return clamp(BOSS.paw.teleK,0,1);
+  return 0;
+}
+const PAW_CHG_FULL=0.72;   // ...past this it is FULLY charged and wears the heavier mark
 
 function pkDrawBoss(){
   if(!BOSS.active) return;
