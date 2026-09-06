@@ -14832,24 +14832,24 @@ const BOSS_BULLET_R=5*BOSS_SCALE;
    a mark on the wall appeared from BEHIND the hand and was sliced in half by the cage edge on its
    way out. It is the one moment in the fight that has to look like it came out of him. */
 const BONE_BORN=0.26;
-const BOSS_TELE={rain:0.35, sweepL:0.30, sweepR:0.30, ring:0.40, cross:0.30, surge:0.35, maw:0.50, pound:0.45};
+const BOSS_TELE={rain:0.35, sweepL:0.30, sweepR:0.30, ring:0.40, slam:0.45, surge:0.35, maw:0.50};
 /* WHICH LIP IT COMES OVER. Held for the whole telegraph window (0.30-0.50s) as a ghost band on
    that edge, so an edge spawn is never the first thing you hear about it. MAW is not in here on
    purpose: it is thrown from the mouth and has its own glow and preview arc up on the head. */
 // POUND is not in here on purpose: it does not come over a lip at all, it comes DOWN, and its
 // telegraph is the marks on the floor rather than a band on the rim
-const BOSS_EDGE={ rain:"t", sweepL:"l", sweepR:"r", cross:"lt", surge:"b", ring:"lrtb" };
-const BOSS_HEAD={rain:"rear", sweepL:"left", sweepR:"right", ring:"dip", cross:"front", surge:"roar", maw:"roar", pound:"front"};
+const BOSS_EDGE={ rain:"t", sweepL:"l", sweepR:"r", slam:"lt", surge:"b", ring:"lrtb" };
+const BOSS_HEAD={rain:"rear", sweepL:"left", sweepR:"right", ring:"dip", slam:"front", surge:"roar", maw:"roar"};
 const BOSS_P1=["rain","sweepL","sweepR","ring"];
-const BOSS_P2=["rain","sweepL","sweepR","ring","cross","maw","pound"];
-const BOSS_P3=["rain","sweepL","sweepR","ring","cross","surge","maw","pound"];
+const BOSS_P2=["rain","sweepL","sweepR","ring","slam","maw"];
+const BOSS_P3=["rain","sweepL","sweepR","ring","slam","surge","maw"];
 /* MAW is a heavy read: one huge bone at a time, arcing, that has to be watched all the way down.
    Two of those at once is not a harder fight, it is an unreadable one — so a phase-three double
    never puts two heavies together. MAW is held out of P1 entirely: by the time it shows up the
    player already knows what falling lanes look like. */
 // POUND is heavy: it owns a paw, it owns the floor under a spot, and pairing it with another
 // heavy is two things to watch in a fight whose whole readability rests on watching one
-const BOSS_HEAVY=["maw","ring","surge","pound"];
+const BOSS_HEAVY=["maw","ring","surge","slam"];
 /* MAW IS A MACHINE GUN NOW. It used to be one huge bone at a time, arcing, deliberately slow to
    read. The beat it wanted to be is a Metal Slug boss opening up: he leans his head in over the
    board and hoses it, the barrel panning across, and the volume IS the read - you move out of the
@@ -14890,7 +14890,10 @@ const BOSS_BONE_ACC_T=0.85;                   // ...and how long it takes to rea
 function bossBoneCap(){ return BOSS_BONE_SLOW*BOSS_BONE_PH[Math.min(3,Math.max(1,BOSS.phase))]; }
 // which kinds this governs: the BONES. Mouthfuls fly on an arc whose landing point is the whole
 // point of them, birds are a wall with a lane in it, and the swipe is the warm-up's own tempo.
-function bossBoneAcc(k){ return k==="bone"||k==="ringbone"||k==="bar"; }
+/* NOT `bar` ANY MORE. A lane square is slammed into position and parked - it is a wall going
+   up, not a projectile crossing - and a wall that eases in over most of a second arrives after
+   the fists that are supposed to break it. */
+function bossBoneAcc(k){ return k==="bone"||k==="ringbone"; }
 
 /* ---------- THE FIVE BEATS -------------------------------------------------------------------
    The fight is BUILT as seven spawners but it is READ as five commands - the five a dog already
@@ -14906,8 +14909,8 @@ function bossBoneAcc(k){ return k==="bone"||k==="ringbone"||k==="bar"; }
    Nothing here is a new mechanic or a new sprite. It is the head cells, the chain's sway, the
    jaw, the rift's pulse, a bone's spin, the dust/ember pools, the shake/flash pair and the
    board's own border - moved differently, on a beat. */
-const BOSS_BEAT={ maw:"FETCH", cross:"BADDOG", rain:"BURY", surge:"BURY",
-                  sweepL:"PACK", sweepR:"PACK", ring:"PACK", pound:"BADDOG" };
+const BOSS_BEAT={ maw:"FETCH", slam:"BADDOG", rain:"BURY", surge:"BURY",
+                  sweepL:"PACK", sweepR:"PACK", ring:"PACK" };
 function bossBeat(){ return BOSS_BEAT[BOSS.telegraph]||null; }
 function bossWalk(){ return BOSS.phase>=3; }
 function bossCalm(){ return !!SETTINGS.reduceMotion; }
@@ -15038,6 +15041,10 @@ const BOSS={
   spawn:[],                        // per-pattern spawner state, one entry per live pattern
   drag:false, hits:0, dodged:0, last:null, faceI:1,
   golden:0, bird:null, birdNext:0, reflect:[], fizz:[], trail:[], trailPool:[], whiteT:0, headX:0, headY:0, reflected:0,
+  /* THE CAGE'S OWN SHUDDER, a DRAW offset and nothing else. The board's coordinates never move,
+     so a square that was clear of a mark stays clear of it however hard the picture jumps - the
+     alternative is a fight where the thing you dodged catches you because the camera moved. */
+  boxK:{t:0, ax:0, ay:0},
   openT:0, tint:0, camFrom:PK_CAM_PCT0,
   introT:0, joy:null, dust:[], erupted:false, musicCued:false,
   roarSfx:false, roarBlast:false,
@@ -15160,6 +15167,7 @@ function pkBossEnd(){
   pkApplyUISplit(BOSS.camFrom);            // the split is shared with DOGCAM: never leave it grown
   BOSS.openT=0; BOSS.tint=0;
   BOSS.trail.length=0; BOSS.reflect.length=0; BOSS.fizz.length=0; BOSS.bird=null; BOSS.golden=0;
+  BOSS.boxK.t=0; BOSS.paw.pound=null;
   BOSS.joy=null; BOSS.drag=false;
   BOSS.pocks.length=0; BOSS.puff.length=0; BOSS.lane.length=0; BOSS.ghosts.length=0;
   pkBossWorldTransform(0,0,0,0);    // the world is never left rolled
@@ -15878,28 +15886,57 @@ function pkBossSpawner(kind){
         beep(150,.16,"sine",.06); BOSS.shake=Math.max(BOSS.shake,0.20);
       }};
   }
-  if(kind==="cross"){
-    return {kind, t:0, next:0.2, step:0, life:5.4,
+  if(kind==="slam"){
+    /* BADDOG, AND IT IS ONE BEAT NOW. The yellow lanes and the fists used to be two entries in the
+       pool that happened to share a command name, and drawing both of them over a paw stream that
+       never stopped is what made the last third of this fight unreadable. Folded together they
+       tell one sentence instead of three at once: the board closes, then he breaks it open, then
+       he has nothing left.
+         LOCK  2.30s  two walls of squares cross the board and lock a lane off
+         FISTS 4.00s  eight thumps, alternating hands, each aimed at where the dog is
+         REST  3.40s  he is spent, and nothing happens at all
+       THE PAW STREAM IS OFF FOR ALL OF IT - see pkPawFightTick. That is the whole point: this is
+       the one beat where both hands have a job that is not firing, so the only things on the
+       board are the squares he put there and the marks he is about to land on. */
+    return {kind, t:0, next:0, lanes:0, started:false,
+      life:(SLAM_LOCK + SLAM_WIND + SLAM_HITS*SLAM_GAP + SLAM_REST),
       tick(dt){
-        this.next-=dt; if(this.next>0) return;
-        this.next=this.sparse?2.4:1.05; this.step++;
-        // the lane wash: the rows (or columns) it just filled get a beat of colour behind them,
-        // so the shape of the line is readable before the bars have crossed the board
-        if(this.step%2){                                         // a horizontal line, one gap
-          const g=1+Math.floor(Math.random()*5);
-          for(let i=0;i<7;i++){ if(i===g) continue;
-            bossAdd({x:-8, y:B.h*(i+0.5)/7, vx:172*BOSS_SPD, vy:0, r:BOSS_BULLET_R, k:"bar", spin:0, vr:0}); }
-          BOSS.lane.push({axis:0, g, t:0.34});
-          BOSS.edge.l=Math.max(BOSS.edge.l,0.65);
-        } else {                                                 // ...then a vertical one
-          const g=1+Math.floor(Math.random()*5);
-          for(let i=0;i<7;i++){ if(i===g) continue;
-            bossAdd({x:B.w*(i+0.5)/7, y:-8, vx:0, vy:172*BOSS_SPD, r:BOSS_BULLET_R, k:"bar", spin:0, vr:0}); }
-          BOSS.lane.push({axis:1, g, t:0.34});
-          BOSS.edge.t=Math.max(BOSS.edge.t,0.65);
+        this.t+=dt;
+        if(!this.started){ this.started=true; pkPoundStart(); }
+        if(this.t<SLAM_LOCK){
+          this.next-=dt;
+          if(this.next>0 || this.lanes>=2) return;
+          this.next=0.85; this.lanes++;
+          // the lane wash: the rows (or columns) it just filled get a beat of colour behind them,
+          // so the shape of the line is readable before the bars have crossed the board
+          /* THEY STOP. This is the change the whole beat turned on: a lane used to sweep the
+             board and leave, so by the time the first fist came down there was nothing left of it
+             to break - the squares had crossed and been culled during the wind-up. They are
+             driven in and PARKED now, one wall across and one wall down, each with its gap, and
+             what stands on the board is a lattice with two ways through it. Which is also the
+             better reading of "locks off part of the cell": a wall you go around, rather than a
+             wave you wait out. */
+          if(this.lanes%2){                                      // a wall across, one gap in it
+            const g=1+Math.floor(Math.random()*5);
+            const at=B.w*(0.30+Math.random()*0.40);
+            for(let i=0;i<7;i++){ if(i===g) continue;
+              bossAdd({x:-8, y:B.h*(i+0.5)/7, vx:SLAM_LANE_SPD, vy:0, r:BOSS_BULLET_R, k:"bar",
+                       spin:0, vr:0, park:at, pax:1}); }
+            BOSS.lane.push({axis:0, g, t:0.34});
+            BOSS.edge.l=Math.max(BOSS.edge.l,0.65);
+          } else {                                               // ...and a wall down
+            const g=1+Math.floor(Math.random()*5);
+            const at=B.h*(0.30+Math.random()*0.40);
+            for(let i=0;i<7;i++){ if(i===g) continue;
+              bossAdd({x:B.w*(i+0.5)/7, y:-8, vx:0, vy:SLAM_LANE_SPD, r:BOSS_BULLET_R, k:"bar",
+                       spin:0, vr:0, park:at, pax:0}); }
+            BOSS.lane.push({axis:1, g, t:0.34});
+            BOSS.edge.t=Math.max(BOSS.edge.t,0.65);
+          }
+          BOSS.eyeFlash=Math.max(BOSS.eyeFlash,0.12);
+          beep(260,.06,"square",.04);
+          return;
         }
-        BOSS.eyeFlash=Math.max(BOSS.eyeFlash,0.12);
-        beep(260,.06,"square",.04);
       }};
   }
   if(kind==="maw"){
@@ -15966,21 +16003,6 @@ function pkBossSpawner(kind){
         if(this.next>0) return;
         this.next=this.sparse?0.9:0.42;
         for(let i=0;i<(this.sparse?1:2);i++) this.warn.push({x:12+Math.random()*(B.w-24), t:0.45});
-      }};
-  }
-  if(kind==="pound"){
-    /* The spawner owns nothing but the START and the LENGTH: the pound itself is driven by
-       pkPoundTick off the paw, because it IS the paw, and a beat whose motion lived in a spawner
-       and whose sprite lived in the paw would be two clocks for one thing. */
-    return {kind, t:0, started:false, life:(POUND_WIND + POUND_STEPS*(POUND_DROP+POUND_GAP) + 0.7),
-      tick(dt){
-        if(!this.started){
-          this.started=true;
-          // whichever hand is nearer to him swings; the other keeps its wall
-          const B=BOSS.box, d=BOSS.dog;
-          const side = Math.abs((BOSS.paw.L.x-B.x)-d.x) <= Math.abs((BOSS.paw.R.x-B.x)-d.x) ? "L" : "R";
-          pkPoundStart(this.sparse ? "L" : side);
-        }
       }};
   }
   return {kind, t:0, life:1, tick(){}};
@@ -16070,11 +16092,12 @@ function pawRainOn(){
   for(const sp of BOSS.spawn) if(sp.kind==="rain") return true;
   return false;
 }
-/* WHICH HAND THROWS THE FAN - and never the one that is mid-pound. POUND is not heavy enough to
-   be excluded from pairing with BURY, so at phase three the two can run together; the pounding
-   paw is deep over the board with its own script driving it, and a fan thrown from there has no
-   visible origin and a muzzle that has to be shoved right across the cage to get out. The other
-   hand is always on a station, so it always has somewhere honest to throw from. */
+/* WHICH HAND THROWS THE FAN - and never one that is mid-pound. As of the BADDOG rebuild a slam
+   can no longer share a beat with anything, so this can no longer fire; it is kept because it
+   costs a comparison and because the thing it prevents - a fan thrown from a fist that is deep
+   over the board, with no visible origin and a muzzle that has to be shoved right across the cage
+   to get out - is unreadable rather than merely wrong. The other hand is always on a station, so
+   it always has somewhere honest to throw from. */
 function pawRainSide(){
   const P=BOSS.paw;
   const busy = (P.pound && P.pound.on) ? P.pound.side : null;
@@ -16596,15 +16619,26 @@ function pkPawFightTick(dt){
     }
   }
   const po=P.pound;
-  const busy = (po && po.on) ? po.side : null;      // the pounding hand is driven by pkPoundTick
-  for(const side of ["L","R"]) if(side!==busy)
-    pawSeek(P[side], pawStation(side), P.mode>=3?7.5:6.0, dt);
-  pkPoundTick(dt);
-  if(BOSS.ph==="pattern"){
+  /* THE STREAM STOPS FOR BADDOG, and this is the single line the whole beat rests on. It used to
+     be one hand: `busy` named the pounding side, the other kept its wall, and the pentagrams went
+     on firing underneath the thumps - so a beat about two fists was in fact a beat about two
+     fists plus nineteen bones a second. Both hands belong to the pound now, and nothing is fired
+     for the length of it, rest included. Returning here rather than filtering a list means there
+     is no path through the fire block at all while a fist is up. */
+  if(po && po.on){ pkPoundTick(dt); P.fireT=pawFireGap()*0.5; return; }
+  /* AND THE GATE IS ON THE BEAT, NOT ON THE FIST. pkPawFightTick runs before the spawners, so on
+     the very first frame of a BADDOG pattern the fists do not exist yet - and with the gate on
+     P.pound alone that frame fired both pentagrams at a fireT the telegraph had already wound
+     down to nearly zero. Two bones, every time, inside the one beat that is supposed to have
+     none. Naming the beat closes it from the telegraph onward and does not depend on which of
+     these two ticks happens to run first. */
+  const baddog = BOSS.telegraph==="slam";
+  for(const side of ["L","R"]) pawSeek(P[side], pawStation(side), P.mode>=3?7.5:6.0, dt);
+  if(BOSS.ph==="pattern" && !baddog){
     P.fireT-=dt;
     if(P.fireT<=0){
       P.fireT=pawFireGap();
-      const sides = (P.mode>=3 ? ["L","R"] : [P.active]).filter(sd=>sd!==busy);
+      const sides = (P.mode>=3 ? ["L","R"] : [P.active]);
       for(const side of sides) pawFire(side);
     }
   } else {
@@ -16617,105 +16651,65 @@ function pkPawFightTick(dt){
    The one beat that is not a projectile. Everything else in this fight is something crossing the
    board that you move out of the way of; this is the board itself becoming unsafe under a spot,
    and it is the only attack he does with a closed fist.
-   Two shapes, alternating, and the second is the answer to the first:
-     LOCK  he picks where you ARE, marks it, and hammers that one spot four times. The counter is
-           simply to leave - which teaches the mark.
-     LINE  the same wind-up, the same mark - and then it walks, six bangs marching along the way
-           you were HEADING. Leaving is no longer enough; you have to leave sideways.
-   Everything lands on a mark that was drawn before the fist moved, so nothing here is a surprise:
-   the difficulty is entirely in reading where it is going next. */
-const POUND_WIND=0.72;     // fist up, marks down, and time to read them
-const POUND_DROP=0.14;     // ...and the fall, which is meant to be too fast to react to
-const POUND_GAP=0.30;
-const POUND_HITS=4;        // LOCK bangs this many times in one place
-const POUND_STEPS=5;       // ...and LINE marches this many along its path
-/* THE STEP HAS TO CLEAR THE MARK. At 42 against a radius of 34 every ring overlapped its
-   neighbours and a march of six read as one blob sitting on the dog - the whole point of LINE is
-   that you can see it coming and step off the path, which needs the path to look like a path. The
-   step is now wider than a mark, and there is one fewer of them so the span still fits the board. */
+
+   DONKEY KONG, NOT A METRONOME, AND THE OLD SHAPE IS DELIBERATELY GONE. It used to be one hand
+   and two alternating figures - LOCK hammered where you stood four times, LINE marched five bangs
+   along the way you were heading - with POUND_GAP 0.30 of nothing between them. Both were planned
+   in full before the fist moved, which is what made them readable and also what made them read as
+   careful. What the beat is now is the opposite of careful: BOTH fists, up and clenched over the
+   cage, coming down one after the other as fast as they can be thrown, each aimed at where the
+   dog IS rather than at a path plotted before the beat began.
+   The LOCK/LINE geometry went with them, and it had to: fitting a run of marks inside the rim is
+   only a problem when the whole run is placed at once, and nothing here is placed more than
+   SLAM_TELE ahead of its own landing. The fitting code was most of this section.
+
+   TWO HANDS IS WHAT MAKES THE SPEED HONEST. A single fist thrown every SLAM_GAP would have to
+   teleport back up between bangs. Alternating, each hand gets two gaps to rise, aim and fall - so
+   what is on screen is one arm winding while the other lands, which is the picture that was asked
+   for and also the only way the rate is physically possible.
+
+   AND IT COSTS HIM. A round of this ends with him spent: both hands slide off the cage and hang,
+   the marks go out, and nothing at all happens for SLAM_REST. That rest is the beat's answer to
+   itself - the barrage is unavoidable, so the fight has to give the time back somewhere, and
+   giving it back visibly is worth more than giving it back in a shorter barrage. */
+const POUND_DROP=0.14;     // the fall, which is meant to be too fast to react to
 const POUND_R=30*BOSS_SCALE;
-const POUND_STEP=68*BOSS_SCALE;
 const POUND_LIFT=54;       // how far above the board the fist winds up
-function pkPoundStart(side){
-  const P=BOSS.paw, B=BOSS.box;
-  const mode = P.poundNext==="line" ? "line" : "lock";
-  P.poundNext = mode==="lock" ? "line" : "lock";
-  const pts=[];
-  const d=BOSS.dog;
-  if(mode==="lock"){
-    for(let i=0;i<POUND_HITS;i++) pts.push({x:d.x, y:d.y});
-  } else {
-    /* WHERE HE IS HEADING, not where he is. Falls back to "away from the middle" when he is
-       standing still, because a line plotted along a zero vector is a lock with extra steps. */
-    let ux=d.vx, uy=d.vy, L=Math.hypot(ux,uy);
-    if(L<12){ ux=d.x-B.w/2; uy=d.y-B.h/2; L=Math.hypot(ux,uy); }
-    if(L<1){ ux=1; uy=0; L=1; }
-    ux/=L; uy/=L;
-    /* THE LINE HAS TO FIT, and sliding it does not make it fit. Clamping each mark on its own
-       piled the last three against the edge in a stack; sliding the whole run then just chose
-       which END hung off the board, because at five marks 81px apart the run is 326 long and the
-       board is 310 wide. So the run is measured against the board FIRST: how far this direction
-       can travel inside the rim, and the spacing shrunk to fit that - never below a mark and a
-       half, so the marks always clear each other whatever happens. */
-    const M=POUND_R*0.6;                       // ...how close to the rim a mark may sit
-    /* How far the ray can run each way before it leaves the rim. Written symmetrically on
-       purpose: the first version special-cased the sign of u and got the NEGATIVE direction
-       backwards, returning two negative distances, which Math.max(0,..) then flattened to zero
-       room - so any line heading left or up thought it was cornered and collapsed to two marks
-       jammed together. Taking the larger root as forward and the smaller as backward cannot get
-       the sign wrong because it never asks what the sign is. */
-    const slab=(p,u,lo,hi)=>{
-      if(Math.abs(u)<1e-6) return [1e9,1e9];
-      const t1=(lo-p)/u, t2=(hi-p)/u;
-      return [Math.max(t1,t2), -Math.min(t1,t2)];   // [forward, backward]
-    };
-    /* THE RUN IS PLANNED FROM A POINT THAT IS INSIDE. The dog is allowed to stand nearer the rim
-       than a mark may sit, and planning from out there left the far end past the edge and the
-       final clamp squeezing the last two marks to 42px apart on a 36px radius. Anchoring inside
-       the inset rect costs a few pixels of accuracy on where the line starts and buys the promise
-       that no two marks ever crowd. */
-    const ax=clamp(d.x,M,B.w-M), ay=clamp(d.y,M,B.h-M);
-    const room=(vx,vy)=>{
-      const [f1,b1]=slab(ax,vx,M,B.w-M), [f2,b2]=slab(ay,vy,M,B.h-M);
-      return Math.max(0,Math.min(f1,f2))+Math.max(0,Math.min(b1,b2));
-    };
-    const FLOOR=POUND_R*1.5;                   // two marks may touch, never nest
-    /* CORNERED. A dog jammed in a corner heading INTO it leaves almost no room along its heading,
-       and a march squeezed into that space is a stack however carefully it is fitted. When the
-       heading has no room, the line is aimed back across the board instead - which is also the
-       more dangerous read, since it cuts off the way out. */
-    if(room(ux,uy) < FLOOR*1.6){
-      let cx=B.w/2-ax, cy=B.h/2-ay, cl=Math.hypot(cx,cy);
-      if(cl>1){ ux=cx/cl; uy=cy/cl; }
-    }
-    const [fx1,bx1]=slab(ax,ux,M,B.w-M), [fy1,by1]=slab(ay,uy,M,B.h-M);
-    const fwd=Math.max(0,Math.min(fx1,fy1)), back=Math.max(0,Math.min(bx1,by1));
-    const avail=fwd+back;
-    /* FEWER MARKS, NOT TIGHTER ONES. Holding the count and shrinking the spacing to fit runs
-       straight into the floor, and then the run is longer than the board again and the final
-       clamp piles the tail into a heap - which is the bug this was supposed to fix, one layer
-       down. If the space will not take five, it takes four. */
-    let n=POUND_STEPS;
-    let step=Math.min(POUND_STEP, avail/Math.max(1,n-1));
-    if(step<FLOOR){
-      n=clamp(Math.floor(avail/FLOOR)+1, 2, POUND_STEPS);
-      step=Math.max(FLOOR, Math.min(POUND_STEP, avail/Math.max(1,n-1)));
-    }
-    const span=step*(n-1);
-    // start a little BEHIND him so the first bang is a near miss and the march comes at him,
-    // then pulled forward or back by whatever it takes to sit the whole run inside the rim
-    let t0=clamp(-step*0.9, -back, Math.max(-back, fwd-span));
-    for(let i=0;i<n;i++)
-      pts.push({x:clamp(ax+ux*(t0+step*i), M, B.w-M),
-                y:clamp(ay+uy*(t0+step*i), M, B.h-M)});
-  }
-  P.pound={on:true, mode, side, ph:"wind", t:0, idx:0, pts, vib:0, ring:0, done:false};
-  bossHeadSet("front", POUND_WIND*0.9);
-  BOSS.eyeFlash=Math.max(BOSS.eyeFlash,0.22);
-  BOSS.stiff=Math.max(BOSS.stiff||0,0.8);
-  // the wind-up, heard: a low charge that climbs for the whole of it
-  for(let i=0;i<5;i++) setTimeout(()=>beep(120+i*46,.09,"sawtooth",.05,{key:"poundwind"+i}), i*120);
-  haptic(20);
+const SLAM_LOCK   = 2.30;  // stage 1: the yellow lanes go up and the board closes
+const SLAM_WIND   = 0.80;  // ...then both fists rise, and the first mark is read
+const SLAM_TELE   = 0.55;  // every mark after that is on the floor this long before its fist
+const SLAM_GAP    = 0.40;  // ...and they land this fast, one hand after the other
+const SLAM_HITS   = 8;     // how many go in before there is nothing left in him
+const SLAM_REST   = 3.40;  // ...and how long he is good for nothing afterwards
+/* THE SQUARES COME OFF THE CELL. A bang inside this of a lane bar throws it: the brief's whole
+   point is that the two halves of this beat are ONE thing, and a fist that lands among the
+   squares without touching them is two things sharing a screen. */
+const SLAM_KNOCK  = 78*BOSS_SCALE;
+const SLAM_LANE_SPD = 240*BOSS_SPD;   // ...how fast a wall is slammed into place
+const SLAM_FADE   = 0.90;  // ...and how long a knocked square tumbles before it is gone
+const SLAM_KICK   = 9;     // px the cage itself jumps on a thump
+
+/* WHY THE PAW'S SUB-STATE IS STILL CALLED `pound`. The beat is `slam` in the pools, but the fist
+   mechanism keeps its old name because three things outside this section reach for it by that
+   name and are right to: the flinch refuses to start while `P.pound.on`, pkPawFightTick hands it
+   the hands, and the harness asserts a beat never strands one. Renaming the field would have
+   touched all three to say the same thing in different words. */
+function pkPoundStart(){
+  const P=BOSS.paw;
+  P.pound={on:true, stage:"lock", t:0, n:0, marks:[], vib:0, ring:0, done:false};
+  bossHeadSet("front", SLAM_LOCK*0.6);
+  BOSS.eyeFlash=Math.max(BOSS.eyeFlash,0.26);
+  BOSS.stiff=Math.max(BOSS.stiff||0,0.9);
+  for(const k of ["L","R"]){ const q=P[k]; q.glow=Math.max(q.glow,0.7); q.rideT=0; q.ghost=null; }
+  haptic(24);
+}
+/* WHERE THE NEXT ONE GOES. On him, every time, with the lead the mark gives you as the only
+   defence - which is what "tracking" means and is the reason a fist is worth dodging at all. */
+function pkPoundMark(side, lead){
+  const P=BOSS.paw, B=BOSS.box, po=P.pound, d=BOSS.dog;
+  const M=POUND_R*0.6;
+  po.marks.push({ x:clamp(d.x,M,B.w-M), y:clamp(d.y,M,B.h-M), t:0, due:lead, side });
+  beep(300+((po.n*57)%140),.05,"square",.035,{key:"poundmark"+(po.n%3)});
 }
 function pkPoundTick(dt){
   const P=BOSS.paw, B=BOSS.box, po=P.pound;
@@ -16723,95 +16717,212 @@ function pkPoundTick(dt){
   po.t+=dt;
   po.vib=Math.max(0,po.vib-dt*7);
   po.ring=Math.max(0,po.ring-dt*2.6);
-  const q=P[po.side];
-  q.spd=0;      // driven by hand rather than by pawSeek: never let a stale speed pick its pose
-  const tgt=po.pts[Math.min(po.idx,po.pts.length-1)];
-  const tx=B.x+tgt.x, ty=B.y+tgt.y;
-  if(po.ph==="wind"){
-    // the fist rises straight above the first mark and hangs there
-    const k=Math.min(1,po.t/POUND_WIND);
-    q.x += (tx-q.x)*Math.min(1,dt*7);
-    q.y += ((ty-POUND_LIFT-40*k)-q.y)*Math.min(1,dt*7);
-    q.ang=Math.PI/2; q.glow=Math.max(q.glow, 0.35+0.5*k);
-    if(po.t>=POUND_WIND){ po.ph="drop"; po.t=0; }
-  } else if(po.ph==="drop"){
-    const k=Math.min(1,po.t/POUND_DROP), e=k*k;
-    q.x=tx; q.y=(ty-POUND_LIFT)+POUND_LIFT*e; q.ang=Math.PI/2;
-    if(po.t>=POUND_DROP){ pkPoundBang(tgt, tx, ty); po.ph="lift"; po.t=0; }
-  } else if(po.ph==="lift"){
-    q.x=tx+(Math.random()-0.5)*po.vib*9;
-    q.y=ty-POUND_LIFT*0.45*Math.min(1,po.t/(POUND_GAP*0.7))+(Math.random()-0.5)*po.vib*7;
-    if(po.t>=POUND_GAP){
-      po.idx++;
-      if(po.idx>=po.pts.length){ po.ph="done"; po.t=0; po.on=false; po.done=true;
-                                 BOSS.stiff=0; }
-      else { po.ph="drop"; po.t=0; }
+
+  if(po.stage==="lock"){
+    /* THE HANDS COME OFF THE CAGE AS THE SQUARES GO UP. This stage exists because the first cut
+       started the fist mechanism only once the lanes were laid, and for those 2.3s the paws were
+       still on their stations doing what they always do - which put forty bones on the board
+       inside the one beat built to have none. Owning the hands from the first frame of the beat
+       is also the better picture: the walls close in while he draws back, so the barrage is
+       telegraphed by the two seconds in front of it rather than by its own wind-up alone. */
+    if(po.t>=SLAM_LOCK){ po.stage="wind"; po.t=0; }
+  }
+  else if(po.stage==="wind"){
+    if(!po.marks.length){
+      pkPoundMark("L", SLAM_WIND);
+      for(let i=0;i<5;i++) setTimeout(()=>beep(120+i*46,.09,"sawtooth",.05,{key:"poundwind"+i}), i*130);
+      BOSS.eyeFlash=Math.max(BOSS.eyeFlash,0.26);
+    }
+    if(po.t>=SLAM_WIND-0.0001){ po.stage="hits"; po.t=0; }
+  }
+  else if(po.stage==="hits"){
+    /* The schedule, not a chain of callbacks: hit n is due at n*SLAM_GAP from the start of the
+       stage, and its mark goes down SLAM_TELE before that. Written this way so a dropped frame
+       slides a bang rather than losing one, and so the rate is one number rather than an
+       accumulated error. */
+    while(po.n+1<SLAM_HITS && po.t >= (po.n+1)*SLAM_GAP - SLAM_TELE){
+      po.n++;
+      pkPoundMark(po.n%2 ? "R" : "L", SLAM_TELE);
+    }
+  }
+  else if(po.stage==="rest"){
+    /* KNACKERED. Both hands slide down the outside of the bars and hang there, and the only thing
+       moving is him breathing. pawSeek is not used: a rest that is still being steered by the
+       station table is not a rest, it is a slower version of working. */
+    /* AND THEY HANG JUST OFF THE BARS, NOT OFF THE SCREEN. The first pass parked them a paw's
+       width beyond the cage, which on a 412px panel is the panel's own edge - both hands were
+       sliced in half by it for the whole rest. Tucked in against the lower corners instead, which
+       is also where a spent arm would actually end up. */
+    const sc=(BOSS.headSc||0.78)/0.78, hang=Math.min(1,po.t/0.8);
+    for(const side of ["L","R"]){
+      const q=P[side], dir=side==="L"?-1:1;
+      const tx=B.x+B.w/2 + dir*(B.w*0.5+14);
+      const ty=B.y+B.h*0.66 + 30*hang + Math.sin(BOSS.t*2.0+(side==="L"?0:1.6))*4.0*sc;
+      const e=Math.min(1,dt*4.5);
+      q.x+=(tx-q.x)*e; q.y+=(ty-q.y)*e;
+      // straight down, so the open hand leans with the weight instead of standing to attention
+      q.ang=Math.PI/2;
+      q.glow=Math.max(0, q.glow-dt*0.9);
+      q.fistT=0; q.fireT=0; q.teleT=0;
+      q.sx += (1-q.sx)*Math.min(1,dt*6); q.sy += (1-q.sy)*Math.min(1,dt*6);
+    }
+    // ...and he stays dipped for the whole of it rather than for the first second and a half
+    bossHeadSet("dip", 0.5);
+    if(po.t>=SLAM_REST){ po.on=false; po.done=true; BOSS.stiff=0; }
+    return;
+  }
+
+  // the marks age, and each one owns the hand that is coming down on it
+  for(let i=po.marks.length-1;i>=0;i--){
+    const m=po.marks[i];
+    m.t+=dt;
+    if(m.t>=m.due){
+      pkPoundBang(m);
+      po.marks.splice(i,1);
+      if(po.stage==="hits" && po.n>=SLAM_HITS-1 && !po.marks.length){
+        po.stage="rest"; po.t=0;
+        pkPoundCollapse();
+        // the whole body drops with the last one: he has thrown everything he had
+        BOSS.shake=Math.max(BOSS.shake,0.5); BOSS.riftKick=Math.max(BOSS.riftKick,0.7);
+        bossHeadSet("dip",1.4);
+        beep(96,.9,"sawtooth",.05,{key:"poundspent"});
+        setTimeout(()=>beep(72,1.0,"sawtooth",.04,{key:"poundspent2"}),300);
+      }
+    }
+  }
+
+  // ...and both hands are driven, every frame, from whatever their own mark says
+  const sc=(BOSS.headSc||0.78)/0.78;
+  const hx=BOSS.headX||(B.x+B.w/2), hy=BOSS.headY||(B.y-90);
+  for(const side of ["L","R"]){
+    const q=P[side], dir=side==="L"?-1:1;
+    q.spd=0;          // driven by hand rather than by pawSeek: never let a stale speed pick a pose
+    q.fistT=0.10;     // ...and it is a closed hand for the whole beat, both of them
+    q.teleT=0; q.rideT=0; q.ghost=null;
+    let m=null;
+    for(const mk of po.marks) if(mk.side===side){ m=mk; break; }
+    if(m){
+      const tx=B.x+m.x, ty=B.y+m.y;
+      const left=m.due-m.t;
+      if(left>POUND_DROP){
+        // cocked over its mark, coming up as it comes across
+        const e=Math.min(1,dt*9);
+        q.x+=(tx-q.x)*e;
+        q.y+=((ty-POUND_LIFT-26)-q.y)*e;
+      } else {
+        const f=1-Math.max(0,left)/POUND_DROP, e2=f*f;
+        q.x=tx; q.y=(ty-POUND_LIFT)+POUND_LIFT*e2;
+      }
+      q.ang=Math.PI/2;
+    } else {
+      // between throws it goes back up beside his head, clenched, where the next one comes from
+      const tx=hx+dir*BOSS_FIST_SPREAD*sc*0.86, ty=hy+BOSS_FIST_DROP*sc;
+      const e=Math.min(1,dt*7);
+      q.x+=(tx-q.x)*e + (Math.random()-0.5)*po.vib*7;
+      q.y+=(ty-q.y)*e + (Math.random()-0.5)*po.vib*5;
+      q.ang=side==="L"?0:Math.PI;
     }
   }
 }
-function pkPoundBang(tgt, tx, ty){
-  const P=BOSS.paw, B=BOSS.box, po=P.pound, q=P[po.side];
-  po.vib=1; po.ring=1;
-  q.sx=1.28; q.sy=0.74; q.slam=1;
-  BOSS.shake=Math.max(BOSS.shake, 0.55);
-  BOSS.flash=Math.max(BOSS.flash, 0.22);
-  BOSS.riftKick=Math.max(BOSS.riftKick,0.5);
-  BOSS.edge.b=Math.max(BOSS.edge.b,0.5);
-  bossCrunch(false, po.idx);
-  beep(64,.20,"sawtooth",.09,{key:"poundhit",prio:2});
+/* ONE PLACE THAT THROWS A SQUARE. A thump throws the ones near it and the collapse throws what
+   is left; writing the fling twice is how the two would end up looking like two different
+   effects. `dead` rather than a shrinking radius, because a bar that is visibly tumbling away and
+   still takes health off is the least fair thing this fight could do. tvx goes with it: a knocked
+   bar is no longer winding up to anything, or the fling would be overwritten on the next frame by
+   whatever acceleration owns it. */
+function pkKnockBar(b, ox, oy, force){
+  const kx=b.x-ox, ky=b.y-oy, L=Math.hypot(kx,ky)||1;
+  const sp=force*(0.85+Math.random()*0.45);
+  b.knock=SLAM_FADE; b.dead=true; b.park=null;
+  b.tvx=undefined; b.tvy=undefined;
+  b.vx=kx/L*sp+(Math.random()-0.5)*80;
+  b.vy=ky/L*sp-70-Math.random()*90;        // ...and up as well as out, so it is thrown, not slid
+  b.vr=(Math.random()-0.5)*17;
+  b.spin=b.spin||0;
+}
+/* AND THE LATTICE GOES WITH HIM. He hits the end of the barrage and everything still standing is
+   thrown off at once - the board is empty for the rest, which is the point of the rest. Leaving
+   the survivors up would also strand them: nothing else in the beat clears a parked square, so
+   they would sit there through the next telegraph belonging to a beat that had ended. */
+function pkPoundCollapse(){
+  const B=BOSS.box;
+  let n=0;
+  for(const b of BOSS.bullets){
+    if(b.k!=="bar" || b.knock>0) continue;
+    pkKnockBar(b, B.w/2, B.h/2, 190); n++;
+  }
+  if(n) beep(150,.28,"sawtooth",.05,{key:"slamclear"});
+}
+function pkPoundBang(m){
+  const P=BOSS.paw, B=BOSS.box, po=P.pound, q=P[m.side];
+  const tx=B.x+m.x, ty=B.y+m.y;
+  po.vib=1; po.ring=1; po.last={x:m.x,y:m.y};
+  q.sx=1.30; q.sy=0.72; q.slam=1;
+  BOSS.shake=Math.max(BOSS.shake, 0.62);
+  BOSS.flash=Math.max(BOSS.flash, 0.24);
+  BOSS.riftKick=Math.max(BOSS.riftKick,0.55);
+  BOSS.edge.b=Math.max(BOSS.edge.b,0.55);
+  /* AND THE CAGE ITSELF MOVES. Purely a draw offset - the board's own coordinates never shift, so
+     nothing that was safe becomes unsafe because the picture jumped. It is the difference between
+     hearing a thump and feeling one. */
+  if(!bossCalm()){
+    const K=BOSS.boxK;
+    K.t=1; K.ax=(Math.random()-0.5)*SLAM_KICK*1.6; K.ay=SLAM_KICK;
+  }
+  bossCrunch(false, po.n);
+  beep(58,.22,"sawtooth",.10,{key:"poundhit",prio:2});
   beep(190,.09,"square",.05,{key:"poundhit2"});
-  haptic([28,20,48]);
-  bossPock(tgt.x, tgt.y, 7+Math.random()*6);
-  bossPuff(tgt.x, tgt.y, bossCalm()?6:16, true);
-  if(!bossCalm()) for(let i=0;i<10;i++) bossFizz(tx,ty,1, i%2?"#ffb45a":"#fff");
+  haptic([32,18,54]);
+  bossPock(m.x, m.y, 7+Math.random()*6);
+  bossPuff(m.x, m.y, bossCalm()?6:18, true);
+  if(!bossCalm()) for(let i=0;i<12;i++) bossFizz(tx,ty,1, i%2?"#ffb45a":"#fff");
+  /* THE SQUARES ARE THROWN OFF THE BOARD. They stop being a hazard the instant they are hit -
+     `dead` rather than a shrinking radius, because a bar that is visibly tumbling away and still
+     takes health off is the least fair thing this fight could do. tvx goes with it: a knocked bar
+     is no longer winding up to a top speed, or the fling would be overwritten on the next frame
+     by the acceleration that owns every other bone. */
+  for(const b of BOSS.bullets){
+    if(b.k!=="bar" || b.knock>0) continue;
+    if(Math.hypot(b.x-m.x, b.y-m.y)>SLAM_KNOCK) continue;
+    pkKnockBar(b, m.x, m.y, 300);
+  }
   /* THE HIT IS THE MARK, exactly. Same centre, same radius that was drawn under him for the whole
-     wind-up - so anyone who read it and moved is safe, and there is no invisible extra reach. */
-  const dx=BOSS.dog.x-tgt.x, dy=BOSS.dog.y-tgt.y;
+     lead - so anyone who read it and moved is safe, and there is no invisible extra reach. */
+  const dx=BOSS.dog.x-m.x, dy=BOSS.dog.y-m.y;
   if(dx*dx+dy*dy < POUND_R*POUND_R) pkBossHurt();
 }
 // the marks, on the floor of the board. Board-local, inside the cage's clip.
 function pkDrawPound(ctx){
   const P=BOSS.paw, po=P.pound;
   if(!po || (!po.on && po.ring<=0.01)) return;
-  const B=BOSS.box;
   ctx.save();
-  for(let i=0;i<po.pts.length;i++){
-    const pt=po.pts[i];
-    const spent=i<po.idx;
-    const next=i===po.idx;
-    if(spent && po.ring<=0.01) continue;
-    /* THE ONE THAT IS COMING is bright and closing; the ones after it are dim, which is what makes
-       LINE readable at all - you can see the whole march before the second bang lands. */
-    const k = next ? (po.ph==="wind" ? Math.min(1,po.t/POUND_WIND) : 1) : (spent?po.ring:0.42);
-    ctx.globalAlpha=(spent?0.30*po.ring:(next?0.55+0.4*k:0.30));
-    ctx.strokeStyle=next?"#ff3b1a":"#8a2a12"; ctx.lineWidth=next?2.4:1.6;
-    ctx.beginPath(); ctx.arc(pt.x,pt.y,POUND_R,0,7); ctx.stroke();
-    if(next){
-      // the closing ring: the fist's own shadow coming down, so the timing is on screen
-      const cr=POUND_R*(1.9-0.9*k);
-      ctx.globalAlpha=0.45+0.4*k; ctx.lineWidth=1.6;
-      ctx.beginPath(); ctx.arc(pt.x,pt.y,cr,0,7); ctx.stroke();
-      ctx.globalAlpha=0.12+0.20*k; ctx.fillStyle="#ff3b1a";
-      ctx.beginPath(); ctx.arc(pt.x,pt.y,POUND_R,0,7); ctx.fill();
-      // the cross-hair, so a mark is aimed rather than merely round
-      ctx.globalAlpha=0.5+0.4*k; ctx.strokeStyle="#ffd08a"; ctx.lineWidth=1.4;
-      ctx.beginPath();
-      ctx.moveTo(pt.x-POUND_R*0.5,pt.y); ctx.lineTo(pt.x+POUND_R*0.5,pt.y);
-      ctx.moveTo(pt.x,pt.y-POUND_R*0.5); ctx.lineTo(pt.x,pt.y+POUND_R*0.5);
-      ctx.stroke();
-    }
-    if(spent && po.ring>0.01){        // the shockwave rolling out of a bang that has landed
-      ctx.globalAlpha=po.ring*0.6; ctx.strokeStyle="#ffb45a"; ctx.lineWidth=3*po.ring;
-      ctx.beginPath(); ctx.arc(pt.x,pt.y,POUND_R*(1+(1-po.ring)*1.5),0,7); ctx.stroke();
-    }
-  }
-  // ...and the path itself, so LINE announces that it is a line
-  if(po.mode==="line" && po.on){
-    ctx.globalAlpha=0.22; ctx.strokeStyle="#ff3b1a"; ctx.lineWidth=1.4;
-    ctx.setLineDash([5,6]); ctx.lineDashOffset=-BOSS.t*30;
+  /* EVERY LIVE MARK, EACH ON ITS OWN CLOCK. The old draw walked one array with an index because
+     the whole run was placed at once and exactly one of them was ever "next". Two hands throwing
+     on a stagger means two marks are closing at the same time on different counts, so a mark now
+     carries its own age and the ring under it is read from that. Nothing dims to 0.42 any more:
+     if it is on the floor, it is about to be hit. */
+  for(const m of po.marks){
+    const k=clamp(m.t/Math.max(0.01,m.due),0,1);
+    ctx.globalAlpha=0.55+0.4*k;
+    ctx.strokeStyle="#ff3b1a"; ctx.lineWidth=2.4;
+    ctx.beginPath(); ctx.arc(m.x,m.y,POUND_R,0,7); ctx.stroke();
+    // the closing ring: the fist's own shadow coming down, so the timing is on the floor
+    const cr=POUND_R*(1.9-0.9*k);
+    ctx.globalAlpha=0.45+0.4*k; ctx.lineWidth=1.6;
+    ctx.beginPath(); ctx.arc(m.x,m.y,cr,0,7); ctx.stroke();
+    ctx.globalAlpha=0.12+0.22*k; ctx.fillStyle="#ff3b1a";
+    ctx.beginPath(); ctx.arc(m.x,m.y,POUND_R,0,7); ctx.fill();
+    // the cross-hair, so a mark is aimed rather than merely round
+    ctx.globalAlpha=0.5+0.4*k; ctx.strokeStyle="#ffd08a"; ctx.lineWidth=1.4;
     ctx.beginPath();
-    for(let i=0;i<po.pts.length;i++){ const pt=po.pts[i]; if(i) ctx.lineTo(pt.x,pt.y); else ctx.moveTo(pt.x,pt.y); }
-    ctx.stroke(); ctx.setLineDash([]);
+    ctx.moveTo(m.x-POUND_R*0.5,m.y); ctx.lineTo(m.x+POUND_R*0.5,m.y);
+    ctx.moveTo(m.x,m.y-POUND_R*0.5); ctx.lineTo(m.x,m.y+POUND_R*0.5);
+    ctx.stroke();
+  }
+  // the shockwave rolling out of the one that just landed
+  if(po.ring>0.01 && po.last){
+    ctx.globalAlpha=po.ring*0.6; ctx.strokeStyle="#ffb45a"; ctx.lineWidth=3*po.ring;
+    ctx.beginPath(); ctx.arc(po.last.x,po.last.y,POUND_R*(1+(1-po.ring)*1.7),0,7); ctx.stroke();
   }
   ctx.restore(); ctx.globalAlpha=1;
 }
@@ -16869,7 +16980,7 @@ function pkBossTelegraph(){
   BOSS.headCell=BOSS_HEAD[k]||"front";
   BOSS.teleEdge=BOSS_EDGE[k]||"";     // the lip it will come over, lit for the whole wind-up
   pkBossBeatEnter(k);
-  if(k==="cross") BOSS.shakeCell=0.30;
+  if(k==="slam") BOSS.shakeCell=0.30;
   beep(k==="ring"||k==="surge" ? 190 : 620, .09, "square", .05);
 }
 
@@ -16877,10 +16988,20 @@ function pkBossTelegraph(){
    an unreadable one. A full side sweep crossing a full inward ring left no lane anywhere and the
    only way through was luck. So the double is now rare, never pairs two SPACE-FILLING shapes, and
    whatever it does add comes in SPARSE — one lane, one wall, one mouthful. */
-const BOSS_FILL=["sweepL","sweepR","ring","cross"];   // these own the whole board on their own
+/* SLAM IS NOT IN HERE, and it is the one shape that owns the board more completely than any of
+   them. `sparse` means "thin yourself out, you are sharing with the paw stream" - and SLAM is the
+   beat that TURNS THE PAW STREAM OFF, so there is nothing to share with and nothing to thin. It
+   is kept off the doubling list below by name instead. */
+const BOSS_FILL=["sweepL","sweepR","ring"];   // these own the whole board on their own
 function pkBossBeginPattern(){
   BOSS.ph="pattern"; BOSS.patternT=0; BOSS.cleanRun=true;
   BOSS.spawn.length=0;
+  /* A FIST FROM THE LAST BEAT IS NOT ALLOWED INTO THIS ONE. A slam's rest can only end before its
+     own life does, but "can only" is exactly the reasoning the paw cap and the born-on-the-board
+     rule were both moved to the door to stop relying on. A stranded pound holds both hands off
+     their stations and keeps the stream silent for a whole beat, which is a fight that has simply
+     stopped. */
+  BOSS.paw.pound=null;
   const main=pkBossSpawner(BOSS.telegraph);
   /* GARNISH, FROM PHASE TWO ON. The paws are the fight now: a pentagram stream plus a full-board
      pattern on top of it is two answers to the same question and there is no lane left for
@@ -16902,10 +17023,18 @@ function pkBossBeginPattern(){
   BOSS.spawn.push(main);
   // Phase three can still run two at once, but only where the pair genuinely reads: never a
   // second heavy (BOSS_HEAVY), and never a second board-filler on top of a board-filler.
-  if(BOSS.phase>=3 && Math.random()<0.35){
+  /* ...AND NEVER UNDER A SLAM. BADDOG takes both hands off the cage and stops the stream so that
+     the squares and the marks are the only two things on the board. Putting a second spawner
+     underneath it hands back exactly the clutter the beat was rebuilt to remove. */
+  if(BOSS.phase>=3 && BOSS.telegraph!=="slam" && Math.random()<0.35){
     const heavy1=BOSS_HEAVY.includes(BOSS.telegraph);
     const fill1 =BOSS_FILL.includes(BOSS.telegraph);
-    const pool=BOSS_P3.filter(k=> k!==BOSS.telegraph
+    /* ...AND SLAM IS NEVER THE GARNISH EITHER. It is excluded by name rather than by BOSS_HEAVY,
+       because heaviness only stops it pairing with another heavy: under a RAIN, which is neither
+       heavy nor a filler, the old filter would happily have started a two-fisted barrage as the
+       thin second pattern - both hands off their stations, the stream silent, in a beat the
+       player was told was BURY. */
+    const pool=BOSS_P3.filter(k=> k!==BOSS.telegraph && k!=="slam"
                                 && !(heavy1 && BOSS_HEAVY.includes(k))
                                 && !(fill1  && BOSS_FILL.includes(k)));
     if(pool.length){
@@ -17206,6 +17335,7 @@ function pkBossUpdate(dt){
   BOSS.t+=dt;
   BOSS.shake=Math.max(0,BOSS.shake-dt*2.2);
   BOSS.flash=Math.max(0,BOSS.flash-dt*2.0);
+  BOSS.boxK.t=Math.max(0,BOSS.boxK.t-dt*3.4);
   BOSS.invulnT=Math.max(0,BOSS.invulnT-dt);
   pkBossFlair(dt);
   /* The lean tracks the WHOLE beat - the telegraph as well as the pattern - so the head is
@@ -17281,6 +17411,17 @@ function pkBossUpdate(dt){
   // bullets. Box-local, small array, no world scans.
   for(let i=BOSS.bullets.length-1;i>=0;i--){
     const b=BOSS.bullets[i];
+    /* KNOCKED OFF THE CELL. A square that a fist has thrown is not a projectile any more: it
+       arcs, it spins, it fades, and it is culled by its own clock rather than by the rim - which
+       is the point, because the rim is exactly where it is going and the generic cull below would
+       delete it 26px past the bars, in the middle of the thing the player is meant to watch. */
+    if(b.knock>0){
+      b.knock-=dt;
+      if(b.knock<=0){ BOSS.bullets.splice(i,1); continue; }
+      b.vy+=540*dt;
+      b.x+=b.vx*dt; b.y+=b.vy*dt; b.spin+=(b.vr||0)*dt;
+      continue;
+    }
     /* THE SWIPE HAS ITS OWN LIFE, and it has to, because the generic cull below would delete it
        the moment it left the far side of the board - which is the exact middle of what it is
        for. It goes out, hangs for a beat, comes back, and is caught by the paw that threw it. */
@@ -17365,6 +17506,16 @@ function pkBossUpdate(dt){
         b.vx=b.tvx*k; b.vy=b.tvy*k;
       }
       b.x+=b.vx*dt; b.y+=b.vy*dt; b.spin+=(b.vr||0)*dt;
+      // a lane square reaches its station and stops there, and stays until a fist finds it
+      if(b.park!==undefined && b.park!==null){
+        const c=b.pax?b.x:b.y;
+        if(c>=b.park){
+          if(b.pax) b.x=b.park; else b.y=b.park;
+          b.vx=0; b.vy=0; b.park=null; b.set=1;
+          if(!bossCalm()) bossPuff(b.x, b.y, 3, false);
+        }
+      }
+      if(b.set>0) b.set=Math.max(0,b.set-dt*3.2);
       // the burning birds leave a wake, thrown backwards along the lane they are crossing
       if(b.k==="claw"){
         b.emb=(b.emb||0)-dt;
@@ -17426,7 +17577,7 @@ function pkBossUpdate(dt){
       }
       BOSS.bullets.splice(i,1); continue;
     }
-    if(b.out) continue;          // still outside the cage: visible, moving, and harmless
+    if(b.out || b.dead) continue;   // outside the cage, or thrown off it: visible and harmless
     const insX = b.x>=0 && b.x<=B.w, insY = b.y>=0 && b.y<=B.h;
     const dx=bossWrapD(b.x,BOSS.dog.x,B.w,insX), dy=bossWrapD(b.y,BOSS.dog.y,B.h,insY);
     const rr=b.r+BOSS_DOG_R;         // a projectile has to actually touch the dot, not the sprite
@@ -17843,6 +17994,10 @@ const PAWPOSE={
   palm : {rot:false, lean:0.22, base:0,           sc:2.45*PAW_SC},
   glow : {rot:false, lean:0.22, base:0,           sc:2.70*PAW_SC},
   fist : {face:true, lean:0.14,                   sc:2.55*PAW_SC},
+  // the same clenched hand, cocked further over the cage: BADDOG's fists are not guarding, they
+  // are about to come down. `face` carries the side, so the pair leans inward rather than both
+  // the same way - which is what makes two of them read as two of them.
+  fistd: {face:true, lean:0.66, img:"fist",       sc:2.72*PAW_SC},
   slam : {rot:false, lean:0.10, base:0,           sc:2.95*PAW_SC},
   q34  : {face:true, lean:0.30,                   sc:2.60*PAW_SC},
   q34b : {face:true, lean:0.30,                   sc:2.60*PAW_SC},
@@ -17857,7 +18012,10 @@ const PAWPOSE={
    a leading pose by all of it, with the sprite's own bias taken out first. */
 function drawPawSprite(ctx,x,y,ang,R,pose,glow,sx,sy,calm,flip){
   const def=PAWPOSE[pose]||PAWPOSE.palm;
-  const im=PAWIMG[pose];
+  /* A POSE MAY BORROW A SHEET. `fistd` is the clenched hand held at a different angle, not a
+     twelfth drawing of one - and a pose whose sheet does not exist draws NOTHING (see below),
+     which is how a cocked fist would have become an invisible one. */
+  const im=PAWIMG[def.img||pose];
   if(!im || !im.complete || !im.naturalWidth){          // not decoded yet: nothing, rather than a box
     return;
   }
@@ -17913,6 +18071,14 @@ function drawPawSprite(ctx,x,y,ang,R,pose,glow,sx,sy,calm,flip){
    Read it top to bottom: the rarest, loudest state wins. */
 function pawPoseFor(q,side){
   const P=BOSS.paw;
+  /* BADDOG OUTRANKS EVERYTHING, INCLUDING THE TIMER IT SETS ITSELF. pkPoundTick holds fistT up
+     so that nothing downstream can hand a pounding hand a firing pose - and with the generic
+     check first, that self-defence was answered with the wrong fist: the guard sprite, upright,
+     for the whole barrage, and the cocked one never appeared once. */
+  /* ...AND THE REST IS AN OPEN HAND. A clenched fist hanging off the bars still reads as ready,
+     which is the one thing this stage must not: he is spent, so the hand is slack. */
+  if(P.pound && P.pound.on)
+    return P.pound.stage==="rest" ? "palm" : "fistd";
   // the scream, and the beat of the fists unclenching after it: a closed hand outranks everything
   if(q.fistT>0)                                       return "fist";
   // riding its own swipe across the board — the FLYING pose, claws leading, and the `aim` fold
@@ -17924,7 +18090,6 @@ function pawPoseFor(q,side){
      start of the sequence, which is three seconds earlier now. */
   if(BOSS.ph==="pawslam" && P.slamDone &&
      P.slamT < PAWSLAM_OPEN+PAWSLAM_MARK+PAWSLAM_DROP+BOSS_PAW_SETTLE*0.55) return "slam";
-  if(P.pound && P.pound.on && side===P.pound.side)    return "fist";
   /* THE WIND-UP OUTRANKS THE MOTION, and it has to. Pulling off the wall to throw is itself fast
      enough to trip the swish threshold, so the first version wore a motion blur through the one
      moment the player most needs to see the mark - it was telegraphing with the telegraph hidden.
@@ -17975,7 +18140,7 @@ function pawFacing(side){
 function pawFlip(side,pose){
   // every `face` pose, which now includes the clenched fist: a pair of fists that are not mirror
   // images of each other are two left hands, and both of them lean the same way
-  if(pose==="q34"||pose==="q34b"||pose==="fist") return pawFacing(side)>0;
+  if(pose==="q34"||pose==="q34b"||pose==="fist"||pose==="fistd") return pawFacing(side)>0;
   if(pose==="swipe") return side==="L";
   // `aim` poses work theirs out from the angle itself, inside drawPawSprite — see PAWPOSE
   return false;
@@ -18199,6 +18364,15 @@ function pkDrawBoss(){
   const CG = cageC>=0 ? bossCageRect(B, bossCageGrow(cageC)) : B;
   if(uiA>0.001 || cageC>=BOSS_CAGE_SNAP){
   ctx.save();
+  /* THE THUMP MOVES THE CELL. Applied here, before the fill, the border, the rim flares and the
+     clip, so the box and everything standing in it jump as one object - a board that shifted
+     under a stationary frame would read as the contents sliding, not as the cage being hit.
+     A damped shudder rather than a single offset: it is struck, it overshoots, it settles. */
+  { const K=BOSS.boxK;
+    if(K.t>0.001){
+      const w2=K.t*Math.cos((1-K.t)*24);
+      ctx.translate(K.ax*w2, K.ay*w2);
+    } }
   if(cageC<0 && uiA<1){          // it scales in from its own centre rather than just fading
     const k=0.86+0.14*uiA;
     ctx.globalAlpha=uiA;
@@ -18405,6 +18579,7 @@ function pkDrawBoss(){
   }
   for(const b of BOSS.bullets){
     if(b.bornT>0) continue;      // still being born: drawn over the hand instead — see BONE_BORN
+    if(b.knock>0) continue;      // ...and knocked off the board: drawn in panel space, past the bars
     ctx.save(); ctx.translate(b.x,b.y);
     if(b.k==="maw"){
       // a mouthful: big, burning, and turning slowly enough that its length can be read
@@ -18460,9 +18635,10 @@ function pkDrawBoss(){
     }
     else if(b.k==="bar"){
       // sized off its own hitbox rather than a fixed 10px, so it grows with BOSS_SCALE
-      const q=b.r;
+      // ...and a square that has just slammed into its wall flares for a beat as it settles
+      const q=b.r*(1+0.5*(b.set||0));
       ctx.fillStyle="#e8c14a"; ctx.fillRect(-q,-q,q*2,q*2);
-      ctx.fillStyle="#fff"; ctx.fillRect(-q*0.4,-q*0.4,q*0.8,q*0.8);
+      ctx.fillStyle=(b.set>0.2)?"#fff6dc":"#fff"; ctx.fillRect(-q*0.4,-q*0.4,q*0.8,q*0.8);
     }
     else if(b.k==="ember"){
       const er=b.r*1.8, g=bossGrad(ctx,"ember",er,
@@ -18631,6 +18807,35 @@ function pkDrawBoss(){
     }
     ctx.restore();
   }
+  /* --- SQUARES THROWN OFF THE CELL. Out here with the births and the mouthfuls, and for the same
+     reason all three are: the board clips its own contents, so a square knocked toward the bars
+     would be cut in half at the rim and vanish at the exact moment the player is meant to watch
+     it go. Drawn in panel space it sails past the cage, tumbling, and burns out in open air. */
+  for(const b of BOSS.bullets){
+    if(!(b.knock>0) || b.k!=="bar") continue;
+    const k=b.knock/SLAM_FADE;                       // 1 the instant it is hit, 0 as it goes
+    const q=b.r*(0.55+0.45*k);
+    ctx.save();
+    ctx.translate(B.x+b.x, B.y+b.y);
+    ctx.rotate(b.spin);
+    ctx.globalAlpha=Math.min(1,k*1.5);
+    if(!bossCalm()){
+      // the strike itself: a flare on the frame it leaves, gone almost at once
+      const fk=Math.max(0,(k-0.72)/0.28);
+      if(fk>0){
+        ctx.save(); ctx.globalCompositeOperation="lighter"; ctx.globalAlpha=fk*0.7;
+        const fg=bossGrad(ctx,"knock",1,[[0,"rgba(255,240,190,0.9)"],[1,"rgba(255,170,60,0)"]]);
+        ctx.scale(q*4,q*4); ctx.fillStyle=fg;
+        ctx.beginPath(); ctx.arc(0,0,1,0,7); ctx.fill();
+        ctx.restore();
+      }
+    }
+    ctx.fillStyle="#e8c14a"; ctx.fillRect(-q,-q,q*2,q*2);
+    ctx.globalAlpha=Math.min(1,k*1.5)*k;
+    ctx.fillStyle="#fff"; ctx.fillRect(-q*0.4,-q*0.4,q*0.8,q*0.8);
+    ctx.restore();
+  }
+  ctx.globalAlpha=1;
   /* --- the mouthfuls still in the air ABOVE the board. Same reason the reflected shots are down
      here: the board clips everything drawn inside it, so a bone arcing down from the jaw would be
      invisible for the whole first half of its flight and would still appear to pop into being at

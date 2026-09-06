@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.355a**.
+Currently **v0.356a**.
 
 > **The workflow below is out of date and has been since v0.350a.** The source of truth is
 > `src/` — edit `src/src.js`, run `./build.sh <version>`, test with `./test.sh`. See `CLAUDE.md`,
@@ -3505,6 +3505,118 @@ the same time on purpose. What replaces it is a stronger claim, not a weaker one
 ever overtaking itself.** The combo is one paw after another, so two live strokes from the same
 side would mean a hand had been asked to be in two places. Counted per side; the board-wide count
 is kept for the single-swipe beats, which are still one at a time.
+
+---
+
+## v0.356a — BADDOG becomes one beat, and it is the one beat with the stream switched off
+
+The complaint was that the last third of the fight has too many things going on in it. The
+breakdown written in v0.355a said why in a table: three layers put projectiles on the board and
+none of them knows about the others. This is the first thing done about it.
+
+### The lanes and the fists are one beat
+
+`cross` threw yellow squares across the board. `pound` walked one fist along a plotted line. They
+were separate entries in the pool that happened to share a command name, and both of them ran on
+top of a pentagram stream firing 38 bones a second. They are now a single beat, `slam`, and the
+stream is **off for the whole of it**:
+
+```
+lock  2.30s   two walls of squares drive in and PARK, one across and one down, each with a gap
+wind  0.80s   both fists cock beside his head; the first mark goes down
+hits  3.20s   eight thumps, alternating hands, each aimed at where the dog IS
+rest  3.40s   both hands hang open off the bars and nothing happens at all
+```
+
+Nine and a bit seconds against five to seven for everything else, because it replaces two beats
+and because the rest is the point rather than padding.
+
+### What the old shape was, and why none of it survived
+
+LOCK hammered one spot four times; LINE marched five bangs along the way you were heading. Both
+were planned in full before the fist moved — which is what made them readable and also what made
+them read as careful. Most of that section was geometry for fitting a run of marks inside the rim,
+and none of it is needed when nothing is placed more than `SLAM_TELE` (0.55s) ahead of its own
+landing.
+
+Two hands is what makes the new rate honest. One fist thrown every 0.40s would have to teleport
+back up between bangs; alternating, each hand gets 0.80s to rise, aim and fall, so what is on
+screen is one arm winding while the other lands.
+
+### The squares stop, and then they come off the cell
+
+A lane bar used to sweep the board and leave. Measured, that meant the squares had crossed and
+been culled *during the wind-up* — by the time the first fist came down there was nothing left of
+them to break, which is the whole reason the two halves were being combined. They park now: driven
+in at `SLAM_LANE_SPD` and halted at a station, so what stands on the board is a lattice with two
+ways through it. `bar` came out of `bossBoneAcc` for the same reason — a wall that eases in over
+most of a second arrives after the fists.
+
+Every thump throws the squares within `SLAM_KNOCK` of it. A knocked bar is `dead` on the frame it
+is hit (a square visibly tumbling away that still takes health off is the least fair thing this
+fight could do), arcs out and up, spins, and is drawn in **panel space, outside the board's clip**
+— the same trick the births and the mouthfuls already use — so it sails past the bars and burns
+out in open air instead of being sliced in half at the rim. The last thump collapses whatever is
+still standing, so the rest happens on an empty cage.
+
+### And the cage moves
+
+`BOSS.boxK` is a damped shudder applied as a **draw** offset, before the board's fill, its border,
+its rim flares and its clip — so the box and everything standing in it jump as one object rather
+than the contents sliding inside a still frame. The board's own coordinates never shift: nothing
+that was safe becomes unsafe because the picture moved.
+
+### Three things the harness caught that reasoning had not
+
+> **The stream was still running for the first 2.3 seconds.** The first cut started the fist
+> mechanism only once the lanes were laid, and for the lockdown the paws were still on their
+> stations doing what they always do — forty bones inside the one beat built to have none. The
+> beat owns both hands from its first frame now, which is also the better picture: the walls close
+> in while he draws back.
+
+> **And for one frame after that.** `pkPawFightTick` runs before the spawners, so on the very
+> first frame of the pattern the fists did not exist yet and both pentagrams fired at a `fireT`
+> the telegraph had already wound to nearly zero. Two bones, every time. The gate is on the beat's
+> name now, not on the fist, so it closes from the telegraph onward and does not depend on which
+> tick happens to run first.
+
+> **`fistT` outranked the pound in `pawPoseFor`.** `pkPoundTick` holds `fistT` up so nothing
+> downstream can hand a pounding hand a firing pose — and with the generic check first, that
+> self-defence was answered with the wrong fist: the upright guard sprite for the whole barrage,
+> and the cocked one never appeared once.
+
+`fistd` is not a new sheet: `PAWPOSE.fistd` carries `img:"fist"`, and `pboss` asserts that it
+does. `palm` during the rest is a real exemption from the v0.353a "only these poses around the
+box" rule, so it is checked rather than waved through — allowed while `pound.stage==="rest"` and
+nowhere else, because the rest is the one stretch of this fight where he is attacking nothing.
+
+### Three measurements had to change their denominator
+
+BADDOG turns the pentagrams off for ten of a twelve-second sample, so `pbossfight`'s escalation
+check reported phase 2 firing *less* than phase 1, and phase 3 as no busier on the board than
+phase 1 — while the live stream was seven times faster. Both now divide by the time the beat
+allows a stream at all. It is the same failure the file already documents for BURY fans one layer
+down: measuring which beat the shuffle dealt rather than which phase it was in.
+
+The dodge check is the third and the most interesting. Its claim is about the STREAM — can a dog
+walk out of the way of what the pentagrams are throwing — and BADDOG turns the pentagrams off and
+replaces them with eight fists aimed at the dog, so a dog standing still is marked where it stands
+and eats every one of them *by construction*. It is also 9.7s long, which is four slices of the
+paired measurement, so it outlasts the alternation that pairing depends on. Left in, one BADDOG in
+a sample flipped the answer outright: two runs of the same build gave 0.85/0.65 and 0.52/0.90.
+Excluded, three consecutive runs gave 0.45/0.52, 0.71/0.63 and 0.68/0.76 — all inside the bar.
+BADDOG's own fairness contract is asserted in its own section instead, which is the sharper claim
+anyway: every thump is on the floor 0.55s before it lands and is placed on the dog.
+
+The bot needed one fix of its own for the same beat. It flees the nearest bullet *that is closing
+on it*, and a parked square has zero velocity, so it could not see the lattice at all — it walked
+into the wall while the dog standing in the middle happened to be clear of it, and reported that
+moving is forty percent worse. That was a true fact about the bot and no fact about the fight. A
+standing hazard is a hazard; a player sees a wall.
+
+The thump count moved off the sampled array length and onto `po.n` for a related reason: two marks
+are live at a time and one is removed as the next is pushed, so a 30ms sampler that lands between
+them loses a thump and reported seven of eight on a beat landing all eight.
 
 ---
 

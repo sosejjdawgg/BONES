@@ -142,14 +142,27 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
   const fightAt = async (hpFrac, secs)=>pg.evaluate(async([f,S])=>{
     const sleep=ms=>new Promise(r=>setTimeout(r,ms));
     BOSS.hp=BOSS.maxhp*f; pkBossPhaseCheck();
-    const o={ lidFrames:0, sideFrames:0, freeFrames:0, orbitFrames:0, alive:[], hits:0, bones:0, paws:0,
-              bothFire:0, pawX:[], pawY:[] };
+    const o={ lidFrames:0, sideFrames:0, freeFrames:0, orbitFrames:0, alive:[], aliveLive:[],
+              hits:0, bones:0, paws:0, bothFire:0, pawX:[], pawY:[] };
     const hp0=PK.hp, pin=setInterval(()=>{ BOSS.hp=BOSS.maxhp*f; PK.hp=PK.maxhp=9999; },16);
     PK.hp=PK.maxhp=9999;             // measure the stream, not the death
     const fired0=__W.fired, streak0=__W.streak, gt0=BOSS.t;
+    /* HOW MUCH OF THE WINDOW THE STREAM WAS EVEN ALLOWED TO RUN IN. BADDOG turns the pentagrams
+       off for its whole ten seconds, so a twelve-second sample that happens to draw one is three
+       quarters silence - and dividing the calls by wall-to-wall game time then reports a phase
+       that fires less than the phase below it. Same failure the comment below the loop describes
+       for BURY fans, one layer up: measuring which beat the shuffle dealt rather than the phase.
+       So the denominator is the time the gun was live, tracked here because only this loop knows
+       BOSS.t frame by frame. */
+    let liveT=0, lastT=BOSS.t;
     for(let i=0;i<S*25;i++){
       await sleep(40);
       const B=BOSS.box, L=BOSS.paw.L, R=BOSS.paw.R;
+      const live = BOSS.telegraph!=="slam" && !(BOSS.paw.pound && BOSS.paw.pound.on);
+      { const nowT=BOSS.t;
+        if(live) liveT+=nowT-lastT;
+        lastT=nowT; }
+      if(live) o.aliveLive.push(BOSS.bullets.length);
       o.alive.push(BOSS.bullets.length);
       o.paws=Math.max(o.paws, BOSS.bullets.filter(b=>b.k==="bone"||b.k==="pawswipe").length);
       o.bones=Math.max(o.bones, BOSS.bullets.filter(b=>b.k==="bone").length);
@@ -177,9 +190,11 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
     }
     o.phase=BOSS.phase; o.mode=BOSS.paw.mode; o.cycle=BOSS.paw.cycle;
     o.maxAlive=Math.max(...o.alive); o.avgAlive=+(o.alive.reduce((a,c)=>a+c,0)/o.alive.length).toFixed(1);
+    o.avgLive=+(o.aliveLive.reduce((a,c)=>a+c,0)/Math.max(1,o.aliveLive.length)).toFixed(1);
     o.gt=+(BOSS.t-gt0).toFixed(1);
     o.firedPerSec=+((__W.fired-fired0)/Math.max(0.1,BOSS.t-gt0)).toFixed(2);
-    o.streamPerSec=+((__W.streak-streak0)/Math.max(0.1,BOSS.t-gt0)).toFixed(2);
+    o.liveT=+liveT.toFixed(1);
+    o.streamPerSec=+((__W.streak-streak0)/Math.max(0.1,liveT)).toFixed(2);
     clearInterval(pin); PK.hp=hp0;
     return o;
   }, [hpFrac, secs]);
@@ -226,14 +241,19 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
      outfired a phase-two window that drew MAW - the measurement was reporting which beat came up,
      not which phase it was in. The escalation lives in the STREAM: pawFire calls per game second.
      The fan is a beat's shape; the stream is the phase's pressure. */
-  console.log('RATES ', JSON.stringify({p1:[p1.streamPerSec,p1.firedPerSec],
-                                        p2:[p2.streamPerSec,p2.firedPerSec],
-                                        p3:[p3.streamPerSec,p3.firedPerSec]}));
+  console.log('RATES ', JSON.stringify({p1:[p1.streamPerSec,p1.firedPerSec,p1.liveT,p1.gt],
+                                        p2:[p2.streamPerSec,p2.firedPerSec,p2.liveT,p2.gt],
+                                        p3:[p3.streamPerSec,p3.firedPerSec,p3.liveT,p3.gt]}));
   ck(p3.streamPerSec > p1.streamPerSec*2.2,
      'phase 3 does not escalate the stream: '+p1.streamPerSec+' -> '+p3.streamPerSec+'/sec');
   ck(p2.streamPerSec > p1.streamPerSec*1.25,
      'phase 2 does not escalate the stream: '+p1.streamPerSec+' -> '+p2.streamPerSec+'/sec');
-  ck(p3.avgAlive > p1.avgAlive, 'phase 3 is no busier on the board than phase 1');
+  /* ...AND THE SAME DENOMINATOR FOR THE BOARD ITSELF. BADDOG clears the pentagrams for ten of a
+     twelve-second window, so a phase-three average taken wall-to-wall is mostly an average of a
+     board he emptied on purpose - it read as 'phase 3 is no busier than phase 1' while the live
+     stream was seven times faster. Counted over the frames the beat allows a board. */
+  ck(p3.avgLive > p1.avgLive,
+     'phase 3 is no busier on the board than phase 1: '+p1.avgLive+' -> '+p3.avgLive);
 
   /* ---------- 4. IS IT DODGEABLE? ---------- */
   /* A stationary dog SHOULD be hit constantly - that is the fight working. The question is
@@ -269,8 +289,16 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
       let bx=0,by=0,best=1e9;
       for(const b of BOSS.bullets){
         const dx=BOSS.dog.x-b.x, dy=BOSS.dog.y-b.y, d=dx*dx+dy*dy;
+        if(b.dead) continue;                       // knocked off the cell: tumbling, and harmless
+        /* A STANDING HAZARD IS STILL A HAZARD, and v0.356a made that the difference between a
+           measurement and a bug report. BADDOG parks two walls of squares on the board, and a
+           square with zero velocity can never satisfy "closing on him" - so the bot did not see
+           the lattice at all and walked into it, while the dog standing in the middle happened to
+           be clear of it. The result was "moving is forty percent WORSE", which is a true fact
+           about this bot and no fact at all about the fight. A player sees a wall. */
+        const stat=!(b.vx||b.vy);
         // closing on him? (dx,dy) points from the bullet to the dog, so its velocity has to agree
-        if((b.vx||0)*dx+(b.vy||0)*dy <= 0) continue;
+        if(!stat && (b.vx||0)*dx+(b.vy||0)*dy <= 0) continue;
         if(d<best){ best=d; bx=dx; by=dy; }
       }
       /* ...AND IT DOES NOT CORNER ITSELF. Fleeing alone walks the bot into a wall and pins it
@@ -295,10 +323,26 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
          beat that the other only ever sees the tail of. */
       for(const M of (s%2 ? [1,0] : [0,1])){
         BOSS.dog.x=B.w/2; BOSS.dog.y=B.h/2; BOSS.drag=false;
-        const h0=BOSS.hits, t0=BOSS.t;
-        for(let i=0;i<n;i++){ await sleep(40); M?stepMove():stepStill(); }
-        if(M){ moving+=BOSS.hits-h0; gMove+=BOSS.t-t0; }
-        else { still +=BOSS.hits-h0; gStill+=BOSS.t-t0; }
+        let h=BOSS.hits, t=BOSS.t;
+        for(let i=0;i<n;i++){
+          await sleep(40); M?stepMove():stepStill();
+          const h2=BOSS.hits, t2=BOSS.t;
+          /* BADDOG DOES NOT COUNT, AND THAT IS THE THIRD TIME THIS FILE HAS HAD TO SAY IT. This
+             measurement is about the STREAM: can a dog walk out of the way of what the pentagrams
+             are throwing. BADDOG turns the pentagrams off and replaces them with eight fists that
+             are AIMED AT THE DOG - so a dog standing still is marked where it stands and eats
+             every one of them by construction, and a beat lasting 9.7s is four slices long, which
+             is longer than the alternation the pairing above relies on. Left in, one BADDOG in a
+             sample flipped the answer: two runs gave 0.85/0.65 and 0.52/0.90.
+             Its own fairness contract is asserted in section 4c instead - every thump is on the
+             floor 0.55s before it lands, and it is aimed at him, which is exactly the claim this
+             section would want to make about it. */
+          if(BOSS.telegraph!=="slam"){
+            if(M){ moving+=h2-h; gMove+=t2-t; }
+            else { still +=h2-h; gStill+=t2-t; }
+          }
+          h=h2; t=t2;
+        }
       }
     }
     clearInterval(pin);
@@ -340,85 +384,119 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
   ck(dodge.movePerSec<1.4,
      'PHASE THREE IS NOT DODGEABLE: a dog that keeps moving is still hit '+dodge.movePerSec+' times a second');
   ck(dodge.stillPerSec>0.3, 'standing still in phase three is safe - the paws are not covering the board');
-  /* ---------- 4c. THE POUND ---------- */
+  /* ---------- 4c. BADDOG: THE LANES AND THE FISTS ---------- */
+  /* WHAT THIS USED TO ASSERT, AND WHY NONE OF IT SURVIVED. The old beat was one hand alternating
+     two planned figures, and the checks pinned exactly that: that LOCK and LINE alternate, that
+     LOCK's span is 0x0, that LINE's span exceeds two mark radii, that every mark of the run is on
+     the floor before the first bang lands. v0.356a reverses all four on purpose - both hands, no
+     plan beyond SLAM_TELE, and a mark placed on the dog as it is thrown. Inverted with the
+     reasoning rather than deleted, per the file's own rule.
+     What has to hold instead is the sentence the beat now tells: the squares go up FIRST, the
+     stream stops for ALL of it, the fists track him, every square near a bang comes off the
+     board, and it ends with him spent and doing nothing. */
   const pound = await pg.evaluate(async()=>{
     const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-    const out={};
-    const run = async(mode)=>{
-      BOSS.hp=BOSS.maxhp*0.45; pkBossPhaseCheck();
-      const pin=setInterval(()=>{ BOSS.hp=BOSS.maxhp*0.45; PK.hp=PK.maxhp=100000; },48);
-      BOSS.paw.pound=null; BOSS.paw.poundNext=mode;
-      /* ...AND NOT THE FLINCH THAT COMES WITH IT. pkBossFinishPattern raises the short guard now,
-         which gates the spawners for 0.42s — harmless in a real beat, where the breath covers it,
-         and not harmless here, where the test skips the breath and begins a pattern immediately. */
-      pkBossFinishPattern(); BOSS.paw.recoilT=0;
-      BOSS.telegraph="pound"; BOSS.telegraphT=0;
-      BOSS.dog.x=BOSS.box.w*0.5; BOSS.dog.y=BOSS.box.h*0.5;
-      BOSS.dog.vx=90; BOSS.dog.vy=0;                  // heading right, so LINE has something to plot
-      pkBossBeginPattern();
-      const seen={marksBeforeBang:0, bangs:0, phases:[], fistFrames:0, idxs:[],
-                  hitsInside:0, hitsOutside:0, spanX:0, spanY:0};
-      const hurt0=BOSS.hits;
-      let last=null;
-      for(let i=0;i<420;i++){
-        await sleep(30);
-        const po=BOSS.paw.pound;
-        if(!po) continue;
-        if(po.on){
-          if(pawPoseFor(BOSS.paw[po.side], po.side)==="fist") seen.fistFrames++;
-          if(po.ph!==last){ seen.phases.push(po.ph); last=po.ph; }
-          if(po.idx===0 && po.ph==="wind") seen.marksBeforeBang=po.pts.length;
-          seen.idxs.push(po.idx);
-          seen.mode=po.mode;
-          const xs=po.pts.map(p=>p.x), ys=po.pts.map(p=>p.y);
-          seen.spanX=Math.round(Math.max(...xs)-Math.min(...xs));
-          seen.spanY=Math.round(Math.max(...ys)-Math.min(...ys));
-          seen.pts=po.pts.map(p=>[Math.round(p.x),Math.round(p.y)]);
-        } else if(po.done){ break; }
+    BOSS.hp=BOSS.maxhp*0.20; pkBossPhaseCheck();       // phase three: both hands would be firing
+    const pin=setInterval(()=>{ BOSS.hp=BOSS.maxhp*0.20; PK.hp=PK.maxhp=100000; },48);
+    BOSS.paw.pound=null;
+    /* ...AND NOT THE FLINCH THAT COMES WITH IT. pkBossFinishPattern raises the short guard now,
+       which gates the spawners for 0.42s — harmless in a real beat, where the breath covers it,
+       and not harmless here, where the test skips the breath and begins a pattern immediately. */
+    pkBossFinishPattern(); BOSS.paw.recoilT=0;
+    BOSS.telegraph="slam"; BOSS.telegraphT=0;
+    BOSS.dog.x=BOSS.box.w*0.5; BOSS.dog.y=BOSS.box.h*0.5;
+    BOSS.dog.vx=90; BOSS.dog.vy=0;
+    /* AN EMPTY BOARD TO START ON. The dodge section above leaves phase three's forty bones in the
+       air, and they take longer to drain than BADDOG's lockdown lasts - so "nothing else ran
+       under this beat" was counting the previous measurement's leftovers. */
+    BOSS.bullets.length=0;
+    const bones0=0;
+    pkBossBeginPattern();
+    const seen={ stages:[], bangs:0, marks:0, maxLive:0, fistFrames:0, frames:0,
+                 firedDuring:0, barsAtStart:0, knocked:0, kick:0, restFrames:0,
+                 restFired:0, trackDist:[], leadMin:99, aliveOther:0 };
+    let last=null, prevMarks=0, bones=bones0;
+    // he is DRIVEN, not parked: the fists are supposed to follow him, so he has to move
+    let dogT=0;
+    for(let i=0;i<520;i++){
+      await sleep(30);
+      dogT+=0.03;
+      BOSS.dog.x=BOSS.box.w*(0.5+0.34*Math.sin(dogT*1.7));
+      BOSS.dog.y=BOSS.box.h*(0.5+0.30*Math.cos(dogT*1.3));
+      seen.frames++;
+      const po=BOSS.paw.pound;
+      // THE STREAM. Counted as bones ADDED, because the pool drains on its own the whole time.
+      const now=BOSS.bullets.filter(b=>b.k==="bone").length;
+      if(now>bones) seen.firedDuring+=now-bones;
+      bones=now;
+      seen.knocked=Math.max(seen.knocked, BOSS.bullets.filter(b=>b.knock>0).length);
+      seen.kick=Math.max(seen.kick, BOSS.boxK.t);
+      // anything on the board that is NOT a square or a knocked one: the beat must run alone
+      seen.aliveOther=Math.max(seen.aliveOther,
+        BOSS.bullets.filter(b=>b.k!=="bar"&&b.k!=="pawswipe").length);
+      if(!po){
+        if(!seen.stages.length) seen.barsAtStart=BOSS.bullets.filter(b=>b.k==="bar").length;
+        continue;
       }
-      seen.bangs=BOSS.hits-hurt0;
-      seen.ended=!BOSS.paw.pound.on;
-      seen.maxIdx=Math.max(...seen.idxs);
-      clearInterval(pin);
-      return seen;
-    };
-    out.lock=await run("lock");
-    await sleep(300);
-    out.line=await run("line");
-    out.R=POUND_R; out.step=POUND_STEP; out.hits=POUND_HITS; out.steps=POUND_STEPS;
-    return out;
+      if(po.on){
+        if(po.stage!==last){ seen.stages.push(po.stage); last=po.stage;
+                             if(po.stage==="hits") seen.barsAtHits=BOSS.bullets.filter(b=>b.k==="bar").length; }
+        if(pawPoseFor(BOSS.paw.L,"L")==="fistd" && pawPoseFor(BOSS.paw.R,"R")==="fistd") seen.fistFrames++;
+        seen.maxLive=Math.max(seen.maxLive, po.marks.length);
+        /* OFF HIS OWN COUNTER, not off the length of the array. Two marks are live at a time and
+           one is removed as the next is pushed, so a 30ms sampler that lands between the two sees
+           no change and loses a thump - it reported seven of eight, every run, on a beat that was
+           landing all eight. */
+        seen.maxN=Math.max(seen.maxN||0, po.n);
+        if(po.marks.length>prevMarks){
+          // a fresh mark: how far from the dog was it put, and how long is its lead
+          const m=po.marks[po.marks.length-1];
+          seen.marks++;
+          seen.trackDist.push(Math.round(Math.hypot(m.x-BOSS.dog.x, m.y-BOSS.dog.y)));
+          seen.leadMin=Math.min(seen.leadMin, +m.due.toFixed(2));
+        }
+        prevMarks=po.marks.length;
+        if(po.stage==="rest"){ seen.restFrames++; }
+      } else if(po.done){ seen.ended=true; break; }
+    }
+    seen.sides=BOSS.paw.pound ? null : null;
+    seen.bangs=seen.marks; seen.maxN=seen.maxN||0;
+    seen.trackAvg=Math.round(seen.trackDist.reduce((a,b)=>a+b,0)/Math.max(1,seen.trackDist.length));
+    seen.trackMax=Math.max(0,...seen.trackDist);
+    seen.hits=SLAM_HITS; seen.lock=SLAM_LOCK; seen.rest=SLAM_REST; seen.tele=SLAM_TELE;
+    seen.R=POUND_R; seen.knockR=SLAM_KNOCK;
+    clearInterval(pin);
+    return seen;
   });
-  console.log('POUND ', JSON.stringify({lock:{mode:pound.lock.mode, marks:pound.lock.marksBeforeBang,
-    phases:pound.lock.phases.slice(0,6), maxIdx:pound.lock.maxIdx, fist:pound.lock.fistFrames,
-    spanX:pound.lock.spanX, spanY:pound.lock.spanY, ended:pound.lock.ended},
-    line:{mode:pound.line.mode, marks:pound.line.marksBeforeBang, maxIdx:pound.line.maxIdx,
-    spanX:pound.line.spanX, spanY:pound.line.spanY, ended:pound.line.ended, pts:pound.line.pts},
-    R:pound.R, step:pound.step}));
-  ck(pound.lock.mode==='lock' && pound.line.mode==='line',
-     'the pound does not alternate its two shapes: '+pound.lock.mode+'/'+pound.line.mode);
-  // EVERY mark exists before the first bang: nothing about this attack may be a surprise
-  ck(pound.lock.marksBeforeBang===pound.hits,
-     'LOCK did not mark all its hits before the first one landed: '+pound.lock.marksBeforeBang);
-  ck(pound.line.marksBeforeBang===pound.steps,
-     'LINE did not mark its whole path before the first bang: '+pound.line.marksBeforeBang);
-  ck(pound.lock.phases[0]==='wind', 'the pound did not wind up first: '+pound.lock.phases.join('>'));
-  ck(pound.lock.fistFrames>10, 'the fist pose was never used for the pound: '+pound.lock.fistFrames);
-  ck(pound.lock.maxIdx>=pound.hits-1, 'LOCK stopped short: '+pound.lock.maxIdx+' of '+pound.hits);
-  ck(pound.line.maxIdx>=pound.steps-1, 'LINE stopped short: '+pound.line.maxIdx+' of '+pound.steps);
-  ck(pound.lock.ended && pound.line.ended, 'a pound never let go of its paw');
-  // LOCK hammers ONE place; LINE walks. That difference is the whole beat.
-  ck(pound.lock.spanX===0 && pound.lock.spanY===0,
-     'LOCK moved between hits: span '+pound.lock.spanX+'x'+pound.lock.spanY);
-  ck(pound.line.spanX+pound.line.spanY > pound.R*2,
-     'LINE did not actually travel: span '+pound.line.spanX+'x'+pound.line.spanY);
-  // ...and consecutive marks have to CLEAR each other or the path reads as one blob
-  {
-    const p=pound.line.pts||[];
-    let minGap=1e9;
-    for(let i=1;i<p.length;i++) minGap=Math.min(minGap, Math.hypot(p[i][0]-p[i-1][0], p[i][1]-p[i-1][1]));
-    console.log('GAP   ', minGap, 'vs mark radius', pound.R);
-    ck(minGap>pound.R*1.4, 'the marks in a LINE overlap each other: '+Math.round(minGap)+' apart, radius '+Math.round(pound.R));
-  }
+  console.log('BADDOG', JSON.stringify({stages:pound.stages, marks:pound.marks, maxLive:pound.maxLive,
+    fist:pound.fistFrames, firedDuring:pound.firedDuring, barsAtHits:pound.barsAtHits, thumps:pound.maxN+1,
+    knocked:pound.knocked, kick:+pound.kick.toFixed(2), rest:pound.restFrames, ended:!!pound.ended,
+    trackAvg:pound.trackAvg, trackMax:pound.trackMax, aliveOther:pound.aliveOther, hits:pound.hits}));
+  // THE SENTENCE, in order: the board closes, he breaks it open, he has nothing left.
+  ck(pound.stages.join('>')==='lock>wind>hits>rest',
+     'BADDOG did not run lock/wind/fists/rest in order: '+pound.stages.join('>'));
+  ck(pound.barsAtHits>=8,
+     'the squares were not up before the fists came down: '+pound.barsAtHits+' on the board');
+  // ...and THE STREAM IS OFF for all of it. This is the line the whole rebuild rests on.
+  ck(pound.firedDuring===0,
+     'the pentagrams kept firing through BADDOG: '+pound.firedDuring+' bones');
+  ck(pound.aliveOther===0,
+     'something else was running under BADDOG: '+pound.aliveOther+' non-square projectiles');
+  // both fists, cocked, for the barrage - not one working hand and one guard
+  ck(pound.fistFrames>10, 'both fists were never cocked during BADDOG: '+pound.fistFrames+' frames');
+  ck(pound.maxN+1>=pound.hits, 'BADDOG stopped short: '+(pound.maxN+1)+' of '+pound.hits+' thumps');
+  ck(pound.maxLive>=2, 'the fists never overlapped: max '+pound.maxLive+' marks live at once');
+  // IT TRACKS HIM. A mark is put where he is, not where a plan said he would be.
+  ck(pound.trackMax<=pound.R,
+     'a thump was not aimed at the dog: worst mark '+pound.trackMax+'px away, radius '+Math.round(pound.R));
+  // ...with a lead you can actually use
+  ck(pound.leadMin>=0.5, 'a thump was telegraphed for only '+pound.leadMin+'s');
+  // the squares come off the cell, and the cell moves
+  ck(pound.knocked>0, 'no square was ever knocked off the board by a thump');
+  ck(pound.kick>0.5, 'the cage never moved when a fist landed: peak kick '+pound.kick.toFixed(2));
+  // and it costs him
+  ck(pound.restFrames>20, 'he never rested after the barrage: '+pound.restFrames+' frames');
+  ck(!!pound.ended, 'BADDOG never let go of the paws');
 
   /* ---------- 4d. THE BONES DO NOT LOOK LIKE THE ONES YOU COLLECT ---------- */
   /* The reported confusion is that the boss throws the same white bone the park rewards you for
@@ -626,7 +704,7 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
     P.recoilT=0.5; pkBossFlinch(true);
     const noRetrigger=+P.recoilT.toFixed(2);
     // ...and a pound in mid-swing is never yanked off its marks
-    P.recoilT=0; P.pound={on:true, side:"L", ph:"drop", pts:[{x:10,y:10}], idx:0, t:0};
+    P.recoilT=0; P.pound={on:true, stage:"hits", t:0, n:0, marks:[{x:10,y:10,t:0,due:0.5,side:"L"}]};
     pkBossFlinch(true);
     const duringPound=+P.recoilT.toFixed(2);
     P.pound=null; P.recoilT=0;

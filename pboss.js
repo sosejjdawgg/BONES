@@ -505,9 +505,18 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
      "Only those four during the attack phases" is a claim about every frame, not about the six
      states a probe happens to construct. Sampled across a real fight, both hands, at all three
      phases: anything from the old vocabulary showing up here is the bug the note is about. */
+  /* TWO ADDITIONS IN v0.356a, AND ONLY ONE OF THEM IS A NEW SHEET.
+     `fistd` is the SAME clenched drawing as `fist`, held at a steeper angle for BADDOG's cocked
+     hands - PAWPOSE.fistd carries `img:"fist"`, so nothing new is being reached for and the rule
+     the brief set is untouched.
+     `palm` is a genuine exemption and is therefore checked rather than waved through: BADDOG ends
+     with him spent, and a clenched fist hanging off the bars still reads as ready. The brief's
+     rule is about the ATTACK phases around the box; the rest is the one stretch of this fight
+     where he is attacking nothing. So it is allowed exactly there and nowhere else, which is a
+     sharper claim than the blanket list it replaces. */
   const vocab = await pg.evaluate(async()=>{
     const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-    const seen={}, ok=["move","chg","chgb","fire","fist"];
+    const seen={}, seenRest={}, ok=["move","chg","chgb","fire","fist","fistd"];
     const pin=setInterval(()=>{ PK.hp=PK.maxhp=100000; },48);
     for(const frac of [0.90,0.50,0.20]){
       BOSS.hp=BOSS.maxhp*frac; pkBossPhaseCheck(); BOSS.coolOwed=false; BOSS.coolT=0;
@@ -515,18 +524,27 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
         await sleep(20);
         BOSS.hp=BOSS.maxhp*frac;
         if(BOSS.ph==="intro"||BOSS.ph==="pawslam"||BOSS.ph==="outro"||BOSS.ph==="win") continue;
+        const resting=!!(BOSS.paw.pound && BOSS.paw.pound.on && BOSS.paw.pound.stage==="rest");
         for(const sd of ["L","R"]){
           const p=pawPoseFor(BOSS.paw[sd],sd);
-          seen[p]=(seen[p]||0)+1;
+          (resting?seenRest:seen)[p]=((resting?seenRest:seen)[p]||0)+1;
         }
       }
     }
     clearInterval(pin);
-    return {seen, bad:Object.keys(seen).filter(k=>!ok.includes(k))};
+    return {seen, seenRest,
+            bad:Object.keys(seen).filter(k=>!ok.includes(k)),
+            badRest:Object.keys(seenRest).filter(k=>!ok.includes(k) && k!=="palm"),
+            borrows:PAWPOSE.fistd && PAWPOSE.fistd.img};
   });
   console.log('VOCAB ', JSON.stringify(vocab));
   ck(vocab.bad.length===0,
      'the fight still reaches the old paw sheets: '+JSON.stringify(vocab.bad));
+  ck(vocab.badRest.length===0,
+     'BADDOG\'s rest reaches the old paw sheets: '+JSON.stringify(vocab.badRest));
+  // ...and the cocked fist really is the fist, not a twelfth drawing nobody supplied
+  ck(vocab.borrows==='fist',
+     'the cocked fist is not borrowing the fist sheet: '+vocab.borrows);
   for(const k of ['move','chg','fire'])
     ck((vocab.seen[k]||0)>0, 'the "'+k+'" pose is never reached in a real fight');
 

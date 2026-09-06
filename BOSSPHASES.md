@@ -1,6 +1,6 @@
 # WOLFIE — every phase, every timing, and the dial that changes it
 
-Measured off `bones-latest.html` (v0.355a) on a 412×915 viewport, where the cage comes out
+Measured off `bones-latest.html` (v0.356a) on a 412×915 viewport, where the cage comes out
 **309 × 265 px**. Board-relative numbers scale with that; everything else is a constant in
 `src/src.js` and is named here so it can be changed without hunting for it.
 
@@ -13,8 +13,8 @@ about the others.** That is the whole answer to "too many things going on". They
 
 | Layer | Runs when | Owned by | Ceiling |
 |---|---|---|---|
-| **The paws** — a continuous stream out of the two pentagrams | only while `BOSS.ph === "pattern"` | `pkPawFightTick` → `pawFire` | `BOSS_PAW_MAX = 40` alive |
-| **The beat** — one pattern spawner (phase 3: sometimes two) | `telegraph` → `pattern` | `pkBossSpawner(kind)` | per-spawner |
+| **The paws** — a continuous stream out of the two pentagrams | only while `BOSS.ph === "pattern"`, **and never during BADDOG** | `pkPawFightTick` → `pawFire` | `BOSS_PAW_MAX = 40` alive |
+| **The beat** — one pattern spawner (phase 3: sometimes two, never under BADDOG) | `telegraph` → `pattern` | `pkBossSpawner(kind)` | per-spawner |
 | **The golden bird** | any time after `BOSS_BIRD_FIRST = 8s`, every `BOSS_BIRD_GAP = 18–28s` | `BOSS.bird` | one at a time |
 
 The paws are the newest layer and they were added *on top of* a fight that was already tuned
@@ -22,9 +22,9 @@ around the beat alone. Phase 3 fires **both** pentagrams at once, so the paw lay
 ~38 bones a second before the beat has spawned anything. If one number is going to be turned
 down, it is `BOSS_PAW_FIRE[3]`.
 
-There is a fourth thing that only *looks* like a fourth thing: **POUND** is a beat that borrows a
-paw. While it runs, that hand stops firing and stops holding its station (`busy` in
-`pkPawFightTick`). It is not extra load, it is the paw doing something else.
+**One beat now runs with the stream switched off.** `slam` (BADDOG) takes both hands for its whole
+length — see §4a. It is the only place in the fight where the layers do not stack, and it is
+deliberately the longest beat, so a fair slice of phase 3 is now one thing at a time.
 
 ---
 
@@ -145,8 +145,8 @@ A phase change sets `coolOwed`, so the **3-second cool** lands at the end of tha
 | **bones/sec at cycle 0** | 3.3 | 7.1 | **38** (19 × 2 hands) |
 | **bones/sec at the cap** | 8.0 | 17 | **92** |
 | **Bone top speed** | 66 px/s | 92 px/s | 134 px/s |
-| **Pattern pool** | `BOSS_P1` — rain, sweepL, sweepR, ring | `BOSS_P2` — + cross, maw, pound | `BOSS_P3` — + surge |
-| **Two patterns at once** | no | no | **35% of beats**, second one `sparse` |
+| **Pattern pool** | `BOSS_P1` — rain, sweepL, sweepR, ring | `BOSS_P2` — + **slam**, maw | `BOSS_P3` — + surge |
+| **Two patterns at once** | no | no | **35% of beats**, second one `sparse` — never on or under a **slam** |
 | Spawner speed-up | ×1 | ×1.18 (`fast`) | ×1.18 |
 
 **The escalation inside a phase.** `pawRate()` is
@@ -173,13 +173,51 @@ their own) and on the second pattern of a phase-3 double.
 | **rain** | BURY | 5.2–7.6s | every `0.52 / fast` s (`×2.2` sparse) | a fan of 9 columns from the top with **two clear columns**. From phase 2 this comes out of the *pentagram*, so it is the paw |
 | **sweepL / sweepR** | PACK | 4.6–6.8s | every `BOSS_CLAW_WALL_GAP = 0.85 / fast` s (`×1.5` sparse) | a wall of claws in from one side, band `0.18–0.68` |
 | **ring** | PACK | 5.0s | 1.5s apart, **3 rings** (1 sparse) | closes from every side with one door — `0.80 rad` wide, `0.95` sparse |
-| **cross** | BADDOG | 5.4s | 1.05s apart (2.4 sparse) | alternating horizontal / vertical lanes, one gap each, no spin on anything |
+| **slam** | BADDOG | **9.70s** | see §4a | the lanes lock the board, then eight thumps break it open, then he is spent |
 | **surge** | BURY | 5.6s | 0.3s | things come **up** through the floor, telegraphed by pocks |
 | **maw** | FETCH | 6.4s | `BOSS_MAW_RATE = 0.075` (13/s) × `BOSS_MAW_BURST = 11` rounds, `BOSS_MAW_GAP = 0.85` between bursts. **2 bursts at phase 2, 3 at phase 3, 1 sparse** | the head leans in over the board and hoses it, the barrel panning. `BOSS_MAW_MAX = 30` alive |
-| **pound** | BADDOG | **3.62s** = `POUND_WIND 0.72 + 5×(POUND_DROP 0.14 + POUND_GAP 0.30) + 0.7` | — | the nearer hand comes up, marks go down, and it walks `POUND_STEPS = 5` slams along a line |
 
-`BOSS_HEAVY = [maw, ring, surge, pound]` — a phase-3 double never puts two of these together, and
-never two `BOSS_FILL` shapes together. That rule is in `pkBossBeginPattern`.
+
+`BOSS_HEAVY = [maw, ring, surge, slam]` — a phase-3 double never puts two of these together, and
+never two `BOSS_FILL` shapes together. `slam` is additionally excluded **by name** from both sides
+of the double: it can neither carry a garnish nor be one. Those rules are in `pkBossBeginPattern`.
+
+---
+
+## 4a. BADDOG — the lanes and the fists (v0.356a)
+
+The two BADDOG beats used to be separate pool entries — `cross` threw yellow squares across the
+board, `pound` walked one fist along a line — and both of them ran on top of a pentagram stream
+that never stopped. They are one beat now, and **the stream is off for all of it**.
+
+| Stage | Length | Constant | What he is doing |
+|---|---|---|---|
+| **lock** | 2.30s | `SLAM_LOCK` | two walls of yellow squares drive in at `SLAM_LANE_SPD` (180 px/s) and **park** — one across, one down, each with one gap. Both fists come off the cage and cock beside his head |
+| **wind** | 0.80s | `SLAM_WIND` | the first mark goes down and is read |
+| **hits** | 8 × 0.40s | `SLAM_HITS` × `SLAM_GAP` | fist after fist, **alternating hands**, each aimed at where the dog *is*. A mark is on the floor `SLAM_TELE = 0.55s` before its fist arrives |
+| **rest** | 3.40s | `SLAM_REST` | both hands slide off the bars and hang open. Nothing happens at all |
+
+**Life = 9.70s.** Long, because it replaces two beats and because the rest is the point.
+
+- **The squares stop.** A lane bar carries `park`, drives to its station and halts there. What
+  stands on the board is a lattice with two ways through it, not a wave to wait out. Bars are out
+  of `bossBoneAcc` for this reason — a wall that eases in over most of a second arrives after the
+  fists that are meant to break it.
+- **Every thump throws the squares near it.** `SLAM_KNOCK = 94px`. A knocked bar goes `dead`
+  (harmless immediately), arcs out and up, spins, and is drawn in **panel space** — outside the
+  board's clip — so it sails past the bars and burns out in open air over `SLAM_FADE = 0.90s`.
+- **The cage itself jumps.** `SLAM_KICK = 9px`, a damped shudder applied as a *draw* offset before
+  the board's fill, border and clip, so the box and everything in it move as one object. The
+  board's coordinates never shift: nothing that was safe becomes unsafe because the picture moved.
+- **The last thump collapses what is left** — `pkPoundCollapse` throws every surviving square off
+  the board, so the rest happens on an empty cage.
+- **Both fists wear `fistd`** — the same clenched sheet as `fist`, cocked further over the cage
+  (`PAWPOSE.fistd.img = "fist"`). During the rest they open to `palm`: a clenched fist hanging off
+  the bars still reads as ready, and he is not.
+
+Two things this beat is *not* allowed to do, both enforced in `pkBossBeginPattern`: run with a
+second spawner under it, or appear as the sparse second pattern of someone else's beat. It owns
+both hands, so there is nothing left to run a garnish with.
 
 ---
 
@@ -206,7 +244,7 @@ refuses to start while a pound is mid-swing, and refuses to retrigger while one 
 
 ---
 
-## 7. Measured: at phase 3, moving barely helps
+## 7. Measured: at phase 3, moving barely helps — and BADDOG is meant to be worse
 
 `pbossfight` runs two dogs through the same beats — one standing still in the middle, one walking
 away from the nearest bone that is actually closing on it. Over three runs:
@@ -225,6 +263,13 @@ stream walks you into the other's. It is not that the bot is bad — there is no
 
 Whatever is turned down below, this is the number to re-measure afterwards.
 
+**BADDOG is excluded from that measurement, on purpose.** Its eight thumps are *aimed at the dog*,
+so a dog standing still is marked where it stands and eats every one of them by construction —
+which is what "unavoidable" was asked for. Its fairness is a different contract, and it is
+asserted separately: every thump is on the floor `SLAM_TELE = 0.55s` before it lands, and it is
+placed within a mark radius of where the dog actually is. At ~118 px/s a dog clears the 36px mark
+in about a third of that, so it is demanding rather than unfair.
+
 ---
 
 ## 8. If it is too busy, these are the three dials, in order
@@ -233,6 +278,8 @@ Whatever is turned down below, this is the number to re-measure afterwards.
    adds anything. Raising this to `0.16` takes it to 26/s. This is the one.
 2. **The `pkBossBeginPattern` double** — `BOSS.phase>=3 && Math.random()<0.35`. Drop the 0.35 and
    phase 3 runs one beat at a time like the other two.
+2a. **More BADDOG.** It is the only beat that runs with the stream off, so weighting the pool
+   toward `slam` is the cheapest way to buy quiet without changing a single rate.
 3. **`pawRate()`'s cap** — `min(2.4, …)`. At 1.8 the late-cycle stream stops climbing sooner
    without touching how a phase opens.
 
