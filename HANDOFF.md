@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.353a**.
+Currently **v0.354a**.
 
 > **The workflow below is out of date and has been since v0.350a.** The source of truth is
 > `src/` — edit `src/src.js`, run `./build.sh <version>`, test with `./test.sh`. See `CLAUDE.md`,
@@ -3415,6 +3415,96 @@ enough that its Chromium was reaped while sharing the box with five others, and 
 chosen for headroom rather than need, so they came down (420 vocabulary samples instead of 780,
 two bird rounds instead of three) and the battery is 417s with all 36 green. Worth remembering:
 **a suite can fail by being too expensive, and it does not look like a test failure when it does.**
+
+---
+
+## v0.354a — a speed marker, an X, and a suite that had to be split
+
+### The streak goes under the hand, at half weight
+
+The paw rides its swipe, so for two versions the streak sprite was drawn at the same position as
+the hand: over the top it was a smear, behind it at full weight it read as a second paw. It is a
+**speed marker**, not an object — 50% alpha, pushed back along the travel, and drawn *before* the
+hands rather than after them.
+
+What actually sells the speed is the thing underneath it: a short tail of the hand's own ghosts,
+five deep, fading oldest-faintest, refreshed every 28ms of a rake. Fixed length and recycled in
+place, because this runs on every frame of a stroke and must not allocate. Plus embers off the
+claws and scratch marks that now **lie along the stroke** — they were laid down horizontally
+whatever the hand was doing, which was invisible while every swipe crossed the board flat and
+plainly wrong the moment the X started raking at 45°.
+
+### Phase 0.5 is a sentence now
+
+One swipe from the left, one from the right, and then he crosses the board twice with both hands.
+The two singles teach the grammar — a mark means a line, and the line means move — and the X is
+the exam. `BOSS_WARM_MAX` used to end it at four swipes; what ends it now is the X finishing.
+
+| beat | | |
+|---|---|---|
+| `xtele` | 1.30s | two long diagonals fade up, crossing on the dog |
+| `xhold` | 1.00s | marks solid, hands cocked, nothing moving |
+| `xstrike` | 4 rakes, 0.34s apart | L, R, L, R — the X drawn twice, one hand after the other |
+
+Everything is decided at the telegraph: where it crosses, how far each arm runs, and in what order
+the hands go. **Nothing tracks him after that**, which is the only reason it is fair at 760px/s —
+the answer is "be somewhere else", and it is a decision he makes once with 2.3 measured seconds to
+make it. `pboss` pins that warning time as a number, because it is the one thing in the beat a
+future tuning pass must not quietly erode.
+
+The arms are cast out to the rim rather than given a fixed length, so a dog cornered at the top
+left gets the same full-board X as one standing in the middle — and neither stroke can finish
+inside the cage with a hand parked in it, which a fixed length would have done about a third of
+the time.
+
+Every hand is a quarter bigger, through one `PAW_SC` multiplier rather than eleven edited numbers,
+so the arrival hands and the cage hands can never drift apart.
+
+### Two bugs the X flushed out, both of them stale state
+
+**The golden bird aborted the combo.** `pkPawCatch` is the *boomerang's* bookkeeping — it counts
+the shot, hands the next one to the other paw, and puts the warm-up back to `wait` — and the
+golden-bird reflect path called it for any swipe it bounced. A reflected X stroke therefore
+cancelled the X mid-combo and credited two swipes that never happened. It only showed up when the
+bird happened to be out, which is why the same build ran the combo correctly most times and the
+trace that caught it looked like non-determinism.
+
+**A latched flag outlived what it described.** `faceDir` was set while a hand rode a swipe and
+cleared by the branch that runs when it is not — a branch that never runs again once the warm-up
+hands over. So the last hand to finish the X wore the flying pose for the rest of the fight, and
+the pound could not get its fist. It is a decay now (`rideT`, refreshed every frame of a rake,
+expiring on its own) like every other paw timer in the file, and it cannot go stale.
+
+> Both are the same shape: state that is correct while something is happening and wrong the
+> instant it stops. The file already had the right idiom for it — `fireT`, `teleT`, `slam` are all
+> decays — and both bugs were introduced by reaching for a flag instead.
+
+### pboss got too big to be one suite
+
+Last version it was reaped at the timeout while sharing the machine; the fix then was to trim its
+sample counts. This version it ran **ten minutes on its own** and was killed again — and at that
+point the honest answer is not a longer timeout, it is that the suite had become two subjects.
+
+- `pboss` — the boundary, the scream, the suspense, the warm-up, the X, and the pose language
+- `pbossfight` — the stations, the escalation, dodgeability, the pound, the cooling beat, the bone
+  speeds, the bird wall
+
+Both install the same watchdog (the audit that every `k:"bone"` was born at a live pentagram and
+none inside the cage) because each has to be runnable alone — that is the whole point of the
+split. What each asks of the *counts* differs, because each drove only its own part of the fight.
+
+`test.sh` gained a **solo lane**: anything marked `solo` in SUITES runs on its own, before the
+parallel batch, with a longer leash. `pbossfight` is marked solo; `pboss` went back into smoke,
+which is now **122s** against 214s before the split. The full battery is 37 suites in 667s.
+
+### ...and one assertion inverted
+
+"Phase 0.5 never has two swipes alive at once" was protecting the readability of the tutorial
+swipes — one slow threat, one line to read — and the X ends the phase with both hands raking at
+the same time on purpose. What replaces it is a stronger claim, not a weaker one: **no hand is
+ever overtaking itself.** The combo is one paw after another, so two live strokes from the same
+side would mean a hand had been asked to be in two places. Counted per side; the board-wide count
+is kept for the single-swipe beats, which are still one at a time.
 
 ---
 

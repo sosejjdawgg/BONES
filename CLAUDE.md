@@ -14,7 +14,7 @@ src/src.js        1.2MB of actual code. Changes every session.
 src/tail.html     the closing tags
 build.sh          ./build.sh 0.351a   ->  bones-v0.351a.html + bones-latest.html
 test.sh           ./test.sh smoke | ./test.sh all | ./test.sh boss
-SUITES            the battery. 36 suites; the six marked "smoke" run after every edit.
+SUITES            the battery. 37 suites; "smoke" runs after every edit, "solo" runs alone.
 tools/split.py    how assets.js and src.js were separated, and the safety check it applies
 p*.js             the harnesses. The ones in SUITES are the battery; the rest are stale probes.
 bones-latest.html the current build — this is the file to upload to itch and to send to the phone
@@ -47,14 +47,22 @@ after.
 ## Testing
 
 ```
-./test.sh smoke     # 6 suites, ~4 min — after every edit
-./test.sh all       # 36 suites, ~4 min wall — before shipping
+./test.sh smoke     # 6 suites, ~2 min — after every edit
+./test.sh all       # 37 suites, ~11 min wall — before shipping
 ./test.sh boss      # anything matching "boss"
 ```
 
 Six-wide, because **the battery is dominated by a fixed ~17s boot preamble per suite**, not by the
 checking. Measured: six suites took 111s serially and 21s in parallel. The full battery went from
 about thirteen minutes to **249s**.
+
+**One suite must not share the machine.** A suite several times longer than its neighbours does
+not merely take longer — it starves them, and the failure does not look like starvation. `pboss`
+grew to ten minutes over three versions and was killed at the 560s timeout with every assertion
+already green, taking `pbat`'s drain-rate measurement down with it (which reported a *rate* when
+what had changed was the *frame count*). Anything marked `solo` in SUITES now runs on its own,
+before the parallel batch, with a longer leash. And when a suite gets that big it is usually two
+suites: `pboss` is the arrival and phase 0.5, `pbossfight` is everything after the hand-over.
 
 Suites point at `bones-latest.html`, so a version bump no longer means editing a filename in
 thirty-six files.

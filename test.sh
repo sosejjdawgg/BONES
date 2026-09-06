@@ -17,6 +17,12 @@ J="${J:-6}"
 # those and 74 are stale one-off probes from earlier sessions.
 ALL=$(grep -v '^#' SUITES | awk 'NF{print $1}' | tr '\n' ' ')
 SMOKE=$(grep -v '^#' SUITES | awk '$2=="smoke"{print $1}' | tr '\n' ' ')
+# ...and the ones that must not share the machine. A suite four times the length of its
+# neighbours does not just take longer: it starves them, and what that looks like is a
+# measurement suite reporting a drain rate that is really a frame count, or the long suite
+# itself being cut off at the timeout with every assertion already green. Neither reads as
+# "the box was oversubscribed", which is why this is a lane rather than a tuning exercise.
+SOLO=$(grep -v '^#' SUITES | awk '$0 ~ /(^| )solo( |$)/{print $1}' | tr '\n' ' ')
 case "${1:-all}" in
   all)   SUITES="$ALL" ;;
   smoke) SUITES="$SMOKE" ;;
@@ -37,9 +43,18 @@ fi
 
 mkdir -p .out
 T0=$(date +%s); FAIL=0; N=0
+# A SOLO SUITE GETS A LONGER LEASH, and it costs nothing: it is alone on the machine, so the
+# only thing a generous timeout buys is the difference between "this suite is slow" and "this
+# suite failed", which are not the same message and must not look the same.
+run_one(){ timeout "${2:-560}" node "$1.js" > ".out/$1.txt" 2>&1; echo $? > ".out/$1.code"; }
+# the solo lane first, one at a time and with nothing else running
 for t in $SUITES; do
+  case " $SOLO " in *" $t "*) run_one "$t" 1100; N=$((N+1));; esac
+done
+for t in $SUITES; do
+  case " $SOLO " in *" $t "*) continue;; esac
   while [ "$(jobs -rp | wc -l)" -ge "$J" ]; do wait -n 2>/dev/null || true; done
-  ( timeout 560 node "$t.js" > ".out/$t.txt" 2>&1; echo $? > ".out/$t.code" ) &
+  ( run_one "$t" ) &
   N=$((N+1))
 done
 wait

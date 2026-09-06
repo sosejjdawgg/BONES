@@ -722,7 +722,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.353a</span>
+          <span id="devToggle">v0.354a</span>
         </div>
       </div>
 
@@ -16266,6 +16266,16 @@ const BOSS_WARM_TELE  = 0.62;   // the wind-up itself, long enough to read acros
 const BOSS_WARM_SPD   = 150;    // still slow enough that walking up or down always clears it
 const BOSS_WARM_R     = 26*BOSS_SCALE;
 const BOSS_WARM_MAX   = 4;
+/* PHASE 0.5 IS A SENTENCE NOW: one swipe from the left, one from the right, and then he crosses
+   the board twice with both hands. The two singles teach the grammar — a mark means a line, and
+   the line means move — and the X is the exam. */
+const BOSS_WARM_SWIPES= 2;      // ...before the X, one each side
+const BOSS_X_TELE     = 1.30;   // the marks fade up over this
+const BOSS_X_HOLD     = 1.00;   // ...and are then held, solid, for the second the brief asks for
+const BOSS_X_GAP      = 0.34;   // between strokes: fast enough to read as one motion...
+const BOSS_X_SPD      = 760;    // ...and long enough that a hand is never overtaking itself
+const BOSS_X_R        = 24*BOSS_SCALE;
+const BOSS_X_MARGIN   = 46;     // how far past the rim each stroke starts and finishes
 const BOSS_WARM_TURN  = 0.14;   // the beat it hangs at the far side before it comes back
 const BOSS_PAW_MAX    = 40;     // bones + swipes alive, enforced at spawn
 /* Fire rate. The base is per phase; the cycle multiplier is the escalation INSIDE a phase, so
@@ -16315,9 +16325,10 @@ const BOSS={
   paw:{
     slamT:0, slamDone:false, mode:0.5, cycle:0, t:0, fireT:0,
     warmT:0, warmSide:"L", warmShots:0, warmPh:"wait", warmT2:0, teleY:0, teleK:0,
+    xC:null, xK:0, xArms:null, xStrokes:null, xNext:0, xDone:false,
     active:"L",
-    L:{x:0,y:0,ang:0,lift:1,glow:0,slam:0,grip:1,sx:1,sy:1,live:0,spd:0,fireT:0,teleT:0},
-    R:{x:0,y:0,ang:0,lift:1,glow:0,slam:0,grip:1,sx:1,sy:1,live:0,spd:0,fireT:0,teleT:0}
+    L:{x:0,y:0,ang:0,lift:1,glow:0,slam:0,grip:1,sx:1,sy:1,live:0,spd:0,fireT:0,teleT:0,rideT:0},
+    R:{x:0,y:0,ang:0,lift:1,glow:0,slam:0,grip:1,sx:1,sy:1,live:0,spd:0,fireT:0,teleT:0,rideT:0}
   },
 };
 PK.boss=BOSS;
@@ -16738,9 +16749,12 @@ function bossHeadSet(cell,t){ BOSS.headOv=cell; BOSS.headOvT=t; }
    "something scratched its way across the cell", which is the whole difference the brief asks for.
    Board-local, drawn inside the cage's clip with the pock marks. */
 const SCRATCH_MAX=30, SCRATCH_LIFE=1.5, SCRATCH_EVERY=0.055;
-function bossScratchAdd(x,y,dir){
+/* ...AND THEY LIE ALONG THE STROKE. They were laid down horizontally whatever the hand was doing,
+   which was invisible while every swipe crossed the board flat and plainly wrong the moment the X
+   started raking at 45 degrees: claw marks at right angles to the claws that made them. */
+function bossScratchAdd(x,y,ang){
   if(BOSS.scratch.length>=SCRATCH_MAX) BOSS.scratch.shift();
-  BOSS.scratch.push({x, y, dir:dir<0?-1:1, life:SCRATCH_LIFE, max:SCRATCH_LIFE,
+  BOSS.scratch.push({x, y, ang, life:SCRATCH_LIFE, max:SCRATCH_LIFE,
                      sp:(Math.random()-0.5)*8, len:18+Math.random()*14, w:4.2+Math.random()*2.2});
 }
 function bossPock(x,y,r){
@@ -17263,6 +17277,7 @@ function pkPawReset(){
   const P=BOSS.paw;
   P.slamT=0; P.slamDone=false; P.mode=0.5; P.cycle=0; P.t=0; P.fireT=0;
   P.warmT=0; P.warmSide="L"; P.warmShots=0; P.warmPh="wait"; P.warmT2=0;
+  P.xC=null; P.xK=0; P.xArms=null; P.xStrokes=null; P.xNext=0; P.xDone=false;
   P.teleY=0; P.teleK=0; P.active="L"; P.kick=0; P.kickX=0; P.kickY=0; P.firstVolley=true;
   P.pound=null; P.poundNext="lock";
   P.shotN=0; P.slamStage=0; P.slamFrom=null;
@@ -17270,7 +17285,7 @@ function pkPawReset(){
     const q=P[k];
     q.x=0; q.y=0; q.ang=k==="L"?0:Math.PI; q.lift=1; q.glow=0; q.slam=0; q.grip=1;
     q.sx=1; q.sy=1; q.live=0; q.spd=0; q.fireT=0; q.teleT=0;
-    q.fistT=0; q.faceDir=0;
+    q.fistT=0; q.rideT=0; q.ghost=null;
   }
 }
 // where a paw waits between beats: on its own wall, palm turned in at the board
@@ -17286,6 +17301,26 @@ function pawSwipeAlive(){
 function bossSwipeOf(side){
   for(const b of BOSS.bullets) if(b.k==="pawswipe" && b.side===side) return b;
   return null;
+}
+/* ==================== THE SPEED OF A HAND ====================================================
+   A hand crossing the cage needs to read as FAST, and the streak sprite on its own could not do
+   it: drawn over the paw it was a smear, drawn behind at full weight it was a second paw. So it
+   is halved and put underneath — a speed marker rather than an object — and the hand leaves a
+   short tail of its own ghosts behind it, which is the thing that actually sells the velocity.
+   Fixed length, recycled in place: this runs on every frame of a rake and must not allocate. */
+const PAW_GHOST_N=5, PAW_GHOST_EVERY=0.028, PAW_GHOST_LIFE=0.20;
+function pawGhostAdd(q,dt){
+  if(!q.ghost) q.ghost=[];
+  q.ghostT=(q.ghostT||0)-dt;
+  for(let i=q.ghost.length-1;i>=0;i--){
+    const g=q.ghost[i];
+    g.life-=dt;
+    if(g.life<=0) q.ghost.splice(i,1);
+  }
+  if(q.ghostT>0) return;
+  q.ghostT=PAW_GHOST_EVERY;
+  if(q.ghost.length>=PAW_GHOST_N) q.ghost.shift();
+  q.ghost.push({x:q.x, y:q.y, ang:q.ang, life:PAW_GHOST_LIFE});
 }
 /* IS A BURY BEAT RUNNING. It matters to where the paw stands, not just to what it fires: the rain
    fan is aimed at the floor of the board, and at phase two the orbit swings the paw UNDER the box
@@ -17465,6 +17500,12 @@ function pkPawCommon(dt){
     q.slam=Math.max(0,q.slam-dt*2.4);
     q.fireT=Math.max(0,q.fireT-dt);   // ...holds the firing pose across the gap between rounds
     q.teleT=Math.max(0,q.teleT-dt);
+    /* RIDING IS A DECAY, NOT A LATCH. It was a flag set while a hand rode a swipe and cleared by
+       the branch that runs when it is not — which never runs again once the warm-up hands over,
+       so the last hand to finish the X wore the flying pose for the rest of the fight and the
+       pound could not get its fist. Refreshed every frame of a rake and expiring on its own, it
+       cannot outlive the thing it describes. */
+    q.rideT=Math.max(0,(q.rideT||0)-dt);
     const e=Math.min(1,dt*9);
     q.sx += (1-q.sx)*e; q.sy += (1-q.sy)*e;
   }
@@ -17564,6 +17605,7 @@ function pkPawSlamTick(dt){
   if(t>=BOSS_PAW_SLAM){
     BOSS.ph="pawwarm"; P.mode=0.5;
     P.warmT=0; P.warmT2=0; P.warmShots=0; P.warmSide="L"; P.warmPh="wait";
+    P.xC=null; P.xK=0; P.xArms=null; P.xStrokes=null; P.xNext=0; P.xDone=false;
   }
 }
 /* PHASE 0.5 - THE WARM-UP. One large slow swipe at a time, thrown from a paw that visibly winds
@@ -17574,33 +17616,42 @@ function pkPawWarmTick(dt){
   const B=BOSS.box, P=BOSS.paw;
   P.warmT+=dt; P.warmT2+=dt;
   const alive=pawSwipeAlive();
-  const spent = P.warmShots>=BOSS_WARM_MAX || P.warmT>=BOSS_WARM_DUR;
+  /* THE X IS THE END OF PHASE 0.5. It used to be "four swipes and out"; the script is now one
+     from each side and then the X, so what finishes the warm-up is the X finishing. The duration
+     ceiling stays as the backstop it always was. */
+  const spent = P.xDone || P.warmT>=BOSS_WARM_DUR;
   /* THE HAND GOES WITH IT. The swipe used to be a thing the paw threw and then stood still and
      watched cross the board, which is why the sprite read as wrong: a claw mark travelling on its
      own with a paw parked on the wall behind it. The paw now RIDES its own swipe — out, round at
      the far side, and back — so what crosses the cell is the hand, and the streak sprite becomes
      the swoosh trailing it rather than the whole attack. */
-  const ride = P.warmPh==="fly" ? bossSwipeOf(P.warmSide) : null;
+  const riding = P.warmPh==="fly" || P.warmPh==="xstrike";
 
   for(const side of ["L","R"]){
     const q=P[side], g=pawGrip(side);
-    if(ride && side===P.warmSide){
+    /* EACH HAND RIDES ITS OWN. The single swipes only ever have one in the air, but the X has
+       both hands raking at once, so "the swipe" became "this side's swipe". */
+    const ride = riding ? bossSwipeOf(side) : null;
+    if(ride){
       const px=B.x+ride.x, py=B.y+ride.y;
       // measured, not assumed: the pose picker keys the streak off real travel
       q.spd = dt>0 ? Math.hypot(px-q.x,py-q.y)/dt : 0;
       q.x=px; q.y=py;
-      q.faceDir = ride.vx<0 ? -1 : 1;      // the claws turn round with it at the far wall
-      q.ang = ride.vx<0 ? Math.PI : 0;
-      q.glow=Math.max(q.glow,0.55); q.teleT=0;
+      // the claws point exactly along the travel, which the `aim` fold then mirrors for us
+      q.ang = Math.atan2(ride.vy, ride.vx);
+      q.glow=Math.max(q.glow,0.55); q.teleT=0; q.rideT=0.08;
+      pawGhostAdd(q,dt);                    // the speed marker — see THE SPEED OF A HAND
       // ...and it rakes the floor the whole way across
       BOSS.scratchT-=dt;
       if(BOSS.scratchT<=0){
         BOSS.scratchT=SCRATCH_EVERY;
-        bossScratchAdd(ride.x, ride.y+(Math.random()-0.5)*6, ride.vx);
+        bossScratchAdd(ride.x+(Math.random()-0.5)*5, ride.y+(Math.random()-0.5)*6, q.ang);
+        if(!bossCalm()) bossFizz(px+ride.vx*0.02, py+ride.vy*0.02, 2,
+                                 Math.random()<0.5?"#ff7a2a":"#ffd88a");
       }
       continue;                             // deliberately NO pawClampOut: it is meant to be in there
     }
-    q.faceDir=0;
+    q.ghost=null;
     let st=g;
     // the paw about to throw pulls off its wall toward the player: the wind-up, and the reason
     // the danger line below is believable
@@ -17610,6 +17661,10 @@ function pkPawWarmTick(dt){
       st={ x: g.x + (side==="L" ? pull : -pull), y: B.y+P.teleY, ang: g.ang };
     } else if(P.warmPh==="fly" && side===P.warmSide){
       st={ x:g.x, y:B.y+P.teleY, ang:g.ang };      // it waits at the height it threw from
+    } else if((P.warmPh==="xtele"||P.warmPh==="xhold"||P.warmPh==="xstrike") && P.xStrokes){
+      // cocked at the top of its next stroke, so where it is about to come from is readable
+      const nx=pawXNextFor(side);
+      if(nx) st={ x:B.x+nx.sx, y:B.y+nx.sy, ang:Math.atan2(nx.uy,nx.ux) };
     }
     pawSeek(q, st, P.warmPh==="tele"?7:9, dt);
   }
@@ -17617,16 +17672,112 @@ function pkPawWarmTick(dt){
   if(P.warmPh==="wait"){
     P.teleK=Math.max(0,P.teleK-dt*3);
     if(alive) return;
+    // one from the left, one from the right, and then he crosses the board with both
+    if(!P.xDone && P.warmShots>=BOSS_WARM_SWIPES){ pkPawXTele(); return; }
     if(spent){ pkPawWarmEnd(); return; }
     if(P.warmT2>=BOSS_WARM_GAP) pkPawWarmTele();
   } else if(P.warmPh==="tele"){
     P.teleK=Math.min(1,P.warmT2/BOSS_WARM_TELE);
     P[P.warmSide].glow=Math.max(P[P.warmSide].glow, P.teleK);
     if(P.warmT2>=BOSS_WARM_TELE) pkPawWarmThrow();
+  } else if(P.warmPh==="xtele"){
+    P.xK=Math.min(1,P.warmT2/BOSS_X_TELE);
+    for(const k of ["L","R"]) P[k].glow=Math.max(P[k].glow,P.xK*0.9);
+    if(P.warmT2>=BOSS_X_TELE){ P.warmPh="xhold"; P.warmT2=0; pkPawXHold(); }
+  } else if(P.warmPh==="xhold"){
+    /* THE SECOND. Marks solid, hands cocked, nothing moving — the whole of the dodge is here, and
+       it is deliberately the quietest beat in the fight so that it reads as a held breath. */
+    P.xK=1;
+    for(const k of ["L","R"]) P[k].glow=Math.max(P[k].glow,0.95);
+    if(P.warmT2>=BOSS_X_HOLD){ P.warmPh="xstrike"; P.warmT2=0; P.xNext=0; }
+  } else if(P.warmPh==="xstrike"){
+    P.xK=Math.max(0,P.xK-dt*1.5);
+    if(P.xNext<P.xStrokes.length && P.warmT2>=P.xNext*BOSS_X_GAP) pkPawXStroke();
+    else if(P.xNext>=P.xStrokes.length && !alive){
+      P.xDone=true; P.warmPh="wait"; P.warmT2=0; P.xC=null; P.xStrokes=null; P.xK=0;
+    }
   } else {                                        // "fly": the catch puts it back to "wait"
     P.teleK=Math.max(0,P.teleK-dt*3);
     if(!alive){ P.warmPh="wait"; P.warmT2=0; }
   }
+}
+/* ==================== THE X ==================================================================
+   Two long rakes crossing on the dog, drawn twice, one hand after the other. Everything about it
+   is decided at the TELEGRAPH: where it crosses, how far each arm runs, and in what order the
+   hands go. Nothing tracks him after that, which is the only reason it is fair at 760px/s — the
+   answer is "be somewhere else", and it is a decision he makes once, with a second to make it.
+   The arms are cast out to the rim rather than given a fixed length, so a dog cornered at the top
+   left gets the same full-board X as one standing in the middle, and neither stroke can end up
+   finishing inside the cage with a hand parked in it. */
+function bossRayOut(cx,cy,ux,uy,m){
+  const B=BOSS.box;
+  const span=(u,c,hi)=>{
+    if(Math.abs(u)<1e-6) return [1e9,1e9];
+    const t1=(0-c)/u, t2=(hi-c)/u;
+    return [Math.max(t1,t2), -Math.min(t1,t2)];       // [forward, backward]
+  };
+  const [fx,bx]=span(ux,cx,B.w), [fy,by]=span(uy,cy,B.h);
+  return { f:Math.max(0,Math.min(fx,fy))+m, b:Math.max(0,Math.min(bx,by))+m };
+}
+function pkPawXTele(){
+  const B=BOSS.box, P=BOSS.paw;
+  P.warmPh="xtele"; P.warmT2=0; P.xK=0; P.teleK=0; BOSS.teleEdge="";
+  const C={ x:clamp(BOSS.dog.x, B.w*0.12, B.w*0.88), y:clamp(BOSS.dog.y, B.h*0.12, B.h*0.88) };
+  P.xC=C;
+  const r=Math.SQRT1_2;
+  const arms=[{ux:r,uy:r},{ux:r,uy:-r}].map(u=>{
+    const o=bossRayOut(C.x,C.y,u.ux,u.uy,BOSS_X_MARGIN);
+    return { ux:u.ux, uy:u.uy,
+             ax:C.x-u.ux*o.b, ay:C.y-u.uy*o.b,      // the near end...
+             bx:C.x+u.ux*o.f, by:C.y+u.uy*o.f };    // ...and the far one
+  });
+  P.xArms=arms;
+  // down one arm, down the other, then back up both: the X drawn twice, alternating hands
+  P.xStrokes=[
+    {side:"L", sx:arms[0].ax, sy:arms[0].ay, ex:arms[0].bx, ey:arms[0].by},
+    {side:"R", sx:arms[1].bx, sy:arms[1].by, ex:arms[1].ax, ey:arms[1].ay},
+    {side:"L", sx:arms[0].bx, sy:arms[0].by, ex:arms[0].ax, ey:arms[0].ay},
+    {side:"R", sx:arms[1].ax, sy:arms[1].ay, ex:arms[1].bx, ey:arms[1].by}
+  ];
+  for(const st of P.xStrokes){
+    const L=Math.hypot(st.ex-st.sx, st.ey-st.sy)||1;
+    st.ux=(st.ex-st.sx)/L; st.uy=(st.ey-st.sy)/L; st.len=L;
+  }
+  P.xNext=0;
+  bossHeadSet("front", BOSS_X_TELE+BOSS_X_HOLD);
+  BOSS.eyeFlash=Math.max(BOSS.eyeFlash,0.26);
+  BOSS.edge.l=Math.max(BOSS.edge.l,0.5); BOSS.edge.r=Math.max(BOSS.edge.r,0.5);
+  for(let i=0;i<5;i++) setTimeout(()=>beep(200+i*128,.07,"square",.04,{key:"pawxt"+i}), i*190);
+  haptic([20,60,20]);
+}
+function pkPawXHold(){
+  BOSS.eyeFlash=Math.max(BOSS.eyeFlash,0.34);
+  BOSS.stiff=Math.max(BOSS.stiff||0,0.9);
+  beep(1150,.10,"square",.05,{key:"pawxhold"});          // the held breath...
+  setTimeout(()=>beep(90,.55,"sawtooth",.05,{key:"pawxhold2"}),120);
+  haptic(30);
+}
+// which stroke this hand is going to next, so it can be cocked at the top of it
+function pawXNextFor(side){
+  const P=BOSS.paw;
+  if(!P.xStrokes) return null;
+  for(let i=Math.max(0,P.xNext);i<P.xStrokes.length;i++) if(P.xStrokes[i].side===side) return P.xStrokes[i];
+  return null;
+}
+function pkPawXStroke(){
+  const B=BOSS.box, P=BOSS.paw;
+  const st=P.xStrokes[P.xNext++], Q=P[st.side];
+  bossAdd({ x:st.sx, y:st.sy, vx:st.ux*BOSS_X_SPD, vy:st.uy*BOSS_X_SPD, r:BOSS_X_R,
+            k:"pawswipe", side:st.side, ph:"once", once:true, t:0,
+            life:st.len/BOSS_X_SPD, spin:0, vr:0, turn:0, flash:1, emb:0, out:true });
+  Q.glow=1; Q.sx=1.22; Q.sy=0.80; Q.slam=Math.max(Q.slam,0.5);
+  BOSS.shake=Math.max(BOSS.shake, bossCalm()?0.10:0.22);
+  P.kick=1; P.kickX=st.ux*8; P.kickY=st.uy*5;
+  beep(1500,.05,"square",.05,{key:"pawxs"+(P.xNext%2)});
+  setTimeout(()=>beep(240,.13,"sawtooth",.05,{key:"pawxs2"+(P.xNext%2)}),35);
+  haptic(26);
+  if(!bossCalm()) for(let i=0;i<6;i++)
+    bossFizz(B.x+st.sx+st.ux*i*4, B.y+st.sy+st.uy*i*4, 1, i%2?"#ff7a2a":"#fff");
 }
 function pkPawWarmTele(){
   const B=BOSS.box, P=BOSS.paw;
@@ -18376,7 +18527,7 @@ function pkBossUpdate(dt){
       if(b.ph==="turn"){
         b.turn-=dt;
         if(b.turn<=0){ b.ph="back"; b.vx=-b.vx; b.flash=1; }
-      } else b.x+=b.vx*dt;
+      } else { b.x+=b.vx*dt; b.y+=(b.vy||0)*dt; }
       b.spin+=dt*1.5;
       if(!bossCalm()){
         b.emb-=dt;
@@ -18387,7 +18538,14 @@ function pkBossUpdate(dt){
                        0.22+Math.random()*0.26, 1.6+Math.random()*2.0);
         }
       }
-      if(b.ph==="out"){
+      /* A ONE-WAY RAKE. The X's strokes are not boomerangs: they are cast at the rim, they cross
+         the board once, and they are gone. Given its own branch rather than bolted onto the
+         boomerang's phases, because "out, hang, back, caught" is four states this has none of. */
+      if(b.once){
+        b.t=(b.t||0)+dt;
+        if(b.t>=b.life){ BOSS.bullets.splice(i,1); continue; }
+      }
+      else if(b.ph==="out"){
         const gone = b.side==="L" ? b.x>B.w+40 : b.x<-40;
         if(gone){
           b.ph="turn"; b.turn=BOSS_WARM_TURN; b.flash=1;
@@ -18401,12 +18559,24 @@ function pkBossUpdate(dt){
       }
       b.flash=Math.max(0,(b.flash||0)-dt*3);
       /* An ELLIPSE, not the drawn radius. The swipe is drawn wide and flat; a circle at its full
-         width would take damage off the player from a paw that visibly passed under them. */
+         width would take damage off the player from a paw that visibly passed under them.
+         ...AND IT LEANS WITH THE TRAVEL. Axis-aligned was fine while every swipe was horizontal;
+         the X's arms run at 45 degrees, and an upright ellipse on a diagonal rake is a hitbox
+         that disagrees with the picture on both axes at once. */
       const sdx=b.x-BOSS.dog.x, sdy=b.y-BOSS.dog.y;
+      const bl=Math.hypot(b.vx,b.vy)||1, ux=b.vx/bl, uy=(b.vy||0)/bl;
+      const al=sdx*ux+sdy*uy, pe=sdx*uy-sdy*ux;
       const rx=b.r*0.86+BOSS_DOG_R, ry=b.r*0.56+BOSS_DOG_R;
-      if((sdx*sdx)/(rx*rx)+(sdy*sdy)/(ry*ry) < 1){
+      if((al*al)/(rx*rx)+(pe*pe)/(ry*ry) < 1){
         if(BOSS.golden>0){
-          pkBossReflect(b); pkPawCatch(b.side); BOSS.bullets.splice(i,1); continue;
+          /* A ONE-WAY RAKE HAS NOTHING TO CATCH. pkPawCatch is the BOOMERANG's bookkeeping — it
+             counts the shot, hands the next one to the other paw, and puts the warm-up back to
+             "wait" — so calling it for a reflected X stroke aborted the X mid-combo and credited
+             two swipes that never happened. It only showed up when the golden bird happened to be
+             out, which is why the same build ran the combo correctly most times. */
+          pkBossReflect(b);
+          if(!b.once) pkPawCatch(b.side);
+          BOSS.bullets.splice(i,1); continue;
         }
         pkBossHurt();
       }
@@ -18885,18 +19055,22 @@ function drawPentagram(ctx,r,glow,calm){
    The face-on palms (palm/glow) and the spread stay for the ARRIVAL, which happens either side of
    his head where you are looking at him rather than at the cage. `swipe` is no longer a pose any
    hand wears: it is the wake drawn behind one. */
+/* EVERY HAND IS A QUARTER BIGGER IN v0.354a, and it is one multiplier rather than eleven edited
+   numbers so the set can never drift apart: the arrival hands and the cage hands are the same
+   animal and have to stay the same size as each other. */
+const PAW_SC=1.25;
 const PAWPOSE={
-  palm : {rot:false, lean:0.22, base:0,           sc:2.45},
-  glow : {rot:false, lean:0.22, base:0,           sc:2.70},
-  fist : {face:true, lean:0.14,                   sc:2.55},
-  slam : {rot:false, lean:0.10, base:0,           sc:2.95},
-  q34  : {face:true, lean:0.30,                   sc:2.60},
-  q34b : {face:true, lean:0.30,                   sc:2.60},
-  swipe: {rot:true,  lean:1,    base:0,           sc:3.05},
-  move : {aim:true, ax:0.60, ay:0.54,             sc:3.80},
-  chg  : {aim:true, ax:0.60, ay:0.54,             sc:3.90},
-  chgb : {aim:true, ax:0.58, ay:0.52,             sc:4.05},
-  fire : {aim:true, ax:0.61, ay:0.55,             sc:4.15}
+  palm : {rot:false, lean:0.22, base:0,           sc:2.45*PAW_SC},
+  glow : {rot:false, lean:0.22, base:0,           sc:2.70*PAW_SC},
+  fist : {face:true, lean:0.14,                   sc:2.55*PAW_SC},
+  slam : {rot:false, lean:0.10, base:0,           sc:2.95*PAW_SC},
+  q34  : {face:true, lean:0.30,                   sc:2.60*PAW_SC},
+  q34b : {face:true, lean:0.30,                   sc:2.60*PAW_SC},
+  swipe: {rot:true,  lean:1,    base:0,           sc:3.05*PAW_SC},
+  move : {aim:true, ax:0.60, ay:0.54,             sc:3.80*PAW_SC},
+  chg  : {aim:true, ax:0.60, ay:0.54,             sc:3.90*PAW_SC},
+  chgb : {aim:true, ax:0.58, ay:0.52,             sc:4.05*PAW_SC},
+  fire : {aim:true, ax:0.61, ay:0.55,             sc:4.15*PAW_SC}
 };
 /* The art faces RIGHT and its claws point UP. `ang` is where the palm is aimed - 0 is at the
    right-hand wall, PI/2 is straight down - so an upright pose is turned by a fraction of (ang) and
@@ -18963,7 +19137,7 @@ function pawPoseFor(q,side){
   if(q.fistT>0)                                       return "fist";
   // riding its own swipe across the board — the FLYING pose, claws leading, and the `aim` fold
   // turns them the way it is going without needing to be told twice
-  if(q.faceDir)                                       return "move";
+  if(q.rideT>0)                                       return "move";
   /* THE SPREAD IS THE IMPACT. It used to be the arrival — five splayed toes bursting up out of
      the floor — and that beat no longer exists, so it moved to the only other place a hand is
      splayed: the moment it lands flat on the bars. Measured from the landing rather than from the
@@ -19012,7 +19186,6 @@ function pawOnStation(side){
    it with the direction of travel, so the claws turn round at the far wall and come back leading. */
 function pawFacing(side){
   const q=BOSS.paw[side], B=BOSS.box;
-  if(q.faceDir) return q.faceDir;
   // ...and during the scream there IS no box yet — the cage is not built until well after the
   // roar — so the fists face each other across his head instead, which is the same question
   if(!(B.w>0)) return q.x < (BOSS.headX||0) ? 1 : -1;
@@ -19320,6 +19493,7 @@ function pkDrawBoss(){
   for(const sc of BOSS.scratch){
     const k=Math.min(1,sc.life/sc.max), a=k*k;      // eased, so the tail of the fade is long
     ctx.save();
+    ctx.translate(sc.x,sc.y); ctx.rotate(sc.ang||0);
     ctx.lineCap="round";
     for(let i=0;i<4;i++){
       const oy=(i-1.5)*4.2;
@@ -19327,8 +19501,8 @@ function pkDrawBoss(){
       ctx.strokeStyle = i%2 ? "#ff8a3a" : "#c8281a";
       ctx.lineWidth   = (i%2 ? 1.5 : 2.2);
       ctx.beginPath();
-      ctx.moveTo(sc.x-sc.dir*sc.len*0.5, sc.y+oy+sc.sp);
-      ctx.lineTo(sc.x+sc.dir*sc.len*0.5, sc.y+oy-sc.sp*0.45);
+      ctx.moveTo(-sc.len*0.5, oy+sc.sp);
+      ctx.lineTo( sc.len*0.5, oy-sc.sp*0.45);
       ctx.stroke();
     }
     ctx.restore();
@@ -19349,6 +19523,34 @@ function pkDrawBoss(){
     // the band it will actually fill, so the height of the thing is readable and not just its line
     ctx.globalAlpha=0.10*k;
     ctx.fillStyle="#ff5a2a"; ctx.fillRect(0, ly-BOSS_WARM_R*0.56, B.w, BOSS_WARM_R*1.12);
+    ctx.restore(); ctx.globalAlpha=1;
+  }
+  /* THE X, MARKED BEFORE IT IS DRAWN. Same language as the single swipe's line — dashed, red,
+     crawling — because it is the same promise made twice at once, and a player who learned to
+     read one line has already learned to read these. The band is the width it will actually
+     rake, so what has to be left is obvious rather than guessed. */
+  if(BOSS.paw.xK>0.01 && BOSS.paw.xArms){
+    const k=BOSS.paw.xK, P=BOSS.paw;
+    ctx.save();
+    ctx.lineCap="butt";
+    for(const arm of P.xArms){
+      ctx.globalAlpha=0.10*k;
+      ctx.save();
+      ctx.translate(P.xC.x,P.xC.y); ctx.rotate(Math.atan2(arm.uy,arm.ux));
+      const L=Math.hypot(arm.bx-arm.ax,arm.by-arm.ay);
+      ctx.fillStyle="#ff5a2a";
+      ctx.fillRect(-L/2, -BOSS_X_R*0.56, L, BOSS_X_R*1.12);
+      ctx.restore();
+      ctx.globalAlpha=0.30+0.48*k*(bossCalm()?1:(0.72+0.28*Math.sin(BOSS.t*13)));
+      ctx.strokeStyle="#ff5a2a"; ctx.lineWidth=2;
+      ctx.setLineDash([9,7]); ctx.lineDashOffset=bossCalm()?0:-BOSS.t*60;
+      ctx.beginPath(); ctx.moveTo(arm.ax,arm.ay); ctx.lineTo(arm.bx,arm.by); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    // where they cross — the one place on the board that is hit twice
+    ctx.globalAlpha=0.36*k;
+    ctx.strokeStyle="#ffd88a"; ctx.lineWidth=1.6;
+    ctx.beginPath(); ctx.arc(P.xC.x,P.xC.y, BOSS_X_R*(0.7+0.5*(1-k)), 0, 7); ctx.stroke();
     ctx.restore(); ctx.globalAlpha=1;
   }
   pkDrawPound(ctx);      // the pound's marks, on the floor, under everything that moves over it
@@ -19549,12 +19751,52 @@ function pkDrawBoss(){
   const pawA = BOSS.ph==="intro"
     ? clamp((BOSS.introT-BOSS_FIST_AT)/0.34,0,1)
     : uiA;
+  /* --- THE SWIPES, also in panel space and for the same reason as the mouthfuls below: half a
+     boomerang's flight is spent outside the board, and a projectile that vanishes at the lip and
+     reappears there is not a boomerang, it is two projectiles.
+     UNDER THE HANDS, AT HALF WEIGHT. The paw rides this bullet — same position, same frame — so
+     for two versions the streak was drawn over the top of the hand and read as a smear. It is a
+     SPEED MARKER, not an object: behind the hand, behind its ghosts, and at half the alpha, so
+     what you see is a fast paw rather than two overlapping ones. */
+  for(const b of BOSS.bullets){
+    if(b.k!=="pawswipe") continue;
+    const sx=B.x+b.x, sy=B.y+b.y;
+    const ang=Math.atan2(b.vy||0, b.vx||(b.side==="L"?1:-1));
+    const fl=b.flash||0;
+    const bl=Math.hypot(b.vx,b.vy||0)||1, ux=b.vx/bl, uy=(b.vy||0)/bl;
+    if(!bossCalm()){
+      ctx.save(); ctx.globalCompositeOperation="lighter";
+      ctx.globalAlpha=(0.35+0.45*fl+(b.ph==="back"?0.12:0))*0.7;
+      const g2=ctx.createRadialGradient(sx,sy,0,sx,sy,b.r*2.1);
+      g2.addColorStop(0,"rgba(255,120,40,0.75)"); g2.addColorStop(0.55,"rgba(200,40,10,0.24)");
+      g2.addColorStop(1,"rgba(120,20,0,0)");
+      ctx.fillStyle=g2; ctx.beginPath(); ctx.arc(sx,sy,b.r*2.1,0,7); ctx.fill();
+      ctx.restore(); ctx.globalAlpha=1;
+    }
+    ctx.save(); ctx.globalAlpha=0.50;
+    drawPawSprite(ctx, sx-ux*b.r*0.95, sy-uy*b.r*0.95, ang, b.r*0.92, "swipe",
+                  Math.min(1,0.55+0.45*fl+(b.ph==="back"?0.2:0)),
+                  1+0.10*fl, 1-0.08*fl, bossCalm(), b.vx<0);
+    ctx.restore(); ctx.globalAlpha=1;
+  }
   if(BOSS.ph!=="outro" && pawA>0.001){
     const calm=bossCalm();
     ctx.save(); ctx.globalAlpha=pawA;
     for(const side of ["L","R"]){
       const q=BOSS.paw[side];
       if(!q.x && !q.y) continue;               // never placed yet: nothing to draw
+      /* THE TAIL OF GHOSTS. Drawn before the hand and fading behind it, oldest faintest — this is
+         what makes a rake read as speed rather than as teleporting. */
+      if(q.ghost && q.ghost.length){
+        const gp=pawPoseFor(q,side), gf=pawFlip(side,gp);
+        for(const gh of q.ghost){
+          const k=Math.max(0,gh.life/PAW_GHOST_LIFE);
+          ctx.save(); ctx.globalAlpha=pawA*0.26*k*k;
+          drawPawSprite(ctx, gh.x, gh.y, gh.ang, BOSS_PAW_R*0.92, gp, 0, 1, 1, calm, gf);
+          ctx.restore();
+        }
+        ctx.globalAlpha=pawA;
+      }
       // the shadow it throws on the bar it is holding, so the hand has weight on the metal
       if(q.slam>0.02 && !calm){
         ctx.save(); ctx.globalAlpha=pawA*q.slam*0.5; ctx.globalCompositeOperation="lighter";
@@ -19567,33 +19809,6 @@ function pkDrawBoss(){
       drawPawSprite(ctx, q.x, q.y, q.ang, BOSS_PAW_R*(1+0.12*q.slam), pose,
                     q.glow, q.sx, q.sy, calm, pawFlip(side,pose));
     }
-    ctx.restore(); ctx.globalAlpha=1;
-  }
-  /* --- THE SWIPES, also in panel space and for the same reason as the mouthfuls below: half a
-     boomerang's flight is spent outside the board, and a projectile that vanishes at the lip and
-     reappears there is not a boomerang, it is two projectiles. */
-  for(const b of BOSS.bullets){
-    if(b.k!=="pawswipe") continue;
-    const sx=B.x+b.x, sy=B.y+b.y;
-    const ang=Math.atan2(b.vy, b.vx||(b.side==="L"?1:-1));
-    const fl=b.flash||0;
-    if(!bossCalm()){
-      ctx.save(); ctx.globalCompositeOperation="lighter";
-      ctx.globalAlpha=0.35+0.45*fl+(b.ph==="back"?0.12:0);
-      const g2=ctx.createRadialGradient(sx,sy,0,sx,sy,b.r*2.1);
-      g2.addColorStop(0,"rgba(255,120,40,0.75)"); g2.addColorStop(0.55,"rgba(200,40,10,0.24)");
-      g2.addColorStop(1,"rgba(120,20,0,0)");
-      ctx.fillStyle=g2; ctx.beginPath(); ctx.arc(sx,sy,b.r*2.1,0,7); ctx.fill();
-      ctx.restore(); ctx.globalAlpha=1;
-    }
-    /* THE SWOOSH SITS BEHIND THE HAND. The paw rides this bullet now — same position, same frame —
-       so drawing the streak dead on top of it made one unreadable smear. Pushed back along the
-       travel and taken down in weight, it becomes what it should always have been: the wake. */
-    const bk=Math.sign(b.vx||(b.side==="L"?1:-1));
-    ctx.save(); ctx.globalAlpha=0.72;
-    drawPawSprite(ctx, sx-bk*b.r*0.80, sy, ang, b.r*0.92, "swipe",
-                  Math.min(1,0.55+0.45*fl+(b.ph==="back"?0.2:0)),
-                  1+0.10*fl, 1-0.08*fl, bossCalm(), b.vx<0);
     ctx.restore(); ctx.globalAlpha=1;
   }
   /* --- the mouthfuls still in the air ABOVE the board. Same reason the reflected shots are down

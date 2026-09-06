@@ -1,7 +1,13 @@
 # The battery. One suite per line; everything else matching p*.js in this directory is a
 # stale one-off probe from some earlier session and is NOT run.
 # Marked "smoke" are the ones worth running after every edit.
+# Marked "solo" runs on its own, before the parallel batch. pbossfight is several times the length
+# of anything else here and starves whatever it shares the machine with: it was reaped at the 560s
+# timeout with every assertion green, and it took pbat's drain-rate measurement down with it.
+# It was one suite with pboss until v0.354a, at ten minutes; the arrival and the fight are two
+# subjects and splitting them put the shorter half back in the smoke set where it belongs.
 pboss     smoke
+pbossfight      solo
 pquest    smoke
 pnight    smoke
 pfix      smoke
