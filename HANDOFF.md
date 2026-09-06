@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.354a**.
+Currently **v0.355a**.
 
 > **The workflow below is out of date and has been since v0.350a.** The source of truth is
 > `src/` — edit `src/src.js`, run `./build.sh <version>`, test with `./test.sh`. See `CLAUDE.md`,
@@ -3505,6 +3505,95 @@ the same time on purpose. What replaces it is a stronger claim, not a weaker one
 ever overtaking itself.** The combo is one paw after another, so two live strokes from the same
 side would mean a hand had been asked to be in two places. Counted per side; the board-wide count
 is kept for the single-swipe beats, which are still one at a time.
+
+---
+
+## v0.355a — the hands stop being ghosts, the bones come out of the mark, and he flinches
+
+### The paws were 91% see-through, and the reason is worth writing down
+
+The four cage sheets were cut from the artist's JPEGs with an alpha built from **luminance**:
+`alpha = brightness/46`. That cannot tell black FUR from a black BACKGROUND, and these paws are
+mostly dark grey shading into black — so **91% of every sprite came out partly transparent** and
+the hands read as ghosts against the cage.
+
+The alpha is a **background key** now. Flood the near-black inward from the borders: only black the
+border can reach is background, and a black pixel walled in by fur is fur and stays opaque. The
+soft edge comes from letting the *reachable* pixels keep an alpha in proportion to their own
+brightness, which feathers the wisps without eating the body. Measured over a bright ground the
+paws are now solid; `pboss` reads the decoded images back and fails if the body of a cage paw is
+mostly see-through, because the eye is not a reliable witness to a 60% alpha.
+
+The recipe lives in `tools/mkpaw.py`, which is where the next sheet should go through.
+
+### Bones are born in the palm
+
+`pawFire` pushed the origin a fifth of a hand along the aim before `pawMuzzle` walked it back out
+of the cage, which put the bone at the *bars*. Since v0.353a the pentagram is exactly where the
+paw's station is, so there was nothing left to correct for: the offset is zero and the mark is the
+muzzle. Measured across a full fight, a bone is now born **2.7px** from the pentagram on average
+(76% of them within four) where the old audit's only bar was "within 34px of the hand" — a rule
+that passed for three versions while the bones were visibly leaving the wrong place.
+
+And they are drawn **over** the hand. For `BONE_BORN` (0.26s) a bone is drawn in panel space,
+outside the board's clip, swelling out of nothing: 0.15 → 1.28 → 1.0 with a ring leaving the palm
+and a white-hot core for the first third. Before this they were drawn with the rest of the bullets
+— inside the clip, *underneath* the paw — so a bone leaving a mark on the wall appeared from
+behind the hand and was sliced in half by the cage edge on its way out.
+
+### He flinches
+
+Nothing in the fight acknowledged him being hurt: the bar moved and the animal it belonged to
+carried on exactly as before, which made the bar feel like a scoreboard rather than like him.
+
+Both hands come off the cage and up beside his head, clenched — the same guard he arrived in —
+and then go back to work. Two lengths, from the two ways he loses health: a reflected bone in the
+face is an impact and gets the full 0.80s; the attrition at the end of a beat gets 0.42s and lands
+during the breath, where it costs no attack time.
+
+`pkBossFlinch` is the one door, so every future way of hurting him gets it free. It refuses while a
+pound is swinging (that fist is being driven along a plotted line, and yanking it up mid-swing
+would strand the beat with marks on the floor and nothing to land on them) and refuses while one
+is already running, so a burst of reflects is one flinch rather than a stutter.
+
+> **Gating `pawFire` was not enough, and the harness is what said so.** BURY's fan comes out of the
+> same pentagrams but is pushed by the *pattern's* spawner, so a volley kept dropping out of hands
+> that were up beside his head — one bone, caught by an assertion that counted them. Nothing is
+> thrown at all while he is flinching now, gated once where the spawners are ticked. The beat's
+> clock keeps running underneath, so a flinch eats a slice of the pattern rather than extending
+> it, which is what makes it cost him something.
+
+### BOSSPHASES.md
+
+The fight is now three independent layers putting projectiles on the board — the paw stream, the
+beat's spawner and the golden bird — and none of them knows about the others. That is the honest
+answer to "too many things going on", and it was not written down anywhere.
+
+`BOSSPHASES.md` is that write-up: every window from the arrival to the end of a beat with its
+measured length and the constant that governs it, what each of the three phases actually changes,
+the seven spawners' cadences, and — at the end — the three dials to turn first if it is too busy,
+in order. Numbers were measured off the real build at 412×915 (a 309×265 cage), not read off the
+source, because several of them are products of four constants.
+
+The headline number is the one the write-up exists to expose: **phase three fires both pentagrams,
+so the paw layer alone is 38 bones a second at cycle 0 and 92 at the cap, before the beat has
+spawned anything.** `BOSS_PAW_FIRE[3]` is the dial.
+
+### The dodge measurement, third attempt
+
+`pbossfight`'s claim is that a dog who keeps moving is hit less than one standing still. Run as two
+blocks — sixteen seconds still, then sixteen moving — the answer was a coin flip: two consecutive
+runs of the *same build* gave 0.45 vs 0.48 (fail) and 0.97 vs 0.61 (pass).
+
+Nothing about the dog changed between them. What changed was the deck. The pattern pool is
+shuffled, a beat lasts 4.6–7.3s, and RING and SURGE put several times more bones on the board than
+CROSS does — so a block of sixteen seconds samples about three beats and *which three* decides the
+number. Two blocks are two different hands of cards being compared as though they were the same
+hand.
+
+The two dogs take turns now: eight slices of 2.4s each, alternating, swapping who goes first, so
+both sample the same run of beats. Same wall time, more game seconds each, and the deck is dealt
+to both of them equally.
 
 ---
 

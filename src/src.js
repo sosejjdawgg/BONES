@@ -14826,6 +14826,12 @@ function pkBossSpd(){
 }
 const BOSS_DOG_SC=0.62*BOSS_SCALE;   // the board is tighter than the park, so he is drawn smaller on it
 const BOSS_BULLET_R=5*BOSS_SCALE;
+/* HOW LONG A BONE IS STILL BEING BORN. For this long after it leaves the pentagram it is drawn in
+   PANEL space, over the hand and outside the board's clip, swelling out of nothing. Before this it
+   was drawn with the rest of the bullets — inside the clip, underneath the paw — so a bone leaving
+   a mark on the wall appeared from BEHIND the hand and was sliced in half by the cage edge on its
+   way out. It is the one moment in the fight that has to look like it came out of him. */
+const BONE_BORN=0.26;
 const BOSS_TELE={rain:0.35, sweepL:0.30, sweepR:0.30, ring:0.40, cross:0.30, surge:0.35, maw:0.50, pound:0.45};
 /* WHICH LIP IT COMES OVER. Held for the whole telegraph window (0.30-0.50s) as a ghost band on
    that edge, so an edge spawn is never the first thing you hear about it. MAW is not in here on
@@ -14957,6 +14963,14 @@ function pawReady(k){ const im=PAWIMG[k]; return im && im.complete && im.natural
 const PAWSLAM_OPEN=0.80, PAWSLAM_MARK=1.35, PAWSLAM_DROP=0.30, PAWSLAM_RING=0.55;
 const PAWSLAM_HELD=0.45;   // ...the fraction of the opening beat they stay CLENCHED for
 const BOSS_PAW_SLAM   = PAWSLAM_OPEN+PAWSLAM_MARK+PAWSLAM_DROP+PAWSLAM_RING;
+/* HE FLINCHES. Nothing in the fight acknowledged him being hurt: the health bar moved and the
+   animal it belonged to carried on exactly as before, which made the bar feel like a scoreboard
+   rather than like him. Both hands snap up beside his head — clenched, the same guard they came
+   in wearing — and then go back to work. Two lengths, from the two ways he loses health: a
+   reflected bone in the face is an impact and gets the full flinch; the attrition at the end of a
+   beat gets a shorter one, and lands during the breath where it costs no attack time. */
+const BOSS_RECOIL     = 0.80;
+const BOSS_RECOIL_HIT = 0.42;   // ...the smaller one, for a beat he simply failed to land
 const BOSS_FIST_AT    = BOSS_ROAR_A-0.22;   // the hands are up before the mouth opens
 /* MEASURED AT FULL PUSH-IN, not at rest. The fists are drawn inside the roar's zoom so they scale
    with the face they belong to — which is the point of hanging them off BOSS.headX at all — and at
@@ -15039,7 +15053,7 @@ const BOSS={
   paw:{
     slamT:0, slamDone:false, mode:0.5, cycle:0, t:0, fireT:0,
     warmT:0, warmSide:"L", warmShots:0, warmPh:"wait", warmT2:0, teleY:0, teleK:0,
-    xC:null, xK:0, xArms:null, xStrokes:null, xNext:0, xDone:false,
+    xC:null, xK:0, xArms:null, xStrokes:null, xNext:0, xDone:false, recoilT:0,
     active:"L",
     L:{x:0,y:0,ang:0,lift:1,glow:0,slam:0,grip:1,sx:1,sy:1,live:0,spd:0,fireT:0,teleT:0,rideT:0},
     R:{x:0,y:0,ang:0,lift:1,glow:0,slam:0,grip:1,sx:1,sy:1,live:0,spd:0,fireT:0,teleT:0,rideT:0}
@@ -15766,7 +15780,10 @@ function pkBossSpawner(kind){
            bone now leaves the ACTIVE PAW'S PENTAGRAM and is aimed at its column, so a volley
            fans out of a hand instead of condensing out of the ceiling. */
         const rainSide=pawRainSide(), Q=BOSS.paw[rainSide];
-        const mz=pawMuzzle(Q, BOSS_PAW_R*0.42);
+        // OUT OF THE MARK, like every other bone — see pawFire. This one was missed when the
+        // offset went to zero there, and it is most of BURY's volley, so most of the bones in a
+        // BURY beat were still leaving the bars.
+        const mz=pawMuzzle(Q, 0);
         if(pawInBox(mz.x+B.x, mz.y+B.y)) return;               // ...same gate as pawFire
         const ox=mz.x, oy=mz.y, spd=118*fast*BOSS_SPD;
         for(let i=0;i<this.cols;i++){
@@ -15779,7 +15796,7 @@ function pkBossSpawner(kind){
              throw it. Nothing moved wrongly and nothing looked wrong; the bones simply lied about
              where they came from, and the only reason that is not still true is that the audit
              asks each bone to name its paw and then measures the distance to it. */
-          bossAdd({x:ox, y:oy, vx:ddx/L*spd, vy:ddy/L*spd, r:BOSS_BULLET_R, k:"bone",
+          bossAdd({bornT:BONE_BORN, x:ox, y:oy, vx:ddx/L*spd, vy:ddy/L*spd, r:BOSS_BULLET_R, k:"bone",
                    spin:Math.random()*6.28, vr:4+Math.random()*4, bury:true, fromPaw:rainSide});
         }
         Q.glow=1; Q.sx=0.86; Q.sy=1.14;
@@ -15991,7 +16008,7 @@ function pkPawReset(){
   const P=BOSS.paw;
   P.slamT=0; P.slamDone=false; P.mode=0.5; P.cycle=0; P.t=0; P.fireT=0;
   P.warmT=0; P.warmSide="L"; P.warmShots=0; P.warmPh="wait"; P.warmT2=0;
-  P.xC=null; P.xK=0; P.xArms=null; P.xStrokes=null; P.xNext=0; P.xDone=false;
+  P.xC=null; P.xK=0; P.xArms=null; P.xStrokes=null; P.xNext=0; P.xDone=false; P.recoilT=0;
   P.teleY=0; P.teleK=0; P.active="L"; P.kick=0; P.kickX=0; P.kickY=0; P.firstVolley=true;
   P.pound=null; P.poundNext="lock";
   P.shotN=0; P.slamStage=0; P.slamFrom=null;
@@ -16220,10 +16237,12 @@ function pkPawCommon(dt){
        pound could not get its fist. Refreshed every frame of a rake and expiring on its own, it
        cannot outlive the thing it describes. */
     q.rideT=Math.max(0,(q.rideT||0)-dt);
+    q.fistT=Math.max(0,(q.fistT||0)-dt);   // ...a latch here is how the pound lost its fist once
     const e=Math.min(1,dt*9);
     q.sx += (1-q.sx)*e; q.sy += (1-q.sy)*e;
   }
   P.kick=Math.max(0,P.kick-dt*6.5);
+  P.recoilT=Math.max(0,(P.recoilT||0)-dt);
 }
 /* THE SLAM. Both paws come down onto the cage the instant the scream is over, and this is the
    first thing the fight says: the box you are standing in belongs to him. It ACCELERATES into
@@ -16549,6 +16568,22 @@ function pkPawFightTick(dt){
   const P=BOSS.paw;
   P.mode=BOSS.phase;
   P.t+=dt;
+  /* THE FLINCH OUTRANKS THE BEAT. Both hands come off the cage and up to his head, clenched, and
+     nothing is thrown while they are there — the clock keeps running underneath, so the phase he
+     was in is the phase he goes back to. */
+  if(P.recoilT>0){
+    const hx=BOSS.headX||0, hy=BOSS.headY||0, sc=(BOSS.headSc||0.78)/0.78;
+    for(const side of ["L","R"]){
+      const q=P[side], dir=side==="L"?-1:1;
+      q.fistT=0.10; q.teleT=0; q.rideT=0; q.ghost=null;
+      pawSeek(q, { x:hx+dir*BOSS_FIST_SPREAD*sc, y:hy+BOSS_FIST_DROP*sc,
+                   ang:side==="L"?0:Math.PI }, 11, dt);
+    }
+    // it cannot happen — pkBossFlinch refuses one mid-swing — but a fist stranded halfway down a
+    // plotted line is a far worse outcome than a redundant call
+    if(P.pound && P.pound.on) pkPoundTick(dt);
+    return;
+  }
   if(P.t>=BOSS_PAW_CYCLE){
     P.t=0; P.cycle++;
     if(P.mode<=2){
@@ -16787,17 +16822,23 @@ function pawFire(side){
   const B=BOSS.box, P=BOSS.paw, Q=P[side];
   if(bossPawCount()>=BOSS_PAW_MAX) return;      // ...and again here, to skip the recoil and the SFX
   const spd=pawBulletSpd(), c=Math.cos(Q.ang), sn=Math.sin(Q.ang);
-  const off=BOSS_PAW_R*0.42, mz=pawMuzzle(Q,off);
+  /* OUT OF THE MARK ITSELF. The offset used to push the origin a fifth of a hand along the aim
+     before pawMuzzle walked it back out of the cage, which put the bone at the bars rather than
+     in the palm — and since v0.353a the palm is exactly where the paw's station is, so there is
+     nothing left to correct for. Zero here means "the pentagram", and pawMuzzle still owns the
+     one case that matters: a hand genuinely inside the cage gets its origin walked out. */
+  const off=0, mz=pawMuzzle(Q,off);
   /* A HAND INSIDE THE CAGE DOES NOT FIRE. pawMuzzle will have walked the origin out already, so
      this should be unreachable - which is exactly why it is here rather than a comment. The rule
      "no projectile is born on the board" is worth one branch at the one place bones are born,
      instead of a chain of reasoning about stations and clamps that has to stay true forever. */
   if(pawInBox(mz.x+B.x, mz.y+B.y)) return;
   bossAdd({ x:mz.x, y:mz.y, vx:c*spd, vy:sn*spd,
-            r:BOSS_BULLET_R, k:"bone", spin:Math.random()*6.283, vr:8, fromPaw:side });
+            r:BOSS_BULLET_R, k:"bone", spin:Math.random()*6.283, vr:8, fromPaw:side,
+            bornT:BONE_BORN });
   Q.glow=1; Q.sx=0.88; Q.sy=1.12; Q.fireT=0.45;
-  if(!bossCalm() && (P.shotN%2===0))
-    bossFizz(Q.x+c*off, Q.y+sn*off, 1, Math.random()<0.5?"#ff7a2a":"#ffd88a");
+  // it is TORN out of the mark: sparks off the palm on every shot, not every other one
+  if(!bossCalm()) bossFizz(Q.x, Q.y, 2, Math.random()<0.5?"#ff7a2a":"#ffd88a");
   /* THE CRACK OPEN. The first volley the pentagrams ever fire gets its own moment - gold going to
      red, embers off both palms - because it is the answer to the question the warm-up asked. */
   if(P.firstVolley){
@@ -16879,6 +16920,7 @@ function pkBossBeginPattern(){
 function pkBossFinishPattern(){
   const dmg = BOSS.cleanRun ? BOSS_DMG_CLEAN : BOSS_DMG_HIT;
   BOSS.hp=Math.max(0, BOSS.hp-dmg);
+  pkBossFlinch(false);                       // the beat cost him: a shorter guard, during the breath
   if(BOSS.cleanRun){
     BOSS.dodged++; beep(880,.07,"sine",.05); setTimeout(()=>beep(1170,.09,"sine",.045),80);
     /* A CLEAN BEAT LIGHTS THE WHOLE RIM. The two beeps were the only acknowledgement a perfect
@@ -17220,7 +17262,12 @@ function pkBossUpdate(dt){
     if(BOSS.coolT<=0) pkBossTelegraph();
   } else if(BOSS.ph==="pattern"){
     BOSS.patternT+=dt;
-    for(const sp of BOSS.spawn) if(BOSS.patternT<sp.life) sp.tick(dt);
+    /* NOTHING IS THROWN WHILE HIS HANDS ARE UP. Gating pawFire alone was not enough and the
+       harness said so: BURY's fan comes out of the same pentagrams but is pushed by the PATTERN's
+       spawner, so a volley kept dropping out of hands that were up beside his head. The beat's
+       clock keeps running underneath, so a flinch eats a slice of the pattern rather than
+       extending it — which is what makes it cost him something. */
+    if(BOSS.paw.recoilT<=0) for(const sp of BOSS.spawn) if(BOSS.patternT<sp.life) sp.tick(dt);
     // The pattern is over when it stops FEEDING, not when the board is empty. Waiting for the
     // last bullet to fly off doubled every cycle to ~13s; the stragglers now finish crossing
     // during the breath, where they still have to be dodged.
@@ -17310,6 +17357,7 @@ function pkBossUpdate(dt){
                      0.28+Math.random()*0.34, 1.5+Math.random()*1.8);
       }
     } else {
+      if(b.bornT>0) b.bornT=Math.max(0,b.bornT-dt);
       // it is still winding up to its top speed — see BOSS_BONE_SLOW
       if(b.tvx!==undefined){
         b.accT=Math.min(BOSS_BONE_ACC_T,(b.accT||0)+dt);
@@ -17429,6 +17477,23 @@ function pkBossPhaseCheck(){
     }
   }
 }
+/* ONE DOOR INTO THE FLINCH, so every future way of hurting him gets it for free. Refused while a
+   pound is swinging: that fist is being driven along a plotted line by pkPoundTick and yanking it
+   up to his head mid-swing would strand the beat with marks on the floor and nothing to land on
+   them. Refused while one is already running, so a burst of reflects is one flinch, not a stutter. */
+function pkBossFlinch(full){
+  const P=BOSS.paw;
+  if(P.pound && P.pound.on) return;
+  if(P.recoilT>0.05) return;
+  P.recoilT = full ? BOSS_RECOIL : BOSS_RECOIL_HIT;
+  BOSS.eyeFlash=Math.max(BOSS.eyeFlash, full?0.30:0.16);
+  if(full){
+    BOSS.shake=Math.max(BOSS.shake,0.34);
+    beep(150,.14,"sawtooth",.05,{key:"bossflinch"});
+    setTimeout(()=>beep(96,.20,"sawtooth",.04,{key:"bossflinch2"}),70);
+  }
+  for(const k of ["L","R"]){ const q=BOSS.paw[k]; q.sx=1.18; q.sy=0.84; q.glow=Math.min(q.glow,0.35); }
+}
 function bossFizz(x,y,n,c){
   for(let i=0;i<n;i++){
     const a=Math.random()*6.283, sp=40+Math.random()*160;
@@ -17496,6 +17561,7 @@ function pkBossGoldenTick(dt){
       BOSS.reflect.splice(i,1);
       if(!hit || BOSS.ph==="outro") continue;
       BOSS.hp=Math.max(0, BOSS.hp-(r.big?BOSS_REFLECT_DMG*2:BOSS_REFLECT_DMG));
+      pkBossFlinch(true);                    // a bone in the face: the full guard
       BOSS.flash=Math.max(BOSS.flash,1);
       BOSS.whiteT=Math.max(BOSS.whiteT,0.07);
       BOSS.shake=Math.max(BOSS.shake,0.30);
@@ -18338,6 +18404,7 @@ function pkDrawBoss(){
     ctx.restore(); ctx.globalAlpha=1;
   }
   for(const b of BOSS.bullets){
+    if(b.bornT>0) continue;      // still being born: drawn over the hand instead — see BONE_BORN
     ctx.save(); ctx.translate(b.x,b.y);
     if(b.k==="maw"){
       // a mouthful: big, burning, and turning slowly enough that its length can be read
@@ -18456,10 +18523,6 @@ function pkDrawBoss(){
   }
   // --- the box shutting itself, over the board and under the paws that are backing away from it
   if(BOSS.ph==="win") pkDrawBossWin(ctx);
-  /* --- THE PAWS. Panel space, above the board and outside its clip, because that is where they
-     live: on the bars, over the lid, round the corner. Drawn after the cage so a gripping paw
-     sits ON the bar rather than behind it, and before the bullets so a bone leaving the pentagram
-     passes in front of the hand that threw it. */
   /* ...and during the SCREAM as well, which uiA alone will not allow: the cage's fade-in does not
      start until the roar is over, so the fists beside his head get their own alpha. */
   const pawA = BOSS.ph==="intro"
@@ -18493,6 +18556,10 @@ function pkDrawBoss(){
                   1+0.10*fl, 1-0.08*fl, bossCalm(), b.vx<0);
     ctx.restore(); ctx.globalAlpha=1;
   }
+  /* --- THE PAWS. Panel space, above the board and outside its clip, because that is where they
+     live: on the bars, over the lid, round the corner. Drawn after the cage so a gripping paw
+     sits ON the bar rather than behind it, and before the bullets so a bone leaving the pentagram
+     passes in front of the hand that threw it. */
   if(BOSS.ph!=="outro" && pawA>0.001){
     const calm=bossCalm();
     ctx.save(); ctx.globalAlpha=pawA;
@@ -18524,6 +18591,45 @@ function pkDrawBoss(){
                     q.glow, q.sx, q.sy, calm, pawFlip(side,pose));
     }
     ctx.restore(); ctx.globalAlpha=1;
+  }
+  /* --- BONES STILL BEING BORN. Over the hands, outside the board's clip, swelling out of the
+     pentagram they came from. Everything about this pass is about one reading: the bone did not
+     arrive on the board, it was pulled out of the mark. It overshoots its size and settles, the
+     first frames are a white-hot core rather than a bone at all, and a ring goes out from the
+     palm as it tears free. */
+  for(const b of BOSS.bullets){
+    if(!(b.bornT>0) || (b.k!=="bone" && b.k!=="ringbone")) continue;
+    const k=1-b.bornT/BONE_BORN;                       // 0 at the mark, 1 fully out
+    const sx2=B.x+b.x, sy2=B.y+b.y;
+    // 0.15 -> 1.28 -> 1: it is squeezed out, overshoots, and settles into its real size
+    const sc = k<0.55 ? 0.15+1.13*(k/0.55) : 1.28-0.28*((k-0.55)/0.45);
+    ctx.save(); ctx.translate(sx2,sy2);
+    if(!bossCalm()){
+      // the tear: a ring leaving the palm, and the heat around the thing coming out of it
+      const rk=1-k;
+      ctx.save(); ctx.globalCompositeOperation="lighter"; ctx.globalAlpha=0.55*rk*rk;
+      ctx.strokeStyle="#ffd08a"; ctx.lineWidth=2.2*rk+0.6;
+      ctx.beginPath(); ctx.arc(0,0, b.r*(0.6+3.4*k), 0, 7); ctx.stroke();
+      ctx.restore();
+      const bg2=bossGrad(ctx,"hotbone",1,[[0,"rgba(255,140,40,0.62)"],[0.5,"rgba(210,40,10,0.26)"],
+                                          [1,"rgba(120,20,0,0)"]]);
+      ctx.save(); ctx.globalAlpha=0.5+0.5*k;
+      ctx.scale(b.r*2.6*(0.7+0.9*sc), b.r*2.6*(0.7+0.9*sc));
+      ctx.fillStyle=bg2; ctx.beginPath(); ctx.arc(0,0,1,0,7); ctx.fill();
+      ctx.restore();
+    }
+    ctx.rotate(b.spin);
+    ctx.scale(sc,sc);
+    drawBone(ctx,0, 1,0.66*BOSS_SCALE,"#2a0d06");
+    drawBone(ctx,0, 0,0.62*BOSS_SCALE,"#c9260f");
+    drawBone(ctx,0,-1,0.44*BOSS_SCALE,"#ffd08a");
+    // the first third of the birth is a white-hot thing, not yet a bone
+    if(k<0.34){
+      ctx.globalAlpha=(0.34-k)/0.34;
+      drawBone(ctx,0,-1,0.50*BOSS_SCALE,"#fff6dc");
+      ctx.globalAlpha=1;
+    }
+    ctx.restore();
   }
   /* --- the mouthfuls still in the air ABOVE the board. Same reason the reflected shots are down
      here: the board clips everything drawn inside it, so a bone arcing down from the jaw would be

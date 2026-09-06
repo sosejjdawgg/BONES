@@ -16,6 +16,8 @@ build.sh          ./build.sh 0.351a   ->  bones-v0.351a.html + bones-latest.html
 test.sh           ./test.sh smoke | ./test.sh all | ./test.sh boss
 SUITES            the battery. 37 suites; "smoke" runs after every edit, "solo" runs alone.
 tools/split.py    how assets.js and src.js were separated, and the safety check it applies
+tools/mkpaw.py    how a paw sheet becomes a sprite: the background key, the red-numeral strip
+BOSSPHASES.md     the fight, window by window: every timing, and the constant that governs it
 p*.js             the harnesses. The ones in SUITES are the battery; the rest are stale probes.
 bones-latest.html the current build — this is the file to upload to itch and to send to the phone
 ```

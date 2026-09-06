@@ -30,6 +30,7 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
      violation is least likely to be visible in. */
   await pg.evaluate(()=>{
     window.__W={ bad:[], inside:[], swipe2:0, swipeSame:0, maxSwipeAny:0, maxAlive:0, kinds:{}, phases:[], teleSeen:0,
+                 dN:0, dSum:0, dNear:0, dStN:0, dStNear:0,
                  throwsNoTele:0, hits0:0, fired:0, streak:0, pawSeen:{L:0,R:0}, frames:0 };
     const origAdd=window.bossAdd;
     window.bossAdd=function(bb){
@@ -49,6 +50,15 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
         if(!q) __W.bad.push({why:"no paw", ph:BOSS.ph, tele:BOSS.telegraph});
         else {
           const d=Math.hypot((q.x-B.x)-bb.x,(q.y-B.y)-bb.y);
+          // ...and HOW far, not just whether it was too far: a bone leaving the bars instead of
+          // the palm passes the 34px audit and still looks like it came from the wrong place
+          __W.dN++; __W.dSum+=d; if(d<=4) __W.dNear++;
+          /* ...ASKED ONLY OF A HAND ON A STATION. A paw genuinely inside the cage — the phase-two
+             orbit crosses it — has its muzzle walked back out by pawMuzzle, and it must: no bone
+             is born on the board. Counting those against "it came out of the mark" measures how
+             often the shuffle put the orbit over the box, which is a fact about the deck rather
+             than about where bones come from. */
+          if(!pawInBox(q.x,q.y)){ __W.dStN++; if(d<=4) __W.dStNear++; }
           // the paw's own position goes in the record: "a bone came from the wrong place" is not
           // actionable without knowing where the hand actually was when it did
           if(d>34) __W.bad.push({why:"far from paw", d:Math.round(d), ph:BOSS.ph, tele:BOSS.telegraph,
@@ -429,6 +439,23 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
       const im=PAWIMG[k];
       out.loaded[k]={ok:!!(im.complete&&im.naturalWidth>0), w:im.naturalWidth, h:im.naturalHeight};
     }
+    /* THE PAWS ARE NOT GHOSTS. The four cage sheets were keyed on brightness when they were made,
+       and brightness cannot tell black FUR from a black BACKGROUND — so 91% of every sprite came
+       out part see-through and the hands read as transparent against the cage. Measured off the
+       decoded image rather than trusted: what has to be true is that the BODY of the paw is
+       solid, so this samples the middle of the hand and counts how much of it is fully opaque. */
+    out.solid={};
+    for(const k of ["move","chg","chgb","fire"]){
+      const im=PAWIMG[k];
+      const c=document.createElement("canvas");
+      c.width=im.naturalWidth; c.height=im.naturalHeight;
+      const x=c.getContext("2d",{willReadFrequently:true});
+      x.drawImage(im,0,0);
+      const d=x.getImageData(0,0,c.width,c.height).data;
+      let body=0, opaque=0;
+      for(let i=3;i<d.length;i+=4){ if(d[i]>0){ body++; if(d[i]>=250) opaque++; } }
+      out.solid[k]=+(opaque/Math.max(1,body)).toFixed(3);
+    }
     /* THE STATE HAS TO BE NEUTRAL FIRST. A pound left running by the section above outranks every
        other pose - correctly - so this measured "gripping the wall" and got "fist", which is the
        picker doing its job on a fight that was still mid-swing. The BEAT has to be neutral too
@@ -459,6 +486,9 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
   console.log('ART   ', JSON.stringify(art));
   for(const k of ['palm','glow','q34','q34b','fist','slam','swipe','move','chg','chgb','fire'])
     ck(art.loaded[k] && art.loaded[k].ok, 'the "'+k+'" paw sprite did not decode: '+JSON.stringify(art.loaded[k]));
+  for(const k of ['move','chg','chgb','fire'])
+    ck(art.solid[k]>0.20,
+       'the "'+k+'" paw is mostly see-through: only '+Math.round(art.solid[k]*100)+'% of it is opaque');
   ck(art.poses.grip==='move', 'a paw holding a bar is not in the neutral pose: '+art.poses.grip);
   ck(art.poses.firing==='fire', 'a FIRING paw does not wear the erupting mark: '+art.poses.firing);
   ck(art.poses.wind==='chg', 'a paw winding up does not show the charging mark: '+art.poses.wind);
