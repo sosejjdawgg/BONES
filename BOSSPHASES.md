@@ -184,7 +184,7 @@ of the double: it can neither carry a garnish nor be one. Those rules are in `pk
 
 ---
 
-## 4a. BADDOG — the lanes and the fists (v0.356a)
+## 4a. BADDOG — the lanes and the fists (v0.356a, timing revised in v0.357a)
 
 The two BADDOG beats used to be separate pool entries — `cross` threw yellow squares across the
 board, `pound` walked one fist along a line — and both of them ran on top of a pentagram stream
@@ -193,11 +193,29 @@ that never stopped. They are one beat now, and **the stream is off for all of it
 | Stage | Length | Constant | What he is doing |
 |---|---|---|---|
 | **lock** | 2.30s | `SLAM_LOCK` | two walls of yellow squares drive in at `SLAM_LANE_SPD` (180 px/s) and **park** — one across, one down, each with one gap. Both fists come off the cage and cock beside his head |
-| **wind** | 0.80s | `SLAM_WIND` | the first mark goes down and is read |
-| **hits** | 8 × 0.40s | `SLAM_HITS` × `SLAM_GAP` | fist after fist, **alternating hands**, each aimed at where the dog *is*. A mark is on the floor `SLAM_TELE = 0.55s` before its fist arrives |
+| **wind** | 0.35s | `SLAM_WIND` | cosmetic only, as of v0.357a — see below. Nothing is marked yet |
+| **hits** | 7×0.40s + 0.95s | `(SLAM_HITS-1)*SLAM_GAP + SLAM_TELE` | fist after fist, **alternating hands**, each aimed at where the dog *is*. Every mark, hit zero included, is on the floor `SLAM_TELE = 0.95s` before its own fist arrives |
 | **rest** | 3.40s | `SLAM_REST` | both hands slide off the bars and hang open. Nothing happens at all |
 
-**Life = 9.70s.** Long, because it replaces two beats and because the rest is the point.
+**Life = 9.95s** (2.30 + 0.35 + 3.75 + 3.40, plus a 0.15s guard frame — see below). Long, because
+it replaces two beats and because the rest is the point.
+
+**v0.357a folded the first mark's special case out.** It used to be placed during `wind`
+(then 0.80s long) with its own longer lead, while the other seven got `SLAM_TELE` alone — a fine
+distinction to a bot with a zero-millisecond reflex, and the exact seven marks a real player was
+finding unavoidable. Every mark is scheduled the same way now: mark *n* (0-indexed) is laid at
+`n*SLAM_GAP` into the `hits` stage and bangs at `n*SLAM_GAP + SLAM_TELE` — uniform, so raising
+`SLAM_TELE` moves every mark's appearance earlier without ever touching when a fist actually
+lands, and there is no special case left to regress. `wind` is kept only as a cosmetic beat: the
+fists visibly rise and the charge sound plays before the first mark exists at all.
+
+**The 0.15s on `life` is not decorative.** `BOSS.patternT` and the pound's own `rest` clock cross
+their thresholds on the same frame, and `pkBossFinishPattern` is checked *before* `pkPawFightTick`
+runs that frame — so an exactly-sized `life` wins the race every time, ends the pattern a frame
+early, and its own safety line ("never leave a fist parked mid-swing") force-clears the pound's
+`on` flag without ever setting `done`. The pound then reads as permanently unresolved — stranded,
+not finished — until the next pattern nulls it outright. One extra tenth of a second is enough for
+`pkPoundTick` to get the frame it needs to finish rest naturally first.
 
 - **The squares stop.** A lane bar carries `park`, drives to its station and halts there. What
   stands on the board is a lattice with two ways through it, not a wave to wait out. Bars are out
@@ -264,13 +282,53 @@ stream walks you into the other's. It is not that the bot is bad — there is no
 Whatever is turned down below, this is the number to re-measure afterwards.
 
 **BADDOG is excluded from that measurement, on purpose.** Its eight thumps are *aimed at the dog*,
-so a dog standing still is marked where it stands and eats every one of them by construction —
-which is what "unavoidable" was asked for. Its fairness is a different contract, and it is
-asserted separately: every thump is on the floor `SLAM_TELE = 0.55s` before it lands, and it is
-placed within a mark radius of where the dog actually is. At ~118 px/s a dog clears the 36px mark
-in about a third of that, so it is demanding rather than unfair.
+so a dog standing still is marked where it stands and eats every one of them by construction. Its
+fairness is a different, separately-asserted contract — and as of v0.357a that contract is
+explicitly "escapable with a small but real window," not "unavoidable": the brief changed mid-way
+through, and the numbers below are what answers it.
 
 ---
+
+## 7a. BADDOG is escapable now, not unavoidable (v0.357a)
+
+Shipped in v0.356a, the thumps gave every mark after the first `SLAM_TELE = 0.55s` on the floor.
+The math looked fine against a bot with instant, perfect reactions: `pkBossSpd()` floors a
+neglected dog's speed at `BOSS_SPD_REF*BOSS_SPD_MIN*BOSS_SPD_BOX` ≈ 68px/s, and 0.55s of flight
+buys 37px against a 36px (`POUND_R`) mark — a single pixel. Subtract any real reaction time at all
+and it is gone. It read as unavoidable because for anyone who wasn't a bot, it was.
+
+`SLAM_TELE` is **0.95s** now. Assume a fast-but-human **150ms** to see a mark and answer it:
+`(0.95-0.15)*68 ≈ 54px`, eighteen clear of the mark rather than one. A healthy dog (94px/s) clears
+it by twenty-nine. Standing on the mark is still death — the fight does not owe you safety for
+not moving — but leaving, even late, on the slowest dog the fight allows, is now a real escape and
+not a coin flip.
+
+`pbossfight`'s escape section drives exactly that dog: `PK.spd` forced to the floor, a bot that
+ignores every mark younger than 150ms and flees the rest (pulling back off the walls so it never
+corners itself, the same recipe the phase-3 dodge bot uses), and asserts **zero hits across a full
+barrage, with the closest thump still clearing the mark by more than a couple of pixels** — not
+just "it happened to survive this run." The lattice of parked squares is stripped out of this one
+measurement on purpose: touching a square is a real, intended hazard (that's what "locks off part
+of the cell" means), but it's a separate claim from "can the fists alone be dodged," and folding
+the two together turned a clean thump into a false hit whenever the flee path grazed a square.
+
+Three bugs surfaced building this, all in the test rather than the fight, and all worth knowing
+about before adding another `pbossfight` bot:
+- **A poll is not a frame.** The first cut moved the bot by a fixed `speed*20ms` per loop
+  iteration, on the assumption that a 20ms sleep takes 20ms. Headless Chromium does not honour
+  that — a single `evaluate()` round trip here runs several times longer in practice — so the bot
+  was moving as though a fraction of the real time had passed. Fixed by measuring the actual
+  `BOSS.t` delta between polls and scaling movement by that instead.
+- **Fleeing a point you're standing on is undefined.** Every mark is planted exactly where the dog
+  currently is, so the very first "direction away from the mark" is `(0,0)/0` — no direction at
+  all — and a `||1` fallback quietly turns that into "don't move," forever, since a dog that never
+  moves keeps getting marked on the same frozen spot. Fixed by feeding a mark that close no
+  direction at all and leaning on the pull-toward-room bias instead, which is never actually zero
+  once the dog starts anywhere off the board's exact geometric centre.
+- **Two players don't need to touch the fight to touch each other.** `bornAt.has(m)` and
+  `po.marks.length` deltas both undercount for the same reason `po.n` exists in the first place
+  (§4a's own note): two marks can be created and one removed between polls, and an array-length
+  comparison misses it. Both were switched to `po.n`, the beat's own reliable counter.
 
 ## 8. If it is too busy, these are the three dials, in order
 

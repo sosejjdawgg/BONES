@@ -458,6 +458,19 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
         prevMarks=po.marks.length;
         if(po.stage==="rest"){ seen.restFrames++; }
       } else if(po.done){ seen.ended=true; break; }
+      /* STOP ON OUR OWN TERMS, not by catching a transition. Waiting for po.done meant hoping a
+         30ms poll landed inside the narrow gap between "rest finished" and "the next telegraph's
+         pattern nulled this object" - and the natural game keeps going once that happens, picking
+         a fresh random beat that can land on "slam" again and run a WHOLE second barrage before
+         a poll ever caught the first one ending. Once every thump has landed and rest has been
+         running long enough to sample everything this section asserts, there is nothing further
+         this test needs from the page - so it stops asking, rather than trusting it will get
+         lucky on the one frame the answer was true. */
+      /* seen.maxN, NOT seen.marks - the marks-array-length delta undercounts for exactly the
+         reason po.n exists (see the comment on it above): two marks can be created and one
+         removed between two of this loop's polls, leaving the length unchanged and a thump
+         uncounted. po.n never has that problem. */
+      if(seen.maxN>=SLAM_HITS && seen.restFrames>=25){ seen.ended=true; break; }
     }
     seen.sides=BOSS.paw.pound ? null : null;
     seen.bangs=seen.marks; seen.maxN=seen.maxN||0;
@@ -469,7 +482,7 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
     return seen;
   });
   console.log('BADDOG', JSON.stringify({stages:pound.stages, marks:pound.marks, maxLive:pound.maxLive,
-    fist:pound.fistFrames, firedDuring:pound.firedDuring, barsAtHits:pound.barsAtHits, thumps:pound.maxN+1,
+    fist:pound.fistFrames, firedDuring:pound.firedDuring, barsAtHits:pound.barsAtHits, thumps:pound.maxN,
     knocked:pound.knocked, kick:+pound.kick.toFixed(2), rest:pound.restFrames, ended:!!pound.ended,
     trackAvg:pound.trackAvg, trackMax:pound.trackMax, aliveOther:pound.aliveOther, hits:pound.hits}));
   // THE SENTENCE, in order: the board closes, he breaks it open, he has nothing left.
@@ -484,19 +497,161 @@ const fails=[]; const ck=(c,m)=>{ if(!c) fails.push(m); };
      'something else was running under BADDOG: '+pound.aliveOther+' non-square projectiles');
   // both fists, cocked, for the barrage - not one working hand and one guard
   ck(pound.fistFrames>10, 'both fists were never cocked during BADDOG: '+pound.fistFrames+' frames');
-  ck(pound.maxN+1>=pound.hits, 'BADDOG stopped short: '+(pound.maxN+1)+' of '+pound.hits+' thumps');
+  // po.n counts up to SLAM_HITS once every mark has been laid - no +1, it is a count, not an index
+  ck(pound.maxN>=pound.hits, 'BADDOG stopped short: '+pound.maxN+' of '+pound.hits+' thumps');
   ck(pound.maxLive>=2, 'the fists never overlapped: max '+pound.maxLive+' marks live at once');
   // IT TRACKS HIM. A mark is put where he is, not where a plan said he would be.
   ck(pound.trackMax<=pound.R,
      'a thump was not aimed at the dog: worst mark '+pound.trackMax+'px away, radius '+Math.round(pound.R));
-  // ...with a lead you can actually use
-  ck(pound.leadMin>=0.5, 'a thump was telegraphed for only '+pound.leadMin+'s');
+  /* EVERY MARK GETS THE FULL WINDOW, hit zero included - not >=0.5, which passed even when the
+     first mark's own generous wind-up lead was the only reason the minimum looked fine and the
+     other seven were shipping at barely a pixel of margin (see the SLAM_TELE comment in
+     src.js). This is the assertion that would have caught that bug directly. */
+  ck(pound.leadMin>=pound.tele-0.001,
+     'a thump was telegraphed for less than the promised '+pound.tele+'s: '+pound.leadMin);
   // the squares come off the cell, and the cell moves
   ck(pound.knocked>0, 'no square was ever knocked off the board by a thump');
   ck(pound.kick>0.5, 'the cage never moved when a fist landed: peak kick '+pound.kick.toFixed(2));
   // and it costs him
   ck(pound.restFrames>20, 'he never rested after the barrage: '+pound.restFrames+' frames');
   ck(!!pound.ended, 'BADDOG never let go of the paws');
+
+  /* ---------- 4c-ii. AND THE WINDOW IS ACTUALLY THERE ---------- */
+  /* The section above proves the SCHEDULE is honest - every mark gets SLAM_TELE. This proves the
+     schedule is ENOUGH: a player who is not instant, on the slowest dog the fight allows, can
+     still get clear of every thump. REACT is the one number this section adds, and it says what
+     kind of player is being promised the window - not a bot with a zero-millisecond reflex, a
+     person who takes an eighth of a second to see a mark and start moving. Worse than that and
+     the promise was never "small but sufficient", it was "impossible". */
+  const escape = await pg.evaluate(async()=>{
+    const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+    const REACT=0.15;
+    BOSS.hp=BOSS.maxhp*0.20; pkBossPhaseCheck();
+    const pin=setInterval(()=>{ BOSS.hp=BOSS.maxhp*0.20; },48);
+    // THE FLOOR. A neglected dog, PK.spd clamped down to pkBossSpd()'s worst case - the hardest
+    // player this fight has to still be fair to.
+    const spd0=PK.spd; PK.spd=0;
+    const spd=pkBossSpd();
+    BOSS.paw.pound=null; pkBossFinishPattern(); BOSS.paw.recoilT=0;
+    BOSS.telegraph="slam"; BOSS.telegraphT=0;
+    BOSS.bullets.length=0;
+    /* NOT DEAD CENTRE. The first mark is planted exactly on the dog, and the pull-to-room bias
+       below is computed FROM the dog's own distance to the nearest edge - at the board's exact
+       geometric centre that distance is identical on every side, so both the flee vector (mark
+       on dog: 0,0) and the pull (equidistant from every wall: 0,0) are true zeros at once, and a
+       dog with no reason to move in ANY direction does not move in one. Off by thirty means the
+       very first pull has a direction to be, and every mark after the first lands wherever that
+       motion took the dog, not back on the same fixed point. */
+    BOSS.dog.x=BOSS.box.w*0.5+30; BOSS.dog.y=BOSS.box.h*0.5-20;
+    pkBossBeginPattern();
+    const seen={};
+    const hits0=BOSS.hits;
+    const bangLog=[];
+    const origBang=pkPoundBang;
+    window.pkPoundBang=function(m){
+      const dx=BOSS.dog.x-m.x, dy=BOSS.dog.y-m.y;
+      bangLog.push({d:+Math.hypot(dx,dy).toFixed(1), t:+m.t.toFixed(2), due:+m.due.toFixed(2)});
+      return origBang(m);
+    };
+    /* NOT sleep(20)-AS-DT. The first cut moved the dog by spd*0.02 every poll, on the assumption
+       that a poll IS 20ms - which headless Chromium does not honour; a single evaluate() round
+       trip here runs several times that in practice. The dog was being moved as though a fifth
+       of the real time had passed, so it "failed to escape" marks a correctly-moving dog would
+       have cleared - a bug in the bot, not a finding about the fight. Moved by the REAL elapsed
+       game time between polls instead, the same BOSS.t delta every other section in this file
+       already uses for exactly this reason. */
+    let lastT=BOSS.t;
+    for(let i=0;i<900;i++){
+      await sleep(20);
+      /* THE LATTICE IS A SEPARATE CLAIM, AND NOT THIS ONE. Once parked, a square sits in the
+         generic bullet/dog collision test like anything else on the board, so a bot fleeing
+         toward the middle can wander into one and take contact damage that has nothing to do
+         with a thump's own timing - measured, that turned one genuinely dodged mark (34.5px
+         clearance on a 36px radius) into two counted hits. The squares being solid IS the point
+         of them ("locks off part of the cell") and it is not in question here: the lock stage
+         puts the whole wall up 2.3s before a single fist swings, in plain sight, with a gap in
+         it. What this section is answering is narrower and was the actual ask - whether the
+         FISTS alone leave a usable window - so the lattice is stripped out of THIS measurement
+         rather than asking the bot to also solve a maze it was never asked to navigate. */
+      BOSS.bullets=BOSS.bullets.filter(b=>b.k!=="bar");
+      const po=BOSS.paw.pound;
+      const dtReal=BOSS.t-lastT; lastT=BOSS.t;
+      if(!po){ if(seen.done!==undefined) break; continue; }
+      if(!po.on){ seen.done=true; break; }
+      /* AWAY FROM EVERY MARK OLD ENOUGH TO HAVE BEEN SEEN AND ANSWERED - the ones still too fresh
+         to react to are left alone, exactly as a real player would leave them for one more beat.
+         m.t IS THE MARK'S OWN AGE, ticked by pkPoundTick every real frame - using it instead of
+         a "when did we first notice it" timestamp of our own means the reaction gate is accurate
+         to the frame regardless of how coarse this loop's own polling is. */
+      let mx=0, my=0, n=0;
+      for(const m of po.marks){
+        if(m.t < REACT) continue;
+        const dx=BOSS.dog.x-m.x, dy=BOSS.dog.y-m.y, L=Math.hypot(dx,dy);
+        /* THE DEGENERATE CASE, and it is not rare - it is the FIRST mark of every barrage. A
+           thump is planted exactly on the dog, so "away from it" from a standing start is a
+           direction away from a point the dog is standing exactly on: dx=dy=0, and the old
+           `||1` fallback turned that into dx/1=0, dy/1=0 - a flee vector of nothing, forever,
+           since the dog never moves and every later mark keeps landing on the same frozen spot.
+           TOWARD THE BOARD'S CENTRE, not a fixed compass direction - a fixed guess (always +x,
+           say) has no way to know it has stopped being useful once it has driven the dog into
+           the wall on that side, and marched it there anyway; "toward the middle" reverses
+           itself the moment the dog crosses to the far side, so it can never be the thing
+           walking the dog into a corner. It is exactly the pull bias below, just not gated to
+           only fire near an edge - here, it is the whole answer, not a correction to one. */
+        if(L<1){ const B=BOSS.box, cx=B.w*0.5-BOSS.dog.x, cy=B.h*0.5-BOSS.dog.y, cl=Math.hypot(cx,cy)||1;
+                 mx+=cx/cl; my+=cy/cl; n++; continue; }
+        mx+=dx/L; my+=dy/L; n++;
+      }
+      {
+        /* THE PULL RUNS EVERY TICK, NOT ONLY WHEN A MARK GIVES A DIRECTION TO LEAVE. A mark is
+           planted wherever the dog IS, so a dog that only ever flees radially walks itself into
+           a wall - and the very next mark, planted on that pinned spot, has nowhere left to be
+           pushed away TO. Toward the middle, weighted by how close to an edge it already is, is
+           the one answer that is right whether there is an active flee vector to add it to or
+           the dog is simply standing where the last thump left it. */
+        const B=BOSS.box;
+        const ex=Math.min(BOSS.dog.x, B.w-BOSS.dog.x)/(B.w*0.5);
+        const ey=Math.min(BOSS.dog.y, B.h-BOSS.dog.y)/(B.h*0.5);
+        const pull=Math.max(0, 1-Math.min(ex,ey)/0.35);
+        let ux=0, uy=0;
+        if(n){ const fL=Math.hypot(mx,my)||1; ux=mx/fL; uy=my/fL; }
+        ux += (B.w*0.5-BOSS.dog.x)/(B.w*0.5)*pull;
+        uy += (B.h*0.5-BOSS.dog.y)/(B.h*0.5)*pull;
+        const L=Math.hypot(ux,uy)||1;
+        BOSS.dog.x=clamp(BOSS.dog.x+ux/L*spd*dtReal, 4, BOSS.box.w-4);
+        BOSS.dog.y=clamp(BOSS.dog.y+uy/L*spd*dtReal, 4, BOSS.box.h-4);
+      }
+      // ALL EIGHT THROWN AND NONE LEFT LIVE: the hit-count this section cares about is settled,
+      // whether or not the object goes on to sit in "rest" or gets replaced by a fresh beat that
+      // happens to land on "slam" again before !po.on is ever sampled. po.n, not a count of our
+      // own - same reasoning as 4c's maxN.
+      if(po.n>=SLAM_HITS && po.marks.length===0){ seen.done=true; break; }
+    }
+    seen.hits=BOSS.hits-hits0; seen.react=REACT; seen.spd=+spd.toFixed(1); seen.tele=SLAM_TELE;
+    seen.R=POUND_R; seen.bangs=bangLog;
+    window.pkPoundBang=origBang;
+    clearInterval(pin); PK.spd=spd0;
+    return seen;
+  });
+  console.log('ESCAPE', JSON.stringify({hits:escape.hits,react:escape.react,spd:escape.spd,
+    tele:escape.tele, clearances:escape.bangs.map(b=>b.d)}));
+  ck(escape.hits===0,
+     'a dog that reacts within '+escape.react+'s at the slowest speed this fight allows ('+
+     escape.spd+'px/s) still took '+escape.hits+' hit(s) from BADDOG - the window is not actually usable');
+  /* NOT JUST "no hits this run" - a real margin, so a future change that shaves the window down
+     to a literal hair's width still fails here even on the run where nobody happened to clip a
+     mark. Two pixels, not more: the bot's own path (flee vector plus the anti-corner pull,
+     blended rather than a perfect straight line away from each mark) already costs it ten to
+     twenty of the roughly fifty pixels the numbers in src.js promise, run to run - so a bar set
+     from that theoretical figure would fail on bot noise instead of a real regression. Two
+     pixels only catches the case this exists for: a "pass" that is actually 36.4 clearing a
+     36-radius mark. */
+  {
+    const worst=Math.min(...escape.bangs.map(b=>b.d));
+    ck(worst > escape.R+2,
+       'the escape window is a near miss rather than a margin: closest thump cleared by only '+
+       (worst-escape.R).toFixed(1)+'px (radius '+escape.R+')');
+  }
 
   /* ---------- 4d. THE BONES DO NOT LOOK LIKE THE ONES YOU COLLECT ---------- */
   /* The reported confusion is that the boss throws the same white bone the park rewards you for

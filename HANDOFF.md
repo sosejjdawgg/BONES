@@ -2,7 +2,7 @@
 
 A mobile-first dog-care sim built as ONE self-contained HTML file. Brutalist black/white/red
 pixel art, Press Start 2P font. Split screen: DOGCAM (canvas, top) + console controls (bottom).
-Currently **v0.356a**.
+Currently **v0.357a**.
 
 > **The workflow below is out of date and has been since v0.350a.** The source of truth is
 > `src/` — edit `src/src.js`, run `./build.sh <version>`, test with `./test.sh`. See `CLAUDE.md`,
@@ -3505,6 +3505,53 @@ the same time on purpose. What replaces it is a stronger claim, not a weaker one
 ever overtaking itself.** The combo is one paw after another, so two live strokes from the same
 side would mean a hand had been asked to be in two places. Counted per side; the board-wide count
 is kept for the single-swipe beats, which are still one at a time.
+
+---
+
+## v0.357a — BADDOG stops being unavoidable
+
+The user's own correction, mid-turn: the eight thumps should not be a coin flip a player cannot
+win. v0.356a shipped them escapable in theory (0.55s lead against a 68px/s floor speed clears the
+mark by a single pixel) and unavoidable in practice, since that pixel assumed zero reaction time.
+
+`SLAM_TELE` is 0.95s now, and every mark gets it — hit zero included. The first mark used to be a
+special case, placed during a longer `wind` stage with its own lead while the other seven got
+`SLAM_TELE` alone; that distinction is gone. Every mark, uniformly, is laid at `n*SLAM_GAP` into
+the `hits` stage and bangs at `n*SLAM_GAP+SLAM_TELE`, so raising the lead moves every mark's
+appearance earlier without ever touching when a fist lands. `wind` is 0.35s now and purely
+cosmetic — the fists rise and the charge sound plays before the first mark exists.
+
+Assuming a 150ms reaction (fast, not instant) on the slowest dog the fight allows: `(0.95-0.15)*68
+≈ 54px`, eighteen clear of the 36px mark rather than one. `pbossfight`'s new escape section drives
+exactly that dog — floor speed, a 150ms-blind bot, no shortcuts — and asserts zero hits across a
+full barrage with a real margin on the closest one, not just a lucky run.
+
+### Three bugs, all in the harness, on the way to that number
+
+**The pound was getting stranded mid-rest**, showing `ended:false` and 40 stray pentagram bones
+fired into a beat built to have none. `BOSS.patternT` and the pound's own rest clock cross their
+thresholds on the same frame, and `pkBossFinishPattern` is checked *before* `pkPawFightTick` runs
+that frame — so an exactly-sized pattern `life` wins the race every time, ends the pattern one
+frame early, and its own safety line ("never leave a fist parked mid-swing") force-clears `on`
+without ever setting `done`. One extra tenth of a second on `life` is the fix: `pkPoundTick` gets
+the frame it needs to finish naturally first.
+
+**The escape bot never moved.** Three compounding bugs: it scaled movement by a fixed 20ms
+assumption instead of the real elapsed game time (headless Chromium doesn't honour a `sleep(20)`
+duration); it computed "flee from the mark" as `(0,0)/0` — undefined — because every mark is
+planted exactly on the dog, so a dog that never moves keeps being marked on the same frozen spot
+forever; and its own progress counters (`bornAt.size`, a `marks` tally) undercounted for the same
+reason `po.n` exists — an array-length delta between two polls misses a create-and-remove that
+both happened in between.
+
+**The lattice and the fists are two different claims.** Once parked, a square sits in the generic
+bullet/dog collision test like anything else on the board, so a bot fleeing toward the middle can
+wander into one and take contact damage unrelated to any thump's own timing — a genuinely dodged
+mark (34.5px clearance on a 36px radius) came out as two counted hits. The squares being solid is
+the point of them; it just isn't the question this section is answering, so the lattice is
+stripped out of this one measurement.
+
+`BOSSPHASES.md` §4a and the new §7a have the full numbers and the reasoning.
 
 ---
 

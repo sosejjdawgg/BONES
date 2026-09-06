@@ -15899,7 +15899,22 @@ function pkBossSpawner(kind){
        the one beat where both hands have a job that is not firing, so the only things on the
        board are the squares he put there and the marks he is about to land on. */
     return {kind, t:0, next:0, lanes:0, started:false,
-      life:(SLAM_LOCK + SLAM_WIND + SLAM_HITS*SLAM_GAP + SLAM_REST),
+      /* THE TRUE LENGTH, PLUS A GUARD FRAME - and the guard is not optional, it was a real bug.
+         The last mark is laid at (SLAM_HITS-1)*SLAM_GAP into the hits stage and is due SLAM_TELE
+         after that, so that term is the exact length of the barrage. Left exact, though,
+         `BOSS.patternT` and `po.t` (rest's own clock) cross their respective thresholds on the
+         SAME frame - and `pkBossFinishPattern` is checked BEFORE `pkPawFightTick` runs for that
+         frame (see the dispatcher below), so patternT wins the race every time. It calls
+         pkBossFinishPattern a full dt early, whose own safety line ("a beat that ends early must
+         never leave a fist parked mid-swing") force-clears `on` WITHOUT setting `done` - because
+         from where it stands, the beat hasn't naturally finished, it is being cut off. The pound
+         was then stuck on:false, done:false until the NEXT pattern nulled it outright: the rest
+         never showed as ended, and the harness caught it as `po.done` never once turning true
+         across a whole beat. One extra tenth of a second here is the fix - patternT then arrives
+         after po.t crosses SLAM_REST, `pkPoundTick` gets the frame it needs to finish rest
+         naturally, and the safety line's on=false is a harmless no-op on an already-finished
+         beat instead of the only thing that ever ran. */
+      life:(SLAM_LOCK + SLAM_WIND + ((SLAM_HITS-1)*SLAM_GAP+SLAM_TELE) + SLAM_REST + 0.15),
       tick(dt){
         this.t+=dt;
         if(!this.started){ this.started=true; pkPoundStart(); }
@@ -16670,15 +16685,34 @@ function pkPawFightTick(dt){
 
    AND IT COSTS HIM. A round of this ends with him spent: both hands slide off the cage and hang,
    the marks go out, and nothing at all happens for SLAM_REST. That rest is the beat's answer to
-   itself - the barrage is unavoidable, so the fight has to give the time back somewhere, and
-   giving it back visibly is worth more than giving it back in a shorter barrage. */
+   itself: it is fast and it is relentless, but it is not a coin flip, and giving the time back
+   visibly is worth more than giving it back in a shorter barrage.
+
+   IT WAS A COIN FLIP, AND THE NUMBERS SAY WHY. The first cut gave every mark after the first
+   SLAM_TELE=0.55s on the floor before its fist - which is enough for a bot with zero reaction
+   time, and nothing at all for a person. `pkBossSpd()` floors a neglected dog's speed at
+   BOSS_SPD_REF*BOSS_SPD_MIN*BOSS_SPD_BOX =~ 68px/s, and the mark is POUND_R = 36px wide, so
+   0.55s of PERFECT, INSTANT movement buys 37px of clearance - a single pixel of margin, before a
+   real player's reaction time is even subtracted. Assume a fast-but-human 150ms to see the mark
+   and answer it: 0.40s of actual movement is 27px, which is inside the mark. It read as
+   unavoidable because for anyone but a bot it was.
+   SLAM_TELE was first set to 0.80s against that same 150ms: (0.80-0.15)*68 =~ 44px, eight past
+   the mark's edge. Eight pixels is the THEORETICAL margin for a perfectly optimal straight line
+   away from the mark; harness ('pbossfight', the escape section) drives a realistic bot instead -
+   one that also has to stay off the lattice and not corner itself - and an eight-pixel margin
+   measured 0 to 2 hits in eight thumps across repeated runs, not the promised zero. It is
+   0.95s now: (0.95-0.15)*68 =~ 54px, eighteen clear of the mark rather than eight, which is what
+   it actually takes for "small but sufficient" to survive contact with a bot that is realistic
+   rather than optimal. A healthy dog (94px/s) clears it by twenty-nine either way. Standing
+   still is still death; leaving late on a neglected dog is still tight. Both are meant to be
+   true. */
 const POUND_DROP=0.14;     // the fall, which is meant to be too fast to react to
 const POUND_R=30*BOSS_SCALE;
 const POUND_LIFT=54;       // how far above the board the fist winds up
 const SLAM_LOCK   = 2.30;  // stage 1: the yellow lanes go up and the board closes
-const SLAM_WIND   = 0.80;  // ...then both fists rise, and the first mark is read
-const SLAM_TELE   = 0.55;  // every mark after that is on the floor this long before its fist
-const SLAM_GAP    = 0.40;  // ...and they land this fast, one hand after the other
+const SLAM_WIND   = 0.35;  // stage 2: a cosmetic beat - fists rise, the charge sound plays
+const SLAM_TELE   = 0.95;  // EVERY mark, first included, is on the floor this long before its fist
+const SLAM_GAP    = 0.40;  // ...and consecutive marks are laid down this far apart
 const SLAM_HITS   = 8;     // how many go in before there is nothing left in him
 const SLAM_REST   = 3.40;  // ...and how long he is good for nothing afterwards
 /* THE SQUARES COME OFF THE CELL. A bang inside this of a lane bar throws it: the brief's whole
@@ -16728,21 +16762,29 @@ function pkPoundTick(dt){
     if(po.t>=SLAM_LOCK){ po.stage="wind"; po.t=0; }
   }
   else if(po.stage==="wind"){
-    if(!po.marks.length){
-      pkPoundMark("L", SLAM_WIND);
+    /* NO MARK HERE ANY MORE. This used to place the first mark and give it the whole of
+       SLAM_WIND to be read, which was a special case: hit zero got a long look and the other
+       seven got SLAM_TELE - a fine distinction to a bot, and a real one to a player, since it is
+       the SEVEN that were unfair. Every mark gets the same lead now, hit zero included, and this
+       stage is left as what it still is: a beat for the fists to visibly rise before the first
+       mark exists at all. */
+    if(!po.first){
+      po.first=true;
       for(let i=0;i<5;i++) setTimeout(()=>beep(120+i*46,.09,"sawtooth",.05,{key:"poundwind"+i}), i*130);
       BOSS.eyeFlash=Math.max(BOSS.eyeFlash,0.26);
     }
     if(po.t>=SLAM_WIND-0.0001){ po.stage="hits"; po.t=0; }
   }
   else if(po.stage==="hits"){
-    /* The schedule, not a chain of callbacks: hit n is due at n*SLAM_GAP from the start of the
-       stage, and its mark goes down SLAM_TELE before that. Written this way so a dropped frame
-       slides a bang rather than losing one, and so the rate is one number rather than an
-       accumulated error. */
-    while(po.n+1<SLAM_HITS && po.t >= (po.n+1)*SLAM_GAP - SLAM_TELE){
-      po.n++;
+    /* THE SCHEDULE, not a chain of callbacks: mark n is laid down at n*SLAM_GAP from the start
+       of this stage and is due SLAM_TELE after that, so bang n lands at n*SLAM_GAP+SLAM_TELE -
+       uniform, hit zero included, and independent of SLAM_TELE's own value: raising it moves
+       every mark's appearance earlier without touching when any fist actually lands. Written as
+       a schedule rather than a callback chain so a dropped frame slides a mark rather than
+       losing one. */
+    while(po.n<SLAM_HITS && po.t >= po.n*SLAM_GAP){
       pkPoundMark(po.n%2 ? "R" : "L", SLAM_TELE);
+      po.n++;
     }
   }
   else if(po.stage==="rest"){
@@ -16779,7 +16821,7 @@ function pkPoundTick(dt){
     if(m.t>=m.due){
       pkPoundBang(m);
       po.marks.splice(i,1);
-      if(po.stage==="hits" && po.n>=SLAM_HITS-1 && !po.marks.length){
+      if(po.stage==="hits" && po.n>=SLAM_HITS && !po.marks.length){
         po.stage="rest"; po.t=0;
         pkPoundCollapse();
         // the whole body drops with the last one: he has thrown everything he had
