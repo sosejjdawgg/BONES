@@ -1,8 +1,22 @@
 # WOLFIE — every phase, every timing, and the dial that changes it
 
-Measured off `bones-latest.html` (v0.356a) on a 412×915 viewport, where the cage comes out
+Measured off `bones-latest.html` (v0.357a) on a 412×915 viewport, where the cage comes out
 **309 × 265 px**. Board-relative numbers scale with that; everything else is a constant in
 `src/src.js` and is named here so it can be changed without hunting for it.
+
+| | |
+|---|---|
+| **0** | why phase 3 feels busy — the three layers |
+| **1** | the opening: `intro` → `pawslam` → `pawwarm`, second by second |
+| **2** | the beat loop: telegraph → pattern → breath |
+| **3** | what each of the three phases actually changes |
+| **4** | every beat's cadence · **4a** BADDOG in full |
+| **5** | the golden bird · **6** the flinch |
+| **7** | measured: moving barely helps · **7a** BADDOG's escape window |
+| **8** | **if it is too busy, the dials to turn, in order** ← most likely what you want |
+
+**Changing a timing? Update this file in the same commit.** It is measured, not derived, and a
+number here that no longer matches `src/src.js` is worse than no number.
 
 ---
 
@@ -262,7 +276,7 @@ refuses to start while a pound is mid-swing, and refuses to retrigger while one 
 
 ---
 
-## 7. Measured: at phase 3, moving barely helps — and BADDOG is meant to be worse
+## 7. Measured: at phase 3, moving barely helps
 
 `pbossfight` runs two dogs through the same beats — one standing still in the middle, one walking
 away from the nearest bone that is actually closing on it. Over three runs:

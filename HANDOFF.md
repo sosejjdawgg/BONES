@@ -11,6 +11,35 @@ Currently **v0.357a**.
 
 ---
 
+## Where things stand — read this, then CLAUDE.md, then stop reading
+
+**Branch:** `claude/dogpark-jump-wings-u1qwgh`. Everything ships there; there is no PR unless the
+user asks for one.
+
+**Green as of v0.357a:** 37 suites, 0 failed, ~600s.
+
+**The last three versions were all one thing: the boss's phase 3 was unreadable.** v0.355a wrote
+down why (three independent layers throwing things at once, documented in `BOSSPHASES.md`),
+v0.356a fixed the worst of it (the yellow squares and the fists became one beat, `slam`, and it is
+the only beat that turns the pentagram stream off), v0.357a made that beat's thumps actually
+dodgeable rather than unavoidable.
+
+**If you are picking up the boss:** read `BOSSPHASES.md` first — it is the map, it is current, and
+it will save you deriving numbers that are products of four constants. §8 of it is a ranked list of
+the dials to turn if the fight is still too busy, which is the most likely next request.
+
+**Known-flaky, do not be alarmed by it:** `pbossfight`'s DODGE section (phase-3 "moving beats
+standing still") fails roughly one run in six on unlucky RNG in the beat pool. It has been through
+three rewrites — two-block, then paired, then paired-and-sliced with BADDOG excluded — and the
+residual variance is documented in the section's own comment. **Do not start a fourth rewrite
+without reading that comment.** If it fails once, re-run before believing it.
+
+**The single biggest time sink in this repo is not the game, it is the harness.** Read "The harness
+clock is a lie" in `CLAUDE.md` before writing any measurement code. Every hour lost in v0.355a-357a
+went there, not into `src/src.js`.
+
+---
+
 ## ⚠ WHICH FILES ARE REAL (read this first)
 
 **The live game is `bones-v0.284a.html` — a single self-contained file.** Open it, edit inside
