@@ -722,7 +722,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.358a</span>
+          <span id="devToggle">v0.359a</span>
         </div>
       </div>
 
@@ -8065,7 +8065,13 @@ function drawCam(t){
   const pupNeed=15+S.pup.lvl*6, pupFrac=clamp((S.pup.xp||0)/pupNeed,0,1);
   const barFrac = showPup ? pupFrac : frac;
   const xbX=8, xbW=w-16, xbY=h-20, xbH=12;
-  ctx.globalAlpha = XPANIM.pauseT>0 ? (Math.floor(t*14)%2?1:0.35) : XPANIM.ready ? (0.65+0.35*Math.sin(t*6)) : (frac>0.8 ? 0.6+0.4*Math.sin(t*8) : 1);
+  /* IT ONLY MOVES WHEN SOMETHING IS ACTUALLY WAITING. The third case here used to be
+     `frac>0.8 ? 0.6+0.4*Math.sin(t*8) : 1` — a permanent breathe across the top fifth of every
+     level, which at level 30 is several hundred XP of a bar pulsing at the player with nothing
+     to tap and nothing to collect. Worse, it read off `frac` (BONES' own progress) even while the
+     bar on screen was the PUP's. The celebration beat and a banked level waiting on the tap are
+     the only two things worth animating; the resting bar is just a bar. */
+  ctx.globalAlpha = XPANIM.pauseT>0 ? (Math.floor(t*14)%2?1:0.35) : XPANIM.ready ? (0.65+0.35*Math.sin(t*6)) : 1;
   ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.strokeRect(xbX,xbY,xbW,xbH);
   ctx.fillStyle="#fff"; ctx.fillRect(xbX+2,xbY+2,(xbW-4)*barFrac,xbH-4);
   ctx.globalAlpha=1;
@@ -11190,7 +11196,7 @@ function startPark(plus){
 
     bossPending:false, bossDone:false, bossArmed:false, faceI:1, faceAng:0,
     hole:null, holeCine:null, holePending:false,
-    loveTrail:null, loveMode:null, loveRoll:false, loveScuffle:0, loveStuck:0,
+    loveTrail:null, loveMode:null, loveRoll:false, loveScuffle:0,
     maxhp:Math.round((100+100*S.mood/100)+60*fVit),               // HEALTH
     spd:95*(0.75+0.5*S.energy/100)*(S.senior?0.85:1)*lvlMul*moodMul*(1+0.18*fStam),   // STAMINA
     barkMax:Math.max(0.6, Math.max(1.2,3-0.06*S.lvl)*(1-0.22*attrF15("stam"))), barkCd:1, pulse:0,
@@ -11913,7 +11919,6 @@ const LOVE_CONVERT_R=100;         // the burst when it lands...
    fired once and was over. The radius is deliberately close to body contact: it has to look like
    he ran into them. */
 const LOVE_BRUSH_R=22;
-const LOVE_SENDOFF=1.5;           // how long an all-pink wave waits before its friends trot off
 const LOVE_SCUFFLE_CAP=6;         // impact bursts drawn per frame, so a big brawl cannot flood it
 const LOVE_TUNE=[523,587,659,784,880,988,1175];   // C D E G A B D — rises the whole way up
 function pkLoveTrySpawn(){
@@ -12005,28 +12010,14 @@ function pkLoveTick(dt){
       beep(220,.2,"sine",.04);
     }
   }
-  /* THE STALL, AND WHY THIS EXISTS. A wave ends on PK.waveKills reaching its quota, and a charmed
-     enemy is not a kill. While love expired with the mode that could never bite; now that it does
-     not, a wave whose last few members are ALL pink would sit there with nobody left for them to
-     fight and no way to finish. So once the quota is fully spawned and not one un-charmed enemy is
-     left, they are cleared - sent off exactly the way a downed enemy is, which is what credits the
-     wave and drops their bones. */
+  /* THE SEND-OFF IS GONE, AND SO IS THE STALL IT ANSWERED. This used to watch for a wave whose
+     only survivors were all pink — unfinishable, because the goal counts kills and a charmed
+     enemy never becomes one — and clear the entire army off the board at once to unstick it.
+     Which is exactly what it looked like from the outside: you spent a whole mode building a
+     crew and then every one of them died on the same frame the wave ended.
+     Charming now credits the wave as it happens (see pkLoveTake), so the stall cannot occur and
+     there is nothing left to sweep up. They stay until something kills them. */
   PK.loveScuffle=0;                              // the per-frame FX budget, no longer the mode's
-  if(PK.active && !PK.waveOutro && !BOSS.active){
-    let foe=0, allies=0;
-    for(const e of PK.en){ if(e.fleeing) continue; if(e.love) allies++; else foe++; }
-    if(allies>0 && foe===0 && (PK.waveSpawned||0)>=(PK.waveQuota||0)){
-      PK.loveStuck=(PK.loveStuck||0)+dt;
-      if(PK.loveStuck>LOVE_SENDOFF){
-        PK.loveStuck=0;
-        for(const e of PK.en) if(e.love && !e.fleeing){
-          pkLoveConvertFX(e);
-          pkDownEnemy(e, (Math.random()-0.5)*2, -1);
-        }
-        toast("\u2665 THEY WANDERED OFF HAPPY.",1);
-      }
-    } else PK.loveStuck=0;
-  }
 }
 /* Who the brush is allowed to take. Anything the wave is COUNTING is off limits - the ape is the
    whole objective of its wave (pkWaveDone reads apeKills), and charming it would strand the run
@@ -12043,6 +12034,16 @@ function pkLoveCanCharm(e){
 function pkLoveTake(e){
   if(!pkLoveCanCharm(e)) return false;
   e.love=true; e.loveTgt=null; e.hunting=false;
+  /* TURNING ONE COUNTS AS DEALING WITH IT. The wave goal is a plain count of pkDownEnemy calls,
+     and a charmed enemy never makes that call — which is the whole reason a wave whose survivors
+     were all pink used to stall, and the whole reason they were then swept off the board at once
+     to unstick it. Crediting the wave HERE removes the stall at its source, so the army can just
+     live. e.counted is the latch that stops it being counted a second time when it eventually
+     goes down for real (see pkDownEnemy). */
+  if(!e.counted){ e.counted=true; PK.waveKills=(PK.waveKills||0)+1; }
+  /* A frozen ally cannot fight: the startled branch sits above the charmed one in the enemy loop
+     and would hold it in place for the rest of its flinch. */
+  e.startledT=0;
   /* It leaves its formation the moment it turns. pkLoveEnemyTick owns its movement from here, so
      the flags are cleared rather than left set: a stale stormForm/vForm/flock on a charmed bird is
      a path nothing walks any more, and it is exactly the sort of thing the next reader trips on.
@@ -12051,8 +12052,11 @@ function pkLoveTake(e){
   e.diving=false; e.swoopWindT=0; e.peck=undefined;
   if(!e.loveHp){
     e.loveHp=true;
-    e.hpMax=(e.hpMax||e.hp)*2;
-    e.hp=e.hp*2;                    // ...and they keep the extra, so they last long enough to fight
+    /* Doubling alone is not enough now that they can actually be hurt back: a wave-2 bird is on
+       1 HP, so doubling it bought an ally two seconds of contact. The floor is what makes a
+       charmed animal read as a recruit rather than a decoration. */
+    e.hpMax=Math.max((e.hpMax||e.hp)*2, ALLY_MIN_HP);
+    e.hp=e.hpMax;
   }
   pkLoveConvertFX(e);
   return true;
@@ -12081,22 +12085,35 @@ function pkLoveActivate(){
   // it is never a dud now: the burst may catch nobody, but the brush runs for the next fifteen
   toast(n===0 ? "♥ GO AND TOUCH THEM." : "♥ BRUSH PAST THEM TO TURN THEM.",1);
 }
-// a converted enemy fights whatever is nearest that has NOT been converted, and never him
+/* ---------- a charmed animal is a BODYGUARD ----------
+   It used to pick its fight with an OUTWARD bias — among equally close candidates it took the one
+   furthest from BONES — on the reasoning that a brawl on top of the player is unreadable and puts
+   stray un-charmed bodies on him. True, but it also meant the army he had just built wandered off
+   to skirmish at the edges while the thing actually biting him went unanswered. It guards him now:
+   the score rewards foes that are CLOSING ON HIM, it refuses to chase anything past ALLY_LEASH,
+   and with nothing to fight it holds a loose ring at ALLY_RING rather than piling onto his feet —
+   which is what keeps the old readability argument satisfied without giving up the defending. */
+const ALLY_MIN_HP=5;          // a recruit has to survive long enough to be worth recruiting
+const ALLY_SEEK_R=300;        // how far it will look for a fight
+const ALLY_LEASH=340;         // ...and how far from BONES it will let that fight take it
+const ALLY_GUARD_W=1.15;      // how hard a foe near BONES outranks a foe merely near the ally
+const ALLY_RING=54;           // the standing guard ring — off his centre point, like the birds
+const ALLY_HURT_DMG=1;        // what a foe's body does to an ally it is touching
+const ALLY_HURT_EVERY=0.5;    // contact has to be held this long to land
+const ALLY_INVULN=1.6;        // ...and the ally is then untouchable long enough to get clear
+const ALLY_BRAWL_HOLD=0.22;   // a foe trading blows with an ally is held there, not walking on
 function pkLoveEnemyTick(e,dt,WW,WH){
-  if(!e.loveTgt || e.loveTgt.fleeing || e.loveTgt.love || e.loveTgt.hp<=0){
+  if(!e.loveTgt || e.loveTgt.fleeing || e.loveTgt.love || e.loveTgt.hp<=0
+     || Math.hypot(wd(e.loveTgt.x-PK.x,WW),wd(e.loveTgt.y-PK.y,WH))>ALLY_LEASH){
     e.loveTgt=null;
-    /* OUTWARD BIAS. Nearest alone pulls the whole charmed pack back through him, and the fight
-       ends up happening on top of the player - which is both unreadable and dangerous, because a
-       stray non-love in that scrum is still a stray non-love standing on him. So the score is
-       distance from the LOVER minus a fraction of the target's distance from BONES: among
-       candidates that are all roughly as close, it takes the one furthest out. */
     let best=null, bs=1e9;
-    pkEnemiesNear(e.x,e.y,260,o=>{
+    pkEnemiesNear(e.x,e.y,ALLY_SEEK_R,o=>{
       if(o===e || o.fleeing || o.love || o.decor || o.hp<=0) return;
       const d=Math.hypot(wd(o.x-e.x,WW),wd(o.y-e.y,WH));
-      if(d>260) return;
-      const away=Math.hypot(wd(o.x-PK.x,WW),wd(o.y-PK.y,WH));
-      const sc=d-Math.min(away,180)*0.45;
+      if(d>ALLY_SEEK_R) return;
+      const threat=Math.hypot(wd(o.x-PK.x,WW),wd(o.y-PK.y,WH));
+      if(threat>ALLY_LEASH) return;            // that one is BONES' problem, not the guard's
+      const sc=d+threat*ALLY_GUARD_W;          // whatever is closing on him comes first
       if(sc<bs){ bs=sc; best=o; }
     });
     e.loveTgt=best;
@@ -12114,13 +12131,52 @@ function pkLoveEnemyTick(e,dt,WW,WH){
       pkPalHit(tg,1,dx/d,dy/d);
       tg.kx=dx/d*PK.knock*0.9; tg.ky=dy/d*PK.knock*0.9;
       tg.hitT=0.22;
+      /* IT IS A FIGHT, SO THE OTHER ONE STOPS TOO. Without this a foe simply walks through the
+         ally it is trading blows with and carries on at BONES, and the whole skirmish reads as
+         scenery. startledT is the park's existing "held for a beat, still drifting on knockback,
+         still killable" state and it is handled at the top of the enemy loop, so one field does
+         the whole job for every enemy type without touching a single one of their branches. */
+      if(!tg.boss) tg.startledT=Math.max(tg.startledT||0, ALLY_BRAWL_HOLD);
       pkLoveScuffle(e,tg,dx/d,dy/d);
     }
   } else {
-    // nothing left to fight: drift happily near him
+    // nothing to fight: fall in around him rather than onto him
     const dx=wd(PK.x-e.x,WW), dy=wd(PK.y-e.y,WH), d=Math.hypot(dx,dy)||1;
-    if(d>70){ const sp=(e.sp||70)*0.7; e.x=(e.x+dx/d*sp*dt+WW)%WW; e.y=(e.y+dy/d*sp*dt+WH)%WH; }
+    if(d>ALLY_RING+14){ const sp=(e.sp||70)*0.7; e.x=(e.x+dx/d*sp*dt+WW)%WW; e.y=(e.y+dy/d*sp*dt+WH)%WH; }
+    else if(d<ALLY_RING-14){ const sp=(e.sp||70)*0.5; e.x=(e.x-dx/d*sp*dt+WW)%WW; e.y=(e.y-dy/d*sp*dt+WH)%WH; }
   }
+  /* AND THE HORDE HITS BACK. Until now nothing in the park could touch a charmed animal — the
+     only thing that ever removed one was the wave-end sweep, which is the bug this set of changes
+     is about. An ally that cannot be hurt is not an ally, it is a cheat code; so an un-charmed
+     body held against one costs it health on the same contact/invulnerability model the bought
+     companions already use (see pkPalDamage), and when it runs out it goes down like anything
+     else — dropping its bone, on his side to the end. */
+  e.invulnT=Math.max(0,(e.invulnT||0)-dt);
+  let touched=false;
+  pkEnemiesNear(e.x,e.y,15,o=>{
+    if(touched || o===e || o.fleeing || o.love || o.decor || o.hp<=0) return;
+    const dx=wd(o.x-e.x,WW), dy=wd(o.y-e.y,WH), d=Math.hypot(dx,dy)||1;
+    if(d>=15) return;
+    touched=true;
+    e.contactT=(e.contactT||0)+dt;
+    if(e.contactT>ALLY_HURT_EVERY){
+      e.contactT=0;
+      if(!(e.invulnT>0)){
+        e.hp-=ALLY_HURT_DMG;
+        e.hitT=0.22;
+        e.kx=-dx/d*260; e.ky=-dy/d*260;
+        e.invulnT=ALLY_INVULN;
+        if(!o.boss) o.startledT=Math.max(o.startledT||0, ALLY_BRAWL_HOLD);
+        beep(230,.05,"square",.03,{prio:0});
+        if(e.hp<=0){
+          pkLoveScuffle(o,e,-dx/d,-dy/d);
+          pkDownEnemy(e,-dx/d,-dy/d);          // counted already — see the latch in pkLoveTake
+        }
+      }
+    }
+  });
+  if(!touched) e.contactT=0;
+  if(e.fleeing) return;                        // it just went down; nothing below applies
   e.ft+=dt; if(e.ft>0.12){ e.ft=0; e.fi++; }
   e.loveFlash=Math.max(0,(e.loveFlash||0)-dt);
   e.lovePulse=Math.max(0,(e.lovePulse||0)-dt);
@@ -12960,7 +13016,7 @@ function pkIgniteAnimal(e){
    class. That keeps property access in the hot per-enemy loop monomorphic, and it makes it
    impossible for a stale per-type flag (a recycled bird still believing it is a mad squirrel) to
    survive into the next life. */
-const EN_FIELDS=["t","x","y","hp","hpMax","sp","vx","vy","kx","ky","dir","fi","ft","ph","life","side","alpha","big","boss","small","decor","angry","hellish","hunting","circling","flock","vForm","stormForm","diving","swoop","swoopCd","swoopWindT","orbitAng","orbitR","orbitSpd","roost","standing","spooked","spookT","spookVx","spookVy","stalk","stalkAggro","anchorX","anchorY","leapT","windT","leapAng","lvx","lvy","ranger","madsq","fromTree","atkState","atkCd","strafeDir","laserState","chargeT","aimAng","aimBase","aimErr","sweepT","beamLen","cd","burnT","palBeamT","madsqExplode","explodeT","heading","spdCur","introT","leapState","leapCd","leapWindT","leapActT","leapDur","leapStartX","leapStartY","leapDX","leapDY","landT","fleeing","fleeT","fleeVx","fleeVy","shockT","hitT","xrayT","bounceT","bounceMax","bounceSpin","heroOutro","ablaze","ablazeT","ablazeHurtT","panicAng","panicJit","igniteCdT","love","loveTgt","loveCd","loveHp","loveFlash","lovePulse","peck","peckT","peckCd","peckAng","startledT"];
+const EN_FIELDS=["t","x","y","hp","hpMax","sp","vx","vy","kx","ky","dir","fi","ft","ph","life","side","alpha","big","boss","small","decor","angry","hellish","hunting","circling","flock","vForm","stormForm","diving","swoop","swoopCd","swoopWindT","orbitAng","orbitR","orbitSpd","roost","standing","spooked","spookT","spookVx","spookVy","stalk","stalkAggro","anchorX","anchorY","leapT","windT","leapAng","lvx","lvy","ranger","madsq","fromTree","atkState","atkCd","strafeDir","laserState","chargeT","aimAng","aimBase","aimErr","sweepT","beamLen","cd","burnT","palBeamT","madsqExplode","explodeT","heading","spdCur","introT","leapState","leapCd","leapWindT","leapActT","leapDur","leapStartX","leapStartY","leapDX","leapDY","landT","fleeing","fleeT","fleeVx","fleeVy","shockT","hitT","xrayT","bounceT","bounceMax","bounceSpin","heroOutro","ablaze","ablazeT","ablazeHurtT","panicAng","panicJit","igniteCdT","love","loveTgt","loveCd","loveHp","loveFlash","lovePulse","counted","invulnT","contactT","peck","peckT","peckCd","peckAng","startledT"];
 const EN_BLANK={};
 for(const f of EN_FIELDS) EN_BLANK[f]=undefined;
 const EN_POOL=[], EN_POOL_MAX=420;
@@ -14995,7 +15051,15 @@ function pkEnsureWalkable(){
   }
   if(PK.gate && PK.gate.x!=null) pkClearAround(PK.gate.x, PK.gate.y, 76);
   pkBuildTreeGrid();
-  [PK.x, PK.y] = pkFindOpenSpot(PK.x, PK.y, SAFE_SPOT_R);
+  /* HE IS NOT MOVED FOR BEING NEAR TREES, ONLY FOR BEING IN ONE. pkFindOpenSpot bails out early
+     only when there is not a single tree within SAFE_SPOT_R, so calling it unconditionally meant
+     a relocation every single wave — the search walks rings out to 630 units, and the player
+     watched the whole park jump sideways the instant a wave ended. The case this guard was
+     written for is a fresh grove landing on top of him, and that case is exactly "he is inside a
+     trunk", which is what pkTreeCollide already answers. Anywhere else he keeps the ground he was
+     standing on and the clearing is punched around him instead. */
+  const [openX, openY] = pkTreeCollide(PK.x, PK.y);
+  if(openX!==PK.x || openY!==PK.y) [PK.x, PK.y] = pkFindOpenSpot(PK.x, PK.y, SAFE_SPOT_R);
   pkClearAround(PK.x, PK.y, SAFE_SPOT_R);
   for(const pu of PK.powerups) pkClearAround(pu.x, pu.y, 40);
   pkBuildTreeGrid();   // and leave a grid that matches the trees everything after this will query
@@ -15236,16 +15300,25 @@ function pkDownEnemy(e,ux,uy,o){
   // banks them up stops having to choose when to go and get one
   if(Math.random()<REGEN_DROP_CHANCE && PK.powerups.reduce((n,p)=>n+(p.type==="regen"?1:0),0)<REGEN_MAX_ON_FIELD)
     PK.powerups.push({type:"regen", x:e.x, y:e.y, life:18});
-  PK.kills++;
-  PK.waveKills=(PK.waveKills||0)+1;    // <- the wave goal itself. Every single kind of enemy.
-  /* ...and the bird count, on the same line, for the same reason: an objective counted anywhere
-     other than the one place an enemy leaves the field is an objective with a way round it. */
-  if(e.t==="bird" && PK.quest){
-    PK.quest.birds++;
-    const q=pkQuestData("birds");
-    if(PK.quest.birds>=q.goal) pkQuestHit("birds"); else if(PK.quest.birds%10===0) pkQuestRender();
+  /* COUNTED ONCE, WHICHEVER WAY IT LEFT. Everything goal-shaped hangs off this one latch. A
+     charmed ally was already counted the moment it turned (see pkLoveTake) — it is on his side
+     from then on, so a foe finally cutting it down is not a kill the player made, must not
+     advance the wave a second time, and must not tick the bird objective on his behalf. Every
+     ordinary enemy reaches here uncounted and so behaves exactly as it always did. It still
+     drops its bone either way: there is a body on the ground and the player earned it. */
+  if(!e.counted){
+    e.counted=true;
+    PK.kills++;
+    PK.waveKills=(PK.waveKills||0)+1;    // <- the wave goal itself. Every single kind of enemy.
+    /* ...and the bird count, on the same line, for the same reason: an objective counted anywhere
+       other than the one place an enemy leaves the field is an objective with a way round it. */
+    if(e.t==="bird" && PK.quest){
+      PK.quest.birds++;
+      const q=pkQuestData("birds");
+      if(PK.quest.birds>=q.goal) pkQuestHit("birds"); else if(PK.quest.birds%10===0) pkQuestRender();
+    }
+    PK.lastDowned=e;                   // the wave-ending kill gets its own slow-motion send-off
   }
-  PK.lastDowned=e;                     // the wave-ending kill gets its own slow-motion send-off
   if(e.roost) e.roost.killed++;
   if(e.boss){ PK.apeKills=(PK.apeKills||0)+1; }
   return true;
@@ -20632,7 +20705,8 @@ function parkUpdate(dt){
     const nextHasCat  = PK.wave===3 || (PK.wave>=6 && PK.mixTypes && PK.mixTypes.includes("cat"));
     for(let i=PK.en.length-1;i>=0;i--){
       const e=PK.en[i];
-      const keep = (e.roost && e.roost.killed>=e.roost.need) ? nextHasBird
+      const keep = e.love ? true                    // recruits are his now — they survive the wave
+                 : (e.roost && e.roost.killed>=e.roost.need) ? nextHasBird
                  : (e.stalk || e.stalkAggro)                 ? nextHasCat
                  : true;
       if(!keep) pkEnRemove(i);      // back to the pool rather than dropped on the floor
