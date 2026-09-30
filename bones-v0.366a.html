@@ -812,7 +812,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.365a</span>
+          <span id="devToggle">v0.366a</span>
         </div>
       </div>
 
@@ -25591,7 +25591,7 @@ const SH_ALARM_T=1.4, SH_SPLIT_D=54;
 const HD_HOLE_R=15, HD_HOLE_PULL=30, HD_HOLE_EAT=7, HD_HOLE_SUCK=72;   // a soft pull, a hard centre
 const HD_ROAD_GAPS=[6.5,4.8,8.0,5.5];        // seconds between rigs — a readable rotation, not dice
 const HD_ROAD_WARN=0.8, HD_ROAD_SPD=150, HD_RIG_W=44, HD_RIG_H=24;
-const HD_OT_MIN=6, HD_OT_MAX=9, HD_OT_SPD=170, HD_OT_FIRST=4;   // gap between drops, tractor speed, first drop after quota
+const HD_OT_FIRST=4;                          // the first overtime run comes this soon after quota
 const HD_WOLF_PROWL=58, HD_WOLF_STALK=34, HD_WOLF_LUNGE=150, HD_WOLF_BLOCK_R=34, HD_WOLF_BARK_R=130;
 // the pack: how far out it circles, how fast, how tight it runs, the gap between strikes, the breather
 // it gives after an overtime drop, how much a sheep's closeness to the pack outweighs its loneliness,
@@ -25864,6 +25864,7 @@ function herdEndShift(kind){
     if(!wasCleared && sh.lv<HERD_PLAYABLE){ unlocked=sh.lv+1; tag="NEW FIELD OPEN \u2014 "+HERD_LV[unlocked].n; }
     else if(!wasCleared) tag="FIRST CLEAR!";
     else if(nS>prevStars || pay>prevBest) tag="NEW BEST!";
+    if(!tag && herdFlockLeft(sh)<=0 && !sh.sheep.length) tag="THE FARMER'S WHOLE FLOCK \u2014 ALL "+HERD_FLOCK+".";
     st.cleared=true;
     st.bestPenned=Math.max(st.bestPenned,sh.penned);
     st.bestCash=Math.max(st.bestCash,pay);
@@ -25964,7 +25965,7 @@ function herdDash(){
   const sh=S.herd.shift; if(!sh||!HERD.active) return;
   const d=sh.dog;
   if(herdGassed()) return herdRefuse();
-  if(d.dashCd>0) return;
+  if(d.dashCd>0 || d.stunT>0) return;
   let dx=Math.cos(d.faceAng), dy=Math.sin(d.faceAng);
   const j=HERD.joy;
   if(j && Math.hypot(j.dx,j.dy)>JOY_DEAD){ const m=Math.hypot(j.dx,j.dy); dx=j.dx/m; dy=j.dy/m; }
@@ -26009,6 +26010,7 @@ function herdDogTick(sh,dt){
   const m=Math.hypot(mx,my), thr=pkJoyThrottle(Math.min(1,m));
   let spd=HERD_DOG_SPD*(0.8+0.4*S.energy/100)*thr;
   if(d.gassed) spd*= d.plantT>0 ? 0 : HERD_GASSED_MUL;
+  if(d.stunT>0){ d.stunT=Math.max(0,d.stunT-dt); spd=0; }
   if(d.dashT>0){
     d.dashT-=dt; d.vx=d.dashVx; d.vy=d.dashVy;
   } else if(spd>0 && m>0){
@@ -26021,35 +26023,95 @@ function herdDogTick(sh,dt){
   d.y=clamp(d.y+d.vy*dt, HF_PEN_Y+8, HF_H-6);
   if(Math.hypot(d.vx,d.vy)>PKDIR_MOVE) d.faceAng=Math.atan2(d.vy,d.vx);
   d.faceI=pkFaceUpdate(d.vx,d.vy,d.faceI);
-  // a rig on the road shoulders him out of the way — he is a dog, not a sheep
-  const r=sh.road;
-  if(r && r.ph==="cross" && Math.abs(d.x-r.x)<HD_RIG_W/2+6 && Math.abs(d.y-HF_ROAD_Y)<HD_RIG_H/2+8){
-    d.y = d.y<HF_ROAD_Y ? HF_ROAD_Y-HD_RIG_H/2-10 : HF_ROAD_Y+HD_RIG_H/2+10;
-    d.vx*=0.3; d.vy=0;
-  }
+  // anything with wheels shoulders him out of the way — he is a dog, not a sheep — but it hurts
+  herdDogVehicles(sh,dt);
 }
 function herdRoadTick(sh,dt){
   const r=sh.road; if(!r) return;
   r.t-=dt;
   if(r.ph==="gap" && r.t<=0){
-    r.ph="warn"; r.t=HD_ROAD_WARN; r.dir = r.idx%2 ? -1 : 1;
+    r.ph="warn"; r.t=HD_ROAD_WARN; r.dir = r.idx%2 ? -1 : 1; r.trl=herdTrailerRoll(HD_RIG_TRL_W);
     beep(55,.55,"sawtooth",.05); haptic([25,25,25,25,25]);
   } else if(r.ph==="warn" && r.t<=0){
-    r.ph="cross"; r.x = r.dir>0 ? -HD_RIG_W : HF_W+HD_RIG_W;
+    r.ph="cross"; r.x = r.dir>0 ? -HD_TRAC_HALF : HF_W+HD_TRAC_HALF;
   } else if(r.ph==="cross"){
-    r.x+=r.dir*HD_ROAD_SPD*dt;
-    if((r.dir>0 && r.x>HF_W+HD_RIG_W) || (r.dir<0 && r.x<-HD_RIG_W)){
+    r.x+=r.dir*HD_ROAD_SPD*HD_RIG_TRL_SPD[r.trl||0]*dt;
+    const len=herdVehLen(r.trl||0)+10;
+    if((r.dir>0 && r.x-len>HF_W) || (r.dir<0 && r.x+len<0)){
       r.ph="gap"; r.idx++; r.t=HD_ROAD_GAPS[r.idx%HD_ROAD_GAPS.length];
     }
   }
 }
-/* OVERTIME. Once quota is met on a paddock that has it, a tractor runs the safe bottom edge every
-   HD_OT_MIN-HD_OT_MAX seconds (the first one HD_OT_FIRST after quota) and drops 2-4 more sheep behind it — on the start side, so on the road
-   they have to be crossed all over again. Same rules, same pen, same pay. */
+/* ---------------------------------------------------------------- vehicles: tractors and trailers
+   Two kinds of traffic, one body. A vehicle is a tractor with 0-3 trailers hitched behind it, and
+   every piece of it is solid: a sheep or a wolf under any of them is gone, and Bones is knocked out
+   of the way, dazed for a moment and short of breath. A long load is the point — it takes longer to
+   get past, and it sweeps more ground.
+   - The ROAD RIG (COUNTRY ROAD) crosses on its rotation as before, but now tows 0-3 trailers of hay.
+     A long one is called out in advance ("LONG LOAD"), because waiting for it is the whole decision.
+   - The OVERTIME TRACTOR brings the farmer's sheep. It comes in fast along the farm track, pulls off
+     onto the grass just above it and crawls alongside while the back trailer lets out five sheep in a
+     tight bunch, then swings back onto the track and is gone. One run every HD_OT_EVERY seconds.
+     Its route is a fixed curve of x, so every trailer follows exactly where the tractor went. */
+const HERD_FLOCK=30;                            // the farmer's whole flock, on every paddock: start + every drop
+const HD_OT_EVERY=30, HD_OT_LOAD=5;             // one run every 30 seconds, five sheep a run
+const HD_OT_FAST=190, HD_OT_CRAWL=30, HD_OT_ZOOM=250;
+const HD_OT_TRACK_Y=HF_DROP_Y+18, HD_OT_LANE_Y=HF_DROP_Y-14;
+const HD_OT_U=[70,112,250,292];                 // along its way: pull off, on the grass, pull back, on the track
+const HD_OT_DROP_U=150, HD_OT_DROP_GAP=11;      // where the five come out, and how close together
+const HD_TRAC_HALF=16, HD_TRL_HALF=12, HD_TRL_LEN=30, HD_TRL_FIRST=32;
+const HD_RIG_TRL_W=[0.4,0.3,0.2,0.1], HD_OT_TRL_W=[0,0.5,0.3,0.2];   // how often 0/1/2/3 trailers
+const HD_BONK_T=0.6, HD_BONK_COST=6, HD_BONK_CD=1.2;
+const HD_RIG_TRL_SPD=[1,0.8,0.65,0.52];      // a loaded rig is a slow rig: the long ones are the wait
+
+function herdTrailerRoll(wts){
+  const r=Math.random(); let a=0;
+  for(let i=0;i<wts.length;i++){ a+=wts[i]; if(r<a) return i; }
+  return wts.length-1;
+}
+function herdOtU(dir,x){ return dir>0 ? x : HF_W-x; }
+function herdOtX(dir,u){ return dir>0 ? u : HF_W-u; }
+function herdOtRouteY(u){
+  const [a,b,c,d]=HD_OT_U, T=HD_OT_TRACK_Y, Ly=HD_OT_LANE_Y, e=k=>k*k*(3-2*k);
+  if(u<=a || u>=d) return T;
+  if(u<b) return T+(Ly-T)*e((u-a)/(b-a));
+  if(u<=c) return Ly;
+  return Ly+(T-Ly)*e((u-c)/(d-c));
+}
+// how far behind the tractor's centre the back edge of the load is
+function herdVehLen(trl){ return trl ? HD_TRL_FIRST+(trl-1)*HD_TRL_LEN+HD_TRL_HALF : HD_TRAC_HALF; }
+// every piece of a vehicle, front to back; y is the ground line it is drawn on
+function herdVehParts(v){
+  const at=back=>{ const x=v.x-v.dir*back; return {x, y: v.route ? herdOtRouteY(herdOtU(v.dir,x)) : v.y}; };
+  const out=[{...at(0), k:"trac"}];
+  for(let i=0;i<v.trl;i++) out.push({...at(HD_TRL_FIRST+i*HD_TRL_LEN), k:"trl", i});
+  return out;
+}
+function herdVehHit(v,px,py,pad){
+  for(const p of herdVehParts(v)){
+    const hw=p.k==="trac"?HD_TRAC_HALF:HD_TRL_HALF+1;
+    if(Math.abs(px-p.x)<hw+pad && Math.abs(py-(p.y-6))<12+pad) return p;
+  }
+  return null;
+}
+function herdVehicles(sh){
+  const out=[], r=sh.road, tr=sh.ot && sh.ot.truck;
+  if(r && r.ph==="cross") out.push({x:r.x, dir:r.dir, trl:r.trl||0, y:HF_ROAD_Y+6, kind:"road"});
+  if(tr && tr.trl!=null) out.push({x:tr.x, dir:tr.dir, trl:tr.trl, route:true, kind:"tractor", n:tr.n});
+  return out;
+}
+// how many of the farmer's sheep are still to come
+function herdFlockLeft(sh){ return Math.max(0, HERD_FLOCK-sh.started); }
+
+/* OVERTIME. Once quota is met on a paddock that has it, the farmer's tractor brings the rest of his
+   flock HD_OT_LOAD at a time (the first run HD_OT_FIRST after quota, then one every HD_OT_EVERY)
+   until all HERD_FLOCK have been in the field. Same rules, same pen, same pay. */
 function herdOvertimeTick(sh,dt){
   const ot=sh.ot, L=HERD_LV[sh.lv];
   if(!ot.on) return;
+  if(ot.truck && ot.truck.trl==null){ ot.truck=null; ot.nextT=HD_OT_WARN+1; }   // a run from an older save
   if(!ot.truck){
+    if(herdFlockLeft(sh)<=0){ ot.nextT=0; return; }      // that's the lot
     // the side it comes in on is picked when it is scheduled, so the warning can point at it
     if(!ot.dir) ot.dir=Math.random()<0.5?1:-1;
     const was=ot.nextT;
@@ -26058,25 +26120,111 @@ function herdOvertimeTick(sh,dt){
     if(ot.nextT<=0){
       const room=HF_CAP-sh.sheep.length;
       if(room<=0){ ot.nextT=HD_OT_WARN+1; return; }
-      const n=Math.min(room, 2+Math.floor(Math.random()*3));
-      const dir=ot.dir, drops=[];
-      for(let i=0;i<n;i++) drops.push(dir>0 ? 70+(i+0.5)*(220/n) : HF_W-70-(i+0.5)*(220/n));
-      ot.truck={x:dir>0?-40:HF_W+40, dir, n, drops, dropped:0};
-      if(sh.pack) sh.pack.cd=Math.max(sh.pack.cd, HD_PACK_GRACE+(HF_W+80)/HD_OT_SPD);
+      const n=Math.min(room, HD_OT_LOAD, herdFlockLeft(sh)), dir=ot.dir, drops=[];
+      for(let i=0;i<n;i++) drops.push({u:HD_OT_DROP_U+i*HD_OT_DROP_GAP, jy:(Math.random()-0.5)*12});
+      const trl=Math.max(1,herdTrailerRoll(HD_OT_TRL_W));
+      ot.truck={x:herdOtX(dir,-HD_TRAC_HALF), dir, n, trl, drops, dropped:0, age:0, spd:HD_OT_FAST};
+      if(sh.pack) sh.pack.cd=Math.max(sh.pack.cd, HD_PACK_GRACE+4);
       beep(60,.5,"sawtooth",.05); haptic([25,25,25,25,25]);
       if(sh.lv===3 && ot.drops===0 && sh.wolves.length<L.wolvesOT) herdSpawnWolf(sh,6);
     }
     return;
   }
-  const tr=ot.truck;
-  tr.x+=tr.dir*HD_OT_SPD*dt;
-  while(tr.dropped<tr.n && (tr.dir>0 ? tr.x>=tr.drops[tr.dropped] : tr.x<=tr.drops[tr.dropped])){
-    const s=herdNewSheep(sh, tr.drops[tr.dropped], HF_DROP_Y-10, tr.dropped===0 && Math.random()<0.5);
+  const tr=ot.truck; tr.age+=dt;
+  const u=herdOtU(tr.dir,tr.x), uRear=u-herdVehLen(tr.trl);
+  // fast in on the track; a crawl from the moment it pulls off until the last sheep is out; then it
+  // picks up on the grass and floors it once it is back on the track
+  const want = u<HD_OT_U[0]-10 ? HD_OT_FAST
+             : tr.dropped<tr.n ? HD_OT_CRAWL
+             : u<HD_OT_U[3] ? HD_OT_CRAWL*2.2 : HD_OT_ZOOM;
+  tr.spd+=(want-tr.spd)*Math.min(1,dt*(want>tr.spd?1.6:3.5));
+  tr.x+=tr.dir*tr.spd*dt;
+  // the back trailer lets them out, just behind itself, in a bunch
+  while(tr.dropped<tr.n && uRear>=tr.drops[tr.dropped].u){
+    const dp=tr.drops[tr.dropped];
+    const s=herdNewSheep(sh, herdOtX(tr.dir, dp.u-10), HD_OT_LANE_Y-16+dp.jy, tr.dropped===0 && Math.random()<0.5);
     sh.sheep.push(s); sh.started++; tr.dropped++;
     herdPuff(s.x, s.y+2, 5, "#d9c9a0", 30, 0.45, 2.6);
+    beep(620+tr.dropped*40,.03,"square",.02);
   }
-  if((tr.dir>0 && tr.x>HF_W+50) || (tr.dir<0 && tr.x<-50)){
-    ot.truck=null; ot.drops++; ot.nextT=HD_OT_MIN+Math.random()*(HD_OT_MAX-HD_OT_MIN); ot.dir=Math.random()<0.5?1:-1;
+  if(uRear>HF_W+20){
+    ot.truck=null; ot.drops++;
+    ot.nextT=Math.max(8, HD_OT_EVERY-tr.age);
+    ot.dir=Math.random()<0.5?1:-1;
+  }
+}
+
+// ---- drawing traffic
+function herdDrawTractorBody(ctx,x,y,dir,t){
+  ctx.save(); ctx.translate(x,y); ctx.scale(dir,1);
+  herdShadow(ctx,0,6,18,3.4,0.3);
+  ctx.fillStyle="#141210";
+  ctx.beginPath(); ctx.arc(-7,-1,7.4,0,7); ctx.fill();
+  ctx.beginPath(); ctx.arc(10,1.6,4.6,0,7); ctx.fill();
+  ctx.fillStyle="#d6cfc0"; ctx.beginPath(); ctx.arc(-7,-1,3.2,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(10,1.6,2,0,7); ctx.fill();
+  herdBox(ctx,-4,-9,18,8,"#c2312a",1.6);
+  ctx.fillStyle="#c2312a"; ctx.strokeStyle=HB_OUT; ctx.lineWidth=1.6;
+  ctx.fillRect(-14,-22,11,15); ctx.strokeRect(-14,-22,11,15);
+  ctx.fillStyle="#9fd3e6"; ctx.fillRect(-12,-20,7,7);
+  ctx.fillStyle="#2a2a2e"; ctx.fillRect(-15,-24,13,2.6);
+  ctx.fillRect(5,-15,2,6);
+  ctx.fillStyle="#f6d86b"; ctx.fillRect(13,-7,2,2.4);
+  const puff=(t*3)%1;
+  ctx.fillStyle="rgba(210,210,210,"+(0.6*(1-puff))+")"; ctx.beginPath(); ctx.arc(6-puff*4,-17-puff*6,1.8+puff*2.4,0,7); ctx.fill();
+  ctx.restore();
+}
+// one trailer: sheep in it (overtime), or hay (the road)
+function herdDrawTrailer(ctx,x,y,dir,load,hay,t,seed){
+  ctx.save(); ctx.translate(x,y); ctx.scale(dir,1);
+  herdShadow(ctx,0,6,14,3,0.28);
+  herdBox(ctx,-12,-8,24,8,"#9a6a3a",1.6);
+  ctx.strokeStyle=HB_OUT; ctx.lineWidth=1.4; ctx.strokeRect(-12,-13,24,5);
+  if(hay){
+    for(let i=0;i<3;i++){ const bx=-8+i*8, by=-14-((seed+i)%2)*3;
+      ctx.fillStyle="#d7ad4a"; ctx.strokeStyle=HB_OUT; ctx.lineWidth=1.2; ctx.fillRect(bx-3.5,by-4,7,6); ctx.strokeRect(bx-3.5,by-4,7,6);
+      ctx.fillStyle="#9c7a2c"; ctx.fillRect(bx-3.5,by-1.5,7,1); }
+  } else for(let i=0;i<load;i++) herdDrawSheep(ctx,-7+(i%3)*7,-7-Math.floor(i/3)*3,1,false,false,t,i+seed,0.55);
+  ctx.fillStyle="#141210"; ctx.strokeStyle="#6b6b70"; ctx.lineWidth=1.2;
+  ctx.beginPath(); ctx.arc(0,1,3.6,0,7); ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+function herdDrawVehicle(ctx,v,t,remaining){
+  const parts=herdVehParts(v);
+  // what each trailer still holds: the back one empties first
+  const cap=[], loads=[];
+  if(v.trl){ const n=v.n||0; for(let i=0;i<v.trl;i++) cap.push(Math.floor(n/v.trl)+(i<n%v.trl?1:0));
+    let rem=remaining||0; for(let i=0;i<v.trl;i++){ const k=Math.min(cap[i],rem); loads.push(k); rem-=k; } }
+  // hitches first, then back to front
+  ctx.strokeStyle=HB_OUT; ctx.lineWidth=2;
+  for(let i=1;i<parts.length;i++){
+    const a=parts[i-1], b=parts[i], ea=a.k==="trac"?14:HD_TRL_HALF;
+    ctx.beginPath(); ctx.moveTo(a.x-v.dir*ea, a.y+1); ctx.lineTo(b.x+v.dir*HD_TRL_HALF, b.y+1); ctx.stroke();
+  }
+  for(let i=parts.length-1;i>=0;i--){
+    const p=parts[i];
+    if(p.k==="trac") herdDrawTractorBody(ctx,p.x,p.y,v.dir,t);
+    else herdDrawTrailer(ctx,p.x,p.y,v.dir,loads[p.i]||0,v.kind==="road",t,p.i*3);
+  }
+}
+// Bones against anything with wheels: shouldered clear, and (once in a while, not every frame) dazed
+function herdDogVehicles(sh,dt){
+  const d=sh.dog;
+  d.hitCd=Math.max(0,(d.hitCd||0)-dt);
+  for(const v of herdVehicles(sh)){
+    const p=herdVehHit(v,d.x,d.y,5); if(!p) continue;
+    const cy=p.y-6;
+    let up = d.y<cy;
+    if(!up && cy+20>HF_H-6) up=true;
+    d.y=clamp(up ? cy-20 : cy+20, HF_PEN_Y+8, HF_H-6);
+    if(d.hitCd<=0){
+      d.hitCd=HD_BONK_CD; d.stunT=HD_BONK_T; d.dashT=0;
+      d.vx=v.dir*150; d.vy=(up?-1:1)*70;
+      S.energy=clamp(S.energy-HD_BONK_COST,0,100);
+      herdPop(d.x, d.y-22, "BONK!", "#ff5a4f", true);
+      herdPuff(d.x, d.y, 8, "#d9c9a0", 50, 0.5, 3);
+      herdShake(5); haptic([40,30,40]);
+      beep(140,.12,"square",.05); setTimeout(()=>beep(90,.14,"square",.04),70);
+    } else { d.vx*=0.3; d.vy=0; }
   }
 }
 /* THE PACK HUNTS AS ONE. The wolves move as a unit: a single pack anchor circles the flock, and
@@ -26137,7 +26285,7 @@ function herdPackTick(sh,dt){
     const want=HD_PACK_RAD+(P.pushT>0||P.howlT>0?HD_PACK_PUSH:0);
     P.rad+=(want-P.rad)*Math.min(1,dt*2.5);
     P.x=clamp(c.x+Math.cos(P.ang)*P.rad, 12, HF_W-12);
-    P.y=clamp(c.y+Math.sin(P.ang)*P.rad*0.8, HF_PEN_Y+44, HF_DROP_Y-14);   // never loiters on the tractor's track
+    P.y=clamp(c.y+Math.sin(P.ang)*P.rad*0.8, HF_PEN_Y+44, HF_DROP_Y-44);   // never loiters on the tractor's route
   }
   if(hunting || P.pushT>0 || P.howlT>0 || !c) return;
   P.cd-=dt;
@@ -26157,7 +26305,7 @@ function herdPackSlot(sh,w){
   let x=P.x+(fx*f-fy*sd)*k, y=P.y+(fy*f+fx*sd)*k;
   // a circling wolf never takes a place on top of a hole
   for(const h of HERD.holes){ const hx=x-h.x, hy=y-h.y, hd=Math.hypot(hx,hy)||0.01; if(hd<HD_WOLF_WARY){ x=h.x+hx/hd*HD_WOLF_WARY; y=h.y+hy/hd*HD_WOLF_WARY; } }
-  return {x, y:Math.min(y, HF_DROP_Y-6)};
+  return {x, y:Math.min(y, HF_DROP_Y-36)};
 }
 function herdWolfTick(sh,w,dt){
   const d=sh.dog, c=herdCentroid(sh);
@@ -26223,13 +26371,7 @@ function herdWolfTick(sh,w,dt){
 function herdWolfHazards(sh,w){
   if(w.dead) return;
   for(const h of HERD.holes) if(Math.hypot(h.x-w.x,h.y-w.y)<HD_HOLE_EAT) return herdWolfDown(sh,w,"hole",h);
-  const r=sh.road;
-  if(r && r.ph==="cross" && Math.abs(w.x-r.x)<HD_RIG_W/2+3 && Math.abs(w.y-HF_ROAD_Y)<HD_RIG_H/2+3) return herdWolfDown(sh,w,"road",null,r.dir);
-  const tr=sh.ot && sh.ot.truck;
-  if(tr){
-    const a=tr.x-tr.dir*44, b=tr.x+tr.dir*16;
-    if(w.x>Math.min(a,b) && w.x<Math.max(a,b) && w.y>HF_DROP_Y+2 && w.y<HF_DROP_Y+30) return herdWolfDown(sh,w,"tractor",null,tr.dir);
-  }
+  for(const v of herdVehicles(sh)) if(herdVehHit(v,w.x,w.y,3)) return herdWolfDown(sh,w,v.kind,null,v.dir);
 }
 function herdWolfDown(sh,w,why,hole,dir){
   w.dead=true; w.tgt=-1;
@@ -26299,6 +26441,7 @@ function herdSheepTick(sh,dt){
   const dashing=d.dashT>0;
   const presR=SH_PRES_STILL+(SH_PRES_RUN-SH_PRES_STILL)*spFrac;
   HERD.presR=dashing?0:presR;
+  const otv=herdVehicles(sh).find(v=>v.kind==="tractor"), otParts=otv?herdVehParts(otv):null;
   for(const s of sheep){
     let ax=0, ay=0;
     // the dog. A dash covers ground, it does not herd — no presence while he is dashing.
@@ -26321,6 +26464,11 @@ function herdSheepTick(sh,dt){
           s.panicT=0.7; s.pdx=dx/dd; s.pdy=dy/dd; herdBleat();
         }
       }
+    }
+    // the farmer's tractor: they shy away from it — it still gets the slow ones
+    if(otParts) for(const p of otParts){
+      const dx=s.x-p.x, dy=s.y-(p.y-6), dd=Math.hypot(dx,dy)||0.01;
+      if(dd<36){ const f=1-dd/36; ax+=dx/dd*70*f; ay+=(dy/dd*150+(dy<0?-40:40))*f; s.alarm=SH_ALARM_T; }
     }
     // neighbours: clump, align, don't stack
     let cx=0,cy=0,cn=0, avx=0,avy=0,an=0, sx=0,sy=0, near=1e9;
@@ -26384,6 +26532,7 @@ function herdSheepTick(sh,dt){
     if(s.st==="split" && prev!=="split"){ herdBleat(); HERD.baa={id:s.id, txt:"BAA!", life:1.1}; }
   }
   // resolve the field: pen, fence, holes, road, hedge
+  const vehs=herdVehicles(sh);
   for(const s of sheep){
     if(s.out) continue;
     const inGate=Math.abs(s.x-HF_GATE_X)<HF_GATE_W/2-3;
@@ -26392,7 +26541,7 @@ function herdSheepTick(sh,dt){
     let gone=false;
     for(const h of HERD.holes) if(Math.hypot(h.x-s.x,h.y-s.y)<HD_HOLE_EAT){ herdLose(sh,s,"hole"); gone=true; break; }
     if(gone) continue;
-    if(r && r.ph==="cross" && Math.abs(s.x-r.x)<HD_RIG_W/2+3 && Math.abs(s.y-HF_ROAD_Y)<HD_RIG_H/2+3){ herdLose(sh,s,"road"); continue; }
+    if(vehs.some(v=>herdVehHit(v,s.x,s.y,3))){ herdLose(sh,s,"road"); continue; }
     // the hedge holds anything that is merely being pushed — a running dog pins a sheep against it,
     // he cannot shove one through it. Only a bolting sheep clears it.
     if(s.panicT<=0){
@@ -26433,6 +26582,8 @@ function herdUpdate(sh,dt){
     if(!sh.quotaMet) return herdEndShift("wipe");
     // in overtime, a drop lost to the last sheep is the flock wiped: the job's done, bank it
     if(L.overtime && sh.lastOut==="lost" && !sh.ot.truck) return herdEndShift("checkout");
+    // the farmer's whole flock has been through the field: that's the shift
+    if(sh.quotaMet && herdFlockLeft(sh)<=0 && !sh.ot.truck) return herdEndShift("checkout");
   }
 }
 
@@ -26690,33 +26841,6 @@ function herdDrawWolf(ctx,wf,t,RM,howl){
   if(wf.carry) herdDrawSheep(ctx,14,-2,1,false,false,t,0,0.6);
   ctx.restore();
 }
-// a red farm tractor, side-on; `load` sheep ride in the trailer if it has one
-function herdDrawTractor(ctx,x,y,dir,load,trailer,t){
-  ctx.save(); ctx.translate(x,y); ctx.scale(dir,1);
-  herdShadow(ctx,-6,6,trailer?30:18,3.4,0.3);
-  if(trailer){
-    ctx.strokeStyle=HB_OUT; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(-14,1); ctx.lineTo(-20,1); ctx.stroke();
-    herdBox(ctx,-44,-8,24,8,"#9a6a3a",1.6);
-    ctx.strokeStyle=HB_OUT; ctx.lineWidth=1.4; ctx.strokeRect(-44,-13,24,5);
-    for(let i=0;i<load;i++) herdDrawSheep(ctx,-39+(i%3)*7,-7-Math.floor(i/3)*3,1,false,false,t,i,0.55);
-    ctx.fillStyle="#141210"; ctx.strokeStyle="#6b6b70"; ctx.lineWidth=1.2;
-    ctx.beginPath(); ctx.arc(-32,1,3.6,0,7); ctx.fill(); ctx.stroke();
-  }
-  ctx.fillStyle="#141210";
-  ctx.beginPath(); ctx.arc(-7,-1,7.4,0,7); ctx.fill();
-  ctx.beginPath(); ctx.arc(10,1.6,4.6,0,7); ctx.fill();
-  ctx.fillStyle="#d6cfc0"; ctx.beginPath(); ctx.arc(-7,-1,3.2,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(10,1.6,2,0,7); ctx.fill();
-  herdBox(ctx,-4,-9,18,8,"#c2312a",1.6);
-  ctx.fillStyle="#c2312a"; ctx.strokeStyle=HB_OUT; ctx.lineWidth=1.6;
-  ctx.fillRect(-14,-22,11,15); ctx.strokeRect(-14,-22,11,15);
-  ctx.fillStyle="#9fd3e6"; ctx.fillRect(-12,-20,7,7);
-  ctx.fillStyle="#2a2a2e"; ctx.fillRect(-15,-24,13,2.6);
-  ctx.fillRect(5,-15,2,6);
-  ctx.fillStyle="#f6d86b"; ctx.fillRect(13,-7,2,2.4);
-  const puff=(t*3)%1;
-  ctx.fillStyle="rgba(210,210,210,"+(0.6*(1-puff))+")"; ctx.beginPath(); ctx.arc(6-puff*4,-17-puff*6,1.8+puff*2.4,0,7); ctx.fill();
-  ctx.restore();
-}
 
 function herdDraw(sh,t){
   const [ctx,w,h]=fit($("#herdcv"));
@@ -26786,8 +26910,7 @@ function herdDraw(sh,t){
   for(const s of sh.sheep) actors.push({y:s.y, k:"s", o:s});
   for(const wf of sh.wolves) actors.push({y:wf.y, k:"w", o:wf});
   actors.push({y:d.y, k:"d", o:d});
-  if(r && r.ph==="cross") actors.push({y:HF_ROAD_Y+8, k:"r"});
-  if(sh.ot.truck) actors.push({y:HF_DROP_Y+22, k:"t"});
+  for(const v of herdVehicles(sh)) actors.push({y:Math.max(...herdVehParts(v).map(p=>p.y))+2, k:"v", o:v});
   actors.sort((a,b)=>a.y-b.y);
   herdDrawParts(ctx,true);
   // the committed wolf's line to its sheep sits under everything
@@ -26805,8 +26928,7 @@ function herdDraw(sh,t){
       if(s.st==="bolt"||s.st==="split"){ ctx.strokeStyle="#ff2a1f"; ctx.lineWidth=1.4; ctx.beginPath(); ctx.ellipse(s.x,s.y+1.5,8.5,3.2,0,0,7); ctx.stroke(); }
       herdDrawSheep(ctx,s.x,s.y,s.face||1,s.ram,moving,t,s.id,1,s.st==="graze"&&!moving);
     } else if(A.k==="w") herdDrawWolf(ctx,A.o,t,RM, !!(sh.pack && sh.pack.howlT>0 && A.o.st==="prowl"));
-    else if(A.k==="r") herdDrawTractor(ctx,r.x,HF_ROAD_Y+6,r.dir,0,true,t);
-    else if(A.k==="t"){ const tr=sh.ot.truck; herdDrawTractor(ctx,tr.x,HF_DROP_Y+18,tr.dir,tr.n-tr.dropped,true,t); }
+    else if(A.k==="v") herdDrawVehicle(ctx,A.o,t,A.o.kind==="tractor"?sh.ot.truck.n-sh.ot.truck.dropped:0);
     else {
       // BONES, exactly as the park draws him: a ground shadow and his eight-way strips
       const moving=Math.hypot(d.vx,d.vy)>PKDIR_MOVE;
@@ -26819,6 +26941,10 @@ function herdDraw(sh,t){
         if(img&&img.complete) ctx.drawImage(img,d.x-12,d.y-10,24,20);
       }
       ctx.globalAlpha=1;
+      // dazed: stars round his head
+      if(d.stunT>0) for(let i=0;i<3;i++){ const a=t*7+i*2.09;
+        ctx.fillStyle="#f4d23c"; ctx.strokeStyle=HB_OUT; ctx.lineWidth=0.8;
+        const sx=d.x+Math.cos(a)*9, sy=d.y-16+Math.sin(a)*3; ctx.fillRect(sx-1.5,sy-1.5,3,3); ctx.strokeRect(sx-1.5,sy-1.5,3,3); }
     }
   }
   herdDrawFalls(ctx,t,RM);
@@ -26861,7 +26987,7 @@ function herdDrawHud(ctx,w,h,sh,t){
     let penLine="PEN "+sh.penned+"/"+L.quota;
     if(sh.quotaMet && L.overtime){
       const ot=sh.ot;
-      penLine += ot.truck ? "  —  DROPPING" : "  —  NEXT DROP "+Math.max(1,Math.ceil(ot.nextT));
+      penLine += ot.truck ? "  —  DROPPING" : herdFlockLeft(sh)<=0 ? "  —  THAT'S THE LOT" : "  —  NEXT DROP "+Math.max(1,Math.ceil(ot.nextT));
     }
     ctx.fillStyle="#7fd46a"; ctx.fillText(penLine, w/2, 35);
   }
@@ -26876,6 +27002,22 @@ function herdDrawHud(ctx,w,h,sh,t){
   ctx.strokeStyle="#fff"; ctx.lineWidth=1; ctx.strokeRect(bx+0.5,by+0.5,bw,5);
   ctx.fillStyle = e<0.2 ? (Math.floor(t*4)%2?"#ff4a3f":"#8a1f18") : e<0.5 ? "#e8c14a" : "#7fd46a"; ctx.fillRect(bx+1.5,by+1.5,(bw-2)*e,3);
   ctx.textAlign="left";
+  // how many of the farmer's thirty are still to come
+  if(L.overtime){
+    ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle="#d8d8d8";
+    const left=herdFlockLeft(sh);
+    ctx.fillText(left>0 ? "FARMER: "+left+" LEFT" : "FARMER: ALL OUT", 10, 43);
+  }
+  // a long load on the road is announced while the headlights flash
+  const rr=sh.road;
+  if(rr && rr.ph==="warn" && (rr.trl||0)>=2){
+    const v=HERD.view, ex = rr.dir>0 ? v.ox+8*v.sc : v.ox+(HF_W-8)*v.sc, ey=v.oy+(HF_ROAD_Y-HF_ROAD_H/2-8)*v.sc;
+    ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign = rr.dir>0 ? "left" : "right";
+    const msg="LONG LOAD \u2014 "+rr.trl+" TRAILERS", tw=ctx.measureText(msg).width;
+    ctx.fillStyle="rgba(0,0,0,.7)"; ctx.fillRect(rr.dir>0?ex-3:ex-tw-3, ey-9, tw+6, 12);
+    ctx.fillStyle="#f6d86b"; ctx.fillText(msg, ex, ey);
+    ctx.textAlign="left";
+  }
   // the red travel arrow: a hint pinned to the destination edge, never on the flock
   if(L.arrow){
     const v=HERD.view, ax=v.ox+HF_GATE_X*v.sc, ay=v.oy+(HF_PEN_Y+18)*v.sc;
@@ -26890,7 +27032,7 @@ function herdDrawHud(ctx,w,h,sh,t){
   if(ot.on && !ot.truck && ot.nextT<=HD_OT_WARN){
     const v=HERD.view, dir=ot.dir||1, cx=w/2, ty=v.oy+(HF_DROP_Y-26)*v.sc;
     ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    const label="SHEEP INBOUND", tw=ctx.measureText(label).width, bw=tw+52;
+    const label=Math.min(HD_OT_LOAD, herdFlockLeft(sh), Math.max(1,HF_CAP-sh.sheep.length))+" SHEEP INBOUND", tw=ctx.measureText(label).width, bw=tw+52;
     ctx.fillStyle="rgba(0,0,0,.68)"; ctx.fillRect(cx-bw/2, ty-12, bw, 17);
     ctx.strokeStyle="#ff2a1f"; ctx.lineWidth=1.5; ctx.strokeRect(cx-bw/2+0.5, ty-11.5, bw-1, 16);
     ctx.fillStyle="#fff"; ctx.fillText(label, cx, ty);
