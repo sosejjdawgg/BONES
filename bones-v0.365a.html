@@ -812,7 +812,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.364a</span>
+          <span id="devToggle">v0.365a</span>
         </div>
       </div>
 
@@ -25598,6 +25598,9 @@ const HD_WOLF_PROWL=58, HD_WOLF_STALK=34, HD_WOLF_LUNGE=150, HD_WOLF_BLOCK_R=34,
 // and how far one bark pushes the whole pack back
 const HD_PACK_RAD=150, HD_PACK_ORBIT=0.26, HD_PACK_SLOT=22, HD_PACK_CD=[4,6], HD_PACK_GRACE=3.5,
       HD_PACK_REACH=1.6, HD_PACK_LONELY=400, HD_PACK_PUSH=70, HD_PACK_PUSH_T=2.5;
+// a wolf down: how long the rest howl (and hold off), how long until one comes back, and how wide a
+// berth a wolf that is only circling gives a hole (one that is hunting or running isn't looking)
+const HD_WOLF_HOWL_T=3, HD_WOLF_RESPAWN=5, HD_WOLF_WARY=HD_HOLE_R+18;
 
 // seeded, so a shift's holes are the same shift's holes on resume — only the seed is saved
 function herdRng(seed){
@@ -25836,6 +25839,7 @@ function herdLogLine(sh){
   if(L.road) s+=" "+w(L.road)+" UNDER A TRACTOR.";
   if(L.wolf) s+=" "+w(L.wolf)+" TO THE WOLVES.";
   if(L.off)  s+=" "+w(L.off)+" WANDERED OFF.";
+  if(sh.wolvesDown) s+=" "+w(sh.wolvesDown)+(sh.wolvesDown===1?" WOLF DOWN.":" WOLVES DOWN.");
   // checking out at quota can leave a few still grazing — they go back to the farmer, unpaid
   if(sh.sheep.length) s+=" "+w(sh.sheep.length)+" LEFT IN THE FIELD.";
   if(!L.hole&&!L.road&&!L.wolf&&!L.off) s+=" NOT ONE LOST.";
@@ -26109,20 +26113,33 @@ function herdPackPick(sh,P){
   return w ? {w, s:best} : null;
 }
 function herdPackTick(sh,dt){
+  // the fallen come back: each one five seconds after it went, in on the pack's side
+  if(sh.wolfBack && sh.wolfBack.length){
+    for(let i=sh.wolfBack.length-1;i>=0;i--){
+      sh.wolfBack[i]-=dt;
+      if(sh.wolfBack[i]<=0){
+        sh.wolfBack.splice(i,1); herdSpawnWolf(sh,0);
+        const w=sh.wolves[sh.wolves.length-1];
+        herdPop(w.x<0?24:HF_W-24, w.y-16, "WOLF!", "#ff5a4f", false);
+        beep(150,.18,"sawtooth",.04);
+      }
+    }
+  }
   if(!sh.wolves.length) return;
   const P=herdPack(sh), c=herdCentroid(sh);
+  if(P.howlT>0) P.howlT=Math.max(0,P.howlT-dt);
   const hunting=sh.wolves.some(w=>w.st==="stalk"||w.st==="lunge");
   P.flipT-=dt; if(P.flipT<=0){ P.dir*=-1; P.flipT=7+Math.random()*5; }
   P.pushT=Math.max(0,P.pushT-dt);
   if(c){
     // it slows its circling while one of them is in on a sheep, so the rest stay close behind
     P.ang+=P.dir*HD_PACK_ORBIT*(hunting?0.35:1)*dt;
-    const want=HD_PACK_RAD+(P.pushT>0?HD_PACK_PUSH:0);
+    const want=HD_PACK_RAD+(P.pushT>0||P.howlT>0?HD_PACK_PUSH:0);
     P.rad+=(want-P.rad)*Math.min(1,dt*2.5);
     P.x=clamp(c.x+Math.cos(P.ang)*P.rad, 12, HF_W-12);
-    P.y=clamp(c.y+Math.sin(P.ang)*P.rad*0.8, HF_PEN_Y+44, HF_H-12);
+    P.y=clamp(c.y+Math.sin(P.ang)*P.rad*0.8, HF_PEN_Y+44, HF_DROP_Y-14);   // never loiters on the tractor's track
   }
-  if(hunting || P.pushT>0 || !c) return;
+  if(hunting || P.pushT>0 || P.howlT>0 || !c) return;
   P.cd-=dt;
   if(P.cd<=0){
     const pick=herdPackPick(sh,P);
@@ -26136,7 +26153,11 @@ function herdPackSlot(sh,w){
   const P=herdPack(sh), c=herdCentroid(sh)||{x:HF_W/2, y:HF_H/2};
   const i=Math.max(0,sh.wolves.indexOf(w))%HD_PACK_WEDGE.length, [f,sd]=HD_PACK_WEDGE[i];
   const face=Math.atan2(c.y-P.y, c.x-P.x), fx=Math.cos(face), fy=Math.sin(face);
-  return {x:P.x+(fx*f-fy*sd)*HD_PACK_SLOT, y:P.y+(fy*f+fx*sd)*HD_PACK_SLOT};
+  const k=HD_PACK_SLOT*(P.howlT>0?0.55:1);
+  let x=P.x+(fx*f-fy*sd)*k, y=P.y+(fy*f+fx*sd)*k;
+  // a circling wolf never takes a place on top of a hole
+  for(const h of HERD.holes){ const hx=x-h.x, hy=y-h.y, hd=Math.hypot(hx,hy)||0.01; if(hd<HD_WOLF_WARY){ x=h.x+hx/hd*HD_WOLF_WARY; y=h.y+hy/hd*HD_WOLF_WARY; } }
+  return {x, y:Math.min(y, HF_DROP_Y-6)};
 }
 function herdWolfTick(sh,w,dt){
   const d=sh.dog, c=herdCentroid(sh);
@@ -26160,6 +26181,10 @@ function herdWolfTick(sh,w,dt){
     const sl=herdPackSlot(sh,w), gap=Math.hypot(sl.x-w.x, sl.y-w.y);
     if(gap>3) steer(sl.x, sl.y, gap>70 ? HD_WOLF_PROWL*1.7 : HD_WOLF_PROWL*Math.min(1,0.4+gap/40));
     else { w.vx*=0.85; w.vy*=0.85; }
+    for(const h of HERD.holes){
+      const hx=w.x-h.x, hy=w.y-h.y, hd=Math.hypot(hx,hy)||0.01;
+      if(hd<HD_WOLF_WARY){ const f=(HD_WOLF_WARY-hd)/HD_WOLF_WARY; w.vx+=hx/hd*300*f*dt; w.vy+=hy/hd*300*f*dt; }
+    }
   } else if(w.st==="stalk"){
     if(!tgt){ w.st="prowl"; w.tgt=-1; }
     else {
@@ -26182,8 +26207,70 @@ function herdWolfTick(sh,w,dt){
     w.vx=dx/dd*120; w.vy=dy/dd*120; w.st="prowl"; w.tgt=-1;
     beep(200,.06,"square",.03);
   }
+  // a wolf with its mind on a sheep (or on getting away) gets the same soft pull at a hole's rim
+  if(w.st!=="prowl") for(const h of HERD.holes){
+    const dx=h.x-w.x, dy=h.y-w.y, dd=Math.hypot(dx,dy)||0.01;
+    if(dd<HD_HOLE_PULL){ const f=1-dd/HD_HOLE_PULL; w.vx+=dx/dd*HD_HOLE_SUCK*f*f*1.6*dt; w.vy+=dy/dd*HD_HOLE_SUCK*f*f*1.6*dt; }
+  }
   w.x+=w.vx*dt; w.y+=w.vy*dt;
   w.y=Math.max(w.y, HF_PEN_Y+14);   // the pen is the one place they never go
+  herdWolfHazards(sh,w);
+}
+/* THE FIELD BITES WOLVES TOO. A hole takes one exactly as it takes a sheep; so does a rig on the
+   road, and the overtime tractor runs down anything grey on its track. When one goes, the rest
+   break off, huddle further out and howl for HD_WOLF_HOWL_T — the player's moment to make a break
+   for the gate — and HD_WOLF_RESPAWN after it fell, another comes in and joins them. */
+function herdWolfHazards(sh,w){
+  if(w.dead) return;
+  for(const h of HERD.holes) if(Math.hypot(h.x-w.x,h.y-w.y)<HD_HOLE_EAT) return herdWolfDown(sh,w,"hole",h);
+  const r=sh.road;
+  if(r && r.ph==="cross" && Math.abs(w.x-r.x)<HD_RIG_W/2+3 && Math.abs(w.y-HF_ROAD_Y)<HD_RIG_H/2+3) return herdWolfDown(sh,w,"road",null,r.dir);
+  const tr=sh.ot && sh.ot.truck;
+  if(tr){
+    const a=tr.x-tr.dir*44, b=tr.x+tr.dir*16;
+    if(w.x>Math.min(a,b) && w.x<Math.max(a,b) && w.y>HF_DROP_Y+2 && w.y<HF_DROP_Y+30) return herdWolfDown(sh,w,"tractor",null,tr.dir);
+  }
+}
+function herdWolfDown(sh,w,why,hole,dir){
+  w.dead=true; w.tgt=-1;
+  sh.wolvesDown=(sh.wolvesDown||0)+1;
+  (sh.wolfBack||(sh.wolfBack=[])).push(HD_WOLF_RESPAWN);
+  const P=herdPack(sh), others=sh.wolves.filter(o=>!o.dead);
+  // the rest drop whatever they were doing
+  for(const o of others) if(o.st==="stalk"||o.st==="lunge"){ o.st="prowl"; o.tgt=-1; }
+  if(others.length){
+    P.howlT=HD_WOLF_HOWL_T;
+    P.cd=Math.max(P.cd, HD_WOLF_HOWL_T+1.5);
+    setTimeout(herdHowl, 320);
+  }
+  herdFxWolfDown(w,why,hole,dir);
+  haptic([30,30,60]);
+  beep(why==="hole"?60:95,.25,"sawtooth",.06);
+}
+function herdHowl(){
+  if(!SETTINGS.sound || !HERD.active) return;
+  try{
+    audioInit();
+    const now=AC.currentTime;
+    if(!sfxAllow("howl",1,now)) return;
+    // two voices a fifth apart, sliding up into the howl and sagging out of it, with a slow wobble
+    for(const [base,g,late] of [[300,0.05,0],[450,0.028,0.18]]){
+      const o=AC.createOscillator(), gn=AC.createGain(), lfo=AC.createOscillator(), lg=AC.createGain();
+      o.type="triangle"; lfo.frequency.value=5.5; lg.gain.value=8; lfo.connect(lg); lg.connect(o.frequency);
+      const t0=now+late;
+      o.frequency.setValueAtTime(base*0.8,t0);
+      o.frequency.linearRampToValueAtTime(base*1.35,t0+0.45);
+      o.frequency.setValueAtTime(base*1.35,t0+1.3);
+      o.frequency.linearRampToValueAtTime(base*0.95,t0+2.1);
+      gn.gain.setValueAtTime(0.0001,t0);
+      gn.gain.linearRampToValueAtTime(g,t0+0.3);
+      gn.gain.setValueAtTime(g,t0+1.6);
+      gn.gain.linearRampToValueAtTime(0.0001,t0+2.2);
+      o.connect(gn); gn.connect(sfxOut(1));
+      o.start(t0); lfo.start(t0); o.stop(t0+2.25); lfo.stop(t0+2.25);
+      sfxVoice(t0+2.25);
+    }
+  }catch(e){}
 }
 function herdLose(sh,s,why){
   if(s.out) return;
@@ -26324,6 +26411,7 @@ function herdUpdate(sh,dt){
   herdOvertimeTick(sh,dt);
   herdPackTick(sh,dt);
   for(const w of sh.wolves) herdWolfTick(sh,w,dt);
+  if(sh.wolves.some(w=>w.dead)) sh.wolves=sh.wolves.filter(w=>!w.dead);
   herdSheepTick(sh,dt);
   HERD.bleatT=Math.max(0,HERD.bleatT-dt);
   HERD.fx.barkT=Math.max(0,HERD.fx.barkT-dt);
@@ -26578,7 +26666,7 @@ function herdDrawSheep(ctx,x,y,face,ram,moving,t,ph,sc,graze){
   if(ram){ ctx.strokeStyle="#c8a15e"; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(face*5.6,-7+dip,1.9,0,5.2); ctx.stroke(); }
   ctx.restore();
 }
-function herdDrawWolf(ctx,wf,t,RM){
+function herdDrawWolf(ctx,wf,t,RM,howl){
   const face=wf.vx<-3?-1:wf.vx>3?1:(wf.face||1); wf.face=face;
   const moving=Math.hypot(wf.vx,wf.vy)>6, step=moving?Math.sin(t*14+wf.x)*1.4:0;
   ctx.save(); ctx.translate(wf.x,wf.y);
@@ -26591,9 +26679,14 @@ function herdDrawWolf(ctx,wf,t,RM){
   ctx.beginPath(); ctx.ellipse(-1,-6.4,9.2,4.2,0,0,7); ctx.fill(); ctx.stroke();
   ctx.fillStyle="#4c4c54"; ctx.beginPath(); ctx.ellipse(-2,-8.2,6.5,1.8,0,0,7); ctx.fill();
   ctx.fillStyle=wf.st==="scared"?"#8a8a92":"#6e6e76";
+  // howling: the head goes back and the muzzle points at the sky
+  ctx.save();
+  if(howl){ ctx.translate(7,-8); ctx.rotate(-0.95-(RM?0:Math.sin(t*3+wf.x)*0.08)); ctx.translate(-7,8); }
   ctx.beginPath(); ctx.moveTo(6,-10); ctx.lineTo(8,-15); ctx.lineTo(9.6,-10.6); ctx.lineTo(14.5,-8); ctx.lineTo(9.5,-5.5); ctx.lineTo(6,-6); ctx.closePath(); ctx.fill(); ctx.stroke();
-  const eyeOn = RM || wf.st!=="prowl" || Math.floor(t*2+wf.x)%3!==0;
+  const eyeOn = !howl && (RM || wf.st!=="prowl" || Math.floor(t*2+wf.x)%3!==0);
   if(eyeOn){ ctx.fillStyle="#ff2a1f"; ctx.fillRect(9.4,-9.4,1.8,1.4); }
+  if(howl){ ctx.fillStyle="#1b140c"; ctx.fillRect(9.2,-9.2,1.6,0.8); }
+  ctx.restore();
   if(wf.carry) herdDrawSheep(ctx,14,-2,1,false,false,t,0,0.6);
   ctx.restore();
 }
@@ -26711,7 +26804,7 @@ function herdDraw(sh,t){
       if(Math.abs(s.vx)>2) s.face=s.vx<0?-1:1;
       if(s.st==="bolt"||s.st==="split"){ ctx.strokeStyle="#ff2a1f"; ctx.lineWidth=1.4; ctx.beginPath(); ctx.ellipse(s.x,s.y+1.5,8.5,3.2,0,0,7); ctx.stroke(); }
       herdDrawSheep(ctx,s.x,s.y,s.face||1,s.ram,moving,t,s.id,1,s.st==="graze"&&!moving);
-    } else if(A.k==="w") herdDrawWolf(ctx,A.o,t,RM);
+    } else if(A.k==="w") herdDrawWolf(ctx,A.o,t,RM, !!(sh.pack && sh.pack.howlT>0 && A.o.st==="prowl"));
     else if(A.k==="r") herdDrawTractor(ctx,r.x,HF_ROAD_Y+6,r.dir,0,true,t);
     else if(A.k==="t"){ const tr=sh.ot.truck; herdDrawTractor(ctx,tr.x,HF_DROP_Y+18,tr.dir,tr.n-tr.dropped,true,t); }
     else {
@@ -26728,6 +26821,7 @@ function herdDraw(sh,t){
       ctx.globalAlpha=1;
     }
   }
+  herdDrawFalls(ctx,t,RM);
   herdDrawParts(ctx,false);
   herdDrawInbound(ctx,sh,t,RM);
   ctx.restore();
@@ -26809,6 +26903,17 @@ function herdDrawHud(ctx,w,h,sh,t){
       }
       ctx.lineCap="butt";
     }
+    ctx.textAlign="left";
+  }
+  // the howl is the player's window: say so, and show it draining
+  if(sh.pack && sh.pack.howlT>0){
+    const f=sh.pack.howlT/HD_WOLF_HOWL_T, msg="PACK HOWLING \u2014 MAKE A BREAK FOR IT";
+    ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    const tw=Math.min(w-20, ctx.measureText(msg).width+16), y0=74;
+    ctx.fillStyle="rgba(10,14,8,.78)"; ctx.fillRect(w/2-tw/2,y0,tw,20);
+    ctx.strokeStyle="#9fb7ff"; ctx.lineWidth=1.5; ctx.strokeRect(w/2-tw/2+0.5,y0+0.5,tw-1,19);
+    ctx.fillStyle="#c9d7ff"; ctx.fillText(msg,w/2,y0+12);
+    ctx.fillStyle="#9fb7ff"; ctx.fillRect(w/2-tw/2+3,y0+16,(tw-6)*f,2);
     ctx.textAlign="left";
   }
   const d=sh.dog;
@@ -26924,7 +27029,7 @@ function herdFxReset(){
   HERD.pops=[]; HERD.parts=[]; HERD.marks=[];
   HERD.shake=0; HERD.streak=0; HERD.streakT=0; HERD.hopT=0; HERD.fadeT=HFX_FADE;
   HERD.baa=null; HERD.baaT=4+Math.random()*4; HERD.cashFx=0; HERD.cashCol="#e8c14a";
-  HERD.penPulse=0; HERD.dustT=0; HERD.hearts=0;
+  HERD.penPulse=0; HERD.dustT=0; HERD.hearts=0; HERD.falls=[];
 }
 herdFxReset(); HERD.fadeT=0;
 function herdPop(x,y,txt,col,big,tag){
@@ -26973,6 +27078,30 @@ function herdFxLose(sh,s,why){
   HERD.streak=0; HERD.streakT=0;
   HERD.cashFx=0.5; HERD.cashCol="#ff5a4f";
 }
+function herdFxWolfDown(w,why,hole,dir){
+  const x=hole?hole.x:w.x, y=hole?hole.y:w.y;
+  HERD.falls.push({x, y, why, dir:dir||(w.face||1), face:w.face||1, t:0.8, max:0.8});
+  herdPop(x, y-18, "WOLF DOWN!", "#e8c14a", true);
+  if(why==="hole") herdPuff(x, y, 12, "#7a5a36", 50, 0.7, 3.2);
+  else herdPuff(x, y-4, 12, "#8a8a92", 60, 0.7, 3);
+  herdShake(4);
+}
+// the last of a fallen wolf: sinking into a hole, or bowled end over end by a wheel
+function herdDrawFalls(ctx,t,RM){
+  for(const f of HERD.falls){
+    const g=1-f.t/f.max;
+    ctx.save();
+    if(f.why==="hole"){
+      ctx.translate(f.x, f.y+g*4); ctx.rotate(RM?0:g*2.4*f.face); const k=Math.max(0.05,1-g); ctx.scale(k,k);
+    } else {
+      ctx.globalAlpha=Math.max(0,1-g*1.1);
+      ctx.translate(f.x+f.dir*g*60, f.y-Math.sin(g*Math.PI)*30); ctx.rotate(RM?0:f.dir*g*7);
+    }
+    herdDrawWolf(ctx,{x:0,y:4,vx:f.face*5,vy:0,st:"scared",face:f.face},t,RM);
+    ctx.restore();
+  }
+  ctx.globalAlpha=1;
+}
 function herdFxQuota(sh){
   herdConfetti(HF_GATE_X, HF_PEN_Y-8, 46);
   HERD.hearts=1.8;
@@ -26997,6 +27126,7 @@ function herdFxTick(sh,dt){
   HERD.penPulse=Math.max(0,HERD.penPulse-dt);
   HERD.fadeT=Math.max(0,HERD.fadeT-dt);
   HERD.hearts=Math.max(0,HERD.hearts-dt);
+  for(let i=HERD.falls.length-1;i>=0;i--){ HERD.falls[i].t-=dt; if(HERD.falls[i].t<=0) HERD.falls.splice(i,1); }
   // dust: behind a running or dashing dog, and under anything bolting
   const d=sh.dog, sp=Math.hypot(d.vx,d.vy);
   if(d.dashT>0 || sp>HERD_DOG_SPD*0.8){
@@ -27102,6 +27232,15 @@ function herdDrawFxText(ctx,sh,t){
     ctx.restore();
   }
   ctx.globalAlpha=1;
+  if(sh.pack && sh.pack.howlT>0){
+    const g=1-sh.pack.howlT/HD_WOLF_HOWL_T;
+    ctx.font="9px 'Press Start 2P',monospace";
+    ctx.globalAlpha=Math.min(1,sh.pack.howlT/0.4, 0.3+g*6);
+    sh.wolves.forEach((w,i)=>{ if(w.st!=="prowl") return;
+      const wob=Math.sin(t*6+i*2)*2;
+      herdOutlineText(ctx,"AWOO",X(w.x+(w.face||1)*8)+wob,Y(w.y-24)-g*10-i*3,"#c9d7ff"); });
+    ctx.globalAlpha=1;
+  }
   if(HERD.hearts>0){
     const d=sh.dog, g=1-HERD.hearts/1.8;
     ctx.globalAlpha=Math.min(1,HERD.hearts/0.4);
