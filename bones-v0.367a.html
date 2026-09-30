@@ -812,7 +812,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.366a</span>
+          <span id="devToggle">v0.367a</span>
         </div>
       </div>
 
@@ -1937,13 +1937,14 @@ let toastT=0;
 const DOGLOG=[], DOGLOG_KEEP=10;
 function toast(msg,red){
   msg=DN(msg);
-  if(PARK_HDR || $("#game").classList.contains("hidden")){
-    const t=$("#toast"); t.textContent=msg; t.className=red?"red":"";
-    t.style.display="block"; clearTimeout(toastT);
-    toastT=setTimeout(()=>t.style.display="none",1700);
-    return;
-  }
+  if(PARK_HDR || $("#game").classList.contains("hidden")) return toastBubble(msg,red);
   dogLog(msg,red);
+}
+// the bubble on its own — for a message that has to be seen over a panel that covers the dog log
+function toastBubble(msg,red){
+  const t=$("#toast"); t.textContent=msg; t.className=red?"red":"";
+  t.style.display="block"; clearTimeout(toastT);
+  toastT=setTimeout(()=>t.style.display="none",1700);
 }
 // one entry. Repeats collapse into a counter rather than filling the whole log with the same line.
 function dogLog(msg,red){
@@ -9545,13 +9546,26 @@ $("#suppliesList").addEventListener("click",e=>{
 // every list of gated activities sorts the same way: whatever unlocks earliest sits at the
 // top, the deepest lock sits at the bottom, so the list reads as a progression ladder
 function unlockSort(rows){ return rows.sort((a,b)=>a.req-b.req).map(r=>r.html).join(""); }
+/* SHELVED. Beach day, agility training and the dog competition are locked for everyone until their
+   design is revisited. They stay on the list — at the very bottom, below every real unlock — so the
+   player knows they exist, and a tap says so without leaving GO OUT. Their code is untouched: take
+   an entry out of GOOUT_SHELVED to bring it back exactly as it was. */
+const GOOUT_SHELVED={beach:"&#9679; BEACH DAY", comp:"&#9733; DOG COMPETITION", agility:"&#9650; AGILITY TRAINING"};
+const GOOUT_SHELVED_MSG="YOU UNLOCK THIS LATER";
+function shelvedRow(key,req){
+  return {req:1000+req, html:'<div class="prow locked"><span class="nm">'+GOOUT_SHELVED[key]+
+    '<br><span class="tiny">COMING LATER</span></span><button data-go="shelved">LOCKED</button></div>'};
+}
 function renderGoOut(){
   const workL=S.earned<5000, compL=S.lvl<15, beachL=S.lvl<9, litL=S.lvl<18, agiL=S.lvl<8;
   const rows=[
     {req:10, html:herdGoOutRow()},
     {req:0, html:'<div class="prow"><span class="nm">&#9642; DELIVERY DRIVER<br><span class="tiny">DELIVER PARCELS FOR CASH</span></span><button data-go="paperboy">GO</button></div>'},
+    GOOUT_SHELVED.agility ? shelvedRow("agility",18) :
     {req:18, html:'<div class="prow'+(agiL?" locked":"")+'"><span class="nm">&#9650; AGILITY TRAINING<br><span class="tiny">'+(agiL?"UNLOCKS LV.18":"-15 ENERGY \u2014 +12 XP")+'</span></span><button data-go="agility" '+(agiL?"disabled":"")+'>TRAIN</button></div>'},
+    GOOUT_SHELVED.beach ? shelvedRow("beach",9) :
     {req:9, html:'<div class="prow'+(beachL?" locked":"")+'"><span class="nm">&#9679; BEACH DAY<br><span class="tiny">'+(beachL?"UNLOCKS LV.9":(S.beach?"OWNED \u2014 BIG FUN":"UNLOCK £25"))+'</span></span><button data-go="beach" '+(beachL||OUTING.active?"disabled":"")+'>'+(S.beach?"GO":"BUY")+'</button></div>'},
+    GOOUT_SHELVED.comp ? shelvedRow("comp",15) :
     {req:15, html:'<div class="prow'+(compL?" locked":"")+'"><span class="nm">&#9733; DOG COMPETITION<br><span class="tiny">'+(compL?"UNLOCKS LV.15":"PRIZE MONEY \u2014 "+(3-S.compsToday)+"/3 TODAY")+'</span></span><button data-go="comp" '+(compL?"disabled":"")+'>ENTER</button></div>'},
     {req:55, html:'<div class="prow'+(litL?" locked":"")+'"><span class="nm">&#9829; VISIT THE BREEDER<br><span class="tiny">'+(litL?"UNLOCKS LV.55":(S.litter?"A PUP AWAITS":"ONE LITTER, ONE SUCCESSOR"))+'</span></span><button data-go="litter" '+(litL?"disabled":"")+'>GO</button></div>'},
     // money-gated rather than level-gated, and £5000 is a long grind \u2014 so it anchors the bottom
@@ -9562,6 +9576,8 @@ function renderGoOut(){
 $("#gooutList").addEventListener("click",e=>{
   const t=e.target.closest("button"); if(!t||t.disabled) return;
   const g=t.dataset.go;
+  // a shelved activity answers where you are; GO OUT stays open
+  if(g==="shelved"){ beep(150,.08); return toastBubble(GOOUT_SHELVED_MSG); }
   $("#goout").classList.remove("show");
   if(g==="work") enterWork();
   if(g==="paperboy") enterPaperboy();
