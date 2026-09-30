@@ -812,7 +812,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.363a</span>
+          <span id="devToggle">v0.364a</span>
         </div>
       </div>
 
@@ -25593,6 +25593,11 @@ const HD_ROAD_GAPS=[6.5,4.8,8.0,5.5];        // seconds between rigs — a reada
 const HD_ROAD_WARN=0.8, HD_ROAD_SPD=150, HD_RIG_W=44, HD_RIG_H=24;
 const HD_OT_MIN=6, HD_OT_MAX=9, HD_OT_SPD=170, HD_OT_FIRST=4;   // gap between drops, tractor speed, first drop after quota
 const HD_WOLF_PROWL=58, HD_WOLF_STALK=34, HD_WOLF_LUNGE=150, HD_WOLF_BLOCK_R=34, HD_WOLF_BARK_R=130;
+// the pack: how far out it circles, how fast, how tight it runs, the gap between strikes, the breather
+// it gives after an overtime drop, how much a sheep's closeness to the pack outweighs its loneliness,
+// and how far one bark pushes the whole pack back
+const HD_PACK_RAD=150, HD_PACK_ORBIT=0.26, HD_PACK_SLOT=22, HD_PACK_CD=[4,6], HD_PACK_GRACE=3.5,
+      HD_PACK_REACH=1.6, HD_PACK_LONELY=400, HD_PACK_PUSH=70, HD_PACK_PUSH_T=2.5;
 
 // seeded, so a shift's holes are the same shift's holes on resume — only the seed is saved
 function herdRng(seed){
@@ -25775,8 +25780,9 @@ function herdSpawnFlock(sh){
   sh.started=n;
 }
 function herdSpawnWolf(sh,delay){
-  const side=Math.random()<0.5?-1:1;
-  sh.wolves.push({x:side<0?-16:HF_W+16, y:200+Math.random()*300, vx:0, vy:0, st:"prowl", t:0,
+  const P=sh.pack, side = P ? (P.x<HF_W/2?-1:1) : (sh.wolves[0] ? (sh.wolves[0].x<HF_W/2?-1:1) : (Math.random()<0.5?-1:1));
+  const y0 = P ? clamp(P.y+(Math.random()-0.5)*40, HF_PEN_Y+60, HF_H-40) : sh.wolves[0] ? sh.wolves[0].y+24 : 200+Math.random()*300;
+  sh.wolves.push({x:side<0?-16:HF_W+16, y:y0, vx:0, vy:0, st:"prowl", t:0,
                   cd:delay, tgt:-1, ang:side<0?Math.PI:0, dir:Math.random()<0.5?-1:1, rad:150+Math.random()*30});
 }
 function herdNewShift(lv){
@@ -25945,6 +25951,7 @@ function herdBark(){
     while(da>Math.PI) da-=2*Math.PI; while(da<-Math.PI) da+=2*Math.PI;
     if(Math.abs(da)>HERD_BARK_HALF+0.2) continue;
     w.st="scared"; w.t=2.5; w.tgt=-1;
+    herdPack(sh).pushT=HD_PACK_PUSH_T;
     herdPop(w.x, w.y-18, "?!", "#fff");
     beep(180,.1,"sawtooth",.04);
   }
@@ -26051,6 +26058,7 @@ function herdOvertimeTick(sh,dt){
       const dir=ot.dir, drops=[];
       for(let i=0;i<n;i++) drops.push(dir>0 ? 70+(i+0.5)*(220/n) : HF_W-70-(i+0.5)*(220/n));
       ot.truck={x:dir>0?-40:HF_W+40, dir, n, drops, dropped:0};
+      if(sh.pack) sh.pack.cd=Math.max(sh.pack.cd, HD_PACK_GRACE+(HF_W+80)/HD_OT_SPD);
       beep(60,.5,"sawtooth",.05); haptic([25,25,25,25,25]);
       if(sh.lv===3 && ot.drops===0 && sh.wolves.length<L.wolvesOT) herdSpawnWolf(sh,6);
     }
@@ -26067,20 +26075,68 @@ function herdOvertimeTick(sh,dt){
     ot.truck=null; ot.drops++; ot.nextT=HD_OT_MIN+Math.random()*(HD_OT_MAX-HD_OT_MIN); ot.dir=Math.random()<0.5?1:-1;
   }
 }
-/* THE WOLVES PEEL, THEY DON'T SWARM. At most one of them is ever committed to an attack; the rest
-   prowl a ring round the flock. A committed wolf picks the loneliest sheep it can see — anything
-   split off or bolting first, then whatever is furthest out — creeps in on a telegraphed line,
-   lunges, and if it gets there it takes that one sheep and leaves. Stand in its way or bark at it
-   and it breaks off. Pressure, not a boss. */
-function herdPickTarget(sh,w){
+/* THE PACK HUNTS AS ONE. The wolves move as a unit: a single pack anchor circles the flock, and
+   every wolf that isn't busy runs in a tight wedge on it. So the pressure comes from ONE side at a
+   time — the flock edges away from it together, and the dog has a front to hold — instead of two or
+   three wolves ringing the flock from every side and scattering it (which is what made overtime,
+   with fresh sheep landing at the bottom, nearly impossible to pull back together).
+   The strike itself is unchanged: at most one wolf is ever committed, it creeps in on a telegraphed
+   line, lunges, and takes one sheep. What changed is the choice. The pack still prefers a lonely
+   sheep, but distance from the PACK now counts for more than loneliness, so it takes what is near
+   it rather than crossing the field. A bark that scares any of them pushes the whole pack back, and
+   an overtime drop buys a few seconds before the next strike. Pressure, not a boss. */
+function herdPack(sh){
+  if(!sh.pack){
+    const c=herdCentroid(sh)||{x:HF_W/2, y:HF_H/2}, w=sh.wolves[0];
+    const ang = w ? Math.atan2(w.y-c.y, w.x-c.x) : 0;
+    sh.pack={ang, dir:Math.random()<0.5?-1:1, rad:HD_PACK_RAD, cd:6, flipT:7+Math.random()*4, pushT:0,
+             x: w?w.x:c.x+Math.cos(ang)*HD_PACK_RAD, y: w?w.y:c.y};
+  }
+  return sh.pack;
+}
+function herdPackPick(sh,P){
   const c=herdCentroid(sh); if(!c) return null;
   let best=null, bs=-1e9;
   for(const s of sh.sheep){
     const lonely = s.near>SH_SPLIT_D || s.panicT>0;
-    const sc=(lonely?1000:0)+Math.hypot(s.x-c.x,s.y-c.y)*2-Math.hypot(s.x-w.x,s.y-w.y)*0.5;
+    const sc=(lonely?HD_PACK_LONELY:0)+Math.hypot(s.x-c.x,s.y-c.y)-Math.hypot(s.x-P.x,s.y-P.y)*HD_PACK_REACH;
     if(sc>bs){ bs=sc; best=s; }
   }
-  return best;
+  if(!best) return null;
+  // whoever in the wedge is closest to it goes
+  let w=null, wd=1e9;
+  for(const o of sh.wolves){ if(o.st!=="prowl") continue; const q=Math.hypot(o.x-best.x,o.y-best.y); if(q<wd){ wd=q; w=o; } }
+  return w ? {w, s:best} : null;
+}
+function herdPackTick(sh,dt){
+  if(!sh.wolves.length) return;
+  const P=herdPack(sh), c=herdCentroid(sh);
+  const hunting=sh.wolves.some(w=>w.st==="stalk"||w.st==="lunge");
+  P.flipT-=dt; if(P.flipT<=0){ P.dir*=-1; P.flipT=7+Math.random()*5; }
+  P.pushT=Math.max(0,P.pushT-dt);
+  if(c){
+    // it slows its circling while one of them is in on a sheep, so the rest stay close behind
+    P.ang+=P.dir*HD_PACK_ORBIT*(hunting?0.35:1)*dt;
+    const want=HD_PACK_RAD+(P.pushT>0?HD_PACK_PUSH:0);
+    P.rad+=(want-P.rad)*Math.min(1,dt*2.5);
+    P.x=clamp(c.x+Math.cos(P.ang)*P.rad, 12, HF_W-12);
+    P.y=clamp(c.y+Math.sin(P.ang)*P.rad*0.8, HF_PEN_Y+44, HF_H-12);
+  }
+  if(hunting || P.pushT>0 || !c) return;
+  P.cd-=dt;
+  if(P.cd<=0){
+    const pick=herdPackPick(sh,P);
+    if(pick){ pick.w.st="stalk"; pick.w.t=2.6; pick.w.tgt=pick.s.id; }
+    P.cd=HD_PACK_CD[0]+Math.random()*(HD_PACK_CD[1]-HD_PACK_CD[0]);
+  }
+}
+// where a wolf runs in the wedge: the leader on the anchor, the rest a step behind and to either side
+const HD_PACK_WEDGE=[[0,0],[-1,-1],[-1,1],[-2,0]];
+function herdPackSlot(sh,w){
+  const P=herdPack(sh), c=herdCentroid(sh)||{x:HF_W/2, y:HF_H/2};
+  const i=Math.max(0,sh.wolves.indexOf(w))%HD_PACK_WEDGE.length, [f,sd]=HD_PACK_WEDGE[i];
+  const face=Math.atan2(c.y-P.y, c.x-P.x), fx=Math.cos(face), fy=Math.sin(face);
+  return {x:P.x+(fx*f-fy*sd)*HD_PACK_SLOT, y:P.y+(fy*f+fx*sd)*HD_PACK_SLOT};
 }
 function herdWolfTick(sh,w,dt){
   const d=sh.dog, c=herdCentroid(sh);
@@ -26093,45 +26149,37 @@ function herdWolfTick(sh,w,dt){
     w.t-=dt;
     const dx=w.x-d.x, dy=w.y-d.y, dd=Math.hypot(dx,dy)||0.01;
     steer(w.x+dx/dd*100, w.y+dy/dd*100, 135);
-    if(w.t<=0){ w.st="prowl"; w.cd=3+Math.random()*2; }
+    if(w.t<=0) w.st="prowl";
   } else if(w.st==="retreat"){
     const ex = w.x<HF_W/2 ? -40 : HF_W+40;
     steer(ex, w.y, 105);
-    if(w.x<-30 || w.x>HF_W+30){ w.st="prowl"; w.cd=7+Math.random()*3; w.carry=false; }
+    if(w.x<-30 || w.x>HF_W+30){ w.st="prowl"; w.carry=false; }
   } else if(w.st==="prowl"){
-    if(c){
-      if(!w.ringed){ w.ang=Math.atan2(w.y-c.y,w.x-c.x); w.ringed=true; }
-      w.ang+=w.dir*0.4*dt;
-      const tx=clamp(c.x+Math.cos(w.ang)*w.rad, -10, HF_W+10);
-      const ty=clamp(c.y+Math.sin(w.ang)*w.rad*0.8, HF_PEN_Y+30, HF_H+10);
-      steer(tx,ty,HD_WOLF_PROWL);
-    } else { w.vx*=0.9; w.vy*=0.9; }
-    w.cd-=dt;
-    if(w.cd<=0 && c){
-      const busy=sh.wolves.some(o=>o!==w && (o.st==="stalk"||o.st==="lunge"));
-      if(busy) w.cd=1+Math.random();
-      else { const s=herdPickTarget(sh,w); if(s){ w.st="stalk"; w.t=2.6; w.tgt=s.id; } }
-    }
+    // hold its place in the wedge; one that has fallen behind (back from a kill, just arrived, shaken
+    // off by a bark) lopes to catch the others up
+    const sl=herdPackSlot(sh,w), gap=Math.hypot(sl.x-w.x, sl.y-w.y);
+    if(gap>3) steer(sl.x, sl.y, gap>70 ? HD_WOLF_PROWL*1.7 : HD_WOLF_PROWL*Math.min(1,0.4+gap/40));
+    else { w.vx*=0.85; w.vy*=0.85; }
   } else if(w.st==="stalk"){
-    if(!tgt){ w.st="prowl"; w.cd=1.5; w.tgt=-1; }
+    if(!tgt){ w.st="prowl"; w.tgt=-1; }
     else {
       steer(tgt.x,tgt.y,HD_WOLF_STALK); w.t-=dt;
       if(Math.hypot(tgt.x-w.x,tgt.y-w.y)<44 || w.t<=0){ w.st="lunge"; w.t=0.9; }
     }
   } else if(w.st==="lunge"){
-    if(!tgt){ w.st="prowl"; w.cd=1.5; w.tgt=-1; }
+    if(!tgt){ w.st="prowl"; w.tgt=-1; }
     else {
       steer(tgt.x,tgt.y,HD_WOLF_LUNGE); w.t-=dt;
       if(Math.hypot(tgt.x-w.x,tgt.y-w.y)<9){
         herdLose(sh,tgt,"wolf"); w.st="retreat"; w.tgt=-1; w.carry=true;
         beep(110,.25,"sawtooth",.06);
-      } else if(w.t<=0){ w.st="prowl"; w.cd=2.5; w.tgt=-1; }
+      } else if(w.t<=0){ w.st="prowl"; w.tgt=-1; }
     }
   }
   // body-block: a dog in the way breaks any attack off
   if((w.st==="stalk"||w.st==="lunge") && Math.hypot(w.x-d.x,w.y-d.y)<HD_WOLF_BLOCK_R){
     const dx=w.x-d.x, dy=w.y-d.y, dd=Math.hypot(dx,dy)||0.01;
-    w.vx=dx/dd*120; w.vy=dy/dd*120; w.st="prowl"; w.cd=2.8; w.tgt=-1;
+    w.vx=dx/dd*120; w.vy=dy/dd*120; w.st="prowl"; w.tgt=-1;
     beep(200,.06,"square",.03);
   }
   w.x+=w.vx*dt; w.y+=w.vy*dt;
@@ -26274,6 +26322,7 @@ function herdUpdate(sh,dt){
   herdDogTick(sh,dt);
   herdRoadTick(sh,dt);
   herdOvertimeTick(sh,dt);
+  herdPackTick(sh,dt);
   for(const w of sh.wolves) herdWolfTick(sh,w,dt);
   herdSheepTick(sh,dt);
   HERD.bleatT=Math.max(0,HERD.bleatT-dt);
