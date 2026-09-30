@@ -603,6 +603,55 @@ body.reduce-motion .overpanel.show{transition:opacity .12s linear,visibility 0s 
 .hidden{display:none!important}
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
 body.reduce-motion *{animation:none!important}
+
+/* SHEEP HERDING — its own two screens, both direct children of #app so they cover the DOGCAM and
+   the control panel together. Deliberately NOT .overpanel: uiCloseOverlays() sweeps every
+   .overpanel.show on a screen change, and a saved shift must never be closed out from under the
+   player by something else tidying up. #choice (z55) and the toast (z61) still sit above both. */
+#herdMap,#herdPanel{position:absolute;inset:0;background:#000;display:none;flex-direction:column;
+  opacity:0;animation:herdIn .18s ease forwards}
+@keyframes herdIn{to{opacity:1}}
+body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity:1}
+#herdMap.show,#herdPanel.show{display:flex}
+#herdMap{z-index:52;align-items:center;padding:12px 16px 26px;gap:10px;overflow-y:auto}
+.hm-top{display:flex;justify-content:space-between;align-items:center;width:100%}
+.hm-bank{font-size:8px;color:#8a8a92;letter-spacing:1px}
+.hm-title{font-size:14px;letter-spacing:3px;margin-top:4px}
+.hm-subline{font-size:7px;color:#8a8a92;letter-spacing:2px}
+#hmCard{display:flex;gap:12px;align-items:center;border:3px solid #fff;padding:10px;width:92%;max-width:360px}
+#hmCard.hidden{display:none}
+#hmCardImg{width:58px;height:58px;object-fit:cover;border:2px solid #fff;image-rendering:pixelated;flex:none}
+#hmCardHead{font-size:9px;letter-spacing:1px;margin-bottom:8px}
+#hmCardLine{font-size:7px;line-height:1.9;color:#ccc}
+/* the farm is at the bottom and the ridge is at the top: the trail sits on the floor of the
+   screen and climbs, so node 1 is always where your thumb already is */
+#hmTrail{display:flex;flex-direction:column;align-items:center;width:100%;max-width:340px;margin-top:auto;padding-top:6px}
+.hm-node{width:100%;display:flex;align-items:center;gap:12px;text-align:left;padding:11px 12px;
+  font-size:8px;border:3px solid #fff;background:#000;position:relative}
+.hm-n{font-size:11px;width:16px;flex:none}
+.hm-txt{display:flex;flex-direction:column;gap:6px;flex:1;min-width:0}
+.hm-name{letter-spacing:1px}
+.hm-sub2{font-size:6px;color:#8a8a92;letter-spacing:1px}
+.hm-node.st-locked{border-color:#333;color:#4a4a52}
+.hm-node.st-locked .hm-sub2{color:#3a3a42}
+.hm-pip{width:8px;height:8px;background:#f22;flex:none}
+.hm-tick{flex:none;border:2px solid #fff;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:9px}
+.hm-post{width:2px;height:18px;background:repeating-linear-gradient(#333 0 4px,transparent 4px 7px)}
+.hm-post.lit{background:repeating-linear-gradient(#fff 0 4px,transparent 4px 7px)}
+#herdPanel{z-index:53;touch-action:none}
+#herdcv{flex:1;min-height:0;width:100%;display:block;touch-action:none;image-rendering:pixelated}
+#hBack{position:absolute;top:8px;left:8px;z-index:2;font-size:7px;padding:6px 8px;background:#000}
+#hCheckout{position:absolute;right:12px;bottom:88px;z-index:2;display:flex;flex-direction:column;
+  align-items:center;gap:6px;padding:8px 10px;background:#000;border:3px solid #fff}
+#hCheckout.hidden{display:none}
+#hCheckout .hc-box{border:2px solid #fff;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:12px}
+#hCheckout .hc-lb{font-size:6px;letter-spacing:1px}
+#hCheckout.pulse1{animation:hcPulse .7s ease 1}
+@keyframes hcPulse{0%{transform:scale(1)}40%{transform:scale(1.18)}100%{transform:scale(1)}}
+body.reduce-motion #hCheckout.pulse1{animation:none}
+#herdToast{position:absolute;left:50%;top:100px;transform:translateX(-50%);background:#000;border:3px solid #fff;
+  padding:8px 12px;font-size:8px;z-index:61;display:none;max-width:88%;text-align:center;line-height:1.6;pointer-events:none}
+#herdToast.red{border-color:#f22;color:#f22}
 </style>
 </head>
 <body>
@@ -722,7 +771,7 @@ body.reduce-motion *{animation:none!important}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.359a</span>
+          <span id="devToggle">v0.360a</span>
         </div>
       </div>
 
@@ -1109,6 +1158,21 @@ body.reduce-motion *{animation:none!important}
          happened to him, and there is nothing to decline. -->
     <button id="evoNo" class="tiny" style="display:none">NO THANKS &#8212; NOT RIGHT NOW</button>
   </div>
+  <!-- SHEEP HERDING — the map is the hub; a field is a saved shift. See the herding module. -->
+  <div id="herdMap" aria-label="Sheep herding map">
+    <div class="hm-top"><button class="tiny" id="hmHome">&#8962; GO HOME</button><span class="hm-bank" id="hmBank"></span></div>
+    <h2 class="hm-title">SHEEP HERDING</h2>
+    <div class="hm-subline">HILLTOP FARM &#8212; EDGE OF TOWN</div>
+    <div id="hmCard" class="hidden"><img id="hmCardImg" alt=""><div><div id="hmCardHead"></div><div id="hmCardLine"></div></div></div>
+    <div id="hmTrail"></div>
+  </div>
+  <div id="herdPanel" aria-label="Sheep herding field">
+    <canvas id="herdcv"></canvas>
+    <button class="tiny" id="hBack">&#8249; MAP</button>
+    <button id="hCheckout" class="hidden" aria-label="Check out"><span class="hc-box">&#10003;</span><span class="hc-lb">CHECK OUT</span></button>
+    <div class="ctrlrow" id="hCtrl"><button id="hBark">BARK</button><button id="hDash">DASH</button></div>
+  </div>
+  <div id="herdToast"></div>
   <div id="toast"></div>
 </div>
 <script>const JUMPFRAMES=["data:image/png;base64,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","data:image/png;base64,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"];
@@ -1983,11 +2047,20 @@ const S = {
                       // (the save key keeps its old name; only the display name changed)
   // trained attributes — see TRAINED ATTRIBUTES. Start at 10: a puppy is not made of nothing.
   str:10, stam:10, vit:10, pts:0, trainAcc:{},
-  lastSaveAt:null, lastSaveDay:0, lastSaveH:0
+  lastSaveAt:null, lastSaveDay:0, lastSaveH:0,
+  /* SHEEP HERDING. levels[n] = {cleared, bestPenned, bestCash, visits}; `shift` is the one live
+     shift, whole — sheep, dog, road, wolves, overtime — so a save made mid-shift resumes it exactly.
+     Holes are NOT stored: they are regenerated from shift.seed, which is what "seed once per
+     shift" means and keeps the save small. */
+  herd:{applied:false, mailed:false, seenTip:false, banked:0, levels:{}, shift:null}
 };
 // music on by default: the title sequence is scored to the melody, so a silent first boot would
 // hide the whole opening. A save that already carries an explicit preference still wins (see
 // loadGame), so nobody who deliberately turned it off gets it switched back on.
+// SHEEP HERDING's runtime, never saved: which of its screens is up, the stick, the transient
+// effects. Declared up here, beside S, because tickStats and the main loop both ask it.
+const HERD={shown:false, active:false, joy:null, keys:{}, holes:[], specks:[], xs:[], banner:null,
+            fx:{barkT:0,barkAng:0,penFlash:0,refuseT:0}, bleatT:0, presR:0, view:{sc:1,ox:0,oy:0}, toastTimer:0};
 const SETTINGS = { sound:true, reduceMotion:false, music:true, musicDefaultMigrated:true, barkStyle:"circle", nightMode:true, vignette:60, shake:"full" };
 const CHARMS = [
   {id:"spike", name:"SPIKED COLLAR", cost:15, unlock:3,   fx:"+15% SPEED / -10% JUMP",            mod:{spd:1.15,jmp:0.90}},
@@ -2069,7 +2142,7 @@ function tickStats(dt, force){
   // The park exists outside the day. Nothing decays and the clock does not move while a run
   // is on; each cleared wave spends a flat 15 minutes instead (see parkUpdate). Without this
   // a long run burned a whole night and you came home straight into the bedtime panel.
-  if(PK.active && !force) return;
+  if((PK.active || HERD.active) && !force) return;   // a herding shift keeps its own, gentler clock
   const m=mods();
   const nm=(S.senior?0.6:1)*NEED_FF;
   // AN APPETITE THAT DOES NOT KEEP. Hunger and thirst run twice as fast while he is cursed —
@@ -9433,6 +9506,7 @@ function unlockSort(rows){ return rows.sort((a,b)=>a.req-b.req).map(r=>r.html).j
 function renderGoOut(){
   const workL=S.earned<5000, compL=S.lvl<15, beachL=S.lvl<9, litL=S.lvl<18, agiL=S.lvl<8;
   const rows=[
+    {req:10, html:herdGoOutRow()},
     {req:0, html:'<div class="prow"><span class="nm">&#9642; DELIVERY DRIVER<br><span class="tiny">DELIVER PARCELS FOR CASH</span></span><button data-go="paperboy">GO</button></div>'},
     {req:18, html:'<div class="prow'+(agiL?" locked":"")+'"><span class="nm">&#9650; AGILITY TRAINING<br><span class="tiny">'+(agiL?"UNLOCKS LV.18":"-15 ENERGY \u2014 +12 XP")+'</span></span><button data-go="agility" '+(agiL?"disabled":"")+'>TRAIN</button></div>'},
     {req:9, html:'<div class="prow'+(beachL?" locked":"")+'"><span class="nm">&#9679; BEACH DAY<br><span class="tiny">'+(beachL?"UNLOCKS LV.9":(S.beach?"OWNED \u2014 BIG FUN":"UNLOCK $25"))+'</span></span><button data-go="beach" '+(beachL||OUTING.active?"disabled":"")+'>'+(S.beach?"GO":"BUY")+'</button></div>'},
@@ -9449,6 +9523,7 @@ $("#gooutList").addEventListener("click",e=>{
   $("#goout").classList.remove("show");
   if(g==="work") enterWork();
   if(g==="paperboy") enterPaperboy();
+  if(g==="herd") herdGoOutTap();
   if(g==="comp") openPre("comp");
   if(g==="agility"){
     if(S.energy<20) return toast("BONES IS TOO TIRED TO TRAIN",1);
@@ -10493,6 +10568,8 @@ function loop(now){
   syncMusicMuffle();   // a panel over a live run muffles it the same frame — see MUFFLE
   if(BURY.on){ pkBuryUpdate(dt); pkDrawBury(); }   // its own screen — see THE BURIAL
   if(bossOn()){ pkBossUpdate(dt); pkDrawBoss(); }  // ...and so is WOLFIE
+  if(HERD.shown) herdLoop(dt,t);                    // ...and so is SHEEP HERDING
+  herdMailCheck();
   meterAcc+=dt;
   if(meterAcc>0.5){ meterAcc=0; renderMeters(); }
   if(!$("#game").classList.contains("hidden")){
@@ -10501,11 +10578,11 @@ function loop(now){
        exactly once on his first night as a vampire. Asked here, where every path to the panel
        funnels through, so there is no ordering to get wrong - the flag is simply dropped. */
     if(SLEEP.pending && isVamp()) SLEEP.pending=false;
-    if(SLEEP.pending && !SLEEP.active && MODE==="home" && !R.active && !PK.active && !OUTING.active){
+    if(SLEEP.pending && !SLEEP.active && MODE==="home" && !R.active && !PK.active && !OUTING.active && !HERD.shown){
       SLEEP.pending=false; triggerBedtime();
     }
     // at work the dogcam runs on fast-forward, so BONES visibly races through his routine
-    if(!R.active && !PK.active){
+    if(!R.active && !PK.active && !HERD.shown){   // out at the farm, he is not in the room
       camBehavior(dt*WORK_FF);              // ...which owns the EVO clock itself, so it always runs
       if(!EVO.active){ pupTick(dt*WORK_FF); tickTreats(dt*WORK_FF); }
     }
@@ -10517,7 +10594,7 @@ function loop(now){
     if(MODE==="park" && PK.active){
       parkUpdate(dt); parkDraw(t); PARK_HDR=true; syncParkHeader();
     }
-    else { if(PARK_HDR){ PARK_HDR=false; restoreCamHeader(); } drawCam(t); }
+    else if(!HERD.shown){ if(PARK_HDR){ PARK_HDR=false; restoreCamHeader(); } drawCam(t); }
     slingDeckDraw(dt);      // the ball, once it has left the room — see THE DECK SLINGSHOT
     if(OUTING.active){
       OUTING.timer-=dt;
@@ -25411,6 +25488,978 @@ function drawPaperboy(t){
       "YES, END ROUTE", ()=>{ pbFinish(); },
       "KEEP DRIVING", null);
   });
+})();
+/* ============================================================================================
+   SHEEP HERDING — a job, not a raid.
+   A farm on the edge of town pays a mutt to move stock. GO OUT → SHEEP HERDING opens a MAP, not
+   a run: seven paddocks up a hill, three of them built. Each paddock is a SHIFT, and a shift is
+   saved state — leave it, come back, and it is the same field with the same sheep where you left
+   them. The whole live shift lives on S.herd.shift, so snapshot() (which serialises S whole)
+   already saves it; nothing here needs a save format of its own.
+
+   THE SHEEP DO NOT FOLLOW THE DOG. They flee him, clump to each other, share a heading, keep
+   their spacing, and graze when nobody is pressing them. So the edges are the job and the centre
+   looks after itself: stand behind them and they drive, stand in front and they split around
+   you. A dog standing still is a SMALL presence (SH_PRES_STILL) — stillness is the best tool.
+
+   Controls are the park's hands, not a new stick: drag anywhere is the same throttled joystick
+   (JOY_R / pkJoyThrottle), he is drawn with the same eight-way strips (pkDirDraw) with WOLFIE's
+   white rim so a black dog reads on a black field. The park's bark is automatic, which would be
+   a disaster here, so BARK and DASH are two buttons in the same ctrlrow the runner uses.
+   ============================================================================================ */
+const HF_W=360, HF_H=640;                 // the paddock, in field units; the canvas letterboxes it
+const HF_PEN_Y=96, HF_GATE_X=180, HF_GATE_W=96;
+const HF_ROAD_Y=320, HF_ROAD_H=40;
+const HF_DROP_Y=606;                      // the safe edge the overtime tractor drives
+const HF_CAP=16;                          // most sheep ever loose in one field at once
+const HERD_CUR="£";                       // the farm pays in pounds — see the job spec
+const HERD_LOSS=3;                        // what a lost sheep costs, every level
+const HERD_PLAYABLE=3;                    // 4-7 are on the map as plan only
+const HERD_LV={
+  1:{n:"OPEN FIELD",   pay:1, sheep:[4,4], quota:4, holes:[1,1], road:false, wolves:0, overtime:false,
+     hint:"£1 A HEAD", tip:"STAND BEHIND THEM. BARK IS A SHOVE."},
+  2:{n:"COUNTRY ROAD", pay:2, sheep:[6,6], quota:6, holes:[3,3], road:true,  wolves:0, overtime:true,
+     arrow:true, hint:"£2 A HEAD", tip:"LET THE RIG PASS."},
+  3:{n:"THE WOLFPACK", pay:2, sheep:[6,8], quota:6, holes:[1,2], road:false, wolves:2, wolvesOT:3,
+     overtime:true, hint:"£2 A HEAD", tip:"KEEP THEM TIGHT."},
+  4:{n:"RIDGE ROAD", plan:true, teaser:"THE LANE GETS THIN."},
+  5:{n:"SWITCHBACK", plan:true},
+  6:{n:"ROCKFALL",   plan:true},
+  7:{n:"SUMMIT",     plan:true}
+};
+// the dog
+const HERD_DOG_SPD=96;
+const HERD_BARK_R=96, HERD_BARK_HALF=0.70, HERD_BARK_CD=0.7, HERD_BARK_COST=4;
+const HERD_DASH_T=0.32, HERD_DASH_MUL=2.4, HERD_DASH_CD=1.1, HERD_DASH_COST=7;
+const HERD_PLANT_T=3.0, HERD_GASSED_MUL=0.45;
+// the sheep
+/* PRESENCE. How far he reaches grows a little with speed, but what speed really changes is how
+   HARD he pushes: a still dog is a gentle wall they walk away from as a tight group, a running dog
+   is a shove that strings them out and splits them. That is how "stand behind = drive" and
+   "still = best tool" are the same rule rather than two that fight. */
+const SH_PRES_STILL=58, SH_PRES_RUN=84;
+const SH_FLEE=230, SH_FLEE_STILL=0.42;    // a still dog pushes at 42% of a running one
+const SH_COH=1.7, SH_COH_CALM=0.22;       // clump — hard when alarmed, a slow drift when grazing
+const SH_ALIGN=2.4, SH_ALIGN_CALM=0.3;    // share a heading
+const SH_SEP=320;                         // don't stack
+const SH_MAX_CALM=12, SH_MAX_DRIVE=54, SH_MAX_BOLT=104;
+const SH_ALARM_T=1.4, SH_SPLIT_D=54;
+// hazards
+const HD_HOLE_R=15, HD_HOLE_PULL=30, HD_HOLE_EAT=7, HD_HOLE_SUCK=72;   // a soft pull, a hard centre
+const HD_ROAD_GAPS=[6.5,4.8,8.0,5.5];        // seconds between rigs — a readable rotation, not dice
+const HD_ROAD_WARN=0.8, HD_ROAD_SPD=150, HD_RIG_W=44, HD_RIG_H=24;
+const HD_OT_MIN=25, HD_OT_MAX=35, HD_OT_SPD=90;
+const HD_WOLF_PROWL=58, HD_WOLF_STALK=34, HD_WOLF_LUNGE=150, HD_WOLF_BLOCK_R=34, HD_WOLF_BARK_R=130;
+
+// seeded, so a shift's holes are the same shift's holes on resume — only the seed is saved
+function herdRng(seed){
+  let a=seed>>>0;
+  return ()=>{ a=(a+0x6D2B79F5)|0; let t=Math.imul(a^(a>>>15),1|a);
+    t=(t+Math.imul(t^(t>>>7),61|t))^t; return ((t^(t>>>14))>>>0)/4294967296; };
+}
+function herdLvState(lv){
+  const L=S.herd.levels;
+  if(!L[lv]) L[lv]={cleared:false, bestPenned:0, bestCash:0, visits:0};
+  return L[lv];
+}
+function herdUnlocked(lv){
+  if(HERD_LV[lv].plan) return false;
+  if(lv===1) return !!S.herd.applied;
+  return !!(S.herd.levels[lv-1] && S.herd.levels[lv-1].cleared);
+}
+function herdCash(n){ return (n<0?"-":"")+HERD_CUR+Math.abs(Math.round(n)); }
+function herdToast(msg,red){
+  const t=$("#herdToast"); t.textContent=DN(msg); t.className=red?"red":"";
+  t.style.display="block"; clearTimeout(HERD.toastTimer);
+  HERD.toastTimer=setTimeout(()=>{ t.style.display="none"; },1700);
+}
+function herdGassed(){ return S.energy<=0.5; }
+
+/* ---------------------------------------------------------------- the job itself: GO OUT */
+function herdGoOutRow(){
+  const locked=S.lvl<10, sh=S.herd.shift;
+  const sub = locked ? "UNLOCKS LV.10"
+            : !S.herd.applied ? "A FARM IS HIRING — APPLY ONCE"
+            : sh ? "SHIFT IN PROGRESS — "+HERD_LV[sh.lv].n
+            : "HILLTOP FARM — MOVE THE STOCK";
+  const btn = locked ? "GO" : !S.herd.applied ? "APPLY" : "GO";
+  return '<div class="prow'+(locked?" locked":"")+'"><span class="nm">&#9650; SHEEP HERDING<br><span class="tiny">'+sub+
+    '</span></span><button data-go="herd" '+(locked?"disabled":"")+'>'+btn+'</button></div>';
+}
+function herdGoOutTap(){
+  if(S.lvl<10) return;
+  if(S.herd.applied) return herdOpenMap();
+  openChoice("HILLTOP FARM",
+    "A FARM ON THE EDGE OF TOWN NEEDS A DOG<br>TO MOVE STOCK. PAID BY THE HEAD.<br><br>"+
+    "THEY DON'T FOLLOW YOU. THEY RUN FROM YOU.",
+    "APPLY", ()=>{
+      S.herd.applied=true; herdLvState(1);
+      S.mail=S.mail.filter(m=>m.kind!=="herd"); renderMailBadge();
+      beep(660,.07); setTimeout(()=>beep(990,.1),100);
+      herdOpenMap();
+      herdToast("HIRED. OPEN FIELD IS YOURS.");
+    },
+    "NOT NOW", null);
+}
+// the offer arrives by mail the day he is old enough to take it
+function herdMailCheck(){
+  if(S.herd.mailed || S.lvl<10) return;
+  S.herd.mailed=true;
+  addMail("herd","A FARM IS HIRING",
+    "HILLTOP FARM ON THE EDGE OF TOWN NEEDS A DOG TO MOVE SHEEP. APPLY UNDER GO OUT → SHEEP HERDING.");
+}
+
+/* ---------------------------------------------------------------- THE MAP — the hub */
+function herdOpenMap(card){
+  HERD.shown=true; HERD.active=false; HERD.joy=null;
+  $("#herdPanel").classList.remove("show");
+  herdRenderMap();
+  const c=$("#hmCard");
+  if(card){
+    $("#hmCardImg").src=PORTRAITS[card.pic]||PORTRAITS.content;
+    $("#hmCardHead").textContent=card.head;
+    $("#hmCardLine").textContent=card.line;
+    c.classList.remove("hidden");
+  } else c.classList.add("hidden");
+  $("#herdMap").classList.add("show");
+}
+function herdCloseMap(){
+  HERD.shown=false; HERD.active=false; HERD.joy=null;
+  $("#herdMap").classList.remove("show"); $("#herdPanel").classList.remove("show");
+  renderMeters(); renderShop();
+}
+function herdRenderMap(){
+  $("#hmBank").textContent="EARNED "+herdCash(S.herd.banked||0);
+  const sh=S.herd.shift;
+  let html="";
+  for(let lv=7;lv>=1;lv--){
+    const L=HERD_LV[lv], st=S.herd.levels[lv];
+    const prog = sh && sh.lv===lv;
+    const open = herdUnlocked(lv);
+    const cls = prog ? "st-prog" : (st&&st.cleared) ? "st-clear" : open ? "st-open" : "st-locked";
+    const name = L.plan ? "????" : L.n;
+    const right = prog ? "<span class='hm-pip'></span>"
+                : (st&&st.cleared) ? "<span class='hm-tick'>&#10003;</span>" : "";
+    const sub = L.plan ? "" : !open ? "LOCKED"
+              : prog ? "IN PROGRESS — "+sh.penned+"/"+L.quota+" PENNED"
+              : (st&&st.cleared) ? "BEST "+st.bestPenned+" · "+herdCash(st.bestCash)
+              : L.hint;
+    html+='<button class="hm-node '+cls+'" data-lv="'+lv+'">'+
+          '<span class="hm-n">'+lv+'</span>'+
+          '<span class="hm-txt"><span class="hm-name">'+name+'</span>'+(sub?'<span class="hm-sub2">'+sub+'</span>':"")+'</span>'+
+          right+'</button>';
+    if(lv>1) html+='<div class="hm-post'+(herdUnlocked(lv)?" lit":"")+'"></div>';
+  }
+  $("#hmTrail").innerHTML=html;
+}
+function herdNodeTap(lv){
+  const L=HERD_LV[lv];
+  if(!herdUnlocked(lv)){
+    beep(150,.08);
+    if(L.plan && lv===4 && S.herd.levels[3] && S.herd.levels[3].cleared) return herdToast(HERD_LV[4].teaser+" NOT OPEN YET.");
+    return herdToast("FINISH THE FIELD BELOW.");
+  }
+  if(S.sick){ beep(150,.1); return herdToast("HE'S TOO SICK TO WORK.",1); }
+  const sh=S.herd.shift;
+  if(sh && sh.lv!==lv){
+    const keep=Math.max(0,sh.cash);
+    openChoice("ABANDON SHIFT?",
+      "THERE'S A SHIFT RUNNING ON "+HERD_LV[sh.lv].n+".<br><br>ITS UNPENNED SHEEP ARE LOST.<br>"+
+      "PAY ALREADY PENNED ("+herdCash(keep)+") IS KEPT.",
+      "ABANDON IT", ()=>{ herdEndShift("abandon"); herdStart(lv); },
+      "KEEP IT", null);
+    return;
+  }
+  herdStart(lv);
+}
+
+/* ---------------------------------------------------------------- building a shift */
+function herdMakeHoles(lv,seed){
+  const L=HERD_LV[lv], rnd=herdRng(seed^0x9e3779b9);
+  const n=L.holes[0]+Math.floor(rnd()*(L.holes[1]-L.holes[0]+1));
+  const out=[];
+  // the tutorial hole is off on a flank — a thing to skirt, not a thing in the way
+  if(lv===1){ const side=rnd()<0.5?-1:1; out.push({x:HF_GATE_X+side*(108+rnd()*22), y:200+rnd()*90}); return out; }
+  /* THE DRIVE LINE STAYS CLEAR. Every hole keeps |x-gate| >= corridor, so a straight run from the
+     start to the pen mouth always exists however the seed falls — which is also what rules out a
+     tight triangle that closes every crossing. The corridor is wide on purpose: the flock starts
+     inside it and WAITS inside it on the road's shoulder while a rig goes by, so the holes flank
+     the route and punish drifting off it, rather than punishing the timing the level is about.
+     Never on the road, never at the pen mouth, never on the drop edge, and comfortably apart. */
+  let tries=0, corridor=92;
+  while(out.length<n && tries<800){
+    tries++; if(tries===400) corridor=84;
+    const x=40+rnd()*280, y=150+rnd()*430;
+    if(Math.abs(x-HF_GATE_X)<corridor) continue;
+    if(Math.hypot(x-HF_GATE_X,y-HF_PEN_Y)<130) continue;
+    if(L.road && Math.abs(y-HF_ROAD_Y)<HF_ROAD_H/2+40) continue;
+    if(y>HF_DROP_Y-30) continue;
+    if(out.some(o=>Math.hypot(o.x-x,o.y-y)<120)) continue;
+    out.push({x,y});
+  }
+  return out;
+}
+function herdMakeSpecks(seed){
+  const rnd=herdRng(seed^0x2545f491), out=[];
+  for(let i=0;i<46;i++) out.push({x:rnd()*HF_W, y:HF_PEN_Y+8+rnd()*(HF_H-HF_PEN_Y-8), s:rnd()<0.2?2:1});
+  return out;
+}
+function herdNewSheep(sh,x,y,ram){
+  return {id:sh.nextId++, x, y, vx:0, vy:0, ram:!!ram, alarm:0, panicT:0, pdx:0, pdy:0,
+          wa:Math.random()*6.283, st:"graze", near:99};
+}
+// where each paddock's flock starts: scattered wide for the tutorial (gathering IS the lesson),
+// a loose group near the clear corridor on the later fields
+function herdStartBand(lv){
+  return lv===1 ? {x0:50,x1:310,y0:360,y1:580,gap:52}
+       : lv===2 ? {x0:112,x1:248,y0:452,y1:584,gap:26}
+       :          {x0:112,x1:248,y0:430,y1:584,gap:26};
+}
+function herdSpawnFlock(sh){
+  const L=HERD_LV[sh.lv], rnd=herdRng(sh.seed^0x51f15e);
+  const n=L.sheep[0]+Math.floor(rnd()*(L.sheep[1]-L.sheep[0]+1));
+  const A=herdStartBand(sh.lv);
+  for(let i=0;i<n;i++){
+    let x=0,y=0,tries=0;
+    do{ x=A.x0+rnd()*(A.x1-A.x0); y=A.y0+rnd()*(A.y1-A.y0); tries++; }
+    while(tries<200 && (HERD.holes.some(h=>Math.hypot(h.x-x,h.y-y)<HD_HOLE_PULL+20)
+                        || sh.sheep.some(o=>Math.hypot(o.x-x,o.y-y)<A.gap)));
+    sh.sheep.push(herdNewSheep(sh,x,y,i===0));   // one ram per flock — he bolts first
+  }
+  sh.started=n;
+}
+function herdSpawnWolf(sh,delay){
+  const side=Math.random()<0.5?-1:1;
+  sh.wolves.push({x:side<0?-16:HF_W+16, y:200+Math.random()*300, vx:0, vy:0, st:"prowl", t:0,
+                  cd:delay, tgt:-1, ang:side<0?Math.PI:0, dir:Math.random()<0.5?-1:1, rad:150+Math.random()*30});
+}
+function herdNewShift(lv){
+  const L=HERD_LV[lv];
+  const sh={v:1, lv, seed:(Math.random()*4294967296)>>>0, t:0, started:0, penned:0, cash:0,
+            quotaMet:false, lastOut:null, lost:{hole:0,road:0,wolf:0,off:0}, nextId:1,
+            sheep:[], wolves:[],
+            dog:{x:HF_GATE_X, y:HF_H-16, vx:0, vy:0, faceI:6, faceAng:-Math.PI/2,
+                 dashT:0, dashVx:0, dashVy:0, dashCd:0, barkCd:0, plantT:0, gassed:false},
+            road: L.road ? {ph:"gap", t:3.5, idx:0, dir:1, x:0} : null,
+            ot:{on:false, nextT:0, truck:null, drops:0}};
+  S.herd.shift=sh;
+  HERD.holes=herdMakeHoles(lv,sh.seed);
+  HERD.specks=herdMakeSpecks(sh.seed);
+  herdSpawnFlock(sh);
+  for(let i=0;i<L.wolves;i++) herdSpawnWolf(sh, 5+i*3.5);   // let him gather first
+  herdLvState(lv).visits++;
+  return sh;
+}
+function herdStart(lv){
+  let sh=S.herd.shift;
+  const resumed = !!(sh && sh.lv===lv);
+  if(resumed){ HERD.holes=herdMakeHoles(lv,sh.seed); HERD.specks=herdMakeSpecks(sh.seed); }
+  else sh=herdNewShift(lv);
+  HERD.shown=true; HERD.active=true; HERD.joy=null; HERD.keys={};
+  HERD.xs.length=0; HERD.fx.barkT=0; HERD.fx.penFlash=0; HERD.fx.refuseT=0;
+  const L=HERD_LV[lv];
+  const tip = (lv===1 && !S.herd.seenTip) ? L.tip : (!resumed ? L.tip : null);
+  if(lv===1) S.herd.seenTip=true;
+  HERD.banner={head:resumed?"BACK ON "+L.n:L.n, sub:tip||(resumed?sh.penned+"/"+L.quota+" PENNED":""), t:resumed?1.6:(tip?3.6:2.2)};
+  $("#herdMap").classList.remove("show");
+  $("#herdPanel").classList.add("show");
+  herdSyncCheckout(false);
+  beep(520,.06); setTimeout(()=>beep(700,.08),90);
+}
+// leaving mid-shift: nothing is banked, nothing is rerolled — the field waits exactly as it is
+function herdLeave(){
+  HERD.active=false; HERD.joy=null;
+  beep(400,.05);
+  herdOpenMap();
+}
+
+/* ---------------------------------------------------------------- ending a shift */
+function herdLogLine(sh){
+  const W=["NONE","ONE","TWO","THREE","FOUR","FIVE","SIX","SEVEN","EIGHT","NINE","TEN"];
+  const w=n=>n<W.length?W[n]:String(n);
+  const L=sh.lost;
+  let s="TOOK "+sh.started+". PENNED "+sh.penned+".";
+  if(L.hole) s+=" "+w(L.hole)+(L.hole===1?" IN THE HOLE.":" IN THE HOLES.");
+  if(L.road) s+=" "+w(L.road)+" UNDER A TRACTOR.";
+  if(L.wolf) s+=" "+w(L.wolf)+" TO THE WOLVES.";
+  if(L.off)  s+=" "+w(L.off)+" WANDERED OFF.";
+  // checking out at quota can leave a few still grazing — they go back to the farmer, unpaid
+  if(sh.sheep.length) s+=" "+w(sh.sheep.length)+" LEFT IN THE FIELD.";
+  if(!L.hole&&!L.road&&!L.wolf&&!L.off) s+=" NOT ONE LOST.";
+  return s;
+}
+/* One door out, three ways through it. CHECKOUT banks the visit and marks the paddock CLEARED
+   (which is what opens the next one). A WIPE or an ABANDON banks the same running total — penned
+   pay is never taken back — but clears nothing. Every door never pays below zero. */
+function herdEndShift(kind){
+  const sh=S.herd.shift; if(!sh) return;
+  const L=HERD_LV[sh.lv], st=herdLvState(sh.lv);
+  const pay=Math.max(0,Math.round(sh.cash));
+  S.money+=pay; S.earned+=pay; S.herd.banked=(S.herd.banked||0)+pay;
+  const lostN=sh.lost.hole+sh.lost.road+sh.lost.wolf+sh.lost.off;
+  const line=herdLogLine(sh);
+  let head, pic;
+  if(kind==="checkout"){
+    st.cleared=true;
+    st.bestPenned=Math.max(st.bestPenned,sh.penned);
+    st.bestCash=Math.max(st.bestCash,pay);
+    if(lostN===0){ S.fun=clamp(S.fun+8,0,100); S.mood=clamp(S.mood+4,0,100); }
+    addXP(Math.max(1,Math.round(sh.penned*0.5)));        // small — the wage is the point
+    tickStats(5,true);                                    // a shift is half an hour of the day
+    head="CHECKED OUT — +"+herdCash(pay);
+    pic = lostN===0 ? "happy" : "content";
+    beep(660,.08); setTimeout(()=>beep(990,.12),100);
+    haptic([20,40,20]);
+  } else {
+    st.bestPenned=Math.max(st.bestPenned,sh.penned);
+    tickStats(3.3,true);
+    head=(kind==="wipe"?"SHIFT OVER":"SHIFT ABANDONED")+(pay>0?" — +"+herdCash(pay):"");
+    pic="sad";
+    beep(180,.2,"sawtooth",.04);
+  }
+  dogLog(line+(pay>0?" +"+herdCash(pay):""), kind!=="checkout");
+  S.herd.shift=null;
+  HERD.active=false; HERD.joy=null;
+  herdSyncCheckout(false);
+  renderMeters();
+  if(kind!=="abandon") herdOpenMap({head, line, pic});
+}
+function herdSyncCheckout(pulse){
+  const sh=S.herd.shift, b=$("#hCheckout");
+  const on=!!(sh && sh.quotaMet && HERD.active);
+  b.classList.toggle("hidden",!on);
+  if(on && pulse){ b.classList.remove("pulse1"); void b.offsetWidth; b.classList.add("pulse1"); }
+}
+
+/* ---------------------------------------------------------------- the dog's verbs */
+function herdRefuse(){
+  HERD.fx.refuseT=0.9;
+  beep(120,.12,"square",.03);
+}
+function herdBark(){
+  const sh=S.herd.shift; if(!sh||!HERD.active) return;
+  const d=sh.dog;
+  if(herdGassed()) return herdRefuse();
+  if(d.barkCd>0) return;
+  d.barkCd=HERD_BARK_CD;
+  S.energy=clamp(S.energy-HERD_BARK_COST,0,100);
+  bark(0.9);
+  HERD.fx.barkT=0.28; HERD.fx.barkAng=d.faceAng;
+  /* IN THE MIDDLE, IT IS A MISTAKE. A bark from behind is a shove down the cone. A bark from
+     INSIDE the flock — sheep close on more than one side of him — blows the blob apart: every
+     sheep near him bolts straight out. That is the first lesson the field teaches. */
+  let ux=0, uy=0, n=0;
+  for(const s of sh.sheep){
+    const dx=s.x-d.x, dy=s.y-d.y, dd=Math.hypot(dx,dy);
+    if(dd<44 && dd>0.01){ ux+=dx/dd; uy+=dy/dd; n++; }
+  }
+  const inMiddle = n>=3 && Math.hypot(ux,uy)/n<0.5;
+  let burst=0;
+  for(const s of sh.sheep){
+    const dx=s.x-d.x, dy=s.y-d.y, dd=Math.hypot(dx,dy)||0.01;
+    if(inMiddle && dd<64){
+      const j=(Math.random()-0.5)*0.6, a=Math.atan2(dy,dx)+j;
+      s.panicT=1.1; s.pdx=Math.cos(a); s.pdy=Math.sin(a); s.alarm=SH_ALARM_T; burst++;
+      continue;
+    }
+    if(dd>HERD_BARK_R) continue;
+    let da=Math.atan2(dy,dx)-d.faceAng;
+    while(da>Math.PI) da-=2*Math.PI; while(da<-Math.PI) da+=2*Math.PI;
+    if(Math.abs(da)>HERD_BARK_HALF) continue;
+    const k=150*(1-dd/HERD_BARK_R*0.5)*(s.ram?1.25:1);
+    s.vx+=dx/dd*k; s.vy+=dy/dd*k; s.alarm=SH_ALARM_T;
+  }
+  if(burst) herdBleat(true);
+  for(const w of sh.wolves){
+    const dx=w.x-d.x, dy=w.y-d.y, dd=Math.hypot(dx,dy)||0.01;
+    if(dd>HD_WOLF_BARK_R || w.st==="retreat") continue;
+    let da=Math.atan2(dy,dx)-d.faceAng;
+    while(da>Math.PI) da-=2*Math.PI; while(da<-Math.PI) da+=2*Math.PI;
+    if(Math.abs(da)>HERD_BARK_HALF+0.2) continue;
+    w.st="scared"; w.t=2.5; w.tgt=-1;
+    beep(180,.1,"sawtooth",.04);
+  }
+}
+function herdDash(){
+  const sh=S.herd.shift; if(!sh||!HERD.active) return;
+  const d=sh.dog;
+  if(herdGassed()) return herdRefuse();
+  if(d.dashCd>0) return;
+  let dx=Math.cos(d.faceAng), dy=Math.sin(d.faceAng);
+  const j=HERD.joy;
+  if(j && Math.hypot(j.dx,j.dy)>JOY_DEAD){ const m=Math.hypot(j.dx,j.dy); dx=j.dx/m; dy=j.dy/m; }
+  d.dashT=HERD_DASH_T; d.dashCd=HERD_DASH_CD;
+  d.dashVx=dx*HERD_DOG_SPD*HERD_DASH_MUL; d.dashVy=dy*HERD_DOG_SPD*HERD_DASH_MUL;
+  S.energy=clamp(S.energy-HERD_DASH_COST,0,100);
+  beep(300,.05,"square",.03);
+}
+function herdBleat(force){
+  if(!force && HERD.bleatT>0) return;
+  HERD.bleatT=0.45;
+  beep(560,.06,"square",.03); setTimeout(()=>beep(470,.09,"square",.03),60);
+}
+
+/* ---------------------------------------------------------------- the simulation */
+function herdCentroid(sh){
+  if(!sh.sheep.length) return null;
+  let x=0,y=0; for(const s of sh.sheep){ x+=s.x; y+=s.y; }
+  return {x:x/sh.sheep.length, y:y/sh.sheep.length};
+}
+function herdDogTick(sh,dt){
+  const d=sh.dog;
+  // needs tick slower than a park run — this is a job, not a raid
+  S.energy=clamp(S.energy-0.05*dt,0,100);
+  S.hunger=clamp(S.hunger-0.03*dt,0,100);
+  S.thirst=clamp(S.thirst-0.05*dt,0,100);
+  /* HE REFUSES YOU. Out of energy he plants for a beat and ignores everything, then moves at a
+     trudge with no bark and no dash. That is the whole reason to CHECK OUT while he still can. */
+  if(herdGassed()){
+    if(!d.gassed){ d.gassed=true; d.plantT=HERD_PLANT_T; herdToast("HE'S GASSED. HE WON'T GO.",1); beep(140,.3,"sawtooth",.04); }
+  } else d.gassed=false;
+  d.plantT=Math.max(0,d.plantT-dt);
+  d.barkCd=Math.max(0,d.barkCd-dt); d.dashCd=Math.max(0,d.dashCd-dt);
+  let mx=0,my=0;
+  if(HERD.joy){ mx=HERD.joy.dx; my=HERD.joy.dy; }
+  else {
+    const k=HERD.keys;
+    mx=(k.r?1:0)-(k.l?1:0); my=(k.d?1:0)-(k.u?1:0);
+    const m=Math.hypot(mx,my); if(m>1){ mx/=m; my/=m; }
+  }
+  const m=Math.hypot(mx,my), thr=pkJoyThrottle(Math.min(1,m));
+  let spd=HERD_DOG_SPD*(0.8+0.4*S.energy/100)*thr;
+  if(d.gassed) spd*= d.plantT>0 ? 0 : HERD_GASSED_MUL;
+  if(d.dashT>0){
+    d.dashT-=dt; d.vx=d.dashVx; d.vy=d.dashVy;
+  } else if(spd>0 && m>0){
+    const tvx=mx/m*spd, tvy=my/m*spd, k=Math.min(1,dt*12);
+    d.vx+=(tvx-d.vx)*k; d.vy+=(tvy-d.vy)*k;
+  } else {
+    const k=Math.max(0,1-dt*10); d.vx*=k; d.vy*=k;
+  }
+  d.x=clamp(d.x+d.vx*dt, 6, HF_W-6);
+  d.y=clamp(d.y+d.vy*dt, HF_PEN_Y+8, HF_H-6);
+  if(Math.hypot(d.vx,d.vy)>PKDIR_MOVE) d.faceAng=Math.atan2(d.vy,d.vx);
+  d.faceI=pkFaceUpdate(d.vx,d.vy,d.faceI);
+  // a rig on the road shoulders him out of the way — he is a dog, not a sheep
+  const r=sh.road;
+  if(r && r.ph==="cross" && Math.abs(d.x-r.x)<HD_RIG_W/2+6 && Math.abs(d.y-HF_ROAD_Y)<HD_RIG_H/2+8){
+    d.y = d.y<HF_ROAD_Y ? HF_ROAD_Y-HD_RIG_H/2-10 : HF_ROAD_Y+HD_RIG_H/2+10;
+    d.vx*=0.3; d.vy=0;
+  }
+}
+function herdRoadTick(sh,dt){
+  const r=sh.road; if(!r) return;
+  r.t-=dt;
+  if(r.ph==="gap" && r.t<=0){
+    r.ph="warn"; r.t=HD_ROAD_WARN; r.dir = r.idx%2 ? -1 : 1;
+    beep(55,.55,"sawtooth",.05); haptic([25,25,25,25,25]);
+  } else if(r.ph==="warn" && r.t<=0){
+    r.ph="cross"; r.x = r.dir>0 ? -HD_RIG_W : HF_W+HD_RIG_W;
+  } else if(r.ph==="cross"){
+    r.x+=r.dir*HD_ROAD_SPD*dt;
+    if((r.dir>0 && r.x>HF_W+HD_RIG_W) || (r.dir<0 && r.x<-HD_RIG_W)){
+      r.ph="gap"; r.idx++; r.t=HD_ROAD_GAPS[r.idx%HD_ROAD_GAPS.length];
+    }
+  }
+}
+/* OVERTIME. Once quota is met on a paddock that has it, a tractor runs the safe bottom edge every
+   HD_OT_MIN-HD_OT_MAX seconds and drops 2-4 more sheep behind it — on the start side, so on the road
+   they have to be crossed all over again. Same rules, same pen, same pay. */
+function herdOvertimeTick(sh,dt){
+  const ot=sh.ot, L=HERD_LV[sh.lv];
+  if(!ot.on) return;
+  if(!ot.truck){
+    ot.nextT-=dt;
+    if(ot.nextT<=0){
+      const room=HF_CAP-sh.sheep.length;
+      if(room<=0){ ot.nextT=4; return; }
+      const n=Math.min(room, 2+Math.floor(Math.random()*3));
+      const dir=Math.random()<0.5?1:-1, drops=[];
+      for(let i=0;i<n;i++) drops.push(dir>0 ? 70+(i+0.5)*(220/n) : HF_W-70-(i+0.5)*(220/n));
+      ot.truck={x:dir>0?-40:HF_W+40, dir, n, drops, dropped:0};
+      beep(60,.5,"sawtooth",.05); haptic([25,25,25,25,25]);
+      if(sh.lv===3 && ot.drops===0 && sh.wolves.length<L.wolvesOT) herdSpawnWolf(sh,6);
+    }
+    return;
+  }
+  const tr=ot.truck;
+  tr.x+=tr.dir*HD_OT_SPD*dt;
+  while(tr.dropped<tr.n && (tr.dir>0 ? tr.x>=tr.drops[tr.dropped] : tr.x<=tr.drops[tr.dropped])){
+    const s=herdNewSheep(sh, tr.drops[tr.dropped], HF_DROP_Y-10, tr.dropped===0 && Math.random()<0.5);
+    sh.sheep.push(s); sh.started++; tr.dropped++;
+  }
+  if((tr.dir>0 && tr.x>HF_W+50) || (tr.dir<0 && tr.x<-50)){
+    ot.truck=null; ot.drops++; ot.nextT=HD_OT_MIN+Math.random()*(HD_OT_MAX-HD_OT_MIN);
+  }
+}
+/* THE WOLVES PEEL, THEY DON'T SWARM. At most one of them is ever committed to an attack; the rest
+   prowl a ring round the flock. A committed wolf picks the loneliest sheep it can see — anything
+   split off or bolting first, then whatever is furthest out — creeps in on a telegraphed line,
+   lunges, and if it gets there it takes that one sheep and leaves. Stand in its way or bark at it
+   and it breaks off. Pressure, not a boss. */
+function herdPickTarget(sh,w){
+  const c=herdCentroid(sh); if(!c) return null;
+  let best=null, bs=-1e9;
+  for(const s of sh.sheep){
+    const lonely = s.near>SH_SPLIT_D || s.panicT>0;
+    const sc=(lonely?1000:0)+Math.hypot(s.x-c.x,s.y-c.y)*2-Math.hypot(s.x-w.x,s.y-w.y)*0.5;
+    if(sc>bs){ bs=sc; best=s; }
+  }
+  return best;
+}
+function herdWolfTick(sh,w,dt){
+  const d=sh.dog, c=herdCentroid(sh);
+  const steer=(tx,ty,sp)=>{
+    const dx=tx-w.x, dy=ty-w.y, dd=Math.hypot(dx,dy)||0.01, k=Math.min(1,dt*6);
+    w.vx+=(dx/dd*sp-w.vx)*k; w.vy+=(dy/dd*sp-w.vy)*k;
+  };
+  const tgt = w.tgt>=0 ? sh.sheep.find(s=>s.id===w.tgt) : null;
+  if(w.st==="scared"){
+    w.t-=dt;
+    const dx=w.x-d.x, dy=w.y-d.y, dd=Math.hypot(dx,dy)||0.01;
+    steer(w.x+dx/dd*100, w.y+dy/dd*100, 135);
+    if(w.t<=0){ w.st="prowl"; w.cd=3+Math.random()*2; }
+  } else if(w.st==="retreat"){
+    const ex = w.x<HF_W/2 ? -40 : HF_W+40;
+    steer(ex, w.y, 105);
+    if(w.x<-30 || w.x>HF_W+30){ w.st="prowl"; w.cd=7+Math.random()*3; w.carry=false; }
+  } else if(w.st==="prowl"){
+    if(c){
+      if(!w.ringed){ w.ang=Math.atan2(w.y-c.y,w.x-c.x); w.ringed=true; }
+      w.ang+=w.dir*0.4*dt;
+      const tx=clamp(c.x+Math.cos(w.ang)*w.rad, -10, HF_W+10);
+      const ty=clamp(c.y+Math.sin(w.ang)*w.rad*0.8, HF_PEN_Y+30, HF_H+10);
+      steer(tx,ty,HD_WOLF_PROWL);
+    } else { w.vx*=0.9; w.vy*=0.9; }
+    w.cd-=dt;
+    if(w.cd<=0 && c){
+      const busy=sh.wolves.some(o=>o!==w && (o.st==="stalk"||o.st==="lunge"));
+      if(busy) w.cd=1+Math.random();
+      else { const s=herdPickTarget(sh,w); if(s){ w.st="stalk"; w.t=2.6; w.tgt=s.id; } }
+    }
+  } else if(w.st==="stalk"){
+    if(!tgt){ w.st="prowl"; w.cd=1.5; w.tgt=-1; }
+    else {
+      steer(tgt.x,tgt.y,HD_WOLF_STALK); w.t-=dt;
+      if(Math.hypot(tgt.x-w.x,tgt.y-w.y)<44 || w.t<=0){ w.st="lunge"; w.t=0.9; }
+    }
+  } else if(w.st==="lunge"){
+    if(!tgt){ w.st="prowl"; w.cd=1.5; w.tgt=-1; }
+    else {
+      steer(tgt.x,tgt.y,HD_WOLF_LUNGE); w.t-=dt;
+      if(Math.hypot(tgt.x-w.x,tgt.y-w.y)<9){
+        herdLose(sh,tgt,"wolf"); w.st="retreat"; w.tgt=-1; w.carry=true;
+        beep(110,.25,"sawtooth",.06);
+      } else if(w.t<=0){ w.st="prowl"; w.cd=2.5; w.tgt=-1; }
+    }
+  }
+  // body-block: a dog in the way breaks any attack off
+  if((w.st==="stalk"||w.st==="lunge") && Math.hypot(w.x-d.x,w.y-d.y)<HD_WOLF_BLOCK_R){
+    const dx=w.x-d.x, dy=w.y-d.y, dd=Math.hypot(dx,dy)||0.01;
+    w.vx=dx/dd*120; w.vy=dy/dd*120; w.st="prowl"; w.cd=2.8; w.tgt=-1;
+    beep(200,.06,"square",.03);
+  }
+  w.x+=w.vx*dt; w.y+=w.vy*dt;
+  w.y=Math.max(w.y, HF_PEN_Y+14);   // the pen is the one place they never go
+}
+function herdLose(sh,s,why){
+  if(s.out) return;
+  s.out=why; sh.lost[why]++; sh.lastOut="lost";
+  sh.cash-=HERD_LOSS;
+  S.mood=clamp(S.mood-3,0,100);
+  HERD.xs.push({x:clamp(s.x,4,HF_W-4), y:clamp(s.y,HF_PEN_Y+4,HF_H-4), t:2.5});
+  haptic([60,40,60]);
+  if(why==="hole"){ beep(70,.22,"sine",.08); beep(48,.3,"sawtooth",.03); }
+  else if(why==="road"){ beep(90,.18,"sawtooth",.06); }
+  else if(why==="off"){ beep(220,.1,"sawtooth",.03); }
+}
+function herdPen(sh,s){
+  if(s.out) return;
+  s.out="pen"; sh.penned++; sh.lastOut="pen";
+  sh.cash+=HERD_LV[sh.lv].pay;
+  S.fun=clamp(S.fun+1,0,100);
+  HERD.fx.penFlash=0.09;
+  haptic(12);
+  beep(880,.04,"square",.03);
+}
+function herdSheepTick(sh,dt){
+  const d=sh.dog, sheep=sh.sheep, r=sh.road;
+  const spFrac=clamp(Math.hypot(d.vx,d.vy)/HERD_DOG_SPD,0,1);
+  const dashing=d.dashT>0;
+  const presR=SH_PRES_STILL+(SH_PRES_RUN-SH_PRES_STILL)*spFrac;
+  HERD.presR=dashing?0:presR;
+  for(const s of sheep){
+    let ax=0, ay=0;
+    // the dog. A dash covers ground, it does not herd — no presence while he is dashing.
+    if(!dashing){
+      const dx=s.x-d.x, dy=s.y-d.y, dd=Math.hypot(dx,dy)||0.01;
+      const R=presR*(s.ram?1.18:1);
+      if(dd<R){ const f=1-dd/R, k=SH_FLEE*f*(SH_FLEE_STILL+(1-SH_FLEE_STILL)*spFrac)*(s.ram?1.3:1);
+                ax+=dx/dd*k; ay+=dy/dd*k; s.alarm=SH_ALARM_T; }
+    }
+    /* WOLVES. Any wolf close by makes them bunch and edge away — that is what a flock does. Only
+       the ONE a wolf has actually picked breaks and runs: that is the peel. A prowling wolf used
+       to bolt every sheep it passed, which sent them over the hedge by the handful and made the
+       pack a blob-deleter the player never saw coming. */
+    for(const w of sh.wolves){
+      if(w.st==="scared"||w.st==="retreat") continue;
+      const dx=s.x-w.x, dy=s.y-w.y, dd=Math.hypot(dx,dy)||0.01;
+      if(dd<60){
+        const f=1-dd/60; ax+=dx/dd*90*f; ay+=dy/dd*90*f; s.alarm=SH_ALARM_T;
+        if((w.st==="stalk"||w.st==="lunge") && w.tgt===s.id && dd<46 && s.panicT<=0){
+          s.panicT=0.7; s.pdx=dx/dd; s.pdy=dy/dd; herdBleat();
+        }
+      }
+    }
+    // neighbours: clump, align, don't stack
+    let cx=0,cy=0,cn=0, avx=0,avy=0,an=0, sx=0,sy=0, near=1e9;
+    for(const o of sheep){
+      if(o===s) continue;
+      const dx=o.x-s.x, dy=o.y-s.y, dd=Math.hypot(dx,dy);
+      if(dd<near) near=dd;
+      if(dd<70){ cx+=o.x; cy+=o.y; cn++; }
+      if(dd<42){ avx+=o.vx; avy+=o.vy; an++; }
+      if(dd<12 && dd>0.01){ const f=(12-dd)/12; sx-=dx/dd*f; sy-=dy/dd*f; }
+    }
+    s.near=near;
+    const alarmed=s.alarm>0;
+    if(cn){ const k=alarmed?SH_COH:SH_COH_CALM; ax+=(cx/cn-s.x)*k; ay+=(cy/cn-s.y)*k; }
+    if(an){ const k=alarmed?SH_ALIGN:SH_ALIGN_CALM; ax+=(avx/an-s.vx)*k; ay+=(avy/an-s.vy)*k; }
+    ax+=sx*SH_SEP; ay+=sy*SH_SEP;
+    /* THE HEDGE. A sheep that is only being pushed turns along the hedge rather than walking
+       through it — only a BOLTING sheep goes over. So "lost off the paddock" is the price of a
+       panic you caused, not a leak that happens whenever the flock drifts near a side. */
+    if(s.panicT<=0){
+      const hk=alarmed?7:2;
+      if(s.x<26) ax+=(26-s.x)*hk; if(s.x>HF_W-26) ax-=(s.x-(HF_W-26))*hk;
+      if(s.y>HF_H-26) ay-=(s.y-(HF_H-26))*hk;
+    }
+    if(!alarmed){
+      // grazing: a slow amble
+      s.wa+=(Math.random()-0.5)*2.4*dt;
+      ax+=Math.cos(s.wa)*7; ay+=Math.sin(s.wa)*7;
+    } else if(s.y<HF_PEN_Y+64 && Math.abs(s.x-HF_GATE_X)<96){
+      // a driven sheep near the gate sees the gap and goes for it
+      ax+=(HF_GATE_X-s.x)*2.2; ay-=24;
+    }
+    // panic
+    if(s.panicT>0){
+      s.panicT-=dt;
+      const k=Math.min(1,dt*5);
+      s.vx+=(s.pdx*SH_MAX_BOLT-s.vx)*k; s.vy+=(s.pdy*SH_MAX_BOLT-s.vy)*k;
+      if(s.panicT<=0) s.panicT=0;
+    }
+    // holes: a soft pull at the rim, a hard swallow at the centre, and panic at the edge
+    for(const h of HERD.holes){
+      const dx=h.x-s.x, dy=h.y-s.y, dd=Math.hypot(dx,dy)||0.01;
+      if(dd<HD_HOLE_PULL){
+        const f=1-dd/HD_HOLE_PULL; ax+=dx/dd*HD_HOLE_SUCK*f*f*1.6; ay+=dy/dd*HD_HOLE_SUCK*f*f*1.6;
+        if(dd<HD_HOLE_R+6 && s.panicT<=0 && Math.random()<0.6*dt){
+          const a=Math.atan2(-dy,-dx)+(Math.random()-0.5)*2.2;
+          s.panicT=0.8; s.pdx=Math.cos(a); s.pdy=Math.sin(a); herdBleat();
+        }
+      }
+    }
+    s.vx+=ax*dt; s.vy+=ay*dt;
+    const damp=alarmed?1.4:3.2, dk=Math.max(0,1-damp*dt);
+    s.vx*=dk; s.vy*=dk;
+    const vmax = s.panicT>0 ? SH_MAX_BOLT : alarmed ? SH_MAX_DRIVE*(s.ram?1.12:1) : SH_MAX_CALM;
+    const v=Math.hypot(s.vx,s.vy); if(v>vmax){ s.vx*=vmax/v; s.vy*=vmax/v; }
+    s.x+=s.vx*dt; s.y+=s.vy*dt;
+    s.alarm=Math.max(0,s.alarm-dt);
+    // the state the HUD reads
+    const prev=s.st;
+    s.st = s.panicT>0 ? "bolt" : (s.alarm>0 && s.near>SH_SPLIT_D && sheep.length>1) ? "split" : s.alarm>0 ? "driven" : "graze";
+    if(s.st==="split" && prev!=="split") herdBleat();
+  }
+  // resolve the field: pen, fence, holes, road, hedge
+  for(const s of sheep){
+    if(s.out) continue;
+    const inGate=Math.abs(s.x-HF_GATE_X)<HF_GATE_W/2-3;
+    if(s.y<HF_PEN_Y-4 && inGate){ herdPen(sh,s); continue; }
+    if(s.y<HF_PEN_Y+4 && !inGate){ s.y=HF_PEN_Y+4; if(s.vy<0) s.vy=0; }
+    let gone=false;
+    for(const h of HERD.holes) if(Math.hypot(h.x-s.x,h.y-s.y)<HD_HOLE_EAT){ herdLose(sh,s,"hole"); gone=true; break; }
+    if(gone) continue;
+    if(r && r.ph==="cross" && Math.abs(s.x-r.x)<HD_RIG_W/2+3 && Math.abs(s.y-HF_ROAD_Y)<HD_RIG_H/2+3){ herdLose(sh,s,"road"); continue; }
+    // the hedge holds anything that is merely being pushed — a running dog pins a sheep against it,
+    // he cannot shove one through it. Only a bolting sheep clears it.
+    if(s.panicT<=0){
+      if(s.x<4){ s.x=4; if(s.vx<0) s.vx=0; } else if(s.x>HF_W-4){ s.x=HF_W-4; if(s.vx>0) s.vx=0; }
+      if(s.y>HF_H-4){ s.y=HF_H-4; if(s.vy>0) s.vy=0; }
+    }
+    if(s.x<-8 || s.x>HF_W+8 || s.y>HF_H+10) herdLose(sh,s,"off");
+  }
+  for(let i=sheep.length-1;i>=0;i--) if(sheep[i].out) sheep.splice(i,1);
+}
+function herdUpdate(sh,dt){
+  const L=HERD_LV[sh.lv];
+  sh.t+=dt;
+  herdDogTick(sh,dt);
+  herdRoadTick(sh,dt);
+  herdOvertimeTick(sh,dt);
+  for(const w of sh.wolves) herdWolfTick(sh,w,dt);
+  herdSheepTick(sh,dt);
+  HERD.bleatT=Math.max(0,HERD.bleatT-dt);
+  HERD.fx.barkT=Math.max(0,HERD.fx.barkT-dt);
+  HERD.fx.penFlash=Math.max(0,HERD.fx.penFlash-dt);
+  HERD.fx.refuseT=Math.max(0,HERD.fx.refuseT-dt);
+  for(let i=HERD.xs.length-1;i>=0;i--){ HERD.xs[i].t-=dt; if(HERD.xs[i].t<=0) HERD.xs.splice(i,1); }
+  if(HERD.banner){ HERD.banner.t-=dt; if(HERD.banner.t<=0) HERD.banner=null; }
+  // quota
+  if(!sh.quotaMet && sh.penned>=L.quota){
+    sh.quotaMet=true;
+    herdSyncCheckout(true);
+    HERD.banner={head:"QUOTA MET", sub:L.overtime?"CHECK OUT — OR STAY FOR OVERTIME":"CHECK OUT WHEN YOU'RE READY", t:2.4};
+    beep(760,.08); setTimeout(()=>beep(1020,.1),100);
+    if(L.overtime){ sh.ot.on=true; sh.ot.nextT=HD_OT_MIN+Math.random()*(HD_OT_MAX-HD_OT_MIN); }
+  }
+  // wipe: nothing left to move and the quota never made — the shift is over
+  if(sh.sheep.length===0){
+    if(!sh.quotaMet) return herdEndShift("wipe");
+    // in overtime, a drop lost to the last sheep is the flock wiped: the job's done, bank it
+    if(L.overtime && sh.lastOut==="lost" && !sh.ot.truck) return herdEndShift("checkout");
+  }
+}
+
+/* ---------------------------------------------------------------- drawing */
+function herdDraw(sh,t){
+  const [ctx,w,h]=fit($("#herdcv"));
+  const L=HERD_LV[sh.lv], RM=!!SETTINGS.reduceMotion;
+  ctx.fillStyle="#000"; ctx.fillRect(0,0,w,h);
+  const sc=Math.min(w/HF_W, h/HF_H), ox=(w-HF_W*sc)/2, oy=(h-HF_H*sc)/2;
+  HERD.view={sc,ox,oy};
+  ctx.save(); ctx.translate(ox,oy); ctx.scale(sc,sc);
+  // ground: black, a few specks of grass, a dim hedge line where the paddock stops
+  ctx.fillStyle="#1a1a1e";
+  for(const p of HERD.specks) ctx.fillRect(p.x,p.y,p.s,p.s);
+  ctx.strokeStyle="#2c2c32"; ctx.lineWidth=1; ctx.setLineDash([3,5]);
+  ctx.strokeRect(1,HF_PEN_Y,HF_W-2,HF_H-HF_PEN_Y-1); ctx.setLineDash([]);
+  // the road
+  const r=sh.road;
+  if(r){
+    const y0=HF_ROAD_Y-HF_ROAD_H/2;
+    ctx.fillStyle="#141418"; ctx.fillRect(0,y0,HF_W,HF_ROAD_H);
+    ctx.fillStyle="#5a5a62"; ctx.fillRect(0,y0,HF_W,1); ctx.fillRect(0,y0+HF_ROAD_H-1,HF_W,1);
+    ctx.fillStyle="#8a8a92"; for(let x=4;x<HF_W;x+=24) ctx.fillRect(x,HF_ROAD_Y-1,12,2);
+    if(r.ph==="warn"){
+      // the headlights: a white bar on the edge the rig is coming from
+      const a = RM ? 0.9 : 0.5+0.5*Math.abs(Math.sin(t*14));
+      ctx.globalAlpha=a; ctx.fillStyle="#fff";
+      ctx.fillRect(r.dir>0?0:HF_W-5, y0+4, 5, HF_ROAD_H-8);
+      ctx.globalAlpha=1;
+    }
+  }
+  // holes: black on black, found by the rim
+  for(const hl of HERD.holes){
+    let close=0;
+    for(const s of sh.sheep){ const dd=Math.hypot(s.x-hl.x,s.y-hl.y); if(dd<HD_HOLE_PULL) close=Math.max(close,1-dd/HD_HOLE_PULL); }
+    ctx.fillStyle="#000"; ctx.beginPath(); ctx.arc(hl.x,hl.y,HD_HOLE_R,0,7); ctx.fill();
+    ctx.strokeStyle = close>0 ? (Math.floor(t*(RM?0:10))%2 && !RM ? "#f22" : (close>0.35?"#f22":"#fff")) : "#fff";
+    ctx.lineWidth=1.4; ctx.beginPath(); ctx.arc(hl.x,hl.y,HD_HOLE_R,0,7); ctx.stroke();
+    if(!RM){
+      ctx.fillStyle="#3a3a42";
+      for(let i=0;i<6;i++){
+        const ph=((t*0.5+i/6)%1), a=i*1.047+t*0.8, rr=HD_HOLE_R*(1-ph);
+        ctx.fillRect(hl.x+Math.cos(a)*rr-0.5, hl.y+Math.sin(a)*rr-0.5, 1, 1);
+      }
+    }
+  }
+  // the pen: posts and rails across the top, a gap at the gate, penned sheep inside it
+  {
+    const g0=HF_GATE_X-HF_GATE_W/2, g1=HF_GATE_X+HF_GATE_W/2;
+    ctx.fillStyle="#fff";
+    ctx.fillRect(0,HF_PEN_Y-1,g0,2); ctx.fillRect(g1,HF_PEN_Y-1,HF_W-g1,2);
+    for(let x=4;x<HF_W;x+=16){ if(x>g0-2 && x<g1+2) continue; ctx.fillRect(x,HF_PEN_Y-6,2,10); }
+    ctx.fillRect(g0-3,HF_PEN_Y-10,3,14); ctx.fillRect(g1,HF_PEN_Y-10,3,14);
+    ctx.strokeStyle="#fff"; ctx.lineWidth=1;
+    ctx.strokeRect(g0-40,44,HF_GATE_W+80,HF_PEN_Y-44-2);
+    if(HERD.fx.penFlash>0){ ctx.fillStyle="#fff"; ctx.fillRect(g0,HF_PEN_Y-3,HF_GATE_W,6); }
+    ctx.fillStyle="#d8d8d8";
+    const n=Math.min(sh.penned,40);
+    for(let i=0;i<n;i++){ const cxp=g0-32+(i%16)*10, cyp=54+Math.floor(i/16)*10; ctx.fillRect(cxp,cyp,5,4); }
+  }
+  // where the lost ones went: a small red x that fades
+  for(const x of HERD.xs){
+    ctx.globalAlpha=Math.min(1,x.t/1.2); ctx.strokeStyle="#f22"; ctx.lineWidth=1.4;
+    ctx.beginPath(); ctx.moveTo(x.x-3,x.y-3); ctx.lineTo(x.x+3,x.y+3); ctx.moveTo(x.x+3,x.y-3); ctx.lineTo(x.x-3,x.y+3); ctx.stroke();
+    ctx.globalAlpha=1;
+  }
+  // the dog's presence — how far his pressure reaches right now. Still is small.
+  const d=sh.dog;
+  if(HERD.presR>0){
+    ctx.strokeStyle="rgba(255,255,255,.13)"; ctx.lineWidth=1; ctx.setLineDash([2,4]);
+    ctx.beginPath(); ctx.arc(d.x,d.y,HERD.presR,0,7); ctx.stroke(); ctx.setLineDash([]);
+  }
+  if(HERD.fx.barkT>0){
+    const a=HERD.fx.barkAng, f=HERD.fx.barkT/0.28;
+    ctx.globalAlpha=0.28*f; ctx.fillStyle="#fff";
+    ctx.beginPath(); ctx.moveTo(d.x,d.y); ctx.arc(d.x,d.y,HERD_BARK_R*(1.1-f*0.3),a-HERD_BARK_HALF,a+HERD_BARK_HALF); ctx.closePath(); ctx.fill();
+    ctx.globalAlpha=1;
+  }
+  // sheep: a white body, a black face, the ram a shade darker
+  for(const s of sh.sheep){
+    const a=Math.hypot(s.vx,s.vy)>3 ? Math.atan2(s.vy,s.vx) : (s.fa||0);
+    s.fa=a;
+    ctx.fillStyle = s.ram ? "#b4b4b8" : "#fff";
+    ctx.beginPath(); ctx.ellipse(s.x,s.y,5,4,a,0,7); ctx.fill();
+    ctx.fillStyle="#000"; ctx.fillRect(s.x+Math.cos(a)*4-1.3, s.y+Math.sin(a)*4-1.3, 2.6, 2.6);
+    if(s.st==="bolt"||s.st==="split"){ ctx.strokeStyle="#f22"; ctx.lineWidth=0.8; ctx.beginPath(); ctx.ellipse(s.x,s.y,6.5,5.5,a,0,7); ctx.stroke(); }
+  }
+  // wolves: grey shapes, red eyes, and a red line when one is coming in
+  for(const wf of sh.wolves){
+    const tgt = wf.tgt>=0 ? sh.sheep.find(s=>s.id===wf.tgt) : null;
+    if(tgt && (wf.st==="stalk"||wf.st==="lunge")){
+      ctx.strokeStyle="#f22"; ctx.globalAlpha=wf.st==="lunge"?0.8:0.45; ctx.lineWidth=1; ctx.setLineDash([2,3]);
+      ctx.beginPath(); ctx.moveTo(wf.x,wf.y); ctx.lineTo(tgt.x,tgt.y); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha=1;
+    }
+    const a=Math.hypot(wf.vx,wf.vy)>3?Math.atan2(wf.vy,wf.vx):(wf.fa||0); wf.fa=a;
+    ctx.save(); ctx.translate(wf.x,wf.y); ctx.rotate(a);
+    ctx.fillStyle=wf.st==="scared"?"#333":"#5c5c64";
+    ctx.beginPath(); ctx.ellipse(-2,0,8,4.2,0,0,7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(6,0,3.6,3.2,0,0,7); ctx.fill();
+    ctx.fillRect(-12,-0.8,4,1.6);
+    const eyeOn = RM || wf.st!=="prowl" || Math.floor(t*2+wf.x)%3!==0;
+    if(eyeOn){ ctx.fillStyle="#f22"; ctx.fillRect(7.5,-2,1.6,1.4); ctx.fillRect(7.5,0.6,1.6,1.4); }
+    if(wf.carry){ ctx.fillStyle="#fff"; ctx.beginPath(); ctx.ellipse(11,0,3.5,2.8,0,0,7); ctx.fill(); }
+    ctx.restore();
+  }
+  // the rig on the road
+  if(r && r.ph==="cross") herdDrawRig(ctx, r.x, HF_ROAD_Y, r.dir, 0, false);
+  // the overtime tractor on the bottom edge, towing what it has left to drop
+  if(sh.ot.truck){ const tr=sh.ot.truck; herdDrawRig(ctx, tr.x, HF_DROP_Y+14, tr.dir, tr.n-tr.dropped, true); }
+  // BONES — the park's own eight-way strips, rimmed in white so he is there on black
+  {
+    const moving=Math.hypot(d.vx,d.vy)>PKDIR_MOVE;
+    const fi=Math.floor(t*(moving?10:3)), foot=d.y+9, dsc=PKDIR_DRAW*0.66;
+    const walk=Math.hypot(d.vx,d.vy)<HERD_DOG_SPD*0.62;
+    ctx.save(); ctx.filter="brightness(0) invert(1) opacity(0.55)";
+    for(const [ax2,ay2] of [[-0.8,0],[0.8,0],[0,-0.8],[0,0.8]]) pkDirDraw(ctx,d.x+ax2,foot+ay2,dsc,d.faceI,fi,0,null,null,walk);
+    ctx.restore();
+    if(d.gassed && d.plantT>0 && Math.floor(t*6)%2) ctx.globalAlpha=0.55;
+    if(!pkDirDraw(ctx,d.x,foot,dsc,d.faceI,fi,0,null,null,walk)){
+      const img=RUNIMG[fi%RUNIMG.length];
+      if(img&&img.complete) ctx.drawImage(img,d.x-11,d.y-10,22,18);
+    }
+    ctx.globalAlpha=1;
+  }
+  ctx.restore();
+  herdDrawHud(ctx,w,h,sh,t);
+}
+function herdDrawRig(ctx,x,y,dir,load,trailer){
+  ctx.save(); ctx.translate(x,y); if(dir<0) ctx.scale(-1,1);
+  if(trailer){
+    ctx.strokeStyle="#fff"; ctx.lineWidth=1; ctx.strokeRect(-40,-8,20,16);
+    ctx.fillStyle="#fff"; for(let i=0;i<load;i++) ctx.fillRect(-37+(i%3)*6,-5+Math.floor(i/3)*6,4,3);
+    ctx.fillRect(-20,-1,4,2);
+  }
+  ctx.fillStyle="#fff"; ctx.fillRect(-16,-9,32,18);
+  ctx.fillStyle="#000"; ctx.fillRect(2,-6,9,7);
+  ctx.fillRect(-13,-12,8,4); ctx.fillRect(-13,8,8,4); ctx.fillRect(7,-12,7,4); ctx.fillRect(7,8,7,4);
+  ctx.fillStyle="#f22"; ctx.fillRect(15,-7,2,3); ctx.fillRect(15,4,2,3);
+  ctx.restore();
+}
+function herdDrawHud(ctx,w,h,sh,t){
+  const L=HERD_LV[sh.lv], RM=!!SETTINGS.reduceMotion;
+  const alive=sh.penned+sh.sheep.length;
+  const trouble=sh.sheep.some(s=>s.st==="split"||s.st==="bolt");
+  const reach=sh.penned+sh.sheep.length>=L.quota || sh.quotaMet || (L.overtime && sh.ot.on);
+  ctx.textBaseline="alphabetic";
+  ctx.font="9px 'Press Start 2P',monospace"; ctx.textAlign="center"; ctx.fillStyle="#fff";
+  ctx.fillText(L.n, w/2, 20);
+  ctx.font="7px 'Press Start 2P',monospace";
+  ctx.fillStyle = reach ? "#8a8a92" : "#f22";
+  ctx.fillText("PEN "+sh.penned+"/"+L.quota+(sh.quotaMet&&L.overtime?"  OVERTIME":""), w/2, 34);
+  ctx.textAlign="right";
+  ctx.font="9px 'Press Start 2P',monospace";
+  ctx.fillStyle = trouble ? "#f22" : "#fff";
+  ctx.fillText(alive+"/"+sh.started, w-10, 20);
+  ctx.font="8px 'Press Start 2P',monospace"; ctx.fillStyle = sh.cash<0 ? "#f22" : "#fff";
+  ctx.fillText(herdCash(sh.cash), w-10, 34);
+  const bw=56, bx=w-10-bw, by=40, e=clamp(S.energy/100,0,1);
+  ctx.strokeStyle="#fff"; ctx.lineWidth=1; ctx.strokeRect(bx+0.5,by+0.5,bw,5);
+  ctx.fillStyle = e<0.2 ? "#f22" : "#fff"; ctx.fillRect(bx+1.5,by+1.5,(bw-2)*e,3);
+  ctx.textAlign="left";
+  // the red travel arrow: a hint pinned to the destination edge, never on the flock
+  if(L.arrow){
+    const v=HERD.view, ax=v.ox+HF_GATE_X*v.sc, ay=v.oy+(HF_PEN_Y-8)*v.sc;
+    const a = RM ? 0.4 : 0.4*(0.5-0.5*Math.cos(t*2*Math.PI/1.2));
+    ctx.globalAlpha=a; ctx.strokeStyle="#f22"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(ax-6,ay+4); ctx.lineTo(ax,ay-2); ctx.lineTo(ax+6,ay+4); ctx.stroke();
+    ctx.globalAlpha=1;
+  }
+  const d=sh.dog;
+  if(d.gassed || HERD.fx.refuseT>0){
+    ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center"; ctx.fillStyle="#f22";
+    ctx.fillText(d.plantT>0 ? "HE'S GASSED" : HERD.fx.refuseT>0 ? "HE WON'T." : "GASSED — CHECK OUT", w/2, 50);
+    ctx.textAlign="left";
+  }
+  if(HERD.banner){
+    const b=HERD.banner, a=Math.min(1,b.t/0.4);
+    ctx.globalAlpha=a;
+    const bw2=Math.min(w-40, 300), bh=b.sub?52:34, bx2=w/2-bw2/2, by2=h*0.38;
+    ctx.fillStyle="#000"; ctx.fillRect(bx2,by2,bw2,bh);
+    ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.strokeRect(bx2+1,by2+1,bw2-2,bh-2);
+    ctx.textAlign="center"; ctx.fillStyle="#fff";
+    ctx.font="10px 'Press Start 2P',monospace"; ctx.fillText(b.head, w/2, by2+22);
+    if(b.sub){ ctx.font="7px 'Press Start 2P',monospace"; ctx.fillStyle="#bbb"; ctx.fillText(b.sub, w/2, by2+40); }
+    ctx.textAlign="left"; ctx.globalAlpha=1;
+  }
+  const j=HERD.joy;
+  if(j){
+    ctx.strokeStyle="#fff"; ctx.globalAlpha=0.35; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(j.ox,j.oy,JOY_R,0,7); ctx.stroke();
+    ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(j.ox+j.dx*JOY_R,j.oy+j.dy*JOY_R,9,0,7); ctx.fill();
+    ctx.globalAlpha=1;
+  }
+}
+
+/* ---------------------------------------------------------------- the frame, and the hands */
+function herdLoop(dt,t){
+  if(!HERD.active) return;
+  const sh=S.herd.shift;
+  if(!sh){ HERD.active=false; return; }
+  // a dialog up over the field stops the field
+  if(!$("#choice").classList.contains("show")) herdUpdate(sh,dt);
+  if(HERD.active && S.herd.shift) herdDraw(S.herd.shift,t);
+}
+(function(){
+  const cv=$("#herdcv");
+  cv.addEventListener("pointerdown",e=>{
+    if(!HERD.active) return;
+    const r=cv.getBoundingClientRect();
+    HERD.joy={ox:e.clientX-r.left, oy:e.clientY-r.top, dx:0, dy:0, id:e.pointerId};
+    try{cv.setPointerCapture(e.pointerId);}catch(_){}
+    e.preventDefault();
+  });
+  cv.addEventListener("pointermove",e=>{
+    const j=HERD.joy; if(!HERD.active||!j||e.pointerId!==j.id) return;
+    const r=cv.getBoundingClientRect();
+    let dx=((e.clientX-r.left)-j.ox)/JOY_R, dy=((e.clientY-r.top)-j.oy)/JOY_R;
+    const l=Math.hypot(dx,dy); if(l>1){ dx/=l; dy/=l; }
+    j.dx=dx; j.dy=dy;
+  });
+  const up=e=>{ if(HERD.joy && (!e || e.pointerId===HERD.joy.id)) HERD.joy=null; };
+  cv.addEventListener("pointerup",up); cv.addEventListener("pointercancel",up);
+  const press=(id,fn)=>$(id).addEventListener("pointerdown",e=>{ e.preventDefault(); fn(); });
+  press("#hBark",herdBark);
+  press("#hDash",herdDash);
+  $("#hBack").addEventListener("click",herdLeave);
+  $("#hCheckout").addEventListener("click",()=>{ if(S.herd.shift && S.herd.shift.quotaMet) herdEndShift("checkout"); });
+  $("#hmHome").addEventListener("click",()=>{ beep(400,.05); herdCloseMap(); });
+  $("#hmTrail").addEventListener("click",e=>{
+    const b=e.target.closest(".hm-node"); if(!b) return;
+    herdNodeTap(+b.dataset.lv);
+  });
+  // a keyboard, for anyone playing on one
+  const KM={ArrowLeft:"l",KeyA:"l",ArrowRight:"r",KeyD:"r",ArrowUp:"u",KeyW:"u",ArrowDown:"d",KeyS:"d"};
+  window.addEventListener("keydown",e=>{
+    if(!HERD.active) return;
+    if(KM[e.code]){ HERD.keys[KM[e.code]]=true; e.preventDefault(); }
+    else if(e.code==="Space"){ herdBark(); e.preventDefault(); }
+    else if(e.code==="ShiftLeft"||e.code==="ShiftRight"){ herdDash(); e.preventDefault(); }
+  });
+  window.addEventListener("keyup",e=>{ if(KM[e.code]) HERD.keys[KM[e.code]]=false; });
 })();
 
 
