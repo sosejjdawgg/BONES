@@ -623,6 +623,8 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
 #hmCardImg{width:58px;height:58px;object-fit:cover;border:2px solid #fff;image-rendering:pixelated;flex:none}
 #hmCardHead{font-size:9px;letter-spacing:1px;margin-bottom:8px}
 #hmCardLine{font-size:7px;line-height:1.9;color:#ccc}
+#hmCardSaved{font-size:6px;letter-spacing:1px;color:#6a6a72;margin-top:6px}
+#hmCardSaved.bad{color:#f22}
 /* the farm is at the bottom and the ridge is at the top: the trail sits on the floor of the
    screen and climbs, so node 1 is always where your thumb already is */
 #hmTrail{display:flex;flex-direction:column;align-items:center;width:100%;max-width:340px;margin-top:auto;padding-top:6px}
@@ -682,8 +684,8 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
       <div id="camhead"><span id="camlabel"><span class="rec">&#9679;</span> DOGCAM</span><span id="clock"></span><span id="camright"><span id="needAlert" class="hidden">!</span><span id="camstate">LIVE</span></span></div>
       <canvas id="dogcv"></canvas>
       <div id="camActions">
-        <button id="rSnack" class="hidden">&#129460; BONE $3</button>
-        <button id="rWalk" class="hidden">&#129460; WALKER $5</button>
+        <button id="rSnack" class="hidden">&#129460; BONE £3</button>
+        <button id="rWalk" class="hidden">&#129460; WALKER £5</button>
       </div>
       <div id="status">
         <img id="stImg" alt="BONES">
@@ -699,7 +701,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
       <!-- HOME -->
       <div id="home" class="screen">
         <div id="hud"><button class="tiny" id="bMenu">&#9776; MENU</button><button class="tiny" id="todoBar">&#9656; TO-DO 0/6</button><button class="tiny" id="bSupplies">&#9636; SUPPLIES</button><button class="tiny" id="bShopBtn">&#9670; SHOP</button><div id="walletStack">
-          <span class="walletRow" id="moneyRow"><span class="money" id="money1">$0</span></span>
+          <span class="walletRow" id="moneyRow"><span class="money" id="money1">£0</span></span>
           <span class="walletRow" id="bonesRow"><svg class="wicon wbone" viewBox="-8 -5 16 10" aria-hidden="true"><rect x="-5" y="-1.5" width="10" height="3" fill="currentColor"/><circle cx="-5" cy="-2" r="2.2" fill="currentColor"/><circle cx="-5" cy="2" r="2.2" fill="currentColor"/><circle cx="5" cy="-2" r="2.2" fill="currentColor"/><circle cx="5" cy="2" r="2.2" fill="currentColor"/></svg><span id="hudBones">0</span></span>
         </div></div>
         <div class="body">
@@ -735,8 +737,8 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
           <div class="devsect">CARE / CLOCK</div>
           <button class="tiny" id="devReset">RESET DAY</button>
           <button class="tiny" id="devLvl">+5 LVLS</button>
-          <button class="tiny" id="devCash">+$50</button>
-          <button class="tiny" id="devRich">+$500</button>
+          <button class="tiny" id="devCash">+£50</button>
+          <button class="tiny" id="devRich">+£500</button>
           <button class="tiny" id="devMax">MAX STATS</button>
           <button class="tiny" id="devBad">NEGLECT</button>
           <button class="tiny" id="devDay">+1 DAY</button>
@@ -771,13 +773,13 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.360a</span>
+          <span id="devToggle">v0.361a</span>
         </div>
       </div>
 
       <!-- WORK -->
       <div id="work" class="screen hidden">
-        <div id="hud"><span>STAMPING PLANT</span><span class="money" id="money2">$0</span></div>
+        <div id="hud"><span>STAMPING PLANT</span><span class="money" id="money2">£0</span></div>
         <canvas id="workcv"></canvas>
         <div class="ctrlrow">
           <button id="bStamp">&#9660; STAMP (SWIPE DOWN)</button>
@@ -787,7 +789,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
 
       <!-- PAPERBOY -->
       <div id="paperboy" class="screen hidden">
-        <div id="hud"><div style="display:flex;gap:6px"><button class="tiny" id="pbSettingsBtn">&#9881;</button><button class="tiny red" id="pbEndRunBtn">&#9873; END</button></div><span>DELIVERY DRIVER</span><span class="money" id="money3">$0</span></div>
+        <div id="hud"><div style="display:flex;gap:6px"><button class="tiny" id="pbSettingsBtn">&#9881;</button><button class="tiny red" id="pbEndRunBtn">&#9873; END</button></div><span>DELIVERY DRIVER</span><span class="money" id="money3">£0</span></div>
         <canvas id="paperboycv"></canvas>
         <span id="pbDevToggle" style="position:absolute;bottom:2px;right:6px;color:#333;font-size:9px;cursor:pointer;padding:8px;z-index:95">&#9881;</span>
         <div id="pbDevbar" class="hidden">
@@ -897,7 +899,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
         <div id="saveCard" style="border:3px solid #fff;padding:12px 14px;width:82%;font-size:7px;line-height:2.1;text-align:left;box-sizing:border-box">
           <div style="display:flex;justify-content:space-between"><span id="saveName">BONES</span><span id="saveLvl">LV. 1</span></div>
           <div style="display:flex;justify-content:space-between;color:#e8c14a"><span>STR / STA / VIT</span><span id="saveAttrs">10 / 10 / 10</span></div>
-          <div style="display:flex;justify-content:space-between"><span>MONEY</span><span id="saveMoney">$0</span></div>
+          <div style="display:flex;justify-content:space-between"><span>MONEY</span><span id="saveMoney">£0</span></div>
           <div style="display:flex;justify-content:space-between"><span>BONES</span><span id="saveBones" style="color:#e8c14a">0</span></div>
           <div style="display:flex;justify-content:space-between"><span>NOW</span><span id="saveDay">DAY 1 08:00</span></div>
           <div style="border-top:1px solid #444;margin-top:6px;padding-top:6px;color:#8a8a8a;display:flex;justify-content:space-between">
@@ -986,7 +988,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
       <div id="shopPanel" class="overpanel">
         <button class="tiny pclose" id="shopClose">&#10005; CLOSE</button>
         <h2>&#9670; SHOP</h2>
-        <div class="wallet"><img class="shopicon" id="walletIcn" alt=""><span id="shopWallet">$0</span></div>
+        <div class="wallet"><img class="shopicon" id="walletIcn" alt=""><span id="shopWallet">£0</span></div>
         <div id="shopScroll" style="width:94%;max-height:72%;overflow-y:auto;display:flex;flex-direction:column;gap:8px">
           <div id="shopSup" style="display:flex;flex-direction:column;gap:8px"></div>
         </div>
@@ -1003,7 +1005,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
       <!-- LIFE CHOICES -->
       <!-- MONEY SHORTCUT -->
       <div id="moneyPick" class="overpanel">
-        <h2>$ SPEND OR EARN?</h2>
+        <h2>£ SPEND OR EARN?</h2>
         <button id="mpShop" style="font-size:11px;padding:14px 24px">GO TO SHOP</button>
         <button id="mpWork" style="font-size:11px;padding:14px 24px">DELIVERY DRIVER</button>
         <button id="mpCancel" class="tiny">CANCEL</button>
@@ -1163,7 +1165,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
     <div class="hm-top"><button class="tiny" id="hmHome">&#8962; GO HOME</button><span class="hm-bank" id="hmBank"></span></div>
     <h2 class="hm-title">SHEEP HERDING</h2>
     <div class="hm-subline">HILLTOP FARM &#8212; EDGE OF TOWN</div>
-    <div id="hmCard" class="hidden"><img id="hmCardImg" alt=""><div><div id="hmCardHead"></div><div id="hmCardLine"></div></div></div>
+    <div id="hmCard" class="hidden"><img id="hmCardImg" alt=""><div><div id="hmCardHead"></div><div id="hmCardLine"></div><div id="hmCardSaved"></div></div></div>
     <div id="hmTrail"></div>
   </div>
   <div id="herdPanel" aria-label="Sheep herding field">
@@ -2120,7 +2122,7 @@ function renderMeters(){
   const na=$("#needAlert");
   na.classList.toggle("hidden", minv>=80);
   na.classList.toggle("crit", minv<40);
-  const neg=S.money<0, mstr=(neg?"-$":"$")+Math.abs(S.money);
+  const neg=S.money<0, mstr=(neg?"-£":"£")+Math.abs(S.money);
   for(const id of ["money1","money2","money3"]){ const el=$("#"+id); if(el) el.textContent=mstr; }
   $("#money2").style.color=neg?"#f22":"#fff"; $("#money3").style.color=neg?"#f22":"#fff";
   $("#moneyRow").style.color=neg?"#f22":"#3fdc7a";
@@ -2206,7 +2208,7 @@ function tickStats(dt, force){
     if(!isVamp()) SLEEP.pending=true;
     if(!S.dayNeglected){
       S.streak++; S.money+=5; addXP(25);
-      toast("GOOD CARE STREAK: "+S.streak+" DAY"+(S.streak>1?"S":"")+" \u2014 +$5"); beep(760,.08); setTimeout(()=>beep(980,.08),100);
+      toast("GOOD CARE STREAK: "+S.streak+" DAY"+(S.streak>1?"S":"")+" \u2014 +£5"); beep(760,.08); setTimeout(()=>beep(980,.08),100);
     } else {
       if(S.streak>0) toast("STREAK BROKEN \u2014 BONES WAS NEGLECTED");
       S.streak=0;
@@ -2225,7 +2227,7 @@ function tickStats(dt, force){
     if((CLK.day-1)%7===0){ // every 7 days the bills land
       const why=["RENT","BILLS","INSURANCE","VET FUND","BOILER REPAIR"][Math.floor(Math.random()*5)];
       S.money-=20;
-      toast(why+" DUE \u2014 -$20"+(S.money<0?" \u2014 YOU'RE IN THE RED":""),1);
+      toast(why+" DUE \u2014 -£20"+(S.money<0?" \u2014 YOU'RE IN THE RED":""),1);
       beep(90,.3,"sawtooth");
       renderMeters(); renderShop();
     }
@@ -2866,7 +2868,7 @@ function triggerDeath(){
     openChoice(
       "BONES DIDN'T MAKE IT",
       vetMsg(),
-      "EMERGENCY VET — $500",
+      "EMERGENCY VET — £500",
       ()=>{ clearInterval(_vetInterval); _vetInterval=null; doVet(); },
       hasSave?"LOAD LAST SAVE":"CONTINUE",
       ()=>{ clearInterval(_vetInterval); _vetInterval=null; doRewind(); }
@@ -2902,7 +2904,7 @@ function doVet(){
   showScreen("home");
   renderMeters(); renderShop(); renderTodo();
   beep(440,.08); setTimeout(()=>beep(554,.08),130); setTimeout(()=>beep(660,.1),260);
-  toast("VET VISIT: $500. BONES IS RECOVERING.",1);
+  toast("VET VISIT: £500. BONES IS RECOVERING.",1);
 }
 function doRewind(){
   clearInterval(_vetInterval); _vetInterval=null;
@@ -2994,7 +2996,7 @@ function drawAttention(st){
 }
 function buyBed(){
   if(S.bedTier>0) return;
-  if(S.money<25) return toast("NOT ENOUGH \u2014 THE BED IS $25",1);
+  if(S.money<25) return toast("NOT ENOUGH \u2014 THE BED IS £25",1);
   S.money-=25; S.bedTier=dogStageIdx();
   tickTodo("bed");
   toast("BONES HAS A PROPER BED NOW."); heartsBurst(2); beep(700,.08);
@@ -3002,7 +3004,7 @@ function buyBed(){
 }
 function buyBiggerBed(){
   if(bedAdequate()) return;
-  if(S.money<45) return toast("NOT ENOUGH \u2014 A BIGGER BED IS $45",1);
+  if(S.money<45) return toast("NOT ENOUGH \u2014 A BIGGER BED IS £45",1);
   S.money-=45; S.bedTier=dogStageIdx();
   toast("A BIGGER BED \u2014 HE CAN STRETCH OUT NOW."); heartsBurst(2); beep(700,.08); setTimeout(()=>beep(950,.09),100);
   renderMeters(); renderSupplies(); renderShop();
@@ -3015,7 +3017,7 @@ function ballTotalOwned(){ return (S.ballOwned?1:0)+S.ballStock; }
 function buyBall(){
   if(S.lvl<2){ toast("A BALL UNLOCKS AT LV.2",1); return; }
   if(ballTotalOwned()>=BALL_MAX){ toast("5 BALLS IS PLENTY \u2014 THAT'S THE MOST HE CAN KEEP.",1); return; }
-  if(S.money<5){ toast("NOT ENOUGH \u2014 A BALL IS $5",1); return; }
+  if(S.money<5){ toast("NOT ENOUGH \u2014 A BALL IS £5",1); return; }
   S.money-=5;
   if(!S.ballOwned){
     S.ballOwned=true;
@@ -3041,10 +3043,10 @@ function placeBallFromStock(){
   renderSupplies();
 }
 const TODO_META=[
-  ["bowls","todoBowls",'REFILL BOTH OF HIS BOWLS<br><span class="tiny">WATER + FOOD \u2014 +$5</span>',"+$5"],
+  ["bowls","todoBowls",'REFILL BOTH OF HIS BOWLS<br><span class="tiny">WATER + FOOD \u2014 +£5</span>',"+£5"],
   ["bed","todoBed",'BUY BONES A DOG BED<br><span class="tiny">PERFECT SLEEP</span>',"SWEET DREAMS"],
   ["ball","todoBall",'GET BONES A BALL<br><span class="tiny">FETCH & TRICK SHOTS</span>',"GAME ON"],
-  ["work","todoWork",'GO TO WORK \u2014 KEEP AN EYE<br>ON BONES <span class="tiny">REWARD $25</span>',"+$25"],
+  ["work","todoWork",'GO TO WORK \u2014 KEEP AN EYE<br>ON BONES <span class="tiny">REWARD £25</span>',"+£25"],
   ["park","todoPark",'TRAIN BONES TO LEVEL 5<br><span class="tiny">UNLOCKS THE DOGPARK</span>',"DOGPARK OPEN"],
   ["lvl5","todoLvl5",'TRAIN BONES TO LEVEL 15<br><span class="tiny">UNLOCKS COMPETITIONS</span>',"COMPETITIONS OPEN"],
   ["d_happy","dHappy",'MAKE BONES HAPPY<br><span class="tiny">MOOD 90+ \u2014 50 XP</span>',"+50 XP",1],
@@ -3084,8 +3086,8 @@ function renderTodo(){
   }
   const sect=t=>'<div class="tiny" style="color:#777;letter-spacing:2px;padding:4px 0">'+t+'</div>';
   const rows=stage=>TODO_META.filter(m=>(m[4]||0)===stage && !S[m[1]] && !(m[0]==="d_ball" && !S.ballOwned) && !(m[0]==="lvl5" && !S.todoPark)).map(m=>{
-    const btn = m[0]==="bed" ? '<button data-todo="bed" '+(S.money<25?"disabled":"")+'>BUY $25</button>'
-      : m[0]==="ball" ? (S.lvl<2 ? '<button data-todo="ball">LOCKED</button>' : '<button data-todo="ball" '+(S.money<5?"disabled":"")+'>BUY $5</button>')
+    const btn = m[0]==="bed" ? '<button data-todo="bed" '+(S.money<25?"disabled":"")+'>BUY £25</button>'
+      : m[0]==="ball" ? (S.lvl<2 ? '<button data-todo="ball">LOCKED</button>' : '<button data-todo="ball" '+(S.money<5?"disabled":"")+'>BUY £5</button>')
       : "";
     return '<div class="prow"><span class="nm">\u2610 '+m[2]+'</span>'+btn+'</div>';
   }).join("");
@@ -3311,7 +3313,7 @@ $("#dogcv").addEventListener("pointerdown",e=>{
     if(!bedAdequate()){
       openChoice("HE'S OUTGROWN HIS BED",
         "IT'S TOO SMALL FOR HIM NOW \u2014 HE WON'T GET A FULL NIGHT'S REST.<br><br>UPGRADE TO A BIGGER BED?",
-        "BIGGER BED \u2014 $45", ()=>buyBiggerBed(),
+        "BIGGER BED \u2014 £45", ()=>buyBiggerBed(),
         "NOT NOW", ()=>toggleRest());
       beep(300,.1); return;
     }
@@ -6137,7 +6139,7 @@ function robotTick(dt){
         B.state="dock"; B.t=0;
         if(B.battery<95){                      // plugging in puts it on the bill
           S.money-=BOT_RECHARGE_FEE;
-          toast("NOURISH-BOT ON CHARGE — -$"+BOT_RECHARGE_FEE+(S.money<0?" — YOU'RE IN THE RED":""),1);
+          toast("NOURISH-BOT ON CHARGE — -£"+BOT_RECHARGE_FEE+(S.money<0?" — YOU'RE IN THE RED":""),1);
           beep(240,.09,"square"); renderMeters(); renderShop();
         }
       }
@@ -6839,12 +6841,12 @@ function winGestureEnd(fx,fy,hpx){
   WINGES.on=false;
   const dy=(fy-WINGES.y)*hpx;
   if(dy>WIN_SWIPE){                                   // pulled down
-    if(!S.blindsOwned){ toast("NO SHUTTERS — $"+BLINDS_COST+" IN HOMEWARE.",1); beep(200,.1); return true; }
+    if(!S.blindsOwned){ toast("NO SHUTTERS — £"+BLINDS_COST+" IN HOMEWARE.",1); beep(200,.1); return true; }
     if(!blindsSet(true)) toast("ALREADY DOWN.");
     return true;
   }
   if(dy<-WIN_SWIPE){                                  // pushed up
-    if(!S.blindsOwned){ toast("NO SHUTTERS — $"+BLINDS_COST+" IN HOMEWARE.",1); beep(200,.1); return true; }
+    if(!S.blindsOwned){ toast("NO SHUTTERS — £"+BLINDS_COST+" IN HOMEWARE.",1); beep(200,.1); return true; }
     if(!blindsSet(false)) toast("ALREADY UP.");
     return true;
   }
@@ -6867,8 +6869,8 @@ function blindsSet(shut){
 function openShutterPanel(){
   if(!S.blindsOwned){
     openChoice("NO SHUTTERS",
-      "THERE IS NOTHING ON THIS WINDOW BUT GLASS.<br><br>BLINDS ARE $"+BLINDS_COST+" IN HOMEWARE.",
-      "BUY BLINDS — $"+BLINDS_COST, ()=>buyBlinds(), "SEE SHOP", ()=>openShopPanel());
+      "THERE IS NOTHING ON THIS WINDOW BUT GLASS.<br><br>BLINDS ARE £"+BLINDS_COST+" IN HOMEWARE.",
+      "BUY BLINDS — £"+BLINDS_COST, ()=>buyBlinds(), "SEE SHOP", ()=>openShopPanel());
     return;
   }
   const dmg = S.winBroken || (S.winCracks||0)>0;
@@ -6876,7 +6878,7 @@ function openShutterPanel(){
     (S.blindsShut ? "THE SLATS ARE DOWN. NO LIGHT GETS IN." : "THE SLATS ARE UP. THE DAY GETS IN.")
     + "<br><br>" + (S.blindsTier>=2
         ? "BLACKOUT LINING FITTED — EVEN A BROKEN PANE STAYS SEALED."
-        : "BLACKOUT LINING IS $"+BLACKOUT_COST+" IN HOMEWARE.")
+        : "BLACKOUT LINING IS £"+BLACKOUT_COST+" IN HOMEWARE.")
     + (dmg ? "<br><br>THE GLASS BEHIND THEM IS "+(S.winBroken?"GONE.":"CRACKED.") : "");
   /* THREE SLOTS, AND THE LAST ONE IS ALWAYS THE WAY OUT. openChoice has exactly three buttons and
      no other dismiss, so a fourth option does not overflow - it silently evicts LEAVE and leaves
@@ -6884,8 +6886,8 @@ function openShutterPanel(){
      out; whichever job did not make the cut is named in the body text so it is not lost.
      The glazier lives here at all because with the slats down the damaged pane behind them can no
      longer be tapped directly, and shutting the blinds must not cost you the repair. */
-  const job = dmg ? ["RE-GLAZE — $"+WIN_FIX_COST, ()=>openWindowRepair()]
-            : (S.blindsTier<2 ? ["UPGRADE — $"+BLACKOUT_COST, ()=>buyBlackout()] : null);
+  const job = dmg ? ["RE-GLAZE — £"+WIN_FIX_COST, ()=>openWindowRepair()]
+            : (S.blindsTier<2 ? ["UPGRADE — £"+BLACKOUT_COST, ()=>buyBlackout()] : null);
   openChoice("SHUTTERS", body,
     S.blindsShut?"OPEN THEM":"SHUT THEM", ()=>blindsSet(!S.blindsShut),
     job?job[0]:"LEAVE", job?job[1]:null,
@@ -6914,7 +6916,7 @@ function openWindowRepair(){
   openChoice(broke?"THE WINDOW IS BROKEN":"THE GLASS IS CRACKED",
     (broke ? "THERE IS A HOLE IN THE ROOM. ANYTHING COULD COME THROUGH IT AT NIGHT."
            : "IT IS HOLDING, BUT NOT FOR LONG.")+"<br><br>GET IT GLAZED?",
-    "RE-GLAZE IT \u2014 $"+WIN_FIX_COST, ()=>{
+    "RE-GLAZE IT \u2014 £"+WIN_FIX_COST, ()=>{
       if(S.money<WIN_FIX_COST){ toast("NOT ENOUGH MONEY FOR THE GLAZIER.",1); beep(160,.12); return; }
       S.money-=WIN_FIX_COST; S.winCracks=0; S.winBroken=false; S.winHealT=0; WINFX.shards.length=0;
       renderMeters(); renderShop&&renderShop();
@@ -8524,25 +8526,25 @@ function renderShopSup(){
   const el=$("#shopSup"); if(!el) return;
   // same low-lock-first ordering as GO OUT
   const rows=[
-    {req:0, html:'<div class="prow"><span class="nm">'+icn("kibble")+' KIBBLE x'+S.kibble+'<br><span class="tiny">1 POUR \u2014 3 FILL A BOWL</span></span><button data-sup="kibble" '+(S.money<2?"disabled":"")+'>BUY $2</button></div>'},
-    {req:0, html:'<div class="prow"><span class="nm">'+icn("snack")+' BONE TREATS x'+S.snacks+'<br><span class="tiny">HIS FAVOURITE \u2014 +ENERGY +MOOD</span></span><button data-sup="snack" '+(S.money<3?"disabled":"")+'>BUY $3</button></div>'},
-    {req:0, html:'<div class="prow"><span class="nm">'+icn("shampoo")+' DOG SHAMPOO '+Math.round(S.shampooPct)+'%<br><span class="tiny">TOPS UP FOR BATHS</span></span><button data-sup="shampoo" '+(S.money<5||S.shampooPct>=100?"disabled":"")+'>BUY $5</button></div>'},
+    {req:0, html:'<div class="prow"><span class="nm">'+icn("kibble")+' KIBBLE x'+S.kibble+'<br><span class="tiny">1 POUR \u2014 3 FILL A BOWL</span></span><button data-sup="kibble" '+(S.money<2?"disabled":"")+'>BUY £2</button></div>'},
+    {req:0, html:'<div class="prow"><span class="nm">'+icn("snack")+' BONE TREATS x'+S.snacks+'<br><span class="tiny">HIS FAVOURITE \u2014 +ENERGY +MOOD</span></span><button data-sup="snack" '+(S.money<3?"disabled":"")+'>BUY £3</button></div>'},
+    {req:0, html:'<div class="prow"><span class="nm">'+icn("shampoo")+' DOG SHAMPOO '+Math.round(S.shampooPct)+'%<br><span class="tiny">TOPS UP FOR BATHS</span></span><button data-sup="shampoo" '+(S.money<5||S.shampooPct>=100?"disabled":"")+'>BUY £5</button></div>'},
     {req:1, html:(S.bedTier===0
-      ? '<div class="prow"><span class="nm">'+icn("bed")+' DOG BED<br><span class="tiny">PERFECT SLEEP \u2014 ONE-TIME</span></span><button data-sup="bed" '+(S.money<25?"disabled":"")+'>BUY $25</button></div>'
+      ? '<div class="prow"><span class="nm">'+icn("bed")+' DOG BED<br><span class="tiny">PERFECT SLEEP \u2014 ONE-TIME</span></span><button data-sup="bed" '+(S.money<25?"disabled":"")+'>BUY £25</button></div>'
       : !bedAdequate()
-        ? '<div class="prow" style="border-color:#f22"><span class="nm" style="color:#f22">'+icn("bed")+' BIGGER BED<br><span class="tiny">HE\'S OUTGROWN HIS BED</span></span><button data-sup="biggerbed" '+(S.money<45?"disabled":"")+'>BUY $45</button></div>'
+        ? '<div class="prow" style="border-color:#f22"><span class="nm" style="color:#f22">'+icn("bed")+' BIGGER BED<br><span class="tiny">HE\'S OUTGROWN HIS BED</span></span><button data-sup="biggerbed" '+(S.money<45?"disabled":"")+'>BUY £45</button></div>'
         : "")},
-    {req:2, html:(ballTotalOwned()>=BALL_MAX?"":'<div class="prow'+(S.lvl<2?" locked":"")+'"><span class="nm">'+icn("ball")+' RUBBER BALL ('+ballTotalOwned()+'/'+BALL_MAX+')<br><span class="tiny">'+(S.lvl<2?"UNLOCKS LV.2":"FETCH, TRICK SHOTS \u2014 SPARES KEEP IN SUPPLIES")+'</span></span><button data-sup="ball" '+(S.lvl<2||S.money<5?"disabled":"")+'>BUY $5</button></div>')},
-    {req:2, html:(S.brushOwned?"":'<div class="prow"><span class="nm">'+icn("brush")+' DOG BRUSH<br><span class="tiny">HANGS BY THE SPONGE \u2014 KEEPS HIS COAT RIGHT</span></span><button data-sup="brush" '+(S.money<18?"disabled":"")+'>BUY $18</button></div>')},
-    {req:3, html:(S.hoopOwned?"":'<div class="prow"><span class="nm">'+icn("hoop")+' BASKETBALL HOOP<br><span class="tiny">TRICK SHOTS BY THE WINDOW \u2014 ONE-TIME</span></span><button data-sup="hoop" '+(S.money<40?"disabled":"")+'>BUY $40</button></div>')},
-    {req:4, html:(S.owned.robot?"":'<div class="prow"><span class="nm">\ud83e\udd16 NOURISH-BOT<br><span class="tiny">FEEDS &amp; WATERS BONES WHILE AT WORK \u2014 ONE-TIME</span></span><button data-sup="robot" '+(S.money<350?"disabled":"")+'>BUY $350</button></div>')}
+    {req:2, html:(ballTotalOwned()>=BALL_MAX?"":'<div class="prow'+(S.lvl<2?" locked":"")+'"><span class="nm">'+icn("ball")+' RUBBER BALL ('+ballTotalOwned()+'/'+BALL_MAX+')<br><span class="tiny">'+(S.lvl<2?"UNLOCKS LV.2":"FETCH, TRICK SHOTS \u2014 SPARES KEEP IN SUPPLIES")+'</span></span><button data-sup="ball" '+(S.lvl<2||S.money<5?"disabled":"")+'>BUY £5</button></div>')},
+    {req:2, html:(S.brushOwned?"":'<div class="prow"><span class="nm">'+icn("brush")+' DOG BRUSH<br><span class="tiny">HANGS BY THE SPONGE \u2014 KEEPS HIS COAT RIGHT</span></span><button data-sup="brush" '+(S.money<18?"disabled":"")+'>BUY £18</button></div>')},
+    {req:3, html:(S.hoopOwned?"":'<div class="prow"><span class="nm">'+icn("hoop")+' BASKETBALL HOOP<br><span class="tiny">TRICK SHOTS BY THE WINDOW \u2014 ONE-TIME</span></span><button data-sup="hoop" '+(S.money<40?"disabled":"")+'>BUY £40</button></div>')},
+    {req:4, html:(S.owned.robot?"":'<div class="prow"><span class="nm">\ud83e\udd16 NOURISH-BOT<br><span class="tiny">FEEDS &amp; WATERS BONES WHILE AT WORK \u2014 ONE-TIME</span></span><button data-sup="robot" '+(S.money<350?"disabled":"")+'>BUY £350</button></div>')}
   ];
   /* HOMEWARE. Things for the ROOM rather than for the dog, which is why they are labelled apart:
      the blinds in particular are the answer to a whole mechanic (daylight), and burying them
      between kibble and shampoo would read as another consumable. */
   const home=[
-    (S.blindsOwned?"":'<div class="prow"><span class="nm">\u25a4 BLINDS<br><span class="tiny">SWIPE THE WINDOW TO SHUT THE DAY OUT.</span></span><button data-sup="blinds" '+(S.money<BLINDS_COST?"disabled":"")+'>BUY $'+BLINDS_COST+'</button></div>'),
-    ((S.blindsOwned&&S.blindsTier<2)?'<div class="prow"><span class="nm">\u25a9 BLACKOUT LINING<br><span class="tiny">EVEN A BROKEN PANE STAYS SEALED.</span></span><button data-sup="blackout" '+(S.money<BLACKOUT_COST?"disabled":"")+'>BUY $'+BLACKOUT_COST+'</button></div>':""),
+    (S.blindsOwned?"":'<div class="prow"><span class="nm">\u25a4 BLINDS<br><span class="tiny">SWIPE THE WINDOW TO SHUT THE DAY OUT.</span></span><button data-sup="blinds" '+(S.money<BLINDS_COST?"disabled":"")+'>BUY £'+BLINDS_COST+'</button></div>'),
+    ((S.blindsOwned&&S.blindsTier<2)?'<div class="prow"><span class="nm">\u25a9 BLACKOUT LINING<br><span class="tiny">EVEN A BROKEN PANE STAYS SEALED.</span></span><button data-sup="blackout" '+(S.money<BLACKOUT_COST?"disabled":"")+'>BUY £'+BLACKOUT_COST+'</button></div>':""),
     ""   // the rug used to be sold here; it is his BED now, bought and upgraded as the bed
   ].filter(Boolean).join("");
   el.innerHTML = unlockSort(rows)
@@ -8551,7 +8553,7 @@ function renderShopSup(){
 function renderShop(){
   renderShopSup();
   const wl=$("#shopWallet"), wi=$("#walletIcn");
-  if(wl){ const neg=S.money<0; wl.textContent=(neg?"-$":"$")+Math.abs(S.money);
+  if(wl){ const neg=S.money<0; wl.textContent=(neg?"-£":"£")+Math.abs(S.money);
           wl.parentElement.style.borderColor=neg?"#f22":"#e8c14a";
           wl.parentElement.style.color=neg?"#f22":"#e8c14a"; }
   if(wi && !wi.src) wi.src=ICONS.kibble;
@@ -8866,7 +8868,7 @@ function stampNow(){
   if(SYMS[W.sel]===p.sym){
     p.stamped=0.01; S.money+=3; S.earned+=3; W.streak++; addXP(2); tickTodo("work");
     beep(880,.06); if(W.streak%5===0) beep(1200,.1);
-    toast("+$3"+(W.streak>1?"  STREAK x"+W.streak:""));
+    toast("+£3"+(W.streak>1?"  STREAK x"+W.streak:""));
   } else { p.missed=true; W.streak=0; W.flash=0.4; beep(120,.15,"sawtooth"); toast("WRONG STAMP",1); }
   renderMeters();
 }
@@ -8972,7 +8974,7 @@ function openPre(mode){
     (mode==="daily"
       ? "ONE ATTEMPT. NO LIFELINES.<br>MEMORIZE THE GATE SIGN.<br>SCORE LOCKS ONLY IF YOU BRING THE BONE HOME."
       : mode==="comp"
-      ? "PRIZE: $1 PER 25 SCORE. LIFELINES: 2.<br>"+(3-S.compsToday)+" ENTRIES LEFT TODAY."
+      ? "PRIZE: £1 PER 25 SCORE. LIFELINES: 2.<br>"+(3-S.compsToday)+" ENTRIES LEFT TODAY."
       : "LIFELINES: "+(3+f.life)+" &#8212; RUN FOREVER. TAP=JUMP, SWIPE DOWN=SLIDE.");
   $("#pre").classList.add("show");
 }
@@ -9033,7 +9035,7 @@ function endRun(success,msg){
   $("#resTitle").style.color = success===true ? "#fff" : "#f22";
   $("#resScore").textContent = String(score);
   if(daily && !success) $("#resScore").textContent="—";
-  $("#resLines").innerHTML = msg + (daily?"<br>DAILY RANK LOCKED FOR TODAY.":R.mode==="comp"?"<br>PRIZE: $"+compPrize+" \u2014 "+(3-S.compsToday)+" ENTRIES LEFT TODAY":"<br>PRACTICE SCORES DON'T RANK.");
+  $("#resLines").innerHTML = msg + (daily?"<br>DAILY RANK LOCKED FOR TODAY.":R.mode==="comp"?"<br>PRIZE: £"+compPrize+" \u2014 "+(3-S.compsToday)+" ENTRIES LEFT TODAY":"<br>PRACTICE SCORES DON'T RANK.");
   $("#result").classList.add("show");
 }
 let hiddenAt=0;
@@ -9509,11 +9511,11 @@ function renderGoOut(){
     {req:10, html:herdGoOutRow()},
     {req:0, html:'<div class="prow"><span class="nm">&#9642; DELIVERY DRIVER<br><span class="tiny">DELIVER PARCELS FOR CASH</span></span><button data-go="paperboy">GO</button></div>'},
     {req:18, html:'<div class="prow'+(agiL?" locked":"")+'"><span class="nm">&#9650; AGILITY TRAINING<br><span class="tiny">'+(agiL?"UNLOCKS LV.18":"-15 ENERGY \u2014 +12 XP")+'</span></span><button data-go="agility" '+(agiL?"disabled":"")+'>TRAIN</button></div>'},
-    {req:9, html:'<div class="prow'+(beachL?" locked":"")+'"><span class="nm">&#9679; BEACH DAY<br><span class="tiny">'+(beachL?"UNLOCKS LV.9":(S.beach?"OWNED \u2014 BIG FUN":"UNLOCK $25"))+'</span></span><button data-go="beach" '+(beachL||OUTING.active?"disabled":"")+'>'+(S.beach?"GO":"BUY")+'</button></div>'},
+    {req:9, html:'<div class="prow'+(beachL?" locked":"")+'"><span class="nm">&#9679; BEACH DAY<br><span class="tiny">'+(beachL?"UNLOCKS LV.9":(S.beach?"OWNED \u2014 BIG FUN":"UNLOCK £25"))+'</span></span><button data-go="beach" '+(beachL||OUTING.active?"disabled":"")+'>'+(S.beach?"GO":"BUY")+'</button></div>'},
     {req:15, html:'<div class="prow'+(compL?" locked":"")+'"><span class="nm">&#9733; DOG COMPETITION<br><span class="tiny">'+(compL?"UNLOCKS LV.15":"PRIZE MONEY \u2014 "+(3-S.compsToday)+"/3 TODAY")+'</span></span><button data-go="comp" '+(compL?"disabled":"")+'>ENTER</button></div>'},
     {req:55, html:'<div class="prow'+(litL?" locked":"")+'"><span class="nm">&#9829; VISIT THE BREEDER<br><span class="tiny">'+(litL?"UNLOCKS LV.55":(S.litter?"A PUP AWAITS":"ONE LITTER, ONE SUCCESSOR"))+'</span></span><button data-go="litter" '+(litL?"disabled":"")+'>GO</button></div>'},
-    // money-gated rather than level-gated, and $5000 is a long grind \u2014 so it anchors the bottom
-    {req:99, html:'<div class="prow'+(workL?" locked":"")+'"><span class="nm">&#9830; STAMPING PLANT<br><span class="tiny">'+(workL?"UNLOCKS AT $5000 EARNED":"EARN MONEY")+'</span></span><button data-go="work" '+(workL?"disabled":"")+'>GO</button></div>'}
+    // money-gated rather than level-gated, and £5000 is a long grind \u2014 so it anchors the bottom
+    {req:99, html:'<div class="prow'+(workL?" locked":"")+'"><span class="nm">&#9830; STAMPING PLANT<br><span class="tiny">'+(workL?"UNLOCKS AT £5000 EARNED":"EARN MONEY")+'</span></span><button data-go="work" '+(workL?"disabled":"")+'>GO</button></div>'}
   ];
   $("#gooutList").innerHTML = unlockSort(rows);
 }
@@ -9535,20 +9537,20 @@ $("#gooutList").addEventListener("click",e=>{
     renderMeters();
   }
   if(g==="beach"){
-    if(!S.beach){ if(S.money<25) return toast("NOT ENOUGH MONEY \u2014 $25 TO UNLOCK",1); S.money-=25; S.beach=true; toast("BEACH UNLOCKED!"); renderMeters(); }
+    if(!S.beach){ if(S.money<25) return toast("NOT ENOUGH MONEY \u2014 £25 TO UNLOCK",1); S.money-=25; S.beach=true; toast("BEACH UNLOCKED!"); renderMeters(); }
     else startOuting("BEACH",25);
   }
   if(g==="litter"){
     openChoice("THE BREEDER",
-      "TWO WAYS TO GROW THE FAMILY:<br><br>A LITTER \u2014 ONE PUP WAITS TO CARRY<br>THE LEGACY WHEN BONES RETIRES.<br><br>OR TAKE A PUPPY HOME TODAY \u2014 $500 \u2014<br>A SECOND MOUTH TO FEED, RIGHT NOW.",
+      "TWO WAYS TO GROW THE FAMILY:<br><br>A LITTER \u2014 ONE PUP WAITS TO CARRY<br>THE LEGACY WHEN BONES RETIRES.<br><br>OR TAKE A PUPPY HOME TODAY \u2014 £500 \u2014<br>A SECOND MOUTH TO FEED, RIGHT NOW.",
       "THE LITTER (LEGACY)",()=>{
         if(S.litter) return toast("BONES ALREADY HAS A PUP WAITING.");
         S.litter=true; heartsBurst(5); beep(700,.08); setTimeout(()=>beep(900,.1),110);
         toast("A LITTER! ONE PUP WILL CARRY THE LEGACY.");
       },
-      "TAKE A PUPPY \u2014 $500",()=>{
+      "TAKE A PUPPY \u2014 £500",()=>{
         if(S.pup.owned) return toast("ONE PUPPY IS PLENTY OF CHAOS.",1);
-        if(S.money<500) return toast("A PUPPY COSTS $500. KEEP WORKING.",1);
+        if(S.money<500) return toast("A PUPPY COSTS £500. KEEP WORKING.",1);
         S.money-=500;
         const suf=[" II"," III"," IV"," V"," VI"][Math.min(S.gen-1,4)];
         const nm=(prompt("NAME THE PUPPY", (S.dogName||"BONES")+suf)||"").trim().toUpperCase().slice(0,10);
@@ -9750,7 +9752,7 @@ function renderSaveCard(){
   $("#saveName").textContent = NAME();
   $("#saveLvl").textContent = "LV. "+S.lvl;
   $("#saveAttrs").textContent = ATTRS.map(([,k])=>Math.round(S[k]||0)).join(" / ")+((S.pts||0)>0?"  (+"+S.pts+")":"");
-  $("#saveMoney").textContent = "$"+S.money;
+  $("#saveMoney").textContent = "£"+S.money;
   $("#saveBones").textContent = S.snacks;   // the bone stock park runs bank into
   $("#saveDay").textContent = dayClock(CLK.day,CLK.h);
   $("#saveLast").textContent = S.lastSaveAt ? dayClock(S.lastSaveDay,S.lastSaveH) : "\u2014 NEVER \u2014";
@@ -9918,8 +9920,8 @@ function renderNourish(){
     {req:0, html:'<div class="prow"><span class="nm">'+icn("water")+' WATER BOWL — '+Math.round(BOWL.level*100)+'%<br><span class="tiny">'+(waterFull?"FULL — HE\'LL DRINK WHEN THIRSTY":"FREE POUR — FILLS THIRST")+'</span></span><button data-nsh="water" '+(waterFull?"disabled":"")+'>POUR</button></div>'},
     {req:0, html:'<div class="prow"><span class="nm">'+icn("food")+' FOOD BOWL — '+Math.round(FBOWL.level*100)+'%<br><span class="tiny">KIBBLE x'+S.kibble+(foodFull?" — BOWL FULL":" — 3 POURS FILL IT")+'</span></span><button data-nsh="food" '+(foodFull||S.kibble<=0?"disabled":"")+'>POUR</button></div>'},
     {req:0, html:'<div class="prow"><span class="nm">'+icn("snack")+' BONE TREATS x'+S.snacks+'<br><span class="tiny">TOSS HIM ONE \u2014 HE WILL COME AND EAT IT</span></span><button data-nsh="snack" '+(S.snacks<=0?"disabled":"")+'>GIVE BONE</button></div>'},
-    {req:9, html:'<div class="prow'+(S.money<2?" locked":"")+'"><span class="nm">'+icn("kibble")+' RESTOCK KIBBLE<br><span class="tiny">BUY A BAG — $2</span></span><button data-nsh="buykibble" '+(S.money<2?"disabled":"")+'>BUY $2</button></div>'},
-    {req:9, html:'<div class="prow'+(S.money<3?" locked":"")+'"><span class="nm">'+icn("snack")+' RESTOCK BONE TREATS<br><span class="tiny">BUY A BOX — $3</span></span><button data-nsh="buysnack" '+(S.money<3?"disabled":"")+'>BUY $3</button></div>'}
+    {req:9, html:'<div class="prow'+(S.money<2?" locked":"")+'"><span class="nm">'+icn("kibble")+' RESTOCK KIBBLE<br><span class="tiny">BUY A BAG — £2</span></span><button data-nsh="buykibble" '+(S.money<2?"disabled":"")+'>BUY £2</button></div>'},
+    {req:9, html:'<div class="prow'+(S.money<3?" locked":"")+'"><span class="nm">'+icn("snack")+' RESTOCK BONE TREATS<br><span class="tiny">BUY A BOX — £3</span></span><button data-nsh="buysnack" '+(S.money<3?"disabled":"")+'>BUY £3</button></div>'}
   ];
   $("#nourishList").innerHTML = unlockSort(rows);
 }
@@ -10090,7 +10092,7 @@ $("#devLvl").onclick=()=>{
   for(let i=0;i<5 && S.lvl<LVL_CAP;i++) addXP(Math.max(1, xpNeed(S.lvl)-S.xp));
   devSync(); renderMeters();
 };
-$("#devCash").onclick=()=>{ S.money+=50; toast("+$50 (DEV)"); renderMeters(); renderShop(); };
+$("#devCash").onclick=()=>{ S.money+=50; toast("+£50 (DEV)"); renderMeters(); renderShop(); };
 $("#devMax").onclick=()=>{
   Object.assign(S,{hunger:100,thirst:100,energy:100,clean:100,fun:100,mood:100});
   BOWL.level=1; S.sick=false; S.sickTimer=0; S.wellTimer=0;
@@ -10201,7 +10203,7 @@ $("#devWork").onclick=()=>{
   toast("AT WORK (DEV) — CLOCK OUT TO RETURN");
 };
 $("#devRobot").onclick=()=>{ S.owned.robot=!S.owned.robot; toast(S.owned.robot?"NOURISH-BOT OWNED (DEV)":"NOURISH-BOT REMOVED (DEV)"); renderShop(); };
-$("#devRich").onclick=()=>{ S.money+=500; toast("+$500 (DEV)"); renderMeters(); renderShop(); };
+$("#devRich").onclick=()=>{ S.money+=500; toast("+£500 (DEV)"); renderMeters(); renderShop(); };
 // Dogpark-only dev tools — the bar itself is nested inside #park, so it's only ever
 // visible while a run is on screen; unlocking it still goes through the same PIN as #devbar.
 $("#pkDevSkip").onclick=()=>{
@@ -10393,6 +10395,7 @@ function loadGame(){
 }
 // no autosave by design — progress only persists when SAVE GAME is pressed in Settings,
 // same as an old cartridge: forget to save and a closed tab loses the session's progress.
+// The one exception is the end of a SHEEP HERDING shift, which saves itself (see herdEndShift).
 
 /* ---------- welcome back: a real gap since the last save gets a proper panel instead of a
    toast — quiet, responsible, matching "A DOG IS FOR LIFE" rather than a cute homecoming ---------- */
@@ -11090,7 +11093,7 @@ function buryAll(){ return buryAllFor("park"); }
 function burySub(){ return burySubFor("park"); }
 const BONES_EXCHANGE=[
   {label:"BURY FOR XP", bury:true, sub:"", cost:BURY_UNIT, f:()=>pkBuryStart()},
-  {label:"MONEY", sub:"10 BONES → $5",      cost:10, f:()=>{S.money+=5;}},
+  {label:"MONEY", sub:"10 BONES → £5",      cost:10, f:()=>{S.money+=5;}},
   {label:"TREAT", sub:"15 BONES → 1 BONE TREAT", cost:15, f:()=>{S.snacks+=1;}},
   {label:"COMPASS", sub:"100 BONES → FIND FRIENDS & SECRETS", cost:100, f:()=>{PK.compass=true;}}
 ];
@@ -24061,7 +24064,7 @@ const PB_STREAK_UNIT=1, PB_STREAK_CAP=5;
 /* TOP SPEED — a ticking bonus for however long the van is actually pinned at the top of the
    speedometer's red zone (same 0.86 threshold the dial itself goes hot at), rewarding driving
    flat-out between houses instead of coasting. */
-const PB_TOPSPEED_RATIO=0.86, PB_TOPSPEED_RATE=2, PB_TOPSPEED_TICK=0.5;   // $1 every half-second
+const PB_TOPSPEED_RATIO=0.86, PB_TOPSPEED_RATE=2, PB_TOPSPEED_TICK=0.5;   // £1 every half-second
 // Run time is rated against this. Hand delivering is safe but eats seconds, so the clock is the
 // cost that keeps it from simply being the correct answer every time.
 const PB_PAR_TIME=45;
@@ -24317,7 +24320,7 @@ function pbApplyResult(h,zone){
     const bonus=Math.min(PB_STREAK_CAP,PB.streak-1)*PB_STREAK_UNIT;
     if(bonus>0){
       PB.stats.streakBonus+=bonus;
-      toast("STREAK x"+PB.streak+" — +$"+bonus,1);
+      toast("STREAK x"+PB.streak+" — +£"+bonus,1);
     }
     pbSpawnParcelFX(h,"doormat");
     beep(880,.07); setTimeout(()=>beep(1180,.09),80);
@@ -24383,7 +24386,7 @@ function pbCompleteHand(h){
   if(Math.random()<PB_TIP_CHANCE){
     h.tip=PB_TIP_MIN+Math.floor(Math.random()*(PB_TIP_MAX-PB_TIP_MIN+1));
     PB.stats.tips+=h.tip;
-    toast("HANDED OVER — +$"+h.tip+" TIP",1);
+    toast("HANDED OVER — +£"+h.tip+" TIP",1);
   } else toast("HANDED OVER",1);
   beep(880,.07); setTimeout(()=>beep(1180,.09),80); setTimeout(()=>beep(1480,.11),160);
 }
@@ -24463,25 +24466,25 @@ function pbFinish(){
   $("#resTitle").style.color = (grade==="F"||grade==="D") ? "#f22" : "#fff";
   $("#resPortraitWrap").classList.remove("show");
   pbDrawReportIcon(grade);
-  $("#resScore").textContent="$"+net;
-  const parkLine = PB.crashed ? '<span style="color:#f22">CRASHED INTO THE WALL — −$'+PB_CRASH_PENALTY+'</span>'
-    : PB.parked==="bay" ? '<span style="color:#3fdc7a">PARKED IN THE BAY — +$'+PB_PARK_BONUS+'</span>'
+  $("#resScore").textContent="£"+net;
+  const parkLine = PB.crashed ? '<span style="color:#f22">CRASHED INTO THE WALL — −£'+PB_CRASH_PENALTY+'</span>'
+    : PB.parked==="bay" ? '<span style="color:#3fdc7a">PARKED IN THE BAY — +£'+PB_PARK_BONUS+'</span>'
     : '<span style="color:#8a8a8a">STOPPED SHORT OF THE BAY</span>';
   // bonus lines only show up if you actually earned them — nothing to review from an all-hold run
   const bonusLines = (s.streakBonus||s.topSpeedBonus)
-    ? '<span style="color:#ffd94a">BEST STREAK x'+PB.streakBest+' — +$'+s.streakBonus+'</span><br>'
-      +'<span style="color:#ffd94a">'+PB.topSpeedT.toFixed(1)+'s AT TOP SPEED — +$'+s.topSpeedBonus+'</span><br>'
+    ? '<span style="color:#ffd94a">BEST STREAK x'+PB.streakBest+' — +£'+s.streakBonus+'</span><br>'
+      +'<span style="color:#ffd94a">'+PB.topSpeedT.toFixed(1)+'s AT TOP SPEED — +£'+s.topSpeedBonus+'</span><br>'
     : "";
   $("#resLines").innerHTML=
     "DELIVERED "+delivered+"/"+total+" ("+thrownPerfect+" THROWN, "+s.hand+" BY HAND)<br>"+
-    s.destruction+" BROKEN, "+s.fumble+" FUMBLED, "+s.miss+" LOST"+(s.tips?" — $"+s.tips+" IN TIPS":"")+"<br>"+
+    s.destruction+" BROKEN, "+s.fumble+" FUMBLED, "+s.miss+" LOST"+(s.tips?" — £"+s.tips+" IN TIPS":"")+"<br>"+
     bonusLines+
     parkLine+"<br>"+
     'TIME '+pbTimeStr(secs)+' vs '+pbTimeStr(PB_PAR_TIME)+' — <span style="color:'+timeCol+'">'+timeRating+"</span><br>"+
-    "GROSS $"+gross+" − $"+deduction+" DEDUCTIONS = <b>$"+net+"</b>"+
+    "GROSS £"+gross+" − £"+deduction+" DEDUCTIONS = <b>£"+net+"</b>"+
     // ...and say so when the floor caught it, rather than quietly handing back a number that
     // does not add up against the penalties the player just watched happen
-    (softened>0 ? '<br><span style="color:#3fdc7a">THE DEPOT ATE $'+softened+
+    (softened>0 ? '<br><span style="color:#3fdc7a">THE DEPOT ATE £'+softened+
                   ' OF THAT — YOU STILL DELIVERED</span>' : "");
   $("#result").classList.add("show");
   renderMeters();
@@ -24829,7 +24832,7 @@ function pbDrawHouse(ctx,h,t){
     ctx.restore();
     if(h.tip){
       ctx.fillStyle="#ffd94a"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
-      ctx.fillText("+$"+h.tip, 0, -34); ctx.textAlign="left";
+      ctx.fillText("+£"+h.tip, 0, -34); ctx.textAlign="left";
     }
     ctx.restore();
   }
@@ -25113,7 +25116,7 @@ function pbDrawSpeedo(ctx,w,h){
     ctx.fillStyle = hot ? "#ffd94a" : "#8a8a8a";
     ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
     // ...and the bonus reads ABOVE the dial now, for the same reason
-    ctx.fillText("+$"+PB.stats.topSpeedBonus+" TOP SPEED", cx, cy-r-10);
+    ctx.fillText("+£"+PB.stats.topSpeedBonus+" TOP SPEED", cx, cy-r-10);
     ctx.textAlign="left";
   }
 }
@@ -25619,6 +25622,9 @@ function herdOpenMap(card){
     $("#hmCardImg").src=PORTRAITS[card.pic]||PORTRAITS.content;
     $("#hmCardHead").textContent=card.head;
     $("#hmCardLine").textContent=card.line;
+    const sv=$("#hmCardSaved");
+    sv.textContent = card.saved ? "GAME SAVED" : "COULDN'T SAVE \u2014 STORAGE IS BLOCKED";
+    sv.classList.toggle("bad", !card.saved);
     c.classList.remove("hidden");
   } else c.classList.add("hidden");
   $("#herdMap").classList.add("show");
@@ -25822,7 +25828,14 @@ function herdEndShift(kind){
   HERD.active=false; HERD.joy=null;
   herdSyncCheckout(false);
   renderMeters();
-  if(kind!=="abandon") herdOpenMap({head, line, pic});
+  /* AUTOSAVE — the one exception to the save-when-you-choose rule. A shift ends with money in
+     the wallet and a paddock cleared or not, and that is exactly the moment a closed tab would
+     hurt most. performSave (not bare saveGame) so the last-saved stamp moves too, and the
+     "don't forget to save" mail stays honest. The shift is already cleared off S at this point,
+     so what is saved is the settled result, never a half-finished field. */
+  const saved=performSave();
+  if(kind!=="abandon") herdOpenMap({head, line, pic, saved});
+  else herdToast(saved ? "SHIFT ABANDONED. SAVED." : "SHIFT ABANDONED. COULDN'T SAVE.", !saved);
 }
 function herdSyncCheckout(pulse){
   const sh=S.herd.shift, b=$("#hCheckout");
