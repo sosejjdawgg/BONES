@@ -74,6 +74,9 @@ button.red:active{background:#f22;color:#000}
 #app.bossfight #globalMusicBtn{display:none!important}
 #camhead{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;padding:6px 8px;font-size:8px;z-index:3}
 #camhead .rec{color:#f22;animation:blink 1.2s steps(2) infinite}
+/* in the park the header sits on grass: a shaded strip and a dark edge on the type keep it legible */
+#camhead.parkhdr{background:linear-gradient(rgba(0,0,0,.55),rgba(0,0,0,0));padding-bottom:14px;
+  text-shadow:1px 1px 0 #1b140c,-1px 1px 0 #1b140c,1px -1px 0 #1b140c,-1px -1px 0 #1b140c}
 #camstate.sick{color:#f22;animation:blink 1s steps(2) infinite}
 #camright{display:flex;gap:6px;align-items:center;cursor:pointer}
 #needAlert{border:2px solid #fff;padding:1px 5px;font-size:8px}
@@ -603,6 +606,10 @@ body.reduce-motion .overpanel.show{transition:opacity .12s linear,visibility 0s 
 .hidden{display:none!important}
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
 body.reduce-motion *{animation:none!important}
+#dogcv.jolt{animation:camJolt .26s linear 1}
+#dogcv.joltS{animation:camJoltS .26s linear 1}
+@keyframes camJolt{0%{transform:translate(0,0)}15%{transform:translate(-5px,3px)}30%{transform:translate(5px,-3px)}45%{transform:translate(-4px,-2px)}60%{transform:translate(3px,2px)}80%{transform:translate(-1px,1px)}100%{transform:translate(0,0)}}
+@keyframes camJoltS{0%{transform:translate(0,0)}25%{transform:translate(-2px,1px)}50%{transform:translate(2px,-1px)}75%{transform:translate(-1px,0)}100%{transform:translate(0,0)}}
 
 /* SHEEP HERDING — its own two screens, both direct children of #app so they cover the DOGCAM and
    the control panel together. Deliberately NOT .overpanel: uiCloseOverlays() sweeps every
@@ -812,7 +819,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.367a</span>
+          <span id="devToggle">v0.368a</span>
         </div>
       </div>
 
@@ -2135,12 +2142,14 @@ $("#money1").style.cursor="pointer"; $("#money2").style.cursor="pointer"; $("#mo
 // during init, because park.js (and its `const PK`) is concatenated after this file.
 var PARK_HDR=false;
 function syncParkHeader(){
+  $("#camhead").classList.toggle("parkhdr", !bossOn());
   $("#camlabel").textContent = PK.plusMode ? "DOGPARK UNLEASHED" : "DOGPARK";
   $("#clock").textContent    = "WAVE "+PK.wave;
   $("#camstate").textContent = pkLeftCount()+pkLeftLabel();
   $("#needAlert").classList.add("hidden");     // home needs are not the park's business
 }
 function restoreCamHeader(){
+  $("#camhead").classList.remove("parkhdr");
   $("#camlabel").innerHTML='<span class="rec">&#9679;</span> DOGCAM';
 }
 function renderMeters(){
@@ -2717,7 +2726,7 @@ function bedRect(w,h){
    the middle of the room now, drawn by drawBed() with the floor. Removed rather than left
    unreferenced - an orphan draw routine is the same hazard as the orphan BED position that caused
    the v0.344a sleep loop, and this file has now been bitten by that twice. */
-const LVLREWARDS={3:"SPIKED COLLAR IN SHOP",8:"RED BANDANA IN SHOP",14:"BRASS BELL IN SHOP",18:"AGILITY TRAINING UNLOCKED",25:"BONE CHARM IN SHOP",35:"STEEL TAG IN SHOP",45:"LUCKY ROPE IN SHOP",55:"LITTER OPTION UNLOCKED",70:"SHADOW LEASH IN SHOP",85:"CHAIN COLLAR IN SHOP"};
+const LVLREWARDS={3:"SPIKED COLLAR IN SHOP",8:"RED BANDANA IN SHOP",10:"SHEEP HERDING UNLOCKED \u2014 GO OUT",14:"BRASS BELL IN SHOP",25:"BONE CHARM IN SHOP",35:"STEEL TAG IN SHOP",45:"LUCKY ROPE IN SHOP",55:"LITTER OPTION UNLOCKED",70:"SHADOW LEASH IN SHOP",85:"CHAIN COLLAR IN SHOP"};
 /* Tripled overall - a level is meant to be a week, not an evening - but HALVED for the first five.
    The opening levels are where the game is teaching you what the buttons do, and making someone
    grind through that is charging them for the tutorial. */
@@ -2773,7 +2782,7 @@ const EVO_STAGES={
      park look like a punishment. pic:null leaves the frame out entirely rather than swapping in
      a happier picture, because the rays and the title carry this screen on their own. */
   5:  {kicker:"A NEW WORLD OPENS",  title:"THE DOGPARK IS OPEN!", lines:"SURVIVE THE WAVES.<br>BANK BIG XP AT THE RED GATE.<br><br>IF HE GETS CAUGHT, YOU LOSE IT ALL ☠", pic:null},
-  10: {kicker:"HE'S GROWING UP",    title:"BONES IS A JUNIOR!",   lines:"BIGGER. STRONGER. FASTER.<br><br>COMING UP:<br>BRASS BELL — LV.14<br>AGILITY TRAINING — LV.18<br>BONE CHARM — LV.25", pic:"happy"},
+  10: {kicker:"HE'S GROWING UP",    title:"BONES IS A JUNIOR!",   lines:"BIGGER. STRONGER. FASTER.<br><br>NEW: SHEEP HERDING \u2014 GO OUT<br><br>COMING UP:<br>BRASS BELL — LV.14<br>BONE CHARM — LV.25", pic:"happy"},
   25: {kicker:"PEAK CONDITION",     title:"BONES IS IN HIS PRIME!",lines:"FULL SIZE. TOP FORM MULTIPLIERS<br>ON EVERY SINGLE RUN.<br><br>AHEAD:<br>STEEL TAG — LV.35<br>LUCKY ROPE — LV.45<br>THE LITTER — LV.55<br>THE CROSSROADS — LV.99", pic:"happy"},
   99: {kicker:"THE CROSSROADS",     title:"A LIFE'S CHOICE",      lines:"NINETY-NINE LEVELS TOGETHER.<br>HE HAS GIVEN YOU EVERYTHING.<br><br>WHAT COMES NEXT IS UP TO YOU.", pic:"happy"}
 };
@@ -4758,6 +4767,9 @@ const FLY = { active:false, x:0, y:0.45, dir:1, t:0, next:35+Math.random()*50 };
 /* WHETHER HE ACTUALLY GETS IT. A puppy misses three jumps in ten; every two levels takes another
    tenth off that, so by the time he is grown the fly is his. Never stated anywhere on screen -
    the player is meant to notice that he has got better at it, not read it off a number. */
+const FLY_REACH=1.1, FLY_CROUCH=0.25, FLY_AIR=0.8, FLY_LAND=0.3;   // one try at a fly: rear up, crouch, hop, land
+const FLY_LOOP=FLY_REACH+FLY_CROUCH+FLY_AIR+FLY_LAND;
+const FLY_REACH_SEQ=[0,1,2,1,2];      // up on his hind legs, then a paw batting at it
 const FLY_CATCH_BASE=0.70;      // ...as a puppy
 const FLY_CATCH_PER2=0.10;      // ...and per two levels after the first
 function flyCatchChance(){
@@ -4987,6 +4999,7 @@ function dogSprite(){
              foot:(feet&&feet[f])||a.foot, sx:f*a.w, sw:a.w, sh:a.h, leap:false };
   }
   const fkey = stt==="fetch" ? (CAM.fetchPhase===4?"idle":"come")
+             : (stt==="catch" && CAM.flyReach && FLY.active) ? "beg"
              : stt==="wash"  ? (WASH.heat>0.05?"shake":"idle")
              : (CAMFRAME[stt]||stt);
   let frames = DOGIMG[fkey] || DOGIMG.idle;
@@ -5495,6 +5508,7 @@ function camBehavior(dt){
   if(FETCH.labelT>0) FETCH.labelT=Math.max(0,FETCH.labelT-dt);
   if(FETCH.showLand>0) FETCH.showLand=Math.max(0,FETCH.showLand-dt);
   if(MARKPOP.t>0) MARKPOP.t=Math.max(0,MARKPOP.t-dt);
+  if(MARK.inT>0) MARK.inT=Math.max(0,MARK.inT-dt);
   if(WINFX.shards.length) winShardTick(dt);
   winHealTick(dt);
   if(MARK.showT>0) MARK.showT=Math.max(0,MARK.showT-dt);
@@ -5507,30 +5521,37 @@ function camBehavior(dt){
   if(FLY.active){
     FLY.t+=dt; FLY.x+=FLY.dir*0.07*dt; FLY.y=0.45+Math.sin(FLY.t*7)*0.08;
     const near=Math.abs(FLY.x-(CAM.x+0.10))<0.16;
-    if(near && !PARTY.on && CAM.state!=="catch" && CAM.state!=="rest" && CAM.state!=="come"){ CAM.state="catch"; CAM.fi=0; CAM.t=0; CAM.until=99; }
+    if(near && !PARTY.on && CAM.state!=="catch" && CAM.state!=="rest" && CAM.state!=="come"){ CAM.state="catch"; CAM.fi=0; CAM.t=0; CAM.until=99; CAM.catchT=0; CAM.catchTried=false; }
     if(CAM.state==="catch" && !BALL.held){
       CAM.dir = FLY.x>CAM.x+0.10?1:-1;
-      /* SNAPPING AT IT. He rides the jump strip's own air window on a loop with a hop under it,
-         so it reads as a dog going up for the fly again and again rather than standing on the
-         spot waving a paw. The same leapAirFrame the real leap uses, so there is one description
-         of what a jump looks like. */
+      /* REACH, THEN HOP. He does not spring straight off the carpet at it: first he rears up on
+         his hind legs and bats at it with a paw (the beg strip), then crouches, then goes up for
+         it - a slower, fuller hop than the old snap - and lands, and if it is still there he rears
+         up again. Each pass is one attempt. The same crouch, air and landing frames the real leap
+         uses, so there is still one description of what a jump looks like. */
       const wasT=CAM.catchT||0;
-      CAM.catchT=(wasT+dt)%0.80;
-      if(CAM.catchT<wasT) CAM.catchTried=false;      // the loop came round: that is a fresh jump
-      const u=clamp(CAM.catchT/0.62,0,1);
-      CAM.fi=leapAirFrame(u);
-      CAM.lz=(CAM.catchT<0.62 ? 4*u*(1-u) : 0)*dogBodyFloor()*0.30*rmUnit(CAM.z)/RMH;
+      CAM.catchT=(wasT+dt)%FLY_LOOP;
+      if(CAM.catchT<wasT) CAM.catchTried=false;      // the loop came round: that is a fresh try
+      const ct=CAM.catchT, c0=FLY_REACH, c1=c0+FLY_CROUCH, c2=c1+FLY_AIR;
+      CAM.flyReach = ct<c0;
+      CAM.lz=0;
+      let u=0;
+      if(ct<c0)      CAM.fi=FLY_REACH_SEQ[Math.min(FLY_REACH_SEQ.length-1, Math.floor(ct/c0*FLY_REACH_SEQ.length))];
+      else if(ct<c1) CAM.fi=2+Math.min(4, Math.floor((ct-c0)/FLY_CROUCH*5));
+      else if(ct<c2){ u=(ct-c1)/FLY_AIR; CAM.fi=leapAirFrame(u);
+                      CAM.lz=4*u*(1-u)*dogBodyFloor()*0.32*rmUnit(CAM.z)/RMH; }
+      else           CAM.fi=16+Math.min(4, Math.floor((ct-c2)/FLY_LAND*5));
       /* ONE ROLL PER JUMP, AT THE TOP OF IT. It used to be a 1%-per-frame coin flip that could
          land at any point in the hop, which is why the catch never looked like it had anything
          to do with the jump. Now the attempt IS the jump: he goes up, and at the apex - the only
          moment his mouth is anywhere near the fly - it either works or it does not. */
-      if(!CAM.catchTried && near && FLY.t>0.5 && CAM.catchT>=0.26 && CAM.catchT<0.58){
+      if(!CAM.catchTried && near && FLY.t>0.5 && ct>=c1 && ct<c2 && u>=0.35 && u<0.8){
         CAM.catchTried=true;
         if(Math.random()<flyCatchChance()){
           FLY.active=false; FLY.next=60+Math.random()*90;
           S.fun=clamp(S.fun+10,0,100); S.mood=clamp(S.mood+4,0,100);
           addXP(4); toast("BONES CAUGHT THE FLY. +FUN"); beep(900,.08);
-          CAM.state="idle"; CAM.t=0; CAM.until=1; CAM.fi=0; CAM.lz=0; CAM.catchT=0;
+          CAM.state="idle"; CAM.t=0; CAM.until=1; CAM.fi=0; CAM.lz=0; CAM.catchT=0; CAM.flyReach=false;
         } else {
           // ...and a miss is the fly jinking out of the way, not a message about probability
           FLY.y=clamp(FLY.y-0.05,0.20,0.60); FLY.t+=0.12;
@@ -5542,6 +5563,7 @@ function camBehavior(dt){
       FLY.active=false; FLY.next=60+Math.random()*90;
       if(CAM.state==="catch"){ CAM.state="idle"; CAM.t=0; CAM.until=1; CAM.fi=0;
                                CAM.lz=0; CAM.catchT=0; }
+      CAM.flyReach=false;
     }
   }
   if(PARTY.on){ partyTick(dt); return; }   // he is dancing; everything else on the cam waits
@@ -6331,7 +6353,11 @@ const CAMFRAME={
    he is going slower or faster than the one speed it was chosen for - and the wander, the errands,
    the chase and the fetch are four different speeds. Advancing the phase by how far he actually
    MOVED makes one set of art read as an amble or as a fast trot with nothing else to author. */
-const WALK_STRIDE=0.22;   // floor units covered by one full turn of the walk cycle
+/* HOW FAR ONE PASS OF THE SHEET CARRIES HIM. The 25-frame sheets are not one stride: the legs come
+   back round every ~5 frames, so a pass is nearly five full gait cycles. At 0.22 each of those
+   cycles covered ~18px of floor on a dog ~110px long - he paddled. 0.6 gives a cycle about half his
+   body length: roughly one a second at an amble and two at a trot, which is what a dog does. */
+const WALK_STRIDE=0.6;    // floor units covered by one full pass of the walk sheet
 const WALK_HOLD=0.16;     // ...and how long the walk sheet survives a frame in which he stood
 const DOGDIR_N=(typeof DOGDIR!=="undefined"&&DOGDIR.E)?DOGDIR.E.n:25;
 function dogOctant(dx,dz){
@@ -7146,7 +7172,13 @@ function markNearest(x,z){
 const MARK_FLOOR_R=0.155;                     // the painted cross's own footprint on the carpet
 const MARK_WALL_RX=0.145, MARK_WALL_RH=0.115; // ...and the patch of wall it covers
 const MARK_MOVE_MIN=0.26;                     // it never comes back within this of where it was
-const MARK_POP_T=0.55;
+const MARK_POP_T=0.85;                        // how long the smash plays out
+/* THE CROSS IS THE TARGET, EXACTLY. It used to be drawn at under half the width of the area that
+   counted as a hit and a third of its depth, so a ball could land well clear of the white and
+   still pop it. Now the four arm tips are projected off the real footprint - on the carpet, the
+   back wall or a side wall - and sit at MARK_ARM of it on each axis, so the white is the hit. */
+const MARK_ARM=0.68;
+const MARK_IN_T=0.7;             // a new cross: hidden for the first 40% of this, then springs in
 const MARK_WALL_ODDS=0.42;                    // how often the next one is up a wall
 /* THE POOL OF PLACES THE BALL HAS BEEN. Built once, on the first pop, by throwing the deck shot
    from the ball's resting spot at every angle and every draw and writing down where each one
@@ -7279,23 +7311,42 @@ function markPlace(){
   }
   MARK.x=best.x; MARK.z=best.z; MARK.hz=best.hz||0; MARK.wall=best.wall||null;
   MARK.showT=2.6;
+  MARK.inT=MARK_IN_T;          // the next one waits out the smash, then pops in
 }
 /* THE POP. Painted on the glass rather than in the room: it is a mark coming off a surface, not
    an object falling in the room, so it has no depth of its own to fall through. */
-const MARKPOP={t:0, x:0, y:0, sc:1, bits:[]};
+const MARKPOP={t:0, x:0, y:0, sc:1, bits:[], arms:[]};
 function markPop(){
-  const P=markScreenPt(MARK);
+  const A=markArms(MARK), P=A.c;
   MARKPOP.t=MARK_POP_T; MARKPOP.x=P.x; MARKPOP.y=P.y; MARKPOP.sc=P.sc;
-  MARKPOP.bits.length=0;
-  for(let i=0;i<16;i++){
-    const a=Math.random()*6.283, sp=0.10+Math.random()*0.26;
-    MARKPOP.bits.push({vx:Math.cos(a)*sp, vy:Math.sin(a)*sp*0.75, s:2+Math.random()*4});
+  MARKPOP.bits.length=0; MARKPOP.arms.length=0;
+  for(let i=0;i<26;i++){
+    const a=Math.random()*6.283, sp=0.10+Math.random()*0.32;
+    MARKPOP.bits.push({vx:Math.cos(a)*sp, vy:Math.sin(a)*sp*0.75-0.05, s:2+Math.random()*4.5, gold:Math.random()<0.3});
   }
-  sfxMarkPop(); haptic(25);
+  /* the four arms snap off at the middle and go their own ways, spinning, falling */
+  for(const q of A.pts){
+    const mx=(P.x+q.x)/2, my=(P.y+q.y)/2, dx=q.x-P.x, dy=q.y-P.y, px=dx*RMW, py=dy*RMH;
+    MARKPOP.arms.push({mx, my, len:Math.hypot(px,py), ang:Math.atan2(py,px),
+      vx:dx*1.6+(Math.random()-0.5)*0.03, vy:dy*1.2-0.10-Math.random()*0.06, vr:(Math.random()<0.5?-1:1)*(7+Math.random()*7)});
+  }
+  sfxMarkPop(); haptic([30,20,45]);
+  camJolt();
+}
+// a short knock through the whole picture. CSS on the canvas rather than a transform threaded
+// through drawCam, so nothing else in the room has to know; the shake setting scales it and
+// reduce-motion (which switches CSS animation off) removes it
+function camJolt(){
+  const m=pbShakeMul(); if(!m || SETTINGS.reduceMotion) return;
+  const c=$("#dogcv"); c.classList.remove("jolt","joltS"); void c.offsetWidth;
+  c.classList.add(m<1?"joltS":"jolt");
 }
 // a bright little burst of paint chips - deliberately NOT the ball's balloon pop, which means
 // something much worse has happened
 function sfxMarkPop(){
+  // the smash: a crunch of noise and a thump under the old bright chips
+  if(SETTINGS.sound){ try{ audioInit(); noiseBurst(0.22,1700,0.7,0.16,AC.currentTime); noiseBurst(0.12,420,1.2,0.12,AC.currentTime); }catch(e){} }
+  beep(95,.12,"square",.06);
   beep(1180,.035,"square",.05);
   setTimeout(()=>beep(1840,.05,"sine",.045),26);
   setTimeout(()=>beep(2460,.06,"sine",.03),68);
@@ -7304,6 +7355,19 @@ function sfxMarkPop(){
    a generous CLOSE is still a CLOSE - but only a shot that actually TOUCHES the cross pops it,
    because a cross bursting while the ball lands a foot away reads as a bug however it scored. */
 function markStruckFloor(d){ return !MARK.wall && d<MARK_FLOOR_R; }
+// the cross's centre and its four arm tips on the glass (top-left, top-right, bottom-right,
+// bottom-left), projected through the surface it is painted on so perspective does the rest
+function markArms(m){
+  const k=MARK_ARM, pts=[];
+  for(const [sx,sy] of [[-1,-1],[1,-1],[1,1],[-1,1]]){
+    let q;
+    if(!m.wall) q={x:m.x+sx*k*MARK_FLOOR_R, z:m.z+sy*k*MARK_FLOOR_R/1.3, hz:0, wall:null};
+    else if(m.wall==="back") q={x:m.x+sx*k*MARK_WALL_RX, z:m.z, hz:(m.hz||0)-sy*k*MARK_WALL_RH, wall:"back"};
+    else q={x:m.x, z:m.z+sx*k*MARK_WALL_RX, hz:(m.hz||0)-sy*k*MARK_WALL_RH, wall:m.wall};
+    pts.push(markScreenPt(q));
+  }
+  return {c:markScreenPt(m), pts};
+}
 function markWallTouch(wall){
   if(!FETCH.live || MARK.wall!==wall || MARKPOP.t>0) return;
   const along = wall==="back" ? Math.abs(BALL.x-MARK.x) : Math.abs(BALL.z-MARK.z);
@@ -7489,44 +7553,70 @@ function drawSlingPrompt(ctx,w,h,t){
   ctx.fillStyle="#f22"; ctx.fillText(msg, w/2, h*0.345);
   ctx.textAlign="left"; ctx.restore();
 }
-// a thick white cross, breathing gently, laid over a dark backing so it holds on any carpet
+// a white cross, breathing gently, laid over a dark backing so it holds on any carpet. Its arms are
+// projected off the real hit footprint (markArms), so on the carpet it lies flat in perspective, on
+// the back wall it faces you square, and on a side wall it slants - and the white is the target.
 function drawMark(ctx,w,h,m,t,i){
-  const P=markScreenPt(m);
-  const mx=P.x*w, my=P.y*h, ms=P.sc;
+  const A=markArms(m), c=A.c, ms=c.sc;
   const br=0.5+0.5*Math.sin(t*2.1+i*1.9);          // the soft pulse, in brightness and in size
-  const r=0.066*ms*w*(0.95+0.05*br);
-  /* WHICH SURFACE IT IS ON IS TOLD BY ITS SHAPE. Lying on the carpet you are looking ALONG it, so
-     it is squashed flat; on the back wall it faces you square; on a side wall you see it at a
-     slant, so that one is squashed the other way instead. Nothing else distinguishes them. */
-  const kx = (m.wall==="left"||m.wall==="right") ? 0.52 : 1;
-  const ky = m.wall ? 0.92 : 0.34;
+  let g=0.95+0.05*br;
+  if(m.inT>0){                                      // springing in, with a little overshoot
+    const e=1-m.inT/MARK_IN_T; if(e<0.4) return;
+    const u=(e-0.4)/0.6; g*=1+2.70158*Math.pow(u-1,3)+1.70158*Math.pow(u-1,2);
+  }
+  const cx=c.x*w, cy=c.y*h;
+  const P=A.pts.map(q=>({x:cx+(q.x*w-cx)*g, y:cy+(q.y*h-cy)*g}));
   ctx.save(); ctx.lineCap="round";
-  // ...and no ring around it. Thicker, and the two strokes are the whole mark.
+  // ...and no ring around it. The two strokes are the whole mark.
   for(const pass of [0,1]){
     ctx.strokeStyle = pass ? "#fff" : "#000";
-    ctx.lineWidth   = (pass ? 9 : 14)*ms;
+    ctx.lineWidth   = pass ? Math.max(2.5,6.5*ms) : Math.max(5.5,10.5*ms);
     ctx.globalAlpha = pass ? (0.74+0.26*br) : 0.45;
     ctx.beginPath();
-    ctx.moveTo(mx-r*kx,my-r*ky); ctx.lineTo(mx+r*kx,my+r*ky);
-    ctx.moveTo(mx+r*kx,my-r*ky); ctx.lineTo(mx-r*kx,my+r*ky);
+    ctx.moveTo(P[0].x,P[0].y); ctx.lineTo(P[2].x,P[2].y);
+    ctx.moveTo(P[1].x,P[1].y); ctx.lineTo(P[3].x,P[3].y);
     ctx.stroke();
   }
   ctx.restore();
 }
-// the cross coming off the surface: a ring and a scatter of paint chips, on the glass
+// the cross SMASHED: a white flash, two shockwaves, its four arms tumbling away, and paint chips
 function drawMarkPop(ctx,w,h){
   if(MARKPOP.t<=0) return;
   const k=1-MARKPOP.t/MARK_POP_T;                  // 0 on the frame it burst, 1 when it is gone
   const x=MARKPOP.x*w, y=MARKPOP.y*h, ms=MARKPOP.sc;
-  ctx.save();
+  ctx.save(); ctx.lineCap="round";
+  // the flash: a white star for the first few frames
+  if(k<0.18){
+    const f=1-k/0.18, R=(0.05+0.10*k)*ms*w;
+    ctx.globalAlpha=f; ctx.fillStyle="#fff";
+    ctx.beginPath();
+    for(let j=0;j<16;j++){ const a=j/16*6.283, rr= j%2 ? R*0.38 : R; const px=x+Math.cos(a)*rr, py=y+Math.sin(a)*rr*0.8; j?ctx.lineTo(px,py):ctx.moveTo(px,py); }
+    ctx.closePath(); ctx.fill();
+  }
+  // two shockwaves, the second a beat behind
+  for(const [d,wd] of [[0,5],[0.12,3]]){
+    const kk=(k-d)/(1-d); if(kk<=0) continue;
+    ctx.globalAlpha=(1-kk)*0.9; ctx.strokeStyle="#fff"; ctx.lineWidth=Math.max(1,wd*ms*(1-kk));
+    ctx.beginPath(); ctx.ellipse(x,y,(0.02+0.16*kk)*ms*w,(0.02+0.16*kk)*ms*w*0.7,0,0,7); ctx.stroke();
+  }
+  // the arms: each half of a stroke, spinning off with a little gravity
+  const lw=Math.max(2.5,6.5*ms);
+  for(const a of MARKPOP.arms){
+    const px=(a.mx+a.vx*k)*w, py=(a.my+a.vy*k+0.34*k*k)*h, ang=a.ang+a.vr*k, L=a.len*0.5;
+    const ex=Math.cos(ang)*L, ey=Math.sin(ang)*L;
+    ctx.globalAlpha=k<0.6?1:Math.max(0,(1-k)/0.4);
+    for(const pass of [0,1]){
+      ctx.strokeStyle=pass?"#fff":"#000"; ctx.lineWidth=pass?lw:lw+4;
+      ctx.beginPath(); ctx.moveTo(px-ex,py-ey); ctx.lineTo(px+ex,py+ey); ctx.stroke();
+    }
+  }
+  // chips
   ctx.globalAlpha=(1-k)*0.95;
-  ctx.strokeStyle="#fff"; ctx.lineWidth=Math.max(1,5*ms*(1-k));
-  ctx.beginPath(); ctx.arc(x,y,(0.012+0.10*k)*ms*w,0,7); ctx.stroke();
-  ctx.fillStyle="#fff";
   for(const b of MARKPOP.bits){
-    const s=Math.max(1,b.s*ms*(1-k*0.55));
-    const px=x+b.vx*k*ms*w, py=y+b.vy*k*ms*w+0.09*k*k*ms*w;
-    ctx.fillRect(px-s/2, py-s/2, s, s);
+    const sz=Math.max(1,b.s*ms*(1-k*0.55));
+    const px=x+b.vx*k*ms*w, py=y+b.vy*k*ms*w+0.12*k*k*ms*w;
+    ctx.fillStyle=b.gold?"#e8c14a":"#fff";
+    ctx.fillRect(px-sz/2, py-sz/2, sz, sz);
   }
   ctx.restore();
 }
@@ -7948,6 +8038,7 @@ function drawCam(t){
      at once and a chain that long cannot be read or audited. Anything not named here falls back to
      a set of its own name, which is how the older frames (catch, shake) keep working untouched. */
   const fkey = stt==="fetch" ? (CAM.fetchPhase===4?"idle":"come")
+             : (stt==="catch" && CAM.flyReach && FLY.active) ? "beg"
              : stt==="wash"  ? (WASH.heat>0.05?"shake":"idle")
              : (CAMFRAME[stt]||stt);
   let frames = DOGIMG[fkey] || DOGIMG.idle;
@@ -11167,6 +11258,7 @@ function pkZoomies(){
 }
 function pkHitMark(x,y,down){
   HITFX.push({x,y,life:down?0.42:0.28,max:down?0.42:0.28,down:!!down});
+  pkHitPuff(x,y,down);
   const n=down?9:5;
   for(let i=0;i<n;i++){
     const a=Math.random()*6.283, sp=(down?70:45)+Math.random()*60;
@@ -11323,6 +11415,7 @@ function startPark(plus){
   const moodMul=0.90+0.20*S.mood/100;          // mood 0 -> 0.90x, mood 100 -> 1.10x
   // trained attributes: unlike everything above, these do not care what kind of morning he had
   const fStr=attrF("str"), fStam=attrF("stam"), fVit=attrF("vit");
+  PFX.parts.length=0;
   Object.assign(PK,{
     active:true,t:0,wave:1,waveT:0,spawnT:1,
     waveQuota:pkWaveQuota(1), waveSpawned:0, waveKills:0, lastDowned:null, waveOutro:null,
@@ -12479,6 +12572,7 @@ function pkGain(n,x,y){
   const g=Math.round(n+(PK.chain-1));
   PK.bones+=g;
   PK.fx.push({x,y,txt:"+"+g,life:0.9});
+  pkGainChime();
   /* A BONE IS A MEAL TO SOMETHING CURSED. This is the other half of the burn: daylight takes him
      apart and picking up drops puts him back together, so the run becomes a chase rather than a
      countdown. It applies at night too - the curse does not stop being what it is after dark,
@@ -20614,6 +20708,8 @@ function pkDrawBoss(){
 })();
 function parkUpdate(dt){
   if(!PK.active) return;
+  if(PK.t<0.05) pkFxReset();
+  pkFxTick(dt);
   // one place catches every hit. Damage is dealt from nine scattered blocks below, several of
   // which bail out of the frame straight afterwards, so the buzz is triggered by watching the
   // health total across frames rather than by touching all nine.
@@ -22609,12 +22705,205 @@ function pkDrawBonesHp(ctx,DX,DY,hz,buzz){
     ctx.restore();
   }
 }
+/* ---------------------------------------------------------------- DOGPARK, polished
+   The same finish SHEEP HERDING got, laid over the park without touching a single rule of it:
+   everything here is runtime-only (PFX, never S or the run's own state), the sim never reads it,
+   and every piece of it stands down while WOLFIE is up - that fight keeps its black-and-white.
+   - the ground breathes: cloud shadows drift over it and butterflies work the flowers
+   - he kicks up dust when he runs and when a pounce lands; a downed animal leaves a puff of fur
+   - PK.shake finally moves the picture (it was set on every hit and slam and never drawn)
+   - the floating numbers are outlined and pop in; the chain counter pops when it climbs
+   - a bone pickup chimes, and the chime climbs with the chain
+   - the control deck is the park at dusk rather than a black box, with softer cards, a goal bar
+     with a shine on it and a joystick with a knob you can see */
+const PFX={parts:[], dustT:0, chainSeen:0, chainPop:0, boneFx:0, bonesSeen:0, deck:null};
+const PFX_MAX=160;
+function pkFxReset(){
+  PFX.parts.length=0; PFX.dustT=0; PFX.chainSeen=0; PFX.chainPop=0; PFX.boneFx=0; PFX.bonesSeen=PK.bones||0;
+  PFX.wasJump=false;
+}
+function pkPuff(x,y,n,col,spd,life,size){
+  for(let i=0;i<n && PFX.parts.length<PFX_MAX;i++){
+    const a=Math.random()*6.283, v=spd*(0.4+Math.random()*0.6);
+    PFX.parts.push({x, y, vx:Math.cos(a)*v, vy:Math.sin(a)*v*0.6-8, life:life*(0.7+Math.random()*0.5), max:life, r:size*(0.6+Math.random()*0.6), col});
+  }
+}
+function pkFxTick(dt){
+  if(!PK.active) return;
+  // the shake decays here: outside the three cinematics nothing was ever counting it down
+  if(PK.shake>0) PK.shake=Math.max(0,PK.shake-dt);
+  for(let i=PFX.parts.length-1;i>=0;i--){
+    const p=PFX.parts[i]; p.life-=dt;
+    if(p.life<=0){ PFX.parts.splice(i,1); continue; }
+    const k=Math.max(0,1-3*dt); p.vx*=k; p.vy*=k; p.x+=p.vx*dt; p.y+=p.vy*dt;
+  }
+  PFX.chainPop=Math.max(0,PFX.chainPop-dt);
+  PFX.boneFx=Math.max(0,PFX.boneFx-dt);
+  if((PK.chain||0)>PFX.chainSeen) PFX.chainPop=0.28;
+  PFX.chainSeen=PK.chain||0;
+  if((PK.bones||0)>PFX.bonesSeen) PFX.boneFx=0.45;
+  PFX.bonesSeen=PK.bones||0;
+  if(bossOn()) return;
+  // dust off his feet: a steady trickle at a run, a burst when a pounce comes down
+  const sp=Math.hypot(PK.vx||0,PK.vy||0), fy=PK.y+13;
+  if(sp>(PK.spd||90)*0.75 && !PK.jump){
+    PFX.dustT-=dt;
+    if(PFX.dustT<=0){ PFX.dustT=0.11; pkPuff(PK.x-(PK.vx||0)*0.04, fy, 1, "#d9c9a0", 10, 0.45, 3); }
+  }
+  const inJump=!!PK.jump;
+  if(PFX.wasJump && !inJump) pkPuff(PK.x, fy, 7, "#d9c9a0", 55, 0.5, 3.2);
+  PFX.wasJump=inJump;
+}
+// ---- the ground
+function pkDrawAmbient(ctx,SC,t,WW,WH){
+  if(bossOn()) return;
+  const RM=!!SETTINGS.reduceMotion, tt=RM?0:t;
+  // cloud shadows: big, soft, slow, drifting across the whole wrapped park
+  for(let i=0;i<4;i++){
+    const wx=((i*WW/4+tt*9)%WW+WW)%WW, wy=((i*0.37+0.15)%1)*WH;
+    const [sx,sy]=SC(wx,wy);
+    ctx.fillStyle="rgba(10,30,5,.09)";
+    ctx.beginPath(); ctx.ellipse(sx,sy,150,64,0,0,7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(sx+44,sy-14,100,46,0,0,7); ctx.fill();
+  }
+  if(RM) return;
+  // butterflies, each with a patch of park of its own
+  const C=["#f7f4ec","#f4d23c","#ef8ab0","#b8a6f0","#f7f4ec","#f4d23c"];
+  for(let i=0;i<6;i++){
+    const ax=((i*0.618+0.1)%1)*WW, ay=((i*0.382+0.3)%1)*WH;
+    const bx=ax+Math.sin(t*0.5+i*2.1)*60, by=ay+Math.sin(t*0.8+i*1.3)*40+Math.sin(t*3+i)*3;
+    const [sx,sy]=SC(bx,by);
+    const open=Math.sin(t*20+i*2)>0;
+    ctx.fillStyle="rgba(0,0,0,.18)"; ctx.fillRect(sx-1,sy+9,3,1);
+    ctx.fillStyle=C[i];
+    if(open){ ctx.fillRect(sx-3,sy-1,2.5,2.5); ctx.fillRect(sx+1,sy-1,2.5,2.5); }
+    else { ctx.fillRect(sx-1.5,sy-2,1.2,3); ctx.fillRect(sx+0.8,sy-2,1.2,3); }
+    ctx.fillStyle="#1b140c"; ctx.fillRect(sx-0.4,sy-1,1,3);
+  }
+}
+function pkDrawDust(ctx,SC){
+  for(const p of PFX.parts){
+    const [sx,sy]=SC(p.x,p.y), f=p.life/p.max;
+    ctx.globalAlpha=Math.min(0.75,f*1.1); ctx.fillStyle=p.col;
+    ctx.beginPath(); ctx.arc(sx,sy,p.r*(1.6-f*0.6),0,7); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+function pkOutlineText(ctx,txt,x,y,col){
+  ctx.lineJoin="round"; ctx.strokeStyle="#1b140c"; ctx.lineWidth=3.2; ctx.strokeText(txt,x,y);
+  ctx.fillStyle=col; ctx.fillText(txt,x,y);
+}
+// the numbers that float off things: outlined so they read on grass, and popped in
+function pkDrawFloaters(ctx,SC){
+  ctx.textAlign="center";
+  for(const f of PK.fx){
+    const [px,py]=SC(f.x,f.y), life=Math.max(0,f.life);
+    const g=clamp(0.9-life,0,0.9), pop = g<0.12 ? 1+(0.12-g)*4 : 1;
+    ctx.globalAlpha=Math.min(1,life/0.3);
+    ctx.save(); ctx.translate(px,py-g*26); ctx.scale(pop,pop);
+    ctx.font="9px 'Press Start 2P',monospace";
+    pkOutlineText(ctx,f.txt,0,0,f.col||"#fff");
+    ctx.restore();
+  }
+  ctx.globalAlpha=1; ctx.textAlign="left";
+}
+function pkDrawChain(ctx,DX,DY){
+  if(!(PK.chain>1)) return;
+  const f3=clamp(PK.chainT/3,0,1), pop=1+PFX.chainPop*1.6;
+  const col = PK.chain>=3 ? "#e8c14a" : "#fff";
+  ctx.save(); ctx.globalAlpha=0.55+0.45*f3; ctx.translate(DX,DY-42); ctx.scale(pop,pop);
+  ctx.font="9px 'Press Start 2P',monospace"; ctx.textAlign="center";
+  pkOutlineText(ctx,"x"+PK.chain,0,0,col);
+  ctx.restore(); ctx.textAlign="left";
+}
+// a pickup chimes, and the chime climbs with the chain
+function pkGainChime(){
+  const notes=[988,1175,1319,1568];
+  const n=notes[Math.min(notes.length-1,Math.max(0,(PK.chain||1)-1))];
+  beep(n,.05,"square",.028,{key:"pkgain"});
+  setTimeout(()=>beep(n*1.5,.05,"sine",.022,{key:"pkgain2"}),45);
+}
+function pkHitPuff(x,y,down){
+  if(bossOn()) return;
+  pkPuff(x,y,down?9:3,down?"#e9e4d8":"#cfc8b8",down?60:36,down?0.6:0.35,down?3:2.2);
+  if(down) PK.shake=Math.max(PK.shake||0,0.12);
+}
+// how far the picture moves this frame
+function pkShakeOffset(){
+  const s=PK.shake||0; if(s<=0 || SETTINGS.reduceMotion) return [0,0];
+  const a=Math.min(1,s/0.5)*6*pbShakeMul();
+  return [(Math.random()-0.5)*2*a, (Math.random()-0.5)*2*a];
+}
+// ---- the deck: the park at dusk under glass, instead of a black box
+function pkDeckBG(ctx,w,h){
+  if(bossOn()){ ctx.fillStyle="#000"; ctx.fillRect(0,0,w,h); ctx.strokeStyle="#fff"; ctx.lineWidth=3; ctx.strokeRect(6,6,w-12,h-12); return; }
+  const key=w+"x"+h+(TILEIMG.g2&&TILEIMG.g2.complete?"t":"");
+  if(!PFX.deck || PFX.deck.key!==key){
+    const c=document.createElement("canvas"); c.width=Math.max(1,Math.round(w*DPR)); c.height=Math.max(1,Math.round(h*DPR));
+    const x=c.getContext("2d"); x.setTransform(DPR,0,0,DPR,0,0); x.imageSmoothingEnabled=false;
+    x.fillStyle="#0e150c"; x.fillRect(0,0,w,h);
+    if(TILEIMG.g2 && TILEIMG.g2.complete && TILEIMG.g2.naturalWidth){
+      x.globalAlpha=0.15;
+      for(let ty=0;ty<h;ty+=48) for(let tx=0;tx<w;tx+=48) x.drawImage(TILEIMG.g2,tx,ty,48,48);
+      x.globalAlpha=1;
+    }
+    const g=x.createLinearGradient(0,0,0,h);
+    g.addColorStop(0,"rgba(0,0,0,.15)"); g.addColorStop(1,"rgba(0,0,0,.55)");
+    x.fillStyle=g; x.fillRect(0,0,w,h);
+    const v=x.createRadialGradient(w/2,h*0.45,Math.min(w,h)*0.3,w/2,h*0.45,Math.max(w,h)*0.75);
+    v.addColorStop(0,"rgba(0,0,0,0)"); v.addColorStop(1,"rgba(0,0,0,.45)");
+    x.fillStyle=v; x.fillRect(0,0,w,h);
+    PFX.deck={key,c};
+  }
+  ctx.drawImage(PFX.deck.c,0,0,w,h);
+  ctx.strokeStyle="rgba(0,0,0,.6)"; ctx.lineWidth=5; ctx.strokeRect(6,6,w-12,h-12);
+  ctx.strokeStyle="rgba(255,255,255,.85)"; ctx.lineWidth=3; ctx.strokeRect(6,6,w-12,h-12);
+}
+function pkDeckCard(ctx,x,y,w,h,edge){
+  ctx.fillStyle="rgba(10,14,8,.72)"; ctx.fillRect(x,y,w,h);
+  ctx.strokeStyle=edge||"rgba(255,255,255,.55)"; ctx.lineWidth=2; ctx.strokeRect(x,y,w,h);
+}
+function pkDrawJoy(ctx){
+  const J=PK.joy, jm=Math.hypot(J.dx,J.dy), jrun=pkJoyRunAt(), running=jm>=jrun;
+  const kx=J.ox+J.dx*JOY_R, ky=J.oy+J.dy*JOY_R, kr=running?12:10;
+  ctx.save();
+  ctx.globalAlpha=0.5; ctx.fillStyle="rgba(0,0,0,.35)";
+  ctx.beginPath(); ctx.arc(J.ox,J.oy,JOY_R,0,7); ctx.fill();
+  ctx.globalAlpha=0.55; ctx.strokeStyle="#fff"; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.arc(J.ox,J.oy,JOY_R,0,7); ctx.stroke();
+  ctx.globalAlpha=running?0.75:0.45; ctx.lineWidth=1; ctx.setLineDash([3,4]);
+  ctx.strokeStyle=running?"#e8c14a":"#fff";
+  ctx.beginPath(); ctx.arc(J.ox,J.oy,JOY_R*jrun,0,7); ctx.stroke(); ctx.setLineDash([]);
+  ctx.globalAlpha=0.35; ctx.fillStyle="#000"; ctx.beginPath(); ctx.arc(kx+2,ky+3,kr,0,7); ctx.fill();
+  ctx.globalAlpha=running?0.98:0.85; ctx.fillStyle=running?"#fff4cf":"#fff"; ctx.strokeStyle="#1b140c"; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.arc(kx,ky,kr,0,7); ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+// the wave goal: a bar with a fill that shines, instead of a flat strip
+function pkDrawGoalBar(ctx,x,y,w,h,pct,t){
+  ctx.fillStyle="rgba(10,14,8,.75)"; ctx.fillRect(x,y,w,h);
+  const fw=(w-2)*clamp(pct,0,1);
+  if(fw>0){
+    const g=ctx.createLinearGradient(0,y,0,y+h);
+    g.addColorStop(0,"#7fe0a8"); g.addColorStop(1,"#2f8a5c");
+    ctx.fillStyle=g; ctx.fillRect(x+1,y+1,fw,h-2);
+    if(!SETTINGS.reduceMotion){
+      const sx=x+1+((t*60)%(w+40))-20;
+      ctx.save(); ctx.beginPath(); ctx.rect(x+1,y+1,fw,h-2); ctx.clip();
+      ctx.fillStyle="rgba(255,255,255,.35)"; ctx.fillRect(sx,y+1,8,h-2);
+      ctx.restore();
+    }
+  }
+  ctx.strokeStyle="rgba(255,255,255,.7)"; ctx.lineWidth=1; ctx.strokeRect(x+0.5,y+0.5,w-1,h-1);
+}
+
 function parkDraw(t){
   if(!PK.active) return;
   const [ctx,w,h]=fit($("#dogcv"));
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
   const DX=w/2, DY=h/2;
   const SC=(ex,ey)=>[DX+wd(ex-PK.x,WW), DY+wd(ey-PK.y,WH)];
+  const [shx,shy]=pkShakeOffset();
   // during the sword's arrival, the whole view pans off BONES and onto the landing site — a
   // uniform screen-space shift laid on top of everything below, so every single thing already
   // drawn relative to DX/DY (BONES himself included, he's never routed through SC) slides
@@ -22639,7 +22928,7 @@ function parkDraw(t){
     panX=(DX-hsx)*sp; panY=(DY-hsy)*sp;
   }
   ctx.save(); ctx.translate(DX,DY); ctx.scale(PK.zoom||1,PK.zoom||1); ctx.translate(-DX,-DY);
-  ctx.translate(panX,panY);
+  ctx.translate(panX+shx,panY+shy);
   /* THE VISIBLE RECT, in the coordinates everything below is actually drawn in. Every cull in
      this function used to test against the bare canvas box (0..w, 0..h) while the world is drawn
      inside the zoom transform above -- so once the camera pulled back (PK.zoom goes to 0.55, and
@@ -22667,6 +22956,8 @@ function parkDraw(t){
   } else { ctx.fillStyle="#20261f"; ctx.fillRect(0,0,w,h); }
   pkDrawScorch(ctx,DX,DY,WW,WH,w,h);
   pkDrawSwordSite(ctx,SC,w,h,t);
+  pkDrawAmbient(ctx,SC,t,WW,WH);
+  pkDrawDust(ctx,SC);
   if(PK.whirlwindT>0){
     // a bright white comet-tail swoosh chasing the blade all the way around, sized to exactly
     // cover the real hit radius — BONES is always drawn at screen centre, so this never needs
@@ -23245,12 +23536,7 @@ function parkDraw(t){
     ctx.fillRect(sx-2,sy-2,4,4);
     ctx.globalAlpha=1;
   }
-  if(PK.chain>1){
-    const f3=clamp(PK.chainT/3,0,1), c3=Math.round(120+135*f3);
-    ctx.fillStyle="rgb("+c3+","+c3+","+c3+")";
-    ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText("x"+PK.chain, DX, DY-42); ctx.textAlign="left";
-  }
+  pkDrawChain(ctx,DX,DY);
   pkDrawFloatingSword(ctx,SC,DX,DY,t);
   pkDrawGroveFog(ctx,SC,w,h);
   ctx.restore();   // exit the world zoom transform before any fixed-to-screen overlay
@@ -23264,15 +23550,8 @@ function parkDraw(t){
     ctx.fillText("PAUSED \u2014 SHOP ON CONTROLLER", w/2, h/2); ctx.textAlign="left";
   }
   ctx.save(); ctx.translate(DX,DY); ctx.scale(PK.zoom||1,PK.zoom||1); ctx.translate(-DX,-DY);
-  ctx.font="8px 'Press Start 2P',monospace"; ctx.fillStyle="#fff";
-  for(const f4 of PK.fx){
-    const [px2,py2]=SC(f4.x,f4.y);
-    ctx.globalAlpha=Math.max(0,f4.life);
-    // most of these are the white bone count; a `col` marks the ones that mean something else
-    ctx.fillStyle=f4.col||"#fff";
-    ctx.fillText(f4.txt,px2,py2-(0.9-f4.life)*24);
-    ctx.globalAlpha=1;
-  }
+  // most of these are the white bone count; a `col` marks the ones that mean something else
+  pkDrawFloaters(ctx,SC);
   ctx.fillStyle="#fff";
   pkDrawJudgmentBolts(ctx,SC,w,h);
   ctx.restore();   // back to screen space for the fixed HUD (banners, flashes, health bar)
@@ -23629,18 +23908,20 @@ function pkRageBarY(w){
 }
 function pkPadDraw(t){
   const [ctx,w,h]=fit($("#parkcv"));
-  ctx.fillStyle="#000"; ctx.fillRect(0,0,w,h);
-  ctx.strokeStyle="#fff"; ctx.lineWidth=3; ctx.strokeRect(6,6,w-12,h-12);
+  pkDeckBG(ctx,w,h);
   // the how-to-move hint sits dead centre, which is also where the pal rows reach down to once
   // the pad has given up enough height to the view (see pkApplyUISplit). It has done its job by
   // then anyway — this only ever shows on a full-size pad, which is the first wave or two.
   if(!PK.shop && !PK.joy && !PK.friendsOpen && !PK.convertOpen && h>300){
-    ctx.fillStyle="#444"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillStyle=bossOn()?"#444":"rgba(220,235,210,.42)"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
     ctx.fillText(DN("DRAG ANYWHERE TO MOVE BONES"), w/2, h/2);
   }
-  ctx.strokeStyle="#666"; ctx.lineWidth=2; ctx.strokeRect(8,10,110,30);
-  drawBone(ctx, 24, 26, 1, "#fff");
-  ctx.fillStyle="#fff"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
+  // the bones count: a card, and it flashes gold and swells a touch whenever it goes up
+  if(bossOn()){ ctx.strokeStyle="#666"; ctx.lineWidth=2; ctx.strokeRect(8,10,110,30); }
+  else pkDeckCard(ctx,8,10,110,30, PFX.boneFx>0 ? "rgba(232,193,74,.9)" : null);
+  const bk=1+PFX.boneFx*0.35, bcol=PFX.boneFx>0 && !bossOn() ? "#e8c14a" : "#fff";
+  ctx.save(); ctx.translate(24,26); ctx.scale(bk,bk); drawBone(ctx, 0, 0, 1, bcol); ctx.restore();
+  ctx.fillStyle=bcol; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="left";
   ctx.fillText(PK.bones+" BONES", 34, 29);
   // bottom-left, always reachable — a deliberate way out that isn't "just die on purpose". Real
   // DOM buttons (not canvas-drawn hit-rects) so a thumb aiming for the gear can never clip the
@@ -23799,9 +24080,11 @@ function pkPadDraw(t){
     shown.forEach((ln,i)=>ctx.fillText(ln, w/2, gy0+i*10));
     const gby=gy0+shown.length*10-2;
     const gbw=Math.min(220,w*0.7), gbx=w/2-gbw/2;
-    ctx.fillStyle="rgba(0,0,0,.55)"; ctx.fillRect(gbx,gby,gbw,8);
-    ctx.fillStyle="#4a9"; ctx.fillRect(gbx+1,gby+1,(gbw-2)*pct,6);
-    ctx.strokeStyle="rgba(255,255,255,.55)"; ctx.lineWidth=1; ctx.strokeRect(gbx,gby,gbw,8);
+    if(bossOn()){
+      ctx.fillStyle="rgba(0,0,0,.55)"; ctx.fillRect(gbx,gby,gbw,8);
+      ctx.fillStyle="#4a9"; ctx.fillRect(gbx+1,gby+1,(gbw-2)*pct,6);
+      ctx.strokeStyle="rgba(255,255,255,.55)"; ctx.lineWidth=1; ctx.strokeRect(gbx,gby,gbw,8);
+    } else pkDrawGoalBar(ctx,gbx,gby-1,gbw,10,pct,t);
     ctx.fillStyle="#cfe6ff"; ctx.font="6px 'Press Start 2P',monospace";
     ctx.fillText(Math.round(pct*100)+"% CLEAR", w/2, gby+17);
     ctx.textAlign="left";
@@ -23809,18 +24092,9 @@ function pkPadDraw(t){
   if(PK.joy){
     /* The outer ring is the pad's actual travel radius rather than a circle a few px inside it:
        once deflection means speed, "how far out am I" is something the player has to be able to
-       read. The dashed ring is where the walk turns into a run, and the knob thickens as it
-       crosses - the gait change is a thing you can aim for instead of discover. */
-    const jm=Math.hypot(PK.joy.dx,PK.joy.dy), jrun=pkJoyRunAt(), running=jm>=jrun;
-    ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.globalAlpha=0.34;
-    ctx.beginPath(); ctx.arc(PK.joy.ox,PK.joy.oy,JOY_R,0,7); ctx.stroke();
-    ctx.globalAlpha=0.45; ctx.lineWidth=1; ctx.setLineDash([3,4]);
-    ctx.beginPath(); ctx.arc(PK.joy.ox,PK.joy.oy,JOY_R*jrun,0,7); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.globalAlpha=running?0.92:0.62; ctx.fillStyle="#fff";
-    ctx.beginPath(); ctx.arc(PK.joy.ox+PK.joy.dx*JOY_R, PK.joy.oy+PK.joy.dy*JOY_R,
-                             running?11:9, 0,7); ctx.fill();
-    ctx.globalAlpha=1;
+       read. The dashed ring is where the walk turns into a run - gold once he's running - and the
+       knob thickens as it crosses, so the gait change is a thing you can aim for. */
+    pkDrawJoy(ctx);
   }
   if(PK.convertOpen){
     // a solid backdrop first — this used to just stroke the border and leave BONES' own HP/armour
