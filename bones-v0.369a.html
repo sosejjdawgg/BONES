@@ -4,6 +4,39 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>BONES</title>
+<script>
+/* IF IT BREAKS, SAY SO. Installed before anything else on the page, so even an error that stops the
+   main script dead (which would otherwise leave nothing but the black page behind it) puts its own
+   message on screen - something a player can screenshot instead of "it's just black". Uncaught
+   errors only: a font or image that fails to download carries no message and is ignored. Tap to hide. */
+(function(){
+  var shown=0;
+  function report(msg,where){
+    if(shown>=3) return; shown++;
+    var box=document.getElementById("bootErr");
+    if(!box){
+      box=document.createElement("div"); box.id="bootErr";
+      box.style.cssText="position:fixed;left:8px;right:8px;top:8px;z-index:99999;background:#200;color:#fff;"+
+        "border:2px solid #f22;padding:10px;font:12px/1.5 monospace;white-space:pre-wrap;word-break:break-word";
+      box.onclick=function(){ box.parentNode && box.parentNode.removeChild(box); };
+      (document.body||document.documentElement).appendChild(box);
+      box.textContent="SOMETHING BROKE - please send a screenshot of this.\n(tap to hide)\n";
+    }
+    box.textContent+="\n"+msg+(where?"\n  at "+where:"");
+  }
+  window.addEventListener("error",function(e){
+    if(!e || !e.message) return;
+    var st=e.error&&e.error.stack ? "\n"+String(e.error.stack).split("\n").slice(0,3).join("\n") : "";
+    report(e.message, (e.lineno?"line "+e.lineno+(e.colno?":"+e.colno:""):"")+st);
+  });
+  window.addEventListener("unhandledrejection",function(e){
+    var r=e&&e.reason; if(!r) return;
+    var m=String(r.message||r);
+    if(/play\(\)|NotAllowedError|AbortError/i.test(m)) return;   // audio autoplay refusals are normal
+    report("PROMISE: "+m, r.stack?String(r.stack).split("\n").slice(0,2).join("\n"):"");
+  });
+})();
+</script>
 <meta name="description" content="A brutalist black, white and red pixel-art dog care sim.">
 <meta name="theme-color" content="#000000">
 <link rel="manifest" href="manifest.json">
@@ -819,7 +852,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.368a</span>
+          <span id="devToggle">v0.369a</span>
         </div>
       </div>
 
