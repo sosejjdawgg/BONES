@@ -856,7 +856,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.372a</span>
+          <span id="devToggle">v0.373a</span>
         </div>
       </div>
 
@@ -26078,7 +26078,10 @@ const M5_STEP=96;                                     // the half-step bob a cli
 // shadow pulses red and it screams (warn), and only then the dive
 const M5_EAGLE_SPOT=0.4, M5_EAGLE_WARN=0.6, M5_EAGLE_HOVER=M5_EAGLE_SPOT+M5_EAGLE_WARN;
 const M5_EAGLE_SWOOP=0.34, M5_EAGLE_BARK_R=150, M5_EAGLE_GRAB=17;
-const M5_NUT_EVERY=7, M5_NUT_R=140, M5_NUT_FLY=1.0, M5_NUT_WIND=0.6;
+const M5_NUT_EVERY=8, M5_NUT_R=180, M5_NUT_FLY=0.65, M5_NUT_WIND=0.9;
+// the squirrel's setups: how far a hit sheep may be sent (never further than it can see coming),
+// how long it then stands dazed, the hill's quiet after a throw and after any loss, the bark that stops it
+const M5_SQ_MIN=24, M5_SQ_MAX=80, M5_SQ_DAZE=1.1, M5_SQ_QUIET=5, M5_SQ_GRACE=6, M5_SQ_BARK_R=150;
 // the switchback: a bank of stones every so often, left then right, each leaving a gap at its end
 const M5_BANKS=[2205,1795,1385,975,565,345];
 const M5_SNOW_Y0=1200, M5_SNOW_SHELF=380;             // snow from half way up; a shelf of it at the top
@@ -26186,7 +26189,7 @@ function herdClimbStrand(sh){
     for(let i=0;i<4;i++){
       let x=0,y=0,tries=0;
       do{ x=80+rnd()*200; y=b.y0+(b.y1-b.y0)*(0.25+rnd()*0.5); tries++; }
-      while(tries<60 && out.some(o=>Math.hypot(o.x-x,o.y-y)<26));
+      while(tries<60 && (out.some(o=>Math.hypot(o.x-x,o.y-y)<26) || HERD.holes.some(h=>Math.hypot(h.x-x,h.y-y)<HD_HOLE_PULL+16)));
       out.push({x, y, ram:i===0 && rnd()<0.5});
     }
   }
@@ -26223,8 +26226,8 @@ function herdClimbSetup(sh){
     const mid=(b.y0+b.y1)/2;
     sh.eagles.push({z0:b.y0-30, z1:b.y1+30, mid, a:rw()*6.28, x:180, y:mid, alt:90, st:"soar", t:0, cd:4+rw()*4, tgt:-1, sx:0, sy:0, carry:false});
   }
-  // three squirrels, in the trees the layout put on the gap edges
-  sh.sqs=HERD.layout.trees.map(tr=>({x:tr.x, y:tr.y, side:tr.side, cd:3+rw()*4, wind:0, nut:null}));
+  // three squirrels, up on the tops of the trees the layout put at the closed ends of three banks
+  sh.sqs=HERD.layout.trees.map(tr=>({x:tr.x, y:tr.y-12, side:tr.side, cd:4+rw()*4, wind:0, nut:null, plan:null, scold:0, huff:0}));
 }
 function herdClimbLimit(sh){ return sh.cam.high+M5_BACK; }
 // the lowest the camera may ever sit, and so the line below which the mountain keeps what it gets
@@ -26299,8 +26302,13 @@ function herdClimbTick(sh,dt){
       if(!HERD.baa) HERD.baa={id:s.id, txt:"baa?", life:1.2};
     }
   }
+  sh.sqCd=Math.max(0,(sh.sqCd||0)-dt);
+  { let lostN=0; for(const k in sh.lost) lostN+=sh.lost[k];
+    if(sh.sqLostN!=null && lostN>sh.sqLostN) sh.sqGrace=M5_SQ_GRACE;      // a loss buys a breather
+    sh.sqLostN=lostN; sh.sqGrace=Math.max(0,(sh.sqGrace||0)-dt); }
   for(const s of sh.sheep){
     s.bumpCd=Math.max(0,(s.bumpCd||0)-dt);
+    if(s.lone>0) s.lone=Math.max(0,s.lone-dt);
     if(s.y<M5_SNOW_SHELF && !s.snowed){ s.snowed=true; herdPuff(s.x,s.y,5,"#ffffff",28,0.45,2.6); }   // onto the snow shelf
   }
   for(const w of sh.wolves) herdLurkTick(sh,w,dt);
@@ -26362,8 +26370,10 @@ function herdEagleTick(sh,e,dt){
     if(e.cd<=0 && (sh.eagleCd||0)<=0){
       // only over a gap he can see, only at the flock - and only one bird at a time on the whole hill
       const cands=sh.sheep.filter(s=>s.joined && s.y>e.z0 && s.y<e.z1 && herdInView(sh,s.y,-30));
-      if(cands.length){
-        cands.sort((a,b)=>(b.near||0)-(a.near||0));
+      // the one a squirrel just sent out of the flock is still running: wait until it stands still
+      if(cands.length && cands.some(s=>s.lone>0 && s.shyX!=null)) e.cd=0.1;
+      else if(cands.length){
+        cands.sort((a,b)=>((b.lone||0)>0)-((a.lone||0)>0) || (b.near||0)-(a.near||0));
         const s=cands[0]; e.tgt=s.id; e.st="spot"; e.t=M5_EAGLE_SPOT; e.sx=s.x; e.sy=s.y;
         sh.eagleCd=M5_EAGLE_HOVER+5;
       } else e.cd=1;
@@ -26419,46 +26429,144 @@ function herdEagleBark(sh,d){
   }
 }
 // ---- a squirrel in a tree: now and then a nut. It does not hurt. It does make a sheep bolt.
+/* ---- a squirrel. It does not throw at sheep: it throws at a sheep NEXT TO something. Up on its
+   treetop it waits for a setup - a flock sheep on the open edge of the flock with a burrow, a
+   lurking wolf, or an eagle's empty sky just beyond it - and puts the acorn down on the near side,
+   so the sheep shies the one way it should not and stands there dazed. The acorn never kills; the
+   danger it delivers to keeps its own rules and its own warning.
+   FAIR, in this order: it only throws when a throw can matter (no idle bonks); 0.9s of wind-up
+   with the landing spot AND the sheep's path drawn on the ground; a sheep packed in the flock is
+   never a target; standing in the path, moving the sheep, or a bark at the tree spoils it; one
+   squirrel at a time on the whole hill, and none for a while after anything is lost. */
+function herdSegD(px,py,ax,ay,bx,by){
+  const vx=bx-ax, vy=by-ay, l2=vx*vx+vy*vy||1, u=clamp(((px-ax)*vx+(py-ay)*vy)/l2,0,1);
+  return Math.hypot(px-(ax+vx*u), py-(ay+vy*u));
+}
+function herdSqTight(sh,s){
+  let n=0; for(const o of sh.sheep) if(o!==s && o.joined && !o.out && Math.hypot(o.x-s.x,o.y-s.y)<26) n++;
+  return n>=3;
+}
+// the way from the sheep to where it would end up: on the path, not through the dog or a rock
+function herdSqClear(sh,x0,y0,x1,y1){
+  if(x1<HG.x0+12 || x1>HG.x1-12) return false;
+  const d=sh.dog; if(herdSegD(d.x,d.y,x0,y0,x1,y1)<20) return false;
+  const n=Math.ceil(Math.hypot(x1-x0,y1-y0)/6);
+  for(const o of HERD.solids) for(let i=1;i<=n;i++){
+    const u=i/n; if(herdSegD(x0+(x1-x0)*u, y0+(y1-y0)*u, o.x0,o.y0,o.x1,o.y1) < o.r+4) return false;
+  }
+  return true;
+}
+// where THIS sheep would end up if hit now, sent at danger k - or null if that is no setup
+function herdSqAim(sh,s,k,ref){
+  let ex, ey;
+  if(k==="hole"){
+    const h=HERD.holes[ref]; if(!h) return null;
+    const dx=h.x-s.x, dy=h.y-s.y, dd=Math.hypot(dx,dy)||1;
+    ex=h.x-dx/dd*13; ey=h.y-dy/dd*13;                         // onto the crumbling rim, not into it
+  } else if(k==="wolf"){
+    const w=sh.wolves[ref]; if(!w || !w.lurk || w.st!=="lurk" || s.y<w.z0 || s.y>w.z1) return null;
+    const dx=w.x-s.x, dy=w.y-s.y, dd=Math.hypot(dx,dy)||1;
+    ex=w.x-dx/dd*56; ey=w.y-dy/dd*56;                         // just short of its spring
+  } else if(k==="eagle"){
+    const e=sh.eagles[ref];
+    if(!e || e.st!=="soar" || e.cd>3 || (sh.eagleCd||0)>0.8 || s.y<e.z0 || s.y>e.z1) return null;
+    let cx=0, cy=0, n=0; for(const o of sh.sheep) if(o!==s && o.joined && !o.out){ cx+=o.x; cy+=o.y; n++; }
+    if(!n) return null; cx/=n; cy/=n;
+    const dx=s.x-cx, dy=s.y-cy, dd=Math.hypot(dx,dy); if(dd<16) return null;
+    ex=s.x+dx/dd*62; ey=s.y+dy/dd*62;                         // out of the flock, under open sky
+    if(sh.sheep.some(o=>o!==s && o.joined && !o.out && Math.hypot(o.x-ex,o.y-ey)<30)) return null;
+  } else return null;
+  const D=Math.hypot(ex-s.x, ey-s.y);
+  if(D<M5_SQ_MIN || D>M5_SQ_MAX || !herdSqClear(sh,s.x,s.y,ex,ey)) return null;
+  return {sid:s.id, k, ref, ex, ey, D};
+}
+function herdSqPlan(sh,q){
+  let best=null, bs=-1e9;
+  for(const s of sh.sheep){
+    if(!s.joined || s.out || s.panicT>0 || s.dazeT>0) continue;
+    if(Math.hypot(s.x-q.x,s.y-q.y)>M5_NUT_R || herdSqTight(sh,s)) continue;
+    const opts=[];
+    HERD.holes.forEach((h,i)=>opts.push(["hole",i]));
+    sh.wolves.forEach((w,i)=>{ if(w.lurk) opts.push(["wolf",i]); });
+    sh.eagles.forEach((e,i)=>opts.push(["eagle",i]));
+    for(const [k,ref] of opts){
+      const p=herdSqAim(sh,s,k,ref); if(!p) continue;
+      const sc=(k==="eagle"?0:12)-p.D*0.2;
+      if(sc>bs){ bs=sc; best=p; }
+    }
+  }
+  return best;
+}
 function herdSquirrelTick(sh,q,dt){
+  q.huff=Math.max(0,(q.huff||0)-dt);
+  if(q.scold>0){ q.scold-=dt; return; }                      // barked at: up the tree, chattering
   if(q.nut){
     const n=q.nut; n.t+=dt;
     if(n.t>=n.T){
-      for(const s of sh.sheep){
-        if(Math.hypot(s.x-n.x1,s.y-n.y1)<12){
-          const dx=s.x-q.x, dy=s.y-q.y, dd=Math.hypot(dx,dy)||1;
-          s.panicT=0.8; s.pdx=dx/dd; s.pdy=dy/dd; s.alarm=SH_ALARM_T;
+      const p=q.plan, s=p && sh.sheep.find(o=>o.id===p.sid);
+      herdPuff(n.x1,n.y1,3,"#8a5a32",22,0.35,2);
+      if(s && !s.out && Math.hypot(s.x-n.x1,s.y-n.y1)<20){
+        const a = !herdSqTight(sh,s) && herdSqAim(sh,s,p.k,p.ref);
+        if(a){
+          // it shies the way it was set up to, and stands there seeing stars
+          const dx=a.ex-s.x, dy=a.ey-s.y, D=Math.hypot(dx,dy)||1;
+          s.panicT=D/60+0.5; s.pdx=dx/D; s.pdy=dy/D; s.alarm=SH_ALARM_T;      // runs until it gets there
+          s.shyX=a.ex; s.shyY=a.ey;
+          if(a.k==="wolf"){ const w=sh.wolves[a.ref]; w.st="stalk"; w.t=2.2; w.tgt=s.id; }
+          if(a.k==="eagle"){ s.lone=4; const e=sh.eagles[a.ref]; e.cd=Math.min(e.cd,0.2); sh.eagleCd=Math.min(sh.eagleCd||0,0.2); }
           herdMark(s.id,"!!","#ff5a4f"); herdPop(s.x,s.y-18,"BONK","#e8c14a");
           beep(620,.04,"square",.03); setTimeout(()=>beep(410,.05,"square",.025),40);
-          break;
+        } else {
+          // the moment had passed - he moved it, the flock closed round it, he stood in the way
+          const dx=s.x-n.x1, dy=s.y-n.y1, dd=Math.hypot(dx,dy)||1;
+          s.panicT=0.25; s.pdx=dx/dd; s.pdy=dy/dd;
+          herdPop(s.x,s.y-18,"bonk","#cfc6b0"); beep(520,.03,"square",.02);
         }
       }
-      herdPuff(n.x1,n.y1,3,"#8a5a32",22,0.35,2);
-      q.nut=null;
+      q.nut=null; q.plan=null;
     }
     return;
   }
   if(q.wind>0){
-    // 0.6s of warning before anything leaves the tree: it turns to the flock, puffs its cheeks,
-    // a "!" goes up, the arm goes back - then the nut
-    const s=sh.sheep.find(o=>o.id===q.tgt);
-    if(s) q.face = s.x<q.x ? -1 : 1;
+    // the wind-up follows its sheep; if the setup falls apart, it lowers its arm
+    const s=q.plan && sh.sheep.find(o=>o.id===q.plan.sid);
+    const a = s && !s.out && !herdSqTight(sh,s) && herdSqAim(sh,s,q.plan.k,q.plan.ref);
+    if(!a){ q.wind=0; q.plan=null; q.cd=2.5; q.huff=0.9; sh.sqCd=Math.min(sh.sqCd||0,1.5); return; }
+    q.plan=a; q.face = s.x<q.x ? -1 : 1;
     q.wind-=dt;
     if(q.wind<=0){
-      if(s){ q.nut={x0:q.x+q.face*4, y0:q.y-20, x1:s.x+s.vx*M5_NUT_FLY*0.45, y1:s.y+s.vy*M5_NUT_FLY*0.45, t:0, T:M5_NUT_FLY}; beep(980,.03,"square",.02); }
+      // down just behind the sheep, on the side away from the danger, where it will be when it lands
+      const lx=s.x+s.vx*M5_NUT_FLY*0.5-(a.ex-s.x)/a.D*7, ly=s.y+s.vy*M5_NUT_FLY*0.5-(a.ey-s.y)/a.D*7;
+      q.nut={x0:q.x+q.face*4, y0:q.y-20, x1:lx, y1:ly, t:0, T:M5_NUT_FLY};
+      beep(980,.03,"square",.02);
     }
     return;
   }
   q.cd-=dt;
   if(q.cd<=0){
-    q.cd=M5_NUT_EVERY*(0.85+Math.random()*0.3);
-    if(!herdInView(sh,q.y,-20)) return;
-    let best=null, bd=M5_NUT_R;
-    for(const s of sh.sheep){ const dd=Math.hypot(s.x-q.x,s.y-q.y); if(dd<bd){ bd=dd; best=s; } }
-    if(best){ q.tgt=best.id; q.wind=M5_NUT_WIND; q.face = best.x<q.x ? -1 : 1; beep(1400,.03,"square",.015); }
+    q.cd=0.5;                                                // nothing to set up: look again shortly
+    if((sh.sqCd||0)>0 || (sh.sqGrace||0)>0 || sh.t<8 || !herdInView(sh,q.y,-20)) return;
+    const p=herdSqPlan(sh,q);
+    if(p){
+      const s=sh.sheep.find(o=>o.id===p.sid);
+      q.plan=p; q.wind=M5_NUT_WIND; q.face = s && s.x<q.x ? -1 : 1;
+      q.cd=M5_NUT_EVERY*(0.9+Math.random()*0.25);
+      sh.sqCd=M5_NUT_WIND+M5_NUT_FLY+M5_SQ_QUIET;
+      beep(1400,.03,"square",.015); setTimeout(()=>beep(1550,.03,"square",.012),70);
+    }
   }
 }
-// ---- drawing the mountain
-// the far valley and peaks behind the drops, at a third of the camera's speed
+// a bark at the tree while it winds up: it drops the acorn and scolds from the top - not gone
+function herdSquirrelBark(sh,d){
+  if(!sh.sqs) return;
+  for(const q of sh.sqs){
+    if(q.wind<=0 || Math.hypot(q.x-d.x,q.y-d.y)>M5_SQ_BARK_R) continue;
+    q.wind=0; q.plan=null; q.scold=1.4; q.cd=6; sh.sqCd=Math.min(sh.sqCd||0,2);
+    herdPop(q.x,q.y-34,"EEK!","#e8c14a");
+    herdPart({k:"shard", x:q.x, y:q.y-18, vx:(Math.random()-0.5)*30, vy:-20, life:0.6, max:0.6, r:2, rot:0, vr:8, col:"#7a4a1f"});
+    beep(1800,.03,"square",.02); setTimeout(()=>beep(1500,.03,"square",.02),50); setTimeout(()=>beep(1800,.03,"square",.02),100);
+  }
+}
 function herdDrawClimbBack(ctx,w,h,camY,v,t){
   const sky=ctx.createLinearGradient(0,0,0,h);
   sky.addColorStop(0,"#9cc6de"); sky.addColorStop(0.55,"#cfe3ea"); sky.addColorStop(1,"#a9c9b4");
@@ -26539,24 +26647,45 @@ function herdDrawLog(ctx,l){
   }
   ctx.restore();
 }
-function herdDrawSquirrel(ctx,q,t){
-  // the park's own nut-thrower, same pixels, sitting in its tree on the bank
+function herdDrawSquirrel(ctx,q,t,sh){
+  // the setup, on the ground, the whole wind-up and flight: the sheep's path to the danger (amber,
+  // an arrowhead at the end) and a ring where the acorn will land
+  const p=q.plan, s=p && sh && sh.sheep.find(o=>o.id===p.sid);
+  if(p && s && (q.wind>0 || q.nut)){
+    const pulse=0.55+0.45*Math.abs(Math.sin(t*9));
+    const ux=(p.ex-s.x)/(p.D||1), uy=(p.ey-s.y)/(p.D||1);
+    const head=()=>{ ctx.beginPath(); ctx.moveTo(p.ex+ux*5,p.ey+uy*5); ctx.lineTo(p.ex-ux*6-uy*5,p.ey-uy*6+ux*5); ctx.lineTo(p.ex-ux*6+uy*5,p.ey-uy*6-ux*5); ctx.closePath(); };
+    ctx.globalAlpha=0.55*pulse; ctx.strokeStyle="#1b140c"; ctx.lineWidth=3.6; ctx.setLineDash([5,3]);
+    ctx.beginPath(); ctx.moveTo(s.x+ux*7,s.y+uy*7); ctx.lineTo(p.ex,p.ey); ctx.stroke();
+    ctx.globalAlpha=0.95*pulse; ctx.strokeStyle="#f4b740"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(s.x+ux*7,s.y+uy*7); ctx.lineTo(p.ex,p.ey); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle="#f4b740"; ctx.strokeStyle="#1b140c"; ctx.lineWidth=1.2; head(); ctx.fill(); ctx.stroke();
+    // where the acorn comes down: a white target ring, outlined
+    const lx = q.nut ? q.nut.x1 : s.x-ux*7, ly = q.nut ? q.nut.y1 : s.y-uy*7;
+    ctx.globalAlpha=0.9*pulse;
+    ctx.strokeStyle="#1b140c"; ctx.lineWidth=3; ctx.beginPath(); ctx.ellipse(lx,ly,7,4.6,0,0,7); ctx.stroke();
+    ctx.strokeStyle="#fff"; ctx.lineWidth=1.5; ctx.beginPath(); ctx.ellipse(lx,ly,7,4.6,0,0,7); ctx.stroke();
+    ctx.globalAlpha=1;
+  }
+  // the park's own nut-thrower, same pixels, sitting up on top of its tree
   const frames=ENEMYIMG.sq, img=frames && frames[Math.floor(t*4+q.x)%frames.length];
-  const x=q.x, y=q.y-14, face=q.face||(q.side<0?1:-1);
+  const hop = q.scold>0 ? Math.abs(Math.sin(t*22))*3 : 0;
+  const x=q.x, y=q.y-14-hop, face=q.face||(q.side<0?1:-1);
   let sc=1, lean=0;
   if(q.wind>0){
     const k=1-q.wind/M5_NUT_WIND;
     if(k<0.55) sc=1+0.14*Math.abs(Math.sin(k/0.55*Math.PI*2));     // cheeks puff
     else lean=-0.38*((k-0.55)/0.45);                                  // the arm goes back
   }
+  herdShadow(ctx,x,q.y-12,5,1.6,0.25);
   ctx.save(); ctx.translate(x,y); ctx.rotate(lean*face); ctx.scale(sc*face,sc); ctx.imageSmoothingEnabled=false;
   if(img && img.complete && img.naturalWidth){ const eh=16, ew=eh*img.naturalWidth/img.naturalHeight; ctx.drawImage(img,-ew/2,-eh,ew,eh); }
   else { ctx.fillStyle="#b0662e"; ctx.beginPath(); ctx.ellipse(0,-6,4,6,0,0,7); ctx.fill(); }
   ctx.restore();
-  if(q.wind>0){
-    ctx.font="9px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    herdOutlineText(ctx,"!",x,y-20-Math.abs(Math.sin(t*10))*2,"#fff"); ctx.textAlign="left";
-  }
+  ctx.font="9px 'Press Start 2P',monospace"; ctx.textAlign="center";
+  if(q.wind>0) herdOutlineText(ctx,"!",x,y-20-Math.abs(Math.sin(t*10))*2,"#f4b740");
+  else if(q.huff>0) herdOutlineText(ctx,"?",x,y-20,"#fff");
+  ctx.textAlign="left";
   if(q.nut){
     // a slow arc, its shadow sliding along the ground under it: white with a brown cap
     const n=q.nut, k=n.t/n.T, gx=n.x0+(n.x1-n.x0)*k, gy=n.y0+20+(n.y1-n.y0-20)*k, ny=n.y0+(n.y1-n.y0)*k-Math.sin(k*Math.PI)*42;
@@ -26567,6 +26696,12 @@ function herdDrawSquirrel(ctx,q,t){
     ctx.fillStyle="#7a4a1f"; ctx.beginPath(); ctx.ellipse(0,-2.4,3,1.6,0,0,7); ctx.fill(); ctx.stroke();
     ctx.restore();
   }
+}
+// a dazed sheep: three little stars going round its head
+function herdDazeStars(ctx,x,y,t){
+  for(let i=0;i<3;i++){ const a=t*6+i*2.09, sx=x+Math.cos(a)*7, sy=y+Math.sin(a)*2.4;
+    ctx.fillStyle="#f4d23c"; ctx.strokeStyle=HB_OUT; ctx.lineWidth=0.8;
+    ctx.fillRect(sx-1.2,sy-1.2,2.4,2.4); ctx.strokeRect(sx-1.2,sy-1.2,2.4,2.4); }
 }
 function herdDrawEagle(ctx,e,t){
   // the ground shadow carries the telegraph: small when it has picked one, pulsing red when it is
@@ -26794,6 +26929,13 @@ function herdBuildClimbBG(sh){
     for(const st of b.back) herdStone(x,st.x,st.y,st.r,st.ph,false,herdSnowAt(st.y,st.ph));
     for(const st of b.stones) herdStone(x,st.x,st.y,st.r,st.ph,!!st.rim,herdSnowAt(st.y,st.ph));
   }
+  for(const hl of HERD.holes){                              // the burrows under the squirrels' banks
+    herdDirt(x,rnd,hl.x,hl.y+1,HD_HOLE_R+7,0.78);
+    const g=x.createRadialGradient(hl.x,hl.y,1,hl.x,hl.y,HD_HOLE_R);
+    g.addColorStop(0,"#000"); g.addColorStop(0.7,"#0b0806"); g.addColorStop(1,"#2a1d12");
+    x.fillStyle=g; x.strokeStyle=HB_OUT; x.lineWidth=1.8;
+    x.beginPath(); x.ellipse(hl.x,hl.y,HD_HOLE_R,HD_HOLE_R*0.86,0,0,7); x.fill(); x.stroke();
+  }
   for(const l of HERD.layout.logs) herdDrawLog(x,l);
   for(const tr of HERD.layout.trees) herdTree(x,tr.x,tr.y,0.6);
   // 8. peaks behind the top, then the pen on its shelf: the back fence slants, so it sits ON the slope
@@ -26834,7 +26976,7 @@ const HERD_LV={
   4:{n:"BASE", pay:6, sheep:[6,6], quota:6, holes:[1,1], road:false, wolves:0, overtime:true, otLoad:2, flock:8,
      chute:true, mountain:true, hint:"£6 A HEAD", tip:"WAIT FOR THE SMASH. THEN PUSH.", teaser:"THE LANE GETS THIN.",
      star3:{n:8, lbl:"EVERY LAST ONE"}},
-  5:{n:"THE CLIMB", pay:10, sheep:[5,5], quota:18, holes:[0,0], road:false, wolves:0, overtime:false,
+  5:{n:"THE CLIMB", pay:10, sheep:[5,5], quota:18, holes:[3,3], road:false, wolves:0, overtime:false,
      climb:true, mountain:true, fieldH:2400, gateX:210, arrow:true, hint:"£10 A HEAD",
      tip:"NO GOING BACK DOWN. KEEP THEM CLOSE.", star3:{n:22, lbl:"22+ PENNED"}},
   6:{n:"ROCKFALL",   plan:true},
@@ -27011,6 +27153,16 @@ function herdMakeHoles(lv,seed){
   if(lv===1){ const side=rnd()<0.5?-1:1; out.push({x:HG.gx+side*(108+rnd()*22), y:200+rnd()*90}); return out; }
   // BASE: one, off on a flank of the grass - never in the chute
   if(lv===4){ const side=rnd()<0.5?-1:1; out.push({x:side<0?52+rnd()*36:272+rnd()*36, y:380+rnd()*110}); return out; }
+  // THE CLIMB: a burrow in the corner under each squirrel's tree - the dead end of the bank, as far
+  // from its gap as it gets, so the way through stays clear and a burrow is a danger to a sheep that
+  // drifts into the squirrel's corner or is sent there
+  if(L.climb){
+    herdClimbLayout(seed).banks.forEach((b,i)=>{
+      if(i!==1 && i!==2 && i!==4) return;
+      out.push({x:b.left ? M5_X0+40+rnd()*22 : M5_X1-40-rnd()*22, y:b.y+56+rnd()*18});
+    });
+    return out;
+  }
   /* THE DRIVE LINE STAYS CLEAR. Every hole keeps |x-gate| >= corridor, so a straight run from the
      start to the pen mouth always exists however the seed falls — which is also what rules out a
      tight triangle that closes every crossing. The corridor is wide on purpose: the flock starts
@@ -27248,7 +27400,7 @@ function herdBark(){
     herdPop(w.x, w.y-18, "?!", "#fff");
     beep(180,.1,"sawtooth",.04);
   }
-  herdEagleBark(sh,d);
+  herdEagleBark(sh,d); herdSquirrelBark(sh,d);
 }
 function herdDash(){
   const sh=S.herd.shift; if(!sh||!HERD.active) return;
@@ -27737,13 +27889,13 @@ function herdSheepTick(sh,dt){
   HERD.presR=dashing?0:presR;
   const otv=herdVehicles(sh).find(v=>v.kind==="tractor"), otParts=otv?herdVehParts(otv):null;
   for(const s of sheep){
-    let ax=0, ay=0;
+    let ax=0, ay=0, dax=0, day=0;
     // the dog. A dash covers ground, it does not herd — no presence while he is dashing.
     if(!dashing){
       const dx=s.x-d.x, dy=s.y-d.y, dd=Math.hypot(dx,dy)||0.01;
       const R=presR*(s.ram?1.18:1);
       if(dd<R){ const f=1-dd/R, k=SH_FLEE*f*(SH_FLEE_STILL+(1-SH_FLEE_STILL)*spFrac)*(s.ram?1.3:1);
-                ax+=dx/dd*k; ay+=dy/dd*k; s.alarm=SH_ALARM_T; }
+                dax=dx/dd*k; day=dy/dd*k; ax+=dax; ay+=day; s.alarm=SH_ALARM_T; }
     }
     /* WOLVES. Any wolf close by makes them bunch and edge away — that is what a flock does. Only
        the ONE a wolf has actually picked breaks and runs: that is the peel. A prowling wolf used
@@ -27807,19 +27959,27 @@ function herdSheepTick(sh,dt){
       // a driven sheep near the gate sees the gap and goes for it
       ax+=(HG.gx-s.x)*2.2; ay-=24;
     }
+    // dazed (an acorn): it stands where it ran to, seeing stars - only the dog moves it now
+    if(s.dazeT>0){ s.dazeT=Math.max(0,s.dazeT-dt);
+      if(s.panicT<=0){ ax=dax; ay=day; const k=Math.max(0,1-4*dt); s.vx*=k; s.vy*=k; } }
     // panic
     if(s.panicT>0){
+      if(s.shyX!=null){                          // an acorn's shy: it runs TO a spot, then stands there dazed
+        const dx=s.shyX-s.x, dy=s.shyY-s.y, dd=Math.hypot(dx,dy);
+        if(dd<4) s.panicT=0; else { s.pdx=dx/dd; s.pdy=dy/dd; }
+      }
       s.panicT-=dt;
       const k=Math.min(1,dt*5);
       s.vx+=(s.pdx*SH_MAX_BOLT-s.vx)*k; s.vy+=(s.pdy*SH_MAX_BOLT-s.vy)*k;
-      if(s.panicT<=0) s.panicT=0;
+      if(s.panicT<=0){ s.panicT=0;
+        if(s.shyX!=null){ s.shyX=null; s.dazeT=M5_SQ_DAZE; s.vx*=0.3; s.vy*=0.3; } }
     }
     // holes: a soft pull at the rim, a hard swallow at the centre, and panic at the edge
     for(const h of HERD.holes){
       const dx=h.x-s.x, dy=h.y-s.y, dd=Math.hypot(dx,dy)||0.01;
       if(dd<HD_HOLE_PULL){
         const f=1-dd/HD_HOLE_PULL; ax+=dx/dd*HD_HOLE_SUCK*f*f*1.6; ay+=dy/dd*HD_HOLE_SUCK*f*f*1.6;
-        if(dd<HD_HOLE_R+6 && s.panicT<=0 && Math.random()<0.6*dt){
+        if(dd<HD_HOLE_R+6 && s.panicT<=0 && !(s.dazeT>0) && Math.random()<0.6*dt){
           const a=Math.atan2(-dy,-dx)+(Math.random()-0.5)*2.2;
           s.panicT=0.8; s.pdx=Math.cos(a); s.pdy=Math.sin(a); herdBleat();
         }
@@ -28257,6 +28417,7 @@ function herdDraw(sh,t){
       if(s.st==="bolt"||s.st==="split"||s.behind>0){ ctx.strokeStyle="#ff2a1f"; ctx.lineWidth=1.4; ctx.beginPath(); ctx.ellipse(s.x,s.y+1.5,8.5,3.2,0,0,7); ctx.stroke(); }
       if(L.climb){ herdLeanIn(ctx,s.x,s.y,s.face||1); herdDrawSheep(ctx,s.x,s.y+herdClimbBob(s.y),s.face||1,s.ram,moving,t,s.id,1,s.st==="graze"&&!moving); ctx.restore(); }
       else herdDrawSheep(ctx,s.x,s.y,s.face||1,s.ram,moving,t,s.id,1,s.st==="graze"&&!moving);
+      if(s.dazeT>0 && s.panicT<=0) herdDazeStars(ctx,s.x,s.y-15,t);
     } else if(A.k==="w") herdDrawWolf(ctx,A.o,t,RM, !!(sh.pack && sh.pack.howlT>0 && A.o.st==="prowl"));
     else if(A.k==="v") herdDrawVehicle(ctx,A.o,t,A.o.kind==="tractor"?sh.ot.truck.n-sh.ot.truck.dropped:0);
     else if(A.k==="b") herdDrawBoulder(ctx,M4_GUTTERS[A.o.g],A.o.y,A.o.spin);
@@ -28282,7 +28443,7 @@ function herdDraw(sh,t){
         const sx=d.x+Math.cos(a)*9, sy=d.y-16+Math.sin(a)*3; ctx.fillRect(sx-1.5,sy-1.5,3,3); ctx.strokeRect(sx-1.5,sy-1.5,3,3); }
     }
   }
-  if(L.climb){ for(const q of sh.sqs) herdDrawSquirrel(ctx,q,t); for(const e of sh.eagles) herdDrawEagle(ctx,e,t); }
+  if(L.climb){ for(const q of sh.sqs) herdDrawSquirrel(ctx,q,t,sh); for(const e of sh.eagles) herdDrawEagle(ctx,e,t); }
   herdDrawFalls(ctx,t,RM);
   herdDrawParts(ctx,false);
   herdDrawInbound(ctx,sh,t,RM);
