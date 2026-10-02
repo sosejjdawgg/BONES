@@ -711,7 +711,33 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
 .hm-node.st-locked .hm-sub2{color:#7a7a82}
 .hm-pip{width:8px;height:8px;background:#f22;flex:none}
 .hm-tick{flex:none;border:2px solid #fff;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:9px}
-.hm-post{width:2px;height:18px;visibility:hidden}   /* spacing only: the drawn track joins the cards now */
+.hm-post{width:2px;height:18px;visibility:hidden}
+/* YOUR FLOCK: the one number that matters on this screen */
+#hmFlock{display:flex;flex-direction:column;align-items:center;gap:4px;background:rgba(10,14,8,.8);border:3px solid #fff;padding:8px 18px 9px;margin-top:2px}
+#hmFlock.full{border-color:#e8c14a}
+.hmf-lbl{font-size:7px;letter-spacing:2px;color:#e8c14a}
+.hmf-n{font-size:30px;line-height:1;color:#fff;letter-spacing:1px;text-shadow:3px 3px 0 #1b140c}
+.hmf-n small{font-size:14px;color:#b9b9a8}
+.hmf-bar{display:block;width:150px;height:6px;background:#3a3a32;border:1px solid #1b140c}
+.hmf-bar i{display:block;height:100%;background:#7fd46a}
+#hmFlock.full .hmf-bar i{background:#e8c14a}
+.hm-need{font-size:6px;margin-left:7px;padding:2px 4px;background:#2f4a26;color:#cfe8c0;vertical-align:middle}
+.hm-need.short{background:#5a1c18;color:#ffb0a8}
+.hm-short{flex:none;font-size:7px;color:#ffb0a8;border:2px solid #c0473c;padding:4px 5px}
+.hm-node.st-short{border-color:#c0473c;color:#d8d0c8;background:rgba(30,10,8,.72)}
+.hm-goals{display:flex;flex-direction:column;gap:3px}
+.hm-goal{font-size:6px;letter-spacing:1px;color:#b9b9a8}
+.hm-goal.done{color:#7fd46a}
+#hmCardBonus:empty{display:none}
+#hmCardBonus{margin:0 0 8px;display:flex;flex-direction:column;gap:4px}
+.hmc-flock{font-size:8px;letter-spacing:1px;color:#fff}
+.hmc-flock b{color:#e8c14a}
+.hmc-flock .up{color:#7fd46a}
+.hmc-flock .down{color:#ff6a5f}
+.hmc-goal{font-size:6px;letter-spacing:1px;color:#8a8a92}
+.hmc-goal.done{color:#cfe8c0}
+.hmc-goal.fresh b{color:#e8c14a}
+.hm-node[data-lv="4"]{margin-top:34px}   /* the foot of the mountain: 5 and up are on it */   /* spacing only: the drawn track joins the cards now */
 #herdPanel{z-index:53;touch-action:none}
 #herdcv{flex:1;min-height:0;width:100%;display:block;touch-action:none;image-rendering:pixelated}
 #hBack{position:absolute;top:8px;left:8px;z-index:2;font-size:7px;padding:6px 8px;background:#000}
@@ -856,7 +882,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.373a</span>
+          <span id="devToggle">v0.374a</span>
         </div>
       </div>
 
@@ -1249,12 +1275,13 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
     <div class="hm-top"><button class="tiny" id="hmHome">&#8962; GO HOME</button><span class="hm-bank" id="hmBank"></span></div>
     <h2 class="hm-title">SHEEP HERDING</h2>
     <div class="hm-subline">HILLTOP FARM &#8212; EDGE OF TOWN</div>
-    <div id="hmCard" class="hidden"><img id="hmCardImg" alt=""><div><div id="hmCardHead"></div><div id="hmCardStars"></div><div id="hmCardLine"></div><div id="hmCardTag"></div><div id="hmCardSaved"></div></div></div>
+    <div id="hmFlock" aria-label="Your flock"></div>
+    <div id="hmCard" class="hidden"><img id="hmCardImg" alt=""><div><div id="hmCardHead"></div><div id="hmCardStars"></div><div id="hmCardBonus"></div><div id="hmCardLine"></div><div id="hmCardTag"></div><div id="hmCardSaved"></div></div></div>
     <div id="hmTrail"></div>
   </div>
   <div id="herdPanel" aria-label="Sheep herding field">
     <canvas id="herdcv"></canvas>
-    <button class="tiny" id="hBack">&#8249; MAP</button>
+    <button class="tiny" id="hBack">&#10005; EXIT</button>
     <button id="hCheckout" class="hidden" aria-label="Check out"><span class="hc-box">&#10003;</span><span class="hc-lb">CHECK OUT</span></button>
     <div class="ctrlrow" id="hCtrl"><button id="hBark">BARK</button><button id="hDash">DASH</button></div>
   </div>
@@ -2139,7 +2166,7 @@ const S = {
      shift, whole — sheep, dog, road, wolves, overtime — so a save made mid-shift resumes it exactly.
      Holes are NOT stored: they are regenerated from shift.seed, which is what "seed once per
      shift" means and keeps the save small. */
-  herd:{applied:false, mailed:false, seenTip:false, banked:0, levels:{}, shift:null}
+  herd:{applied:false, mailed:false, seenTip:false, banked:0, levels:{}, shift:null, flock:0}
 };
 // music on by default: the title sequence is scored to the melody, so a silent first boot would
 // hide the whole opening. A save that already carries an explicit preference still wins (see
@@ -10571,6 +10598,15 @@ function loadGame(){
         dogLog(S.pts+" SKILL POINTS BACKDATED — OPEN THE LOG TO SPEND THEM");
         renderDogLog(true);
       }, 1200);
+    }
+    /* SHEEP HERDING: a shift never survives a reload - you finish it or you walk off it. And a save
+       from before the flock existed gets the flock its cleared fields imply. */
+    if(S.herd){
+      S.herd.shift=null;
+      if(!data.S.herd || data.S.herd.flock===undefined){
+        const Lv=S.herd.levels||{}, c=l=>!!(Lv[l]&&Lv[l].cleared);
+        S.herd.flock = c(3)?15 : c(2)?10 : c(1)?4 : 0;
+      }
     }
     if(data.XPANIM) Object.assign(XPANIM,data.XPANIM);
     else { XPANIM.lvl=S.lvl; XPANIM.frac=clamp(S.xp/xpNeed(S.lvl),0,1); } // save predates XPANIM persistence
@@ -26047,6 +26083,7 @@ function herdRockBonk(sh,x,y){
   d.hitCd=Math.max(0,d.hitCd||0);
   if(d.hitCd>0) return;
   d.hitCd=HD_BONK_CD; d.stunT=HD_BONK_T; d.dashT=0; d.vx=side*120; d.vy=40;
+  if(sh.bx) sh.bx.bonk++;
   sh.cash-=HERD_LOSS;
   S.energy=clamp(S.energy-HD_BONK_COST,0,100);
   herdPop(d.x, d.y-22, "BONK! -"+herdCash(HERD_LOSS), "#ff5a4f", true);
@@ -26068,7 +26105,7 @@ function herdRockSmash(x,y){
 
 // ---- Lv.5: the climb
 const M5_H=2400, M5_X0=28, M5_X1=332;                 // the strip, and the path between its two drops
-const M5_BACK=70;                                     // how far below the flock's best height he may go
+const M5_BACK=210;                                    // how far below the flock's best height he may go
 const M5_LEAD=0.62;                                   // where the dog sits in the view (from the top)
 const M5_BUMP_T=0.25, M5_BUMP_PX=8;                   // the camera's spring when it hits the stop
 const M5_LOSE_T=2.0;                                  // seconds below the line before the mountain has one
@@ -26078,6 +26115,7 @@ const M5_STEP=96;                                     // the half-step bob a cli
 // shadow pulses red and it screams (warn), and only then the dive
 const M5_EAGLE_SPOT=0.4, M5_EAGLE_WARN=0.6, M5_EAGLE_HOVER=M5_EAGLE_SPOT+M5_EAGLE_WARN;
 const M5_EAGLE_SWOOP=0.34, M5_EAGLE_BARK_R=150, M5_EAGLE_GRAB=17;
+const M5_CARRY_T=6, M5_CARRY_SPD=58;                  // how long a carry can last, how fast it makes for the edge
 const M5_NUT_EVERY=8, M5_NUT_R=180, M5_NUT_FLY=0.65, M5_NUT_WIND=0.9;
 // the squirrel's setups: how far a hit sheep may be sent (never further than it can see coming),
 // how long it then stands dazed, the hill's quiet after a throw and after any loss, the bark that stops it
@@ -26131,7 +26169,35 @@ function herdClimbLayout(seed){
     banks.push({y:by, left, gap, stones, back});
     if(i===1||i===2||i===4) trees.push({x:left?M5_X0+18:M5_X1-18, y:by-16, side:left?-1:1});
   });
-  return {logs, trees, banks};
+  // big flat rocks in the gaps: obstacles to steer round - never in a bank's mouth, never on a log,
+  // never hard against a wall (that is where the wolves lurk), and always a sheep's width apart
+  const rocks=[], rr=herdRng(seed^0x51ab3);
+  for(const b of M5_BANDS){
+    if(b.k!=="gap") continue;
+    const want=3+(rr()<0.5?1:0);
+    for(let tries=0, n=0; n<want && tries<120; tries++){
+      const r=13+rr()*9, x=M5_X0+44+rr()*(M5_X1-M5_X0-88), y=b.y0+26+rr()*(b.y1-b.y0-52);
+      if(banks.some(k=>Math.abs(y-k.y)<38+r*0.6)) continue;
+      if(banks.some(k=>{ const g0=k.left?M5_X1-k.gap-10:M5_X0-10, g1=k.left?M5_X1+10:M5_X0+k.gap+10;
+                         return Math.abs(y-k.y)<95 && x+r>g0 && x-r<g1; })) continue;
+      if(logs.some(l=>{ const lx=x-l.x0, ly=y-l.y0, vx=l.x1-l.x0, vy=l.y1-l.y0, u=clamp((lx*vx+ly*vy)/(vx*vx+vy*vy),0,1);
+                         return Math.hypot(x-(l.x0+vx*u), y-(l.y0+vy*u))<l.r+r+30; })) continue;
+      if(trees.some(t=>Math.hypot(t.x-x,t.y-y)<r+34)) continue;
+      if(rocks.some(o=>Math.hypot(o.x-x,o.y-y)<o.r+r+34)) continue;
+      const v=[]; for(let k=0;k<6;k++) v.push([k/6*6.283+rr()*0.4, 0.7+rr()*0.4]);
+      rocks.push({x, y, r, v}); n++;
+    }
+  }
+  return {logs, trees, banks, rocks};
+}
+// one of those rocks: a flat grey plate, outlined, a light edge along its top
+function herdFlatRock(x,o){
+  x.fillStyle="#828282"; x.strokeStyle=HB_OUT; x.lineWidth=1.4;
+  x.beginPath();
+  o.v.forEach(([a,k],i)=>{ const px=o.x+Math.cos(a)*o.r*k, py=o.y+Math.sin(a)*o.r*k*0.6; i?x.lineTo(px,py):x.moveTo(px,py); });
+  x.closePath(); x.fill(); x.stroke();
+  x.strokeStyle="#e6e6e6"; x.lineWidth=1; x.beginPath(); x.moveTo(o.x-o.r*0.5,o.y-o.r*0.3); x.lineTo(o.x+o.r*0.3,o.y-o.r*0.4); x.stroke();
+  if(herdSnowAt(o.y,o.x)){ x.fillStyle="#f4f7fa"; x.beginPath(); x.ellipse(o.x-2,o.y-o.r*0.3,o.r*0.6,o.r*0.22,0,0,7); x.fill(); }
 }
 function herdClimbSolids(){
   const out=[];
@@ -26144,6 +26210,8 @@ function herdClimbSolids(){
   for(const b of HERD.layout.banks) for(const st of b.stones.concat(b.back))
     out.push({k:"cap", x0:st.x, y0:st.y, x1:st.x, y1:st.y, r:st.r*0.82, juice:"stone"});
   for(const t of HERD.layout.trees) out.push({k:"cap", x0:t.x, y0:t.y, x1:t.x, y1:t.y, r:6});
+  // the big flat rocks: a squat capsule the shape of the plate
+  for(const o of HERD.layout.rocks||[]) out.push({k:"cap", x0:o.x-o.r*0.4, y0:o.y, x1:o.x+o.r*0.4, y1:o.y, r:o.r*0.6, juice:"stone"});
   return out;
 }
 // a sheep that bumps a stone kicks up dust; one that clips a dead trunk knocks a chip of bark off
@@ -26186,7 +26254,7 @@ function herdClimbStrand(sh){
   const rnd=herdRng(sh.seed^0x2d15a7), out=[];
   for(const b of M5_BANDS){
     if(b.k!=="pocket") continue;
-    for(let i=0;i<4;i++){
+    for(let i=0;i<5;i++){
       let x=0,y=0,tries=0;
       do{ x=80+rnd()*200; y=b.y0+(b.y1-b.y0)*(0.25+rnd()*0.5); tries++; }
       while(tries<60 && (out.some(o=>Math.hypot(o.x-x,o.y-y)<26) || HERD.holes.some(h=>Math.hypot(h.x-x,h.y-y)<HD_HOLE_PULL+16)));
@@ -26269,8 +26337,12 @@ function herdClimbTick(sh,dt){
     let tx=null, ty=0;
     if(s.y>lim-24 && un){ tx=ux/un; ty=uy/un; }
     else if(s.y>cy+80){ tx=cx; ty=cy; }
+    // the flock is over a bank and this one is still under it: it goes to them
+    else if(HERD.layout.banks.some(b=>b.y<s.y-4 && b.y>cy+4) || herdLogBetween(s,cy)){ tx=cx; ty=cy; }
     // with a bank of stones between, it makes for the gap first, not the rocks
     if(tx!=null) for(const b of HERD.layout.banks) if(b.y<s.y-4 && b.y>ty){ tx=b.left?M5_X1-b.gap/2:M5_X0+b.gap/2; ty=b.y; break; }
+    // and round the open end of a fallen tree that is in its way
+    if(tx!=null){ const l=herdLogBetween(s,ty); if(l){ tx=l.open; ty=l.y; } }
     if(tx!=null){ const dx=tx-s.x, dy=ty-s.y, dd=Math.hypot(dx,dy)||1; s.lagX=dx/dd; s.lagY=dy/dd; }
   }
   C.cd=Math.max(0,C.cd-dt); C.bumpT=Math.max(0,C.bumpT-dt);
@@ -26306,6 +26378,11 @@ function herdClimbTick(sh,dt){
   { let lostN=0; for(const k in sh.lost) lostN+=sh.lost[k];
     if(sh.sqLostN!=null && lostN>sh.sqLostN) sh.sqGrace=M5_SQ_GRACE;      // a loss buys a breather
     sh.sqLostN=lostN; sh.sqGrace=Math.max(0,(sh.sqGrace||0)-dt); }
+  for(const s of sh.sheep) if(s.fallZ>0){
+    s.fallV+=520*dt; s.fallZ-=s.fallV*dt;
+    if(s.fallZ<=0){ s.fallZ=0; herdPuff(s.x,s.y,6,"#d9c9a0",30,0.45,2.6); herdShake(2.5); herdBleat(true);
+      HERD.baa={id:s.id, txt:"BAA!", life:1.1}; beep(140,.08,"square",.04); }
+  }
   for(const s of sh.sheep){
     s.bumpCd=Math.max(0,(s.bumpCd||0)-dt);
     if(s.lone>0) s.lone=Math.max(0,s.lone-dt);
@@ -26315,6 +26392,15 @@ function herdClimbTick(sh,dt){
   sh.eagleCd=Math.max(0,(sh.eagleCd||0)-dt);
   for(const e of sh.eagles) herdEagleTick(sh,e,dt);
   for(const q of sh.sqs) herdSquirrelTick(sh,q,dt);
+}
+// a fallen tree whose solid (thick) part lies between this sheep and height ty: where to go round it
+function herdLogBetween(s,ty){
+  for(const l of HERD.layout.logs){
+    const ly=(l.y0+l.y1)/2; if(!(ly<s.y-4 && ly>ty)) continue;
+    const tX=l.stump?l.x0:l.x1, sX=tX+((l.stump?l.x1:l.x0)-tX)*0.55, lo=Math.min(tX,sX)-12, hi=Math.max(tX,sX)+12;
+    if(s.x>lo && s.x<hi) return {y:ly, open: l.stump ? hi+20 : lo-20};
+  }
+  return null;
 }
 function herdInView(sh,y,pad){ const C=sh.cam; return y>C.y-(pad||0) && y<C.y+HF_VH+(pad||0); }
 
@@ -26394,18 +26480,32 @@ function herdEagleTick(sh,e,dt){
     if(e.t<=0){
       e.st="flare"; e.t=0.3;
       if(tgt && !tgt.out && Math.hypot(tgt.x-e.sx,tgt.y-e.sy)<M5_EAGLE_GRAB){
-        herdLose(sh,tgt,"eagle"); e.carry=true; e.next="carry"; beep(900,.06,"square",.03);
+        // the sheep comes off the ground with it - out of the field, into its talons
+        const i=sh.sheep.indexOf(tgt); if(i>=0) sh.sheep.splice(i,1);
+        tgt.panicT=0; tgt.dazeT=0; tgt.shyX=null; tgt.vx=tgt.vy=0;
+        e.carryS=tgt; e.carry=true; e.next="carry"; e.side = e.x<180 ? -1 : 1;
+        beep(900,.06,"square",.03); herdBleat(true);
       } else { e.next="soar"; herdPop(e.sx,e.sy-14,"MISSED!","#fff"); herdFeathers(e.sx,e.sy-6,6); }
       e.tgt=-1;
     }
   } else if(e.st==="flare"){
     e.t-=dt; e.alt+=50*dt;
     if(e.t<=0){
-      if(e.next==="carry"){ e.st="carry"; e.t=1.4; }
+      if(e.next==="carry"){ e.st="carry"; e.t=M5_CARRY_T; e.baaT=0; }
       else if(e.next==="away"){ e.st="away"; e.t=6+Math.random()*2; e.wasAway=true; }
       else { e.st="soar"; e.cd=8+Math.random()*3; }
     }
-  } else if(e.st==="carry"||e.st==="away"){
+  } else if(e.st==="carry"){
+    // heavy: it climbs slowly and makes for the near edge of the screen, the sheep swinging and
+    // shouting the whole way. Off the screen with it, and it is gone
+    e.alt=Math.min(110, e.alt+26*dt); e.x+=e.side*M5_CARRY_SPD*dt; e.t-=dt;
+    e.baaT-=dt; if(e.baaT<=0){ e.baaT=0.55; herdBleat(true); }
+    if(e.x<-30 || e.x>HF_W+30 || e.t<=0){
+      const s=e.carryS; e.carryS=null; e.carry=false;
+      if(s){ s.x=clamp(e.x,HG.x0+6,HG.x1-6); s.y=e.y; herdLose(sh,s,"eagle"); }
+      e.st="soar"; e.cd=16+Math.random()*4; e.alt=90; e.x=clamp(e.x,40,320);
+    }
+  } else if(e.st==="away"){
     e.alt+=60*dt; e.x+=(e.x<180?-1:1)*50*dt; e.t-=dt;
     if(e.t<=0){ e.st="soar"; e.carry=false; e.cd = e.wasAway ? 4 : 16+Math.random()*4; e.wasAway=false; e.alt=90; e.x=clamp(e.x,40,320); }
   }
@@ -26418,11 +26518,23 @@ function herdFeathers(x,y,n){
 function herdEagleBark(sh,d){
   if(!sh.eagles) return;
   for(const e of sh.eagles){
+    // carrying: a bark at its shadow and it lets go. The sheep drops, bounces, sits there dazed
+    if(e.st==="carry" && e.carryS && Math.hypot(e.x-d.x,e.y-d.y)<M5_EAGLE_BARK_R){
+      const s=e.carryS; e.carryS=null; e.carry=false;
+      s.x=clamp(e.x,HG.x0+10,HG.x1-10); s.y=e.y; s.vx=s.vy=0; s.fallZ=e.alt; s.fallV=0; s.dazeT=1.6; s.joined=true;
+      sh.sheep.push(s);
+      e.st="away"; e.t=6+Math.random()*2; e.wasAway=true;
+      herdPop(e.x, e.y-e.alt-14, "DROPPED IT!", "#7fd46a", true); herdFeathers(e.x, e.y-e.alt, 5);
+      if(sh.bx) sh.bx.shoo++;
+      beep(1300,.05,"sawtooth",.025); setTimeout(()=>beep(700,.08,"square",.03),90);
+      continue;
+    }
     if(e.st!=="spot" && e.st!=="warn" && e.st!=="swoop") continue;
     if(Math.hypot(e.sx-d.x,e.sy-d.y)<M5_EAGLE_BARK_R || Math.hypot(e.x-d.x,e.y-(d.y))<M5_EAGLE_BARK_R){
       // it flares, banks off, and is gone for this pass
       e.st="flare"; e.t=0.3; e.next="away"; e.tgt=-1;
       herdPop(e.sx, e.sy-16, "SHOO!", "#fff", true);
+      if(sh.bx) sh.bx.shoo++;
       herdFeathers(e.x, e.y-e.alt, 3);
       beep(1300,.05,"sawtooth",.025);
     }
@@ -26563,6 +26675,7 @@ function herdSquirrelBark(sh,d){
     if(q.wind<=0 || Math.hypot(q.x-d.x,q.y-d.y)>M5_SQ_BARK_R) continue;
     q.wind=0; q.plan=null; q.scold=1.4; q.cd=6; sh.sqCd=Math.min(sh.sqCd||0,2);
     herdPop(q.x,q.y-34,"EEK!","#e8c14a");
+    if(sh.bx) sh.bx.eek++;
     herdPart({k:"shard", x:q.x, y:q.y-18, vx:(Math.random()-0.5)*30, vy:-20, life:0.6, max:0.6, r:2, rot:0, vr:8, col:"#7a4a1f"});
     beep(1800,.03,"square",.02); setTimeout(()=>beep(1500,.03,"square",.02),50); setTimeout(()=>beep(1800,.03,"square",.02),100);
   }
@@ -26721,9 +26834,24 @@ function herdDrawEagle(ctx,e,t){
   const bob = pose==="hover" ? Math.sin(t*3)*2 : 0;
   ctx.save(); ctx.translate(e.x, e.y-e.alt+bob);
   if(pose==="dive") ctx.rotate(Math.atan2(e.sy-e.y, e.sx-e.x)-Math.PI/2);
+  if(e.carryS){
+    // the pair swings like a pendulum: the bird rocks one way, the sheep swings under it the other
+    const sw=Math.sin(t*5.2), s=e.carryS;
+    ctx.rotate(sw*0.12);
+    ctx.save(); ctx.translate(0,8); ctx.rotate(-sw*0.38);
+    ctx.strokeStyle="#e8c14a"; ctx.lineWidth=1.6;                    // talons hooked into the fleece
+    ctx.beginPath(); ctx.moveTo(-3,0); ctx.lineTo(-4,9); ctx.moveTo(3,0); ctx.lineTo(4,9); ctx.stroke();
+    herdDrawSheep(ctx,0,20,e.side<0?-1:1,s.ram,true,t*2.2,s.id,1,false);
+    ctx.restore();
+  }
   herdEagleSprite(ctx,pose,fr,t);
-  if(e.carry) herdDrawSheep(ctx,0,16,1,false,false,t,0,0.55);
   ctx.restore();
+  if(e.carryS){
+    // and it says so
+    const sw=Math.sin(t*5.2), bx=e.x-sw*10, by=e.y-e.alt+bob-6+Math.abs(Math.sin(t*9))*-2;
+    if(Math.floor(t*3)%2===0){ ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
+      herdOutlineText(ctx,"BAA!",bx+(e.side<0?18:-18),by+30,"#fff"); ctx.textAlign="left"; }
+  }
 }
 // the bird itself: broad wings with fingered tips, white head, dark body, red-brown coverts, a tail
 // that fans while it hovers. pose: glide / hover / flap (3 frames) / dive (tucked) / flare.
@@ -26873,15 +27001,7 @@ function herdBuildClimbBG(sh){
   // 2. the gaps are stony, the pockets are soft
   for(const b of M5_BANDS){
     if(b.k==="gap"){
-      for(let i=0;i<6;i++){
-        const cx=M5_X0+20+rnd()*(M5_X1-M5_X0-40), cy=b.y0+20+rnd()*(b.y1-b.y0-40), r=14+rnd()*14;
-        x.fillStyle=rnd()<0.5?"#8a8a8a":"#7a7a7a"; x.strokeStyle=HB_OUT; x.lineWidth=1.4;
-        x.beginPath();
-        for(let k=0;k<6;k++){ const a=k/6*6.283+rnd()*0.4, rr=r*(0.7+rnd()*0.4); k?x.lineTo(cx+Math.cos(a)*rr,cy+Math.sin(a)*rr*0.6):x.moveTo(cx+Math.cos(a)*rr,cy+Math.sin(a)*rr*0.6); }
-        x.closePath(); x.fill(); x.stroke();
-        x.strokeStyle="#e6e6e6"; x.lineWidth=1; x.beginPath(); x.moveTo(cx-r*0.5,cy-r*0.3); x.lineTo(cx+r*0.3,cy-r*0.4); x.stroke();
-        if(herdSnowAt(cy,cx)){ x.fillStyle="#f4f7fa"; x.beginPath(); x.ellipse(cx-2,cy-r*0.3,r*0.6,r*0.22,0,0,7); x.fill(); }
-      }
+      // (its big rocks are solid now, so they are part of the layout - drawn with the banks below)
       for(let i=0;i<90;i++){ x.fillStyle=rnd()<0.5?"#6f6f6f":"#9a9a9a"; x.fillRect(M5_X0+rnd()*(M5_X1-M5_X0), b.y0+rnd()*(b.y1-b.y0), 2,2); }
     } else {
       herdWorn(x,rnd,180+(rnd()-0.5)*80,(b.y0+b.y1)/2,46,0.7);
@@ -26936,6 +27056,7 @@ function herdBuildClimbBG(sh){
     x.fillStyle=g; x.strokeStyle=HB_OUT; x.lineWidth=1.8;
     x.beginPath(); x.ellipse(hl.x,hl.y,HD_HOLE_R,HD_HOLE_R*0.86,0,0,7); x.fill(); x.stroke();
   }
+  for(const o of HERD.layout.rocks||[]){ herdShadow(x,o.x+2,o.y+o.r*0.45,o.r*0.95,o.r*0.3,0.3); herdFlatRock(x,o); }
   for(const l of HERD.layout.logs) herdDrawLog(x,l);
   for(const tr of HERD.layout.trees) herdTree(x,tr.x,tr.y,0.6);
   // 8. peaks behind the top, then the pen on its shelf: the back fence slants, so it sits ON the slope
@@ -26967,20 +27088,34 @@ const HERD_CUR="£";                       // the farm pays in pounds — see th
 const HERD_LOSS=3;                        // what a lost sheep costs, every level
 const HERD_PLAYABLE=5;                    // 6-7 are on the map as plan only
 const HERD_LV={
-  1:{n:"OPEN FIELD",   pay:1, sheep:[4,4], quota:4, holes:[1,1], road:false, wolves:0, overtime:false, par:45,
+  1:{n:"OPEN FIELD",   pay:1, sheep:[4,4], quota:4, need:0, holes:[1,1], road:false, wolves:0, overtime:false, par:45,
      hint:"£1 A HEAD", tip:"STAND BEHIND THEM. BARK IS A SHOVE."},
-  2:{n:"COUNTRY ROAD", pay:2, sheep:[10,10], quota:10, holes:[3,3], road:true,  wolves:0, overtime:true,
+  2:{n:"COUNTRY ROAD", pay:2, sheep:[10,10], quota:10, need:4, holes:[3,3], road:true,  wolves:0, overtime:true,
      arrow:true, hint:"£2 A HEAD", tip:"LET THE RIG PASS."},
-  3:{n:"THE WOLFPACK", pay:2, sheep:[6,8], quota:6, holes:[1,2], road:false, wolves:2, wolvesOT:3,
+  3:{n:"THE WOLFPACK", pay:2, sheep:[15,15], quota:15, need:10, holes:[4,5], road:false, wolves:2, wolvesOT:3,
      overtime:true, hint:"£2 A HEAD", tip:"KEEP THEM TIGHT."},
-  4:{n:"BASE", pay:6, sheep:[6,6], quota:6, holes:[1,1], road:false, wolves:0, overtime:true, otLoad:2, flock:8,
+  4:{n:"BASE", pay:6, sheep:[6,6], quota:6, need:15, holes:[1,1], road:false, wolves:0, overtime:true, otLoad:2, flock:8,
      chute:true, mountain:true, hint:"£6 A HEAD", tip:"WAIT FOR THE SMASH. THEN PUSH.", teaser:"THE LANE GETS THIN.",
      star3:{n:8, lbl:"EVERY LAST ONE"}},
-  5:{n:"THE CLIMB", pay:10, sheep:[5,5], quota:18, holes:[3,3], road:false, wolves:0, overtime:false,
+  5:{n:"THE CLIMB", pay:10, sheep:[5,5], quota:18, need:30, holes:[3,3], road:false, wolves:0, overtime:false,
      climb:true, mountain:true, fieldH:2400, gateX:210, arrow:true, hint:"£10 A HEAD",
      tip:"NO GOING BACK DOWN. KEEP THEM CLOSE.", star3:{n:22, lbl:"22+ PENNED"}},
   6:{n:"ROCKFALL",   plan:true},
   7:{n:"SUMMIT",     plan:true}
+};
+/* BONUS GOALS. Two a field, each about how that field is played, each worth XP the first time it is
+   done on a shift that checks out. The counters live on the shift (sh.bx) and only ever count. */
+const HERD_GOALS={
+  1:[{lbl:"NO BARKING",          xp:40,  ok:sh=>sh.bx.bark===0},
+     {lbl:"ALL IN UNDER 30S",    xp:40,  ok:sh=>(sh.quotaT!=null?sh.quotaT:sh.t)<=30}],
+  2:[{lbl:"NO CLOSE CALLS",      xp:60,  ok:sh=>sh.bx.near===0},
+     {lbl:"3 BARKS OR FEWER",    xp:60,  ok:sh=>sh.bx.bark<=3}],
+  3:[{lbl:"A WOLF DOWN A HOLE",  xp:80,  ok:sh=>(sh.wolvesDown||0)>=1},
+     {lbl:"SEE OFF 3 ATTACKS",   xp:80,  ok:sh=>sh.bx.fend>=3}],
+  4:[{lbl:"NEVER BONKED",        xp:100, ok:sh=>sh.bx.bonk===0},
+     {lbl:"QUOTA IN UNDER 90S",  xp:100, ok:sh=>sh.quotaT!=null && sh.quotaT<=90}],
+  5:[{lbl:"SHOO 3 EAGLES",       xp:150, ok:sh=>sh.bx.shoo>=3},
+     {lbl:"SPOIL 2 SQUIRRELS",   xp:150, ok:sh=>sh.bx.eek>=2}]
 };
 // the dog
 const HERD_DOG_SPD=96;
@@ -27001,7 +27136,8 @@ const SH_MAX_CALM=12, SH_MAX_DRIVE=54, SH_MAX_BOLT=104;
 const SH_ALARM_T=1.4, SH_SPLIT_D=54;
 // hazards
 const HD_HOLE_R=15, HD_HOLE_PULL=30, HD_HOLE_EAT=7, HD_HOLE_SUCK=72;   // a soft pull, a hard centre
-const HD_ROAD_GAPS=[6.5,4.8,8.0,5.5];        // seconds between rigs — a readable rotation, not dice
+const HD_ROAD_GAPS=[8.5,6.5,10.0,7.5];          // two lanes now, so each one rests longer: there is still
+const HD_ROAD_GAPS2=[9.5,11.0,7.5,10.5];        // a moment the whole road is clear, it just has to be watched for        // seconds between rigs — a readable rotation, not dice
 const HD_ROAD_WARN=0.8, HD_ROAD_SPD=150, HD_RIG_W=44, HD_RIG_H=24;
 const HD_OT_FIRST=4;                          // the first overtime run comes this soon after quota
 const HD_WOLF_PROWL=58, HD_WOLF_STALK=34, HD_WOLF_LUNGE=150, HD_WOLF_BLOCK_R=34, HD_WOLF_BARK_R=130;
@@ -27023,6 +27159,7 @@ function herdRng(seed){
 function herdLvState(lv){
   const L=S.herd.levels;
   if(!L[lv]) L[lv]={cleared:false, bestPenned:0, bestCash:0, visits:0};
+  if(!L[lv].bonus) L[lv].bonus=[false,false];
   return L[lv];
 }
 function herdUnlocked(lv){
@@ -27030,6 +27167,9 @@ function herdUnlocked(lv){
   if(lv===1) return !!S.herd.applied;
   return !!(S.herd.levels[lv-1] && S.herd.levels[lv-1].cleared);
 }
+// YOUR FLOCK: the sheep you have carried since the open field. A field is let in only with enough of them
+function herdFlock(){ return clamp(Math.round(S.herd.flock||0),0,HERD_FLOCK); }
+function herdCanEnter(lv){ return herdFlock()>=(HERD_LV[lv].need||0); }
 function herdCash(n){ return (n<0?"-":"")+HERD_CUR+Math.abs(Math.round(n)); }
 function herdToast(msg,red){
   const t=$("#herdToast"); t.textContent=DN(msg); t.className=red?"red":"";
@@ -27083,8 +27223,16 @@ function herdOpenMap(card){
     $("#hmCardHead").textContent=card.head;
     $("#hmCardLine").textContent=card.line;
     const sv=$("#hmCardSaved");
-    sv.textContent = card.saved ? "GAME SAVED" : "COULDN'T SAVE \u2014 STORAGE IS BLOCKED";
-    sv.classList.toggle("bad", !card.saved);
+    sv.textContent = card.saved==null ? "NOTHING SAVED" : card.saved ? "GAME SAVED" : "COULDN'T SAVE \u2014 STORAGE IS BLOCKED";
+    sv.classList.toggle("bad", card.saved===false);
+    let bh="";
+    if(card.flock){ const d=card.flock.to-card.flock.from;
+      bh+='<div class="hmc-flock">FLOCK '+card.flock.from+' &#8594; <b>'+card.flock.to+'</b>/'+HERD_FLOCK+
+          (d?' <span class="'+(d>0?"up":"down")+'">'+(d>0?"+":"")+d+'</span>':"")+'</div>'; }
+    if(card.bonus) for(const g of card.bonus)
+      bh+='<div class="hmc-goal'+(g.done?" done":"")+(g.fresh?" fresh":"")+'">'+(g.done?"&#10003;":"&#10007;")+" "+g.lbl+
+          (g.fresh?' <b>+'+g.xp+' XP</b>':g.done&&g.had?" (DONE BEFORE)":"")+'</div>';
+    $("#hmCardBonus").innerHTML=bh;
     c.classList.remove("hidden");
     herdCardFx(card);
     if(card.unlocked){ const n=document.querySelector('.hm-node[data-lv="'+card.unlocked+'"]'); if(n) n.classList.add("hm-new"); }
@@ -27100,24 +27248,34 @@ function herdCloseMap(){
 }
 function herdRenderMap(){
   $("#hmBank").textContent="EARNED "+herdCash(S.herd.banked||0);
+  { const f=herdFlock(), el=$("#hmFlock");
+    el.innerHTML='<span class="hmf-lbl">YOUR FLOCK</span><span class="hmf-n">'+f+'<small>/'+HERD_FLOCK+'</small></span>'+
+      '<span class="hmf-bar"><i style="width:'+Math.round(f/HERD_FLOCK*100)+'%"></i></span>';
+    el.classList.toggle("full", f>=HERD_FLOCK); }
   const sh=S.herd.shift;
   let html="";
   for(let lv=7;lv>=1;lv--){
     const L=HERD_LV[lv], st=S.herd.levels[lv];
     const prog = sh && sh.lv===lv;
-    const open = herdUnlocked(lv);
-    const cls = prog ? "st-prog" : (st&&st.cleared) ? "st-clear" : open ? "st-open" : "st-locked";
+    const open = herdUnlocked(lv), short = open && !herdCanEnter(lv);
+    const cls = prog ? "st-prog" : short ? "st-short" : (st&&st.cleared) ? "st-clear" : open ? "st-open" : "st-locked";
     const name = L.plan ? "????" : L.n;
     const right = prog ? "<span class='hm-pip'></span>"
                 : (st&&st.cleared) ? herdStarHtml(Math.max(1,st.stars||0),3)
+                : short ? "<span class='hm-short'>"+herdFlock()+"/"+L.need+"</span>"
                 : open ? "<span class='hm-go'>GO</span>" : "";
     const sub = L.plan ? "" : !open ? (L.teaser||"LOCKED")
               : prog ? "IN PROGRESS — "+sh.penned+"/"+L.quota+" PENNED"
+              : short ? "NEEDS "+L.need+" SHEEP — YOU HAVE "+herdFlock()
               : (st&&st.cleared) ? "BEST "+st.bestPenned+" · "+herdCash(st.bestCash)
               : L.hint;
+    const gl = (!L.plan && open && HERD_GOALS[lv]) ? '<span class="hm-goals">'+HERD_GOALS[lv].map((g,i)=>{
+                 const done=!!(st&&st.bonus&&st.bonus[i]);
+                 return '<span class="hm-goal'+(done?" done":"")+'">'+(done?"&#10003;":"&#9675;")+" "+g.lbl+(done?"":" +"+g.xp+"XP")+'</span>'; }).join("")+'</span>' : "";
+    const need = (!L.plan && L.need) ? '<span class="hm-need'+(short?" short":"")+'">&#9679; '+L.need+'</span>' : "";
     html+='<button class="hm-node '+cls+(lv%2?" hm-r":" hm-l")+'" data-lv="'+lv+'">'+
           '<span class="hm-n">'+lv+'</span>'+
-          '<span class="hm-txt"><span class="hm-name">'+name+'</span>'+(sub?'<span class="hm-sub2">'+sub+'</span>':"")+'</span>'+
+          '<span class="hm-txt"><span class="hm-name">'+name+need+'</span>'+(sub?'<span class="hm-sub2">'+sub+'</span>':"")+gl+'</span>'+
           right+'</button>';
     if(lv>1) html+='<div class="hm-post'+(herdUnlocked(lv)?" lit":"")+'"></div>';
   }
@@ -27131,6 +27289,7 @@ function herdNodeTap(lv){
     return herdToast("FINISH THE FIELD BELOW.");
   }
   if(S.sick){ beep(150,.1); return herdToast("HE'S TOO SICK TO WORK.",1); }
+  if(!herdCanEnter(lv)){ beep(150,.08); return herdToast("NEEDS "+L.need+" SHEEP. YOU HAVE "+herdFlock()+".",1); }
   const sh=S.herd.shift;
   if(sh && sh.lv!==lv){
     const keep=Math.max(0,sh.cash);
@@ -27169,22 +27328,27 @@ function herdMakeHoles(lv,seed){
      inside it and WAITS inside it on the road's shoulder while a rig goes by, so the holes flank
      the route and punish drifting off it, rather than punishing the timing the level is about.
      Never on the road, never at the pen mouth, never on the drop edge, and comfortably apart. */
+  // COUNTRY ROAD: one hole dead in the middle above the road - a straight run up the centre has to
+  // split round it. The rest keep to the flanks as before.
+  let want=n;
+  if(L.road){ out.push({x:HG.gx+(rnd()-0.5)*16, y:HF_ROAD_Y-HF_ROAD_H/2-74+(rnd()-0.5)*12, mid:true}); want=n+1; }
   let tries=0, corridor=92;
-  while(out.length<n && tries<800){
+  while(out.length<want && tries<800){
     tries++; if(tries===400) corridor=84;
     const x=40+rnd()*280, y=150+rnd()*430;
     if(Math.abs(x-HG.gx)<corridor) continue;
     if(Math.hypot(x-HG.gx,y-HG.py)<130) continue;
     if(L.road && Math.abs(y-HF_ROAD_Y)<HF_ROAD_H/2+40) continue;
     if(y>HF_DROP_Y-30) continue;
-    if(out.some(o=>Math.hypot(o.x-x,o.y-y)<120)) continue;
+    if(out.some(o=>Math.hypot(o.x-x,o.y-y)<(L.holes[1]>3?104:120))) continue;
     out.push({x,y});
   }
   return out;
 }
 function herdNewSheep(sh,x,y,ram){
+  const own = sh.flock0!=null && sh.ownIn<sh.flock0; if(own) sh.ownIn++;
   return {id:sh.nextId++, x, y, vx:0, vy:0, ram:!!ram, alarm:0, panicT:0, pdx:0, pdy:0,
-          wa:Math.random()*6.283, st:"graze", near:99};
+          wa:Math.random()*6.283, st:"graze", near:99, own};
 }
 // where each paddock's flock starts: scattered wide for the tutorial (gathering IS the lesson),
 // a loose group near the clear corridor on the later fields
@@ -27227,8 +27391,12 @@ function herdNewShift(lv){
             sheep:[], wolves:[],
             dog:{x:HG.gx, y:HG.H-16, vx:0, vy:0, faceI:6, faceAng:-Math.PI/2,
                  dashT:0, dashVx:0, dashVy:0, dashCd:0, barkCd:0, plantT:0, gassed:false},
-            road: L.road ? {ph:"gap", t:3.5, idx:0, dir:1, x:0} : null,
-            ot:{on:false, nextT:0, truck:null, drops:0}};
+            road: L.road ? {ph:"gap", t:3.5, idx:0, dir:1, x:0, y:HF_ROAD_Y+6, lane:0} : null,
+            road2: L.road ? {ph:"gap", t:6.2, idx:0, dir:-1, x:0, y:HF_ROAD_Y-8, lane:1} : null,
+            ot:{on:false, nextT:0, truck:null, drops:0},
+            // the flock you came in with: your own go into the field first, then the farmer's spares
+            flock0:herdFlock(), ownIn:0, ownLost:0, freshPen:0,
+            bx:{bark:0, dash:0, near:0, bonk:0, shoo:0, eek:0, fend:0}};
   S.herd.shift=sh;
   HERD.holes=herdMakeHoles(lv,sh.seed);
   herdRuntime(sh);
@@ -27258,10 +27426,20 @@ function herdStart(lv){
   herdSyncCheckout(false);
   beep(520,.06); setTimeout(()=>beep(700,.08),90);
 }
-// leaving mid-shift: nothing is banked, nothing is rerolled — the field waits exactly as it is
-function herdLeave(){
-  HERD.active=false; HERD.joy=null;
+/* EXIT. There is no leaving a field to come back to it: you finish it, or you walk off it and it is
+   as if you were never there - no pay, no sheep gained or lost, nothing saved. The field stops
+   while the question is up (a dialog over the field stops the field). */
+function herdExitAsk(){
+  const sh=S.herd.shift; if(!sh) return herdOpenMap();
   beep(400,.05);
+  openChoice("END THIS SHIFT?",
+    "WALK OFF "+HERD_LV[sh.lv].n+" NOW AND IT ENDS HERE.<br><br>NO PAY. NO RESUME.<br>YOUR FLOCK STAYS AT "+herdFlock()+".",
+    "EXIT", ()=>herdEndShift("exit"), "KEEP HERDING", null);
+}
+// (kept for old callers: the same as EXIT, without the question)
+function herdLeave(){
+  if(S.herd.shift) return herdEndShift("exit");
+  HERD.active=false; HERD.joy=null;
   herdOpenMap();
 }
 
@@ -27287,26 +27465,43 @@ function herdLogLine(sh){
 /* One door out, three ways through it. CHECKOUT banks the visit and marks the paddock CLEARED
    (which is what opens the next one). A WIPE or an ABANDON banks the same running total — penned
    pay is never taken back — but clears nothing. Every door never pays below zero. */
+/* One door out, and only one of its ways banks anything. CHECKOUT pays the visit, marks the paddock
+   CLEARED (which is what opens the next one), settles YOUR FLOCK (your own sheep lost are gone for
+   good; the farmer's spares you penned are yours now) and scores the bonus goals - then saves.
+   A WIPE or an EXIT banks nothing at all and saves nothing: the flock is what it was. */
 function herdEndShift(kind){
   const sh=S.herd.shift; if(!sh) return;
   const L=HERD_LV[sh.lv], st=herdLvState(sh.lv);
+  const ok = kind==="checkout";
   const wasCleared=!!st.cleared, prevStars=st.stars||0, prevBest=st.bestCash||0;
-  const pay=Math.max(0,Math.round(sh.cash));
-  S.money+=pay; S.earned+=pay; S.herd.banked=(S.herd.banked||0)+pay;
+  const pay = ok ? Math.max(0,Math.round(sh.cash)) : 0;
   const lostN=Object.values(sh.lost).reduce((a,b)=>a+(b||0),0);
   const line=herdLogLine(sh);
-  let head, pic, stars=null, tag="", tip=false, unlocked=0, headPre="";
-  if(kind==="checkout"){
+  let head, pic, stars=null, tag="", tip=false, unlocked=0, headPre="", flock=null, bonus=null;
+  if(ok){
+    S.money+=pay; S.earned+=pay; S.herd.banked=(S.herd.banked||0)+pay;
     stars=herdStarsFor(sh,L,lostN);
     const nS=stars.on.filter(Boolean).length;
     st.stars=Math.max(prevStars,nS);
-    if(!wasCleared && sh.lv<HERD_PLAYABLE){ unlocked=sh.lv+1; tag="NEW FIELD OPEN \u2014 "+HERD_LV[unlocked].n; }
+    if(!wasCleared && sh.lv<HERD_PLAYABLE){ unlocked=sh.lv+1; tag="NEW FIELD OPEN — "+HERD_LV[unlocked].n; }
     else if(!wasCleared) tag="FIRST CLEAR!";
     else if(nS>prevStars || pay>prevBest) tag="NEW BEST!";
-    if(!tag && herdFlockLeft(sh)<=0 && !sh.sheep.length) tag="THE FARMER'S WHOLE FLOCK \u2014 ALL "+HERD_FLOCK+".";
+    if(!tag && herdFlockLeft(sh)<=0 && !sh.sheep.length) tag="THE FARMER'S WHOLE FLOCK — ALL "+HERD_FLOCK+".";
     st.cleared=true;
     st.bestPenned=Math.max(st.bestPenned,sh.penned);
     st.bestCash=Math.max(st.bestCash,pay);
+    // the flock: on the mountain whatever is not in the pen is left on it; elsewhere an unpenned
+    // sheep of yours goes back to the farmer with the rest of your flock
+    const from=herdFlock();
+    const to = L.climb ? Math.min(HERD_FLOCK, sh.penned)
+                       : clamp(sh.flock0-(sh.ownLost||0)+(sh.freshPen||0), 0, HERD_FLOCK);
+    S.herd.flock=to; flock={from, to};
+    // the bonus goals: XP the first time each is done
+    bonus=(HERD_GOALS[sh.lv]||[]).map((g,i)=>{
+      const done=!!(sh.bx && g.ok(sh)), fresh=done && !st.bonus[i];
+      if(fresh){ st.bonus[i]=true; addXP(g.xp); }
+      return {lbl:g.lbl, xp:g.xp, done, fresh, had:!!st.bonus[i]};
+    });
     if(lostN===0){ S.fun=clamp(S.fun+8,0,100); S.mood=clamp(S.mood+4,0,100); }
     addXP(Math.max(1,Math.round(sh.penned*0.5)));        // small — the wage is the point
     tickStats(5,true);                                    // a shift is half an hour of the day
@@ -27315,27 +27510,26 @@ function herdEndShift(kind){
     beep(660,.08); setTimeout(()=>beep(990,.12),100);
     haptic([20,40,20]);
   } else {
-    st.bestPenned=Math.max(st.bestPenned,sh.penned);
-    tickStats(3.3,true);
-    head=(kind==="wipe"?"SHIFT OVER":"SHIFT ABANDONED")+(pay>0?" — +"+herdCash(pay):"");
-    const why=["hole","road","wolf","off","rock","eagle","mtn"].reduce((a,k)=>(sh.lost[k]||0)>(sh.lost[a]||0)?k:a,"none");
-    tag="TIP: "+HERD_TIPS[why]; tip=true;
+    tickStats(kind==="exit"?1.5:3.3,true);
+    head = kind==="wipe" ? "SHIFT OVER — NOTHING BANKED" : "WALKED OFF — NOTHING BANKED";
+    if(kind==="wipe"){
+      const why=["hole","road","wolf","off","rock","eagle","mtn"].reduce((a,k)=>(sh.lost[k]||0)>(sh.lost[a]||0)?k:a,"none");
+      tag="TIP: "+HERD_TIPS[why]; tip=true;
+    } else tag="YOUR FLOCK IS STILL "+herdFlock()+". THE FIELD WILL BE NEW NEXT TIME.";
     pic="sad";
     beep(180,.2,"sawtooth",.04);
   }
-  dogLog(line+(pay>0?" +"+herdCash(pay):""), kind!=="checkout");
+  dogLog(line+(pay>0?" +"+herdCash(pay):""), !ok);
   S.herd.shift=null;
   HERD.active=false; HERD.joy=null;
   herdSyncCheckout(false);
   renderMeters();
-  /* AUTOSAVE — the one exception to the save-when-you-choose rule. A shift ends with money in
-     the wallet and a paddock cleared or not, and that is exactly the moment a closed tab would
-     hurt most. performSave (not bare saveGame) so the last-saved stamp moves too, and the
-     "don't forget to save" mail stays honest. The shift is already cleared off S at this point,
-     so what is saved is the settled result, never a half-finished field. */
-  const saved=performSave();
-  if(kind!=="abandon") herdOpenMap({head, line, pic, saved, stars, tag, tip, unlocked, headPre, countTo:kind==="checkout"?pay:0});
-  else herdToast(saved ? "SHIFT ABANDONED. SAVED." : "SHIFT ABANDONED. COULDN'T SAVE.", !saved);
+  /* AUTOSAVE — the one exception to the save-when-you-choose rule, and only for a field FINISHED:
+     money in the wallet, a paddock cleared, the flock settled. A wipe or a walk-off changes nothing,
+     so there is nothing to save. The shift is already cleared off S, so what is saved is the
+     settled result, never a half-finished field. */
+  const saved = ok ? performSave() : null;
+  herdOpenMap({head, line, pic, saved, stars, tag, tip, unlocked, headPre, countTo:ok?pay:0, flock, bonus});
 }
 function herdSyncCheckout(pulse){
   const sh=S.herd.shift, b=$("#hCheckout");
@@ -27355,6 +27549,7 @@ function herdBark(){
   if(herdGassed()) return herdRefuse();
   if(d.barkCd>0) return;
   d.barkCd=HERD_BARK_CD;
+  if(sh.bx) sh.bx.bark++;
   S.energy=clamp(S.energy-HERD_BARK_COST,0,100);
   bark(0.9);
   HERD.fx.barkT=0.28; HERD.fx.barkAng=d.faceAng;
@@ -27395,6 +27590,7 @@ function herdBark(){
     while(da>Math.PI) da-=2*Math.PI; while(da<-Math.PI) da+=2*Math.PI;
     if(Math.abs(da)>HERD_BARK_HALF+0.2) continue;
     if(w.lurk){ herdLurkClear(sh,w); continue; }
+    if((w.st==="stalk"||w.st==="lunge") && sh.bx) sh.bx.fend++;
     w.st="scared"; w.t=2.5; w.tgt=-1;
     herdPack(sh).pushT=HD_PACK_PUSH_T;
     herdPop(w.x, w.y-18, "?!", "#fff");
@@ -27411,6 +27607,7 @@ function herdDash(){
   const j=HERD.joy;
   if(j && Math.hypot(j.dx,j.dy)>JOY_DEAD){ const m=Math.hypot(j.dx,j.dy); dx=j.dx/m; dy=j.dy/m; }
   d.dashT=HERD_DASH_T; d.dashCd=HERD_DASH_CD;
+  if(sh.bx) sh.bx.dash++;
   d.dashVx=dx*HERD_DOG_SPD*HERD_DASH_MUL; d.dashVy=dy*HERD_DOG_SPD*HERD_DASH_MUL;
   S.energy=clamp(S.energy-HERD_DASH_COST,0,100);
   herdPuff(d.x, d.y+8, 7, "#d9c9a0", 46, 0.5, 3);
@@ -27469,10 +27666,16 @@ function herdDogTick(sh,dt){
   if(HERD.solids.length) herdPushOut(d,6);                   // rock walls, fallen trees
 }
 function herdRoadTick(sh,dt){
-  const r=sh.road; if(!r) return;
+  if(sh.road) herdLaneTick(sh,sh.road,dt);
+  if(sh.road2) herdLaneTick(sh,sh.road2,dt);
+  // a close call: a sheep a whisker from a rig that is going by (the bonus goal counts these)
+  if(sh.bx && !sh.bx.near) for(const v of herdVehicles(sh)) if(v.kind==="road")
+    for(const s of sh.sheep) if(herdVehHit(v,s.x,s.y,12)){ sh.bx.near++; break; }
+}
+function herdLaneTick(sh,r,dt){
   r.t-=dt;
   if(r.ph==="gap" && r.t<=0){
-    r.ph="warn"; r.t=HD_ROAD_WARN; r.dir = r.idx%2 ? -1 : 1; r.trl=herdTrailerRoll(HD_RIG_TRL_W);
+    r.ph="warn"; r.t=HD_ROAD_WARN; r.dir = r.lane!=null ? (r.lane ? -1 : 1) : (r.idx%2 ? -1 : 1); r.trl=herdTrailerRoll(HD_RIG_TRL_W);
     beep(55,.55,"sawtooth",.05); haptic([25,25,25,25,25]);
   } else if(r.ph==="warn" && r.t<=0){
     r.ph="cross"; r.x = r.dir>0 ? -HD_TRAC_HALF : HF_W+HD_TRAC_HALF;
@@ -27480,7 +27683,7 @@ function herdRoadTick(sh,dt){
     r.x+=r.dir*HD_ROAD_SPD*HD_RIG_TRL_SPD[r.trl||0]*dt;
     const len=herdVehLen(r.trl||0)+10;
     if((r.dir>0 && r.x-len>HF_W) || (r.dir<0 && r.x+len<0)){
-      r.ph="gap"; r.idx++; r.t=HD_ROAD_GAPS[r.idx%HD_ROAD_GAPS.length];
+      r.ph="gap"; r.idx++; r.t=(r.lane?HD_ROAD_GAPS2:HD_ROAD_GAPS)[r.idx%HD_ROAD_GAPS.length];
     }
   }
 }
@@ -27538,7 +27741,9 @@ function herdVehHit(v,px,py,pad){
 }
 function herdVehicles(sh){
   const out=[], r=sh.road, tr=sh.ot && sh.ot.truck;
-  if(r && r.ph==="cross") out.push({x:r.x, dir:r.dir, trl:r.trl||0, y:HF_ROAD_Y+6, kind:"road"});
+  if(r && r.ph==="cross") out.push({x:r.x, dir:r.dir, trl:r.trl||0, y:r.y||HF_ROAD_Y+6, kind:"road"});
+  const r2=sh.road2;
+  if(r2 && r2.ph==="cross") out.push({x:r2.x, dir:r2.dir, trl:r2.trl||0, y:r2.y, kind:"road"});
   if(tr && tr.trl!=null) out.push({x:tr.x, dir:tr.dir, trl:tr.trl, route:true, kind:"tractor", n:tr.n});
   return out;
 }
@@ -27799,6 +28004,7 @@ function herdWolfTick(sh,w,dt){
   if((w.st==="stalk"||w.st==="lunge") && Math.hypot(w.x-d.x,w.y-d.y)<HD_WOLF_BLOCK_R){
     const dx=w.x-d.x, dy=w.y-d.y, dd=Math.hypot(dx,dy)||0.01;
     w.vx=dx/dd*120; w.vy=dy/dd*120; w.st="prowl"; w.tgt=-1;
+    if(sh.bx) sh.bx.fend++;
     beep(200,.06,"square",.03);
   }
   // a wolf with its mind on a sheep (or on getting away) gets the same soft pull at a hole's rim
@@ -27863,6 +28069,7 @@ function herdHowl(){
 function herdLose(sh,s,why){
   if(s.out) return;
   s.out=why; sh.lost[why]=(sh.lost[why]||0)+1; sh.lastOut="lost";
+  if(s.own) sh.ownLost=(sh.ownLost||0)+1;
   sh.cash-=HERD_LOSS;
   S.mood=clamp(S.mood-3,0,100);
   HERD.xs.push({x:clamp(s.x,4,HF_W-4), y:clamp(s.y,HG.py+4,HG.H-4), t:2.5});
@@ -27875,6 +28082,7 @@ function herdLose(sh,s,why){
 function herdPen(sh,s){
   if(s.out) return;
   s.out="pen"; sh.penned++; sh.lastOut="pen";
+  if(!s.own) sh.freshPen=(sh.freshPen||0)+1;
   sh.cash+=HERD_LV[sh.lv].pay;
   S.fun=clamp(S.fun+1,0,100);
   HERD.fx.penFlash=0.09;
@@ -28052,7 +28260,7 @@ function herdUpdate(sh,dt){
   }
   // wipe: nothing left to move and the quota never made — the shift is over
   // (on the climb, an empty field with strays still asleep up the hill is not the end of it)
-  if(sh.sheep.length===0 && !(L.climb && sh.strand.length)){
+  if(sh.sheep.length===0 && !(L.climb && sh.strand.length) && !(sh.eagles||[]).some(e=>e.carryS)){
     if(!sh.quotaMet) return herdEndShift("wipe");
     // in overtime, a drop lost to the last sheep is the flock wiped: the job's done, bank it
     if(L.overtime && sh.lastOut==="lost" && !sh.ot.truck) return herdEndShift("checkout");
@@ -28340,12 +28548,13 @@ function herdDraw(sh,t){
     ctx.drawImage(bg, 0,(y0+HB_M)*bres, bg.width,(y1-y0)*bres, -HB_M,y0, HF_W+HB_M*2,y1-y0);
   }
   ctx.save(); ctx.translate(0,cam); herdDrawAmbient(ctx,t,RM); ctx.restore();
-  const r=sh.road;
-  // the road's headlight warning: a white bar on the edge the rig is coming from
-  if(r && r.ph==="warn"){
+  // the road's headlight warning: a white bar on the edge the rig is coming from, on its own lane
+  for(const r of [sh.road, sh.road2]) if(r && r.ph==="warn"){
     const a = RM ? 0.9 : 0.5+0.5*Math.abs(Math.sin(t*14));
+    const top = r.lane===1 ? HF_ROAD_Y-HF_ROAD_H/2+4 : r.lane===0 ? HF_ROAD_Y+1 : HF_ROAD_Y-HF_ROAD_H/2+5;
+    const ht = r.lane!=null ? HF_ROAD_H/2-5 : HF_ROAD_H-10;
     ctx.globalAlpha=a; ctx.fillStyle="#fffbe0";
-    ctx.fillRect(r.dir>0?0:HF_W-6, HF_ROAD_Y-HF_ROAD_H/2+5, 6, HF_ROAD_H-10);
+    ctx.fillRect(r.dir>0?0:HF_W-6, top, 6, ht);
     ctx.globalAlpha=1;
   }
   // a hole that has a sheep near it says so — its rim goes red
@@ -28415,7 +28624,8 @@ function herdDraw(sh,t){
       const s=A.o, moving=Math.hypot(s.vx,s.vy)>4;
       if(Math.abs(s.vx)>2) s.face=s.vx<0?-1:1;
       if(s.st==="bolt"||s.st==="split"||s.behind>0){ ctx.strokeStyle="#ff2a1f"; ctx.lineWidth=1.4; ctx.beginPath(); ctx.ellipse(s.x,s.y+1.5,8.5,3.2,0,0,7); ctx.stroke(); }
-      if(L.climb){ herdLeanIn(ctx,s.x,s.y,s.face||1); herdDrawSheep(ctx,s.x,s.y+herdClimbBob(s.y),s.face||1,s.ram,moving,t,s.id,1,s.st==="graze"&&!moving); ctx.restore(); }
+      if(L.climb){ const fz=s.fallZ||0; if(fz>0) herdShadow(ctx,s.x,s.y+2,6*(1-Math.min(0.6,fz/200)),2,0.3);
+        herdLeanIn(ctx,s.x,s.y,s.face||1); herdDrawSheep(ctx,s.x,s.y+herdClimbBob(s.y)-fz,s.face||1,s.ram,moving||fz>0,t,s.id,1,s.st==="graze"&&!moving); ctx.restore(); }
       else herdDrawSheep(ctx,s.x,s.y,s.face||1,s.ram,moving,t,s.id,1,s.st==="graze"&&!moving);
       if(s.dazeT>0 && s.panicT<=0) herdDazeStars(ctx,s.x,s.y-15,t);
     } else if(A.k==="w") herdDrawWolf(ctx,A.o,t,RM, !!(sh.pack && sh.pack.howlT>0 && A.o.st==="prowl"));
@@ -28520,9 +28730,9 @@ function herdDrawHud(ctx,w,h,sh,t){
     }
   }
   // a long load on the road is announced while the headlights flash
-  const rr=sh.road;
-  if(rr && rr.ph==="warn" && (rr.trl||0)>=2){
-    const v=HERD.view, ex = rr.dir>0 ? v.ox+8*v.sc : v.ox+(HF_W-8)*v.sc, ey=v.oy+(HF_ROAD_Y-HF_ROAD_H/2-8)*v.sc;
+  for(const rr of [sh.road, sh.road2]) if(rr && rr.ph==="warn" && (rr.trl||0)>=2){
+    const v=HERD.view, ex = rr.dir>0 ? v.ox+8*v.sc : v.ox+(HF_W-8)*v.sc;
+    const ey = rr.lane===0 ? v.oy+(HF_ROAD_Y+HF_ROAD_H/2+16)*v.sc : v.oy+(HF_ROAD_Y-HF_ROAD_H/2-8)*v.sc;
     ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign = rr.dir>0 ? "left" : "right";
     const msg="LONG LOAD \u2014 "+rr.trl+" TRAILERS", tw=ctx.measureText(msg).width;
     ctx.fillStyle="rgba(0,0,0,.7)"; ctx.fillRect(rr.dir>0?ex-3:ex-tw-3, ey-9, tw+6, 12);
@@ -28646,8 +28856,49 @@ function herdDrawMapBg(){
     x.fillStyle="rgba(20,40,14,.28)";
     for(let k=0;k<40;k++){ const tx=rnd()*W, ty=y0+20+rnd()*(H*0.18); x.fillRect(tx,ty,2,1); x.fillRect(tx+1,ty-1,1,1); }
   });
+  // THE MOUNTAIN: its foot between BASE and THE CLIMB, its summit above the last card - so the climb
+  // and everything after it are ON it, and the fields below are the farm's hills
+  const mr=map.getBoundingClientRect();
+  const nodeY=lv=>{ const n=map.querySelector('.hm-node[data-lv="'+lv+'"]'); if(!n) return null; const r=n.getBoundingClientRect(); return {top:r.top-mr.top+map.scrollTop, bot:r.bottom-mr.top+map.scrollTop}; };
+  const n4=nodeY(4), n5=nodeY(5), n7=nodeY(7);
+  let peak=null;
+  if(n4 && n5 && n7){
+    const foot=(n5.bot+n4.top)/2+6, top=Math.max(ry-10, n7.top-58), px=W*0.52;
+    peak={x:px, y:top};
+    const M=[[-0.08,foot+10],[0.06,foot-30],[0.16,foot-(foot-top)*0.42],[0.27,foot-(foot-top)*0.55],[0.36,foot-(foot-top)*0.78],
+             [0.44,top+16],[0.52,top],[0.6,top+20],[0.68,foot-(foot-top)*0.7],[0.78,foot-(foot-top)*0.5],[0.9,foot-(foot-top)*0.36],[1.08,foot+10]];
+    const trace=()=>{ x.beginPath(); x.moveTo(-0.1*W,foot+40); for(const [fx,py] of M) x.lineTo(fx*W,py); x.lineTo(1.1*W,foot+40); x.closePath(); };
+    trace(); x.fillStyle="#8d97a3"; x.fill();
+    // the shaded face, right of the ridge line
+    x.save(); trace(); x.clip();
+    x.fillStyle="#6f7883"; x.beginPath(); x.moveTo(px,top); x.lineTo(W*0.6,top+20); x.lineTo(W*0.68,foot-(foot-top)*0.7);
+    x.lineTo(W*0.78,foot-(foot-top)*0.5); x.lineTo(W*0.9,foot-(foot-top)*0.36); x.lineTo(1.1*W,foot+40); x.lineTo(W*0.46,foot+40); x.closePath(); x.fill();
+    // scree and ledges
+    for(let k=0;k<70;k++){ const sx=rnd()*W, sy=top+30+rnd()*(foot-top-20); x.fillStyle=rnd()<0.5?"rgba(40,44,52,.35)":"rgba(230,234,240,.35)"; x.fillRect(sx,sy,3+rnd()*5,1.5); }
+    // the snow: the top third, ragged at its edge
+    const sl=top+(foot-top)*0.34;
+    x.fillStyle="#f4f6f8"; x.beginPath(); x.moveTo(-0.1*W,top-40); x.lineTo(1.1*W,top-40);
+    for(let fx=1.1; fx>=-0.1; fx-=0.05) x.lineTo(fx*W, sl+Math.sin(fx*31)*9+Math.sin(fx*13)*6);
+    x.closePath(); x.fill();
+    x.restore();
+    trace(); x.strokeStyle=HB_OUT; x.lineWidth=2.5; x.stroke();
+    // a little flag on the summit
+    x.strokeStyle=HB_OUT; x.lineWidth=1.5; x.beginPath(); x.moveTo(px,top); x.lineTo(px,top-16); x.stroke();
+    x.fillStyle="#e8c14a"; x.beginPath(); x.moveTo(px,top-16); x.lineTo(px+11,top-12); x.lineTo(px,top-8); x.closePath(); x.fill(); x.stroke();
+    // its name, on the rock
+    x.font="8px 'Press Start 2P',monospace"; x.textAlign="center";
+    const lx=W*0.17, ly=(n5.top+n5.bot)/2+4;
+    x.lineWidth=3; x.strokeStyle="#1b140c"; x.strokeText("THE", lx, ly-8); x.strokeText("MOUNTAIN", lx, ly+6);
+    x.fillStyle="#e6e9ee"; x.fillText("THE", lx, ly-8); x.fillText("MOUNTAIN", lx, ly+6); x.textAlign="left";
+    // and the farm's hills come up to its foot
+    x.fillStyle="#5f9646"; x.strokeStyle="rgba(20,32,14,.85)"; x.lineWidth=2;
+    x.beginPath(); x.moveTo(0,foot+4);
+    for(let px2=0;px2<=W;px2+=W/12) x.lineTo(px2, foot+4+Math.sin(px2/W*6.28*1.6)*7);
+    x.lineTo(W,foot+60); x.lineTo(0,foot+60); x.closePath(); x.fill(); x.stroke();
+    x.fillStyle="#5f9646"; x.fillRect(0,foot+12,W,50);
+  }
   // the track, threaded through the cards
-  const mr=map.getBoundingClientRect(), pts=[];
+  const pts=[];
   for(const n of map.querySelectorAll(".hm-node")){
     const r=n.getBoundingClientRect(), left=n.classList.contains("hm-l");
     pts.push({x:(left?r.right-18:r.left+18)-mr.left, y:r.top+r.height/2-mr.top+map.scrollTop});
@@ -28655,7 +28906,7 @@ function herdDrawMapBg(){
   pts.sort((a,b)=>b.y-a.y);                       // farm first, summit last
   if(pts.length){
     const start={x:W*0.5, y:H-6};
-    const path=[start,...pts,{x:W*0.5, y:ry-20}];
+    const path=[start,...pts, peak ? {x:peak.x, y:peak.y+4} : {x:W*0.5, y:ry-20}];
     const trace=()=>{ x.beginPath(); x.moveTo(path[0].x,path[0].y);
       for(let i=1;i<path.length;i++){ const a=path[i-1], b=path[i], my=(a.y+b.y)/2; x.bezierCurveTo(a.x,my,b.x,my,b.x,b.y); } };
     x.lineCap="round"; x.lineJoin="round";
@@ -28664,7 +28915,8 @@ function herdDrawMapBg(){
     trace(); x.strokeStyle="rgba(255,240,210,.25)"; x.lineWidth=3; x.setLineDash([2,7]); x.stroke(); x.setLineDash([]);
   }
   // trees and bales scattered on the slopes, the farm at the foot
-  for(let i=0;i<9;i++){ const tx=rnd()<0.5?rnd()*W*0.16:W*0.84+rnd()*W*0.16, ty=H*(0.3+rnd()*0.62); herdTree(x,tx,ty,0.7+rnd()*0.25); }
+  const treeTop = peak ? (nodeY(4).bot+6) : H*0.3;
+  for(let i=0;i<9;i++){ const tx=rnd()<0.5?rnd()*W*0.16:W*0.84+rnd()*W*0.16, ty=treeTop+rnd()*Math.max(20,H*0.92-treeTop); herdTree(x,tx,ty,0.7+rnd()*0.25); }
   herdBarn(x,W*0.06,H-86);
   herdBale(x,W*0.86,H-30,8); herdBale(x,W*0.93,H-22,7);
   for(let i=0;i<5;i++) herdDrawSheep(x,W*0.64+i*13+rnd()*6,H-20-rnd()*16,rnd()<0.5?1:-1,i===0,false,0,i,0.9);
@@ -29036,7 +29288,7 @@ function herdLoop(dt,t){
   const press=(id,fn)=>$(id).addEventListener("pointerdown",e=>{ e.preventDefault(); fn(); });
   press("#hBark",herdBark);
   press("#hDash",herdDash);
-  $("#hBack").addEventListener("click",herdLeave);
+  $("#hBack").addEventListener("click",herdExitAsk);
   $("#hCheckout").addEventListener("click",()=>{ if(S.herd.shift && S.herd.shift.quotaMet) herdEndShift("checkout"); });
   $("#hmHome").addEventListener("click",()=>{ beep(400,.05); herdCloseMap(); });
   window.addEventListener("resize",()=>{ if(HERD.shown) herdDrawMapBg(); });
