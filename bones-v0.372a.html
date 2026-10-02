@@ -856,7 +856,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.371a</span>
+          <span id="devToggle">v0.372a</span>
         </div>
       </div>
 
@@ -26072,10 +26072,16 @@ const M5_BACK=70;                                     // how far below the flock
 const M5_LEAD=0.62;                                   // where the dog sits in the view (from the top)
 const M5_BUMP_T=0.25, M5_BUMP_PX=8;                   // the camera's spring when it hits the stop
 const M5_LOSE_T=2.0;                                  // seconds below the line before the mountain has one
-const M5_WAKE=180;                                    // strays wake when the view is this close
-const M5_STEP=96, M5_SHEAR=Math.tan(8*Math.PI/180);   // the rock steps, and how much they rise across
-const M5_EAGLE_HOVER=1.3, M5_EAGLE_SWOOP=0.34, M5_EAGLE_BARK_R=150, M5_EAGLE_GRAB=17;
-const M5_NUT_EVERY=7, M5_NUT_R=130, M5_NUT_FLY=0.7, M5_NUT_WIND=0.45;
+const M5_WAKE=220;                                    // strays are awake once the view is this close - no cap
+const M5_STEP=96;                                     // the half-step bob a climbing sprite makes
+// the eagle tells you three times before it is allowed to be fast: a small shadow (spot), then the
+// shadow pulses red and it screams (warn), and only then the dive
+const M5_EAGLE_SPOT=0.4, M5_EAGLE_WARN=0.6, M5_EAGLE_HOVER=M5_EAGLE_SPOT+M5_EAGLE_WARN;
+const M5_EAGLE_SWOOP=0.34, M5_EAGLE_BARK_R=150, M5_EAGLE_GRAB=17;
+const M5_NUT_EVERY=7, M5_NUT_R=140, M5_NUT_FLY=1.0, M5_NUT_WIND=0.6;
+// the switchback: a bank of stones every so often, left then right, each leaving a gap at its end
+const M5_BANKS=[2205,1795,1385,975,565,345];
+const M5_SNOW_Y0=1200, M5_SNOW_SHELF=380;             // snow from half way up; a shelf of it at the top
 // the hill from the bottom up: a ledge, then gap / pocket / gap ... each gap holds what it holds
 const M5_BANDS=[
   {k:"gap",    y0:1990, y1:2210, tree:true,  wolf:true},
@@ -26091,35 +26097,69 @@ const M5_BANDS=[
 ];
 // the parts of the hill that never move, from the shift's seed - rebuilt on resume, identical
 function herdClimbLayout(seed){
-  const rnd=herdRng(seed^0x7c1b3a), logs=[], trees=[];
+  const rnd=herdRng(seed^0x7c1b3a), logs=[], trees=[], banks=[];
   for(const b of M5_BANDS){
-    const mid=(b.y0+b.y1)/2;
-    if(b.tree){
-      // a fallen birch across part of the gap, leaving a way round on one side
-      const left=rnd()<0.5, len=150+rnd()*40, y=mid+(rnd()-0.5)*40, tilt=(rnd()-0.5)*30;
-      const x0=left?M5_X0+6:M5_X1-6-len, x1=x0+len;
-      logs.push({x0, y0:y-tilt/2, x1, y1:y+tilt/2, r:7, stump:left?1:0});
-    }
-    if(b.sq){
-      const side=rnd()<0.5?-1:1, x=side<0?M5_X0+16:M5_X1-16, y=b.k==="gap"?mid:b.y0+12;
-      trees.push({x, y, side});
-    }
+    if(!b.tree) continue;
+    // a dead tree, fallen across part of the gap from one wall; its thick end lies against that wall
+    const mid=(b.y0+b.y1)/2, left=rnd()<0.5, len=150+rnd()*40, y=mid+(rnd()-0.5)*40, tilt=(rnd()-0.5)*30;
+    const x0=left?M5_X0+6:M5_X1-6-len, x1=x0+len;
+    logs.push({x0, y0:y-tilt/2, x1, y1:y+tilt/2, r:7, stump:left?1:0, seed:rnd()*1000});
   }
-  return {logs, trees};
+  M5_BANKS.forEach((by,i)=>{
+    const left=i%2===0, gap=72+rnd()*18;
+    const xs=left?M5_X0-4:M5_X1+4, xe=left?M5_X1-gap:M5_X0+gap, dir=left?1:-1;
+    const stones=[]; let x=xs, prevR=0;
+    for(let k=0;k<9;k++){
+      const r = k%2 ? 11+rnd()*5 : 17+rnd()*6;               // mixed sizes, never one size
+      const cx = k===0 ? xs+dir*r*0.6 : x+dir*(prevR+r)*0.72; // overlapping by a quarter or so
+      if(dir>0 ? cx+r>xe : cx-r<xe) break;
+      stones.push({x:cx, y:by+(rnd()-0.5)*10, r, ph:rnd()*6.28});
+      x=cx; prevR=r;
+    }
+    // nine stones may stop short: spread them out along the line so the bank ends AT the gap mouth
+    if(stones.length){ const l=stones[stones.length-1], f=Math.min(1.25,(xe-xs)/((l.x+dir*l.r)-xs));
+      if(f>1) for(const st of stones) st.x=xs+(st.x-xs)*f; }
+    const back=[];
+    for(let j=0;j<Math.min(3,stones.length-1);j++){
+      const a=stones[1+Math.floor(rnd()*(stones.length-1))];
+      back.push({x:a.x+(rnd()-0.5)*10, y:a.y-9-rnd()*4, r:7+rnd()*4, ph:rnd()*6.28});
+    }
+    if(stones.length) stones[stones.length-1].rim=true;      // the stone at the gap mouth
+    banks.push({y:by, left, gap, stones, back});
+    if(i===1||i===2||i===4) trees.push({x:left?M5_X0+18:M5_X1-18, y:by-16, side:left?-1:1});
+  });
+  return {logs, trees, banks};
 }
 function herdClimbSolids(){
   const out=[];
-  for(const l of HERD.layout.logs) out.push({k:"cap", x0:l.x0, y0:l.y0, x1:l.x1, y1:l.y1, r:l.r});
+  // a dead tree is solid at its thick end only; the thin end lies low enough to step over
+  for(const l of HERD.layout.logs){
+    const tx=l.stump?l.x0:l.x1, ty=l.stump?l.y0:l.y1, ox=l.stump?l.x1:l.x0, oy=l.stump?l.y1:l.y0;
+    out.push({k:"cap", x0:tx, y0:ty, x1:tx+(ox-tx)*0.55, y1:ty+(oy-ty)*0.55, r:l.r+1, juice:"bark"});
+  }
+  // the banks: every stone is its own hull, so a sheep bumps a rock and slides round it
+  for(const b of HERD.layout.banks) for(const st of b.stones.concat(b.back))
+    out.push({k:"cap", x0:st.x, y0:st.y, x1:st.x, y1:st.y, r:st.r*0.82, juice:"stone"});
   for(const t of HERD.layout.trees) out.push({k:"cap", x0:t.x, y0:t.y, x1:t.x, y1:t.y, r:6});
   return out;
+}
+// a sheep that bumps a stone kicks up dust; one that clips a dead trunk knocks a chip of bark off
+function herdBumpFx(s,hit){
+  if((s.bumpCd||0)>0 || Math.hypot(s.vx,s.vy)<12) return;
+  s.bumpCd=0.7;
+  if(hit.juice==="stone") herdPuff(s.x,s.y+1,3,"#bdb6a8",24,0.4,2.4);
+  else if(hit.juice==="bark"){
+    herdPuff(s.x,s.y,2,"#6b4a32",18,0.35,2);
+    herdPart({k:"shard", x:s.x, y:s.y-4, vx:(Math.random()-0.5)*50, vy:-40-Math.random()*30, life:0.5, max:0.5, r:2.2, rot:Math.random()*6, vr:(Math.random()-0.5)*14, col:"#6b4a32"});
+  }
 }
 function herdChuteSolids(){
   return [{k:"rect", x0:-60, y0:M4_CH_Y0, x1:M4_LANE_X0, y1:M4_CH_Y1},
           {k:"rect", x0:M4_LANE_X1, y0:M4_CH_Y0, x1:HF_W+60, y1:M4_CH_Y1}];
 }
-// pushes a body of radius r out of anything solid; returns true if it touched
+// pushes a body of radius r out of anything solid; returns the first thing it touched (or null)
 function herdPushOut(o,r){
-  let hit=false;
+  let hit=null;
   for(const S_ of HERD.solids){
     if(S_.k==="rect"){
       const x0=S_.x0-r, x1=S_.x1+r, y0=S_.y0-r, y1=S_.y1+r;
@@ -26127,13 +26167,13 @@ function herdPushOut(o,r){
         const dl=o.x-x0, dr=x1-o.x, dt=o.y-y0, db=y1-o.y, m=Math.min(dl,dr,dt,db);
         if(m===dl){ o.x=x0; if(o.vx>0) o.vx=0; } else if(m===dr){ o.x=x1; if(o.vx<0) o.vx=0; }
         else if(m===dt){ o.y=y0; if(o.vy>0) o.vy=0; } else { o.y=y1; if(o.vy<0) o.vy=0; }
-        hit=true;
+        hit=hit||S_;
       }
     } else {
       const vx=S_.x1-S_.x0, vy=S_.y1-S_.y0, L2=vx*vx+vy*vy||1;
       const u=clamp(((o.x-S_.x0)*vx+(o.y-S_.y0)*vy)/L2,0,1);
       const px=S_.x0+vx*u, py=S_.y0+vy*u, dx=o.x-px, dy=o.y-py, dd=Math.hypot(dx,dy)||0.01, R=S_.r+r;
-      if(dd<R){ o.x=px+dx/dd*R; o.y=py+dy/dd*R; const vn=(o.vx*dx+o.vy*dy)/dd; if(vn<0){ o.vx-=vn*dx/dd; o.vy-=vn*dy/dd; } hit=true; }
+      if(dd<R){ o.x=px+dx/dd*R; o.y=py+dy/dd*R; const vn=(o.vx*dx+o.vy*dy)/dd; if(vn<0){ o.vx-=vn*dx/dd; o.vy-=vn*dy/dd; } hit=hit||S_; }
     }
   }
   return hit;
@@ -26193,8 +26233,11 @@ function herdClimbTick(sh,dt){
   const C=sh.cam, d=sh.dog;
   // who is with him: the escort, and any stray once the flock itself has reached it. (Not when he
   // alone runs up to it - that jumped the flock's centre up the hill and stranded the escort below.)
+  // With nobody left with him (all penned, or lost), he is the flock: a stray he reaches joins him
+  const alone=!sh.sheep.some(o=>o.joined);
   for(const s of sh.sheep) if(!s.joined){
     if(sh.sheep.some(o=>o.joined && Math.hypot(o.x-s.x,o.y-s.y)<55)) s.joined=true;
+    else if(alone && Math.hypot(d.x-s.x,d.y-s.y)<70) s.joined=true;
   }
   let n=0, cx=0, cy=0; for(const s of sh.sheep) if(s.joined){ cx+=s.x; cy+=s.y; n++; }
   if(n){
@@ -26204,15 +26247,29 @@ function herdClimbTick(sh,dt){
     // reached, and never quite lost either
     if(C.lastN!=null && n<C.lastN) C.high=cy;
     if(cy<C.high) C.high=cy;
+  } else if(sh.sheep.length){
+    // nobody with him and strays still awake below: the stop lets him go back down for them, or
+    // they could never be reached and never quite lost either
+    let ly=-1e9; for(const s of sh.sheep) ly=Math.max(ly,s.y);
+    if(ly-20>C.high) C.high=ly-20;
   }
   C.lastN=n;
   // a flock sheep that has dropped well behind the others frets and trots back up to them on its
-  // own - he cannot go back down for it, so the instinct has to be the sheep's
+  // own - he cannot go back down for it, so the instinct has to be the sheep's. One that is below
+  // where he can even stand (half the flock got through a gap, half did not) comes up to the half
+  // he CAN reach
+  const lim=herdClimbLimit(sh);
+  let ux=0, uy=0, un=0; for(const s of sh.sheep) if(s.joined && s.y<=lim-24){ ux+=s.x; uy+=s.y; un++; }
   for(const s of sh.sheep){
     s.lagX=0; s.lagY=0;
-    if(n>1 && s.joined && s.panicT<=0 && s.y>cy+80){ const dx=cx-s.x, dy=cy-s.y, dd=Math.hypot(dx,dy)||1; s.lagX=dx/dd; s.lagY=dy/dd; }
+    if(n<2 || !s.joined || s.panicT>0) continue;
+    let tx=null, ty=0;
+    if(s.y>lim-24 && un){ tx=ux/un; ty=uy/un; }
+    else if(s.y>cy+80){ tx=cx; ty=cy; }
+    // with a bank of stones between, it makes for the gap first, not the rocks
+    if(tx!=null) for(const b of HERD.layout.banks) if(b.y<s.y-4 && b.y>ty){ tx=b.left?M5_X1-b.gap/2:M5_X0+b.gap/2; ty=b.y; break; }
+    if(tx!=null){ const dx=tx-s.x, dy=ty-s.y, dd=Math.hypot(dx,dy)||1; s.lagX=dx/dd; s.lagY=dy/dd; }
   }
-  const lim=herdClimbLimit(sh);
   C.cd=Math.max(0,C.cd-dt); C.bumpT=Math.max(0,C.bumpT-dt);
   if(d.y>lim){
     // the stop: if the floor has risen past him it lifts him gently; if he is pushing into it, it thunks
@@ -26232,15 +26289,19 @@ function herdClimbTick(sh,dt){
     if(s.y>line){ s.behind=(s.behind||0)+dt; if(s.behind>=M5_LOSE_T) herdLose(sh,s,"mtn"); }
     else s.behind=0;
   }
-  // the strays wake as the view reaches them - never more than the field can hold
+  // the strays wake as the view reaches them - however many he is already herding. The hill is awake.
   for(let i=sh.strand.length-1;i>=0;i--){
     const st=sh.strand[i];
-    if(st.y>C.y-M5_WAKE && sh.sheep.length<HF_CAP){
+    if(st.y>C.y-M5_WAKE){
       const s=herdNewSheep(sh,st.x,st.y,st.ram); s.joined=false; s.stray=true; s.alarm=0;
       sh.sheep.push(s); sh.started++; sh.strand.splice(i,1);
       herdPuff(st.x,st.y-6,3,"#f6f2e8",16,0.4,2);
       if(!HERD.baa) HERD.baa={id:s.id, txt:"baa?", life:1.2};
     }
+  }
+  for(const s of sh.sheep){
+    s.bumpCd=Math.max(0,(s.bumpCd||0)-dt);
+    if(s.y<M5_SNOW_SHELF && !s.snowed){ s.snowed=true; herdPuff(s.x,s.y,5,"#ffffff",28,0.45,2.6); }   // onto the snow shelf
   }
   for(const w of sh.wolves) herdLurkTick(sh,w,dt);
   sh.eagleCd=Math.max(0,(sh.eagleCd||0)-dt);
@@ -26299,46 +26360,64 @@ function herdEagleTick(sh,e,dt){
     e.a+=dt*0.5; toward(180+Math.cos(e.a)*110, e.mid+Math.sin(e.a)*60, 1.2); e.alt+=(90-e.alt)*Math.min(1,dt*2);
     e.cd-=dt;
     if(e.cd<=0 && (sh.eagleCd||0)<=0){
-      // only over a gap he can see, and only at a sheep standing in it - and one bird at a time
-      const cands=sh.sheep.filter(s=>s.joined && s.y>e.z0 && s.y<e.z1 && herdInView(sh,s.y,-30));   // never a stray still in its pocket
+      // only over a gap he can see, only at the flock - and only one bird at a time on the whole hill
+      const cands=sh.sheep.filter(s=>s.joined && s.y>e.z0 && s.y<e.z1 && herdInView(sh,s.y,-30));
       if(cands.length){
-        cands.sort((a,b)=>(b.near||0)-(a.near||0));           // the loneliest first
-        const s=cands[0]; e.tgt=s.id; e.st="hover"; e.t=M5_EAGLE_HOVER; e.sx=s.x; e.sy=s.y; sh.eagleCd=M5_EAGLE_HOVER+5;
-        beep(1500,.05,"sine",.025); setTimeout(()=>beep(1250,.07,"sine",.022),70);   // a thin cry
+        cands.sort((a,b)=>(b.near||0)-(a.near||0));
+        const s=cands[0]; e.tgt=s.id; e.st="spot"; e.t=M5_EAGLE_SPOT; e.sx=s.x; e.sy=s.y;
+        sh.eagleCd=M5_EAGLE_HOVER+5;
       } else e.cd=1;
     }
-  } else if(e.st==="hover"){
+  } else if(e.st==="spot"||e.st==="warn"){
     if(!tgt){ e.st="soar"; e.cd=3; e.tgt=-1; return; }
-    e.sx+=(tgt.x-e.sx)*Math.min(1,dt*2.2); e.sy+=(tgt.y-e.sy)*Math.min(1,dt*2.2);   // the shadow keeps up, just
-    toward(e.sx, e.sy-10, 3); e.alt+=(80-e.alt)*Math.min(1,dt*3);
-    e.t-=dt; if(e.t<=0){ e.st="swoop"; e.t=M5_EAGLE_SWOOP; e.fx=e.x; e.fy=e.y; e.falt=e.alt; }
+    e.sx+=(tgt.x-e.sx)*Math.min(1,dt*2.2); e.sy+=(tgt.y-e.sy)*Math.min(1,dt*2.2);
+    toward(e.sx, e.sy-8, 3); e.alt+=(80-e.alt)*Math.min(1,dt*3);
+    if(e.st==="warn") herdMark(tgt.id,"!","#ff5a4f");
+    e.t-=dt;
+    if(e.t<=0){
+      if(e.st==="spot"){ e.st="warn"; e.t=M5_EAGLE_WARN; herdEagleCry(); }
+      else { e.st="swoop"; e.t=M5_EAGLE_SWOOP; e.fx=e.x; e.fy=e.y; e.falt=e.alt; }
+    }
   } else if(e.st==="swoop"){
     e.t-=dt; const k=1-Math.max(0,e.t)/M5_EAGLE_SWOOP;
     e.x=e.fx+(e.sx-e.fx)*k; e.y=e.fy+(e.sy-e.fy)*k; e.alt=e.falt*(1-k);
     if(e.t<=0){
+      e.st="flare"; e.t=0.3;
       if(tgt && !tgt.out && Math.hypot(tgt.x-e.sx,tgt.y-e.sy)<M5_EAGLE_GRAB){
-        herdLose(sh,tgt,"eagle"); e.carry=true; e.st="carry"; e.t=1.4; beep(900,.06,"square",.03);
-      } else { e.st="soar"; e.cd=8+Math.random()*3; herdPop(e.sx,e.sy-14,"MISSED!","#fff"); }
+        herdLose(sh,tgt,"eagle"); e.carry=true; e.next="carry"; beep(900,.06,"square",.03);
+      } else { e.next="soar"; herdPop(e.sx,e.sy-14,"MISSED!","#fff"); herdFeathers(e.sx,e.sy-6,6); }
       e.tgt=-1;
+    }
+  } else if(e.st==="flare"){
+    e.t-=dt; e.alt+=50*dt;
+    if(e.t<=0){
+      if(e.next==="carry"){ e.st="carry"; e.t=1.4; }
+      else if(e.next==="away"){ e.st="away"; e.t=6+Math.random()*2; e.wasAway=true; }
+      else { e.st="soar"; e.cd=8+Math.random()*3; }
     }
   } else if(e.st==="carry"||e.st==="away"){
     e.alt+=60*dt; e.x+=(e.x<180?-1:1)*50*dt; e.t-=dt;
     if(e.t<=0){ e.st="soar"; e.carry=false; e.cd = e.wasAway ? 4 : 16+Math.random()*4; e.wasAway=false; e.alt=90; e.x=clamp(e.x,40,320); }
   }
 }
-// a bark in the shadow, or at the bird, sends it off for this pass (it will be back)
+function herdEagleCry(){ beep(1650,.07,"sawtooth",.026); setTimeout(()=>beep(1300,.13,"sawtooth",.022),70); }
+function herdFeathers(x,y,n){
+  for(let i=0;i<n;i++) herdPart({k:"feather", x:x+(Math.random()-0.5)*8, y, vx:(Math.random()-0.5)*40, vy:-30-Math.random()*30,
+    life:0.9+Math.random()*0.5, max:1.4, rot:Math.random()*6, vr:(Math.random()-0.5)*6, col:Math.random()<0.5?"#8a4a2a":"#f6f2e8"});
+}
 function herdEagleBark(sh,d){
   if(!sh.eagles) return;
   for(const e of sh.eagles){
-    if(e.st!=="hover" && e.st!=="swoop") continue;
-    if(Math.hypot(e.sx-d.x,e.sy-d.y)<M5_EAGLE_BARK_R || Math.hypot(e.x-d.x,e.y-d.y)<M5_EAGLE_BARK_R){
-      e.st="away"; e.t=6+Math.random()*2; e.wasAway=true; e.tgt=-1;
+    if(e.st!=="spot" && e.st!=="warn" && e.st!=="swoop") continue;
+    if(Math.hypot(e.sx-d.x,e.sy-d.y)<M5_EAGLE_BARK_R || Math.hypot(e.x-d.x,e.y-(d.y))<M5_EAGLE_BARK_R){
+      // it flares, banks off, and is gone for this pass
+      e.st="flare"; e.t=0.3; e.next="away"; e.tgt=-1;
       herdPop(e.sx, e.sy-16, "SHOO!", "#fff", true);
+      herdFeathers(e.x, e.y-e.alt, 3);
       beep(1300,.05,"sawtooth",.025);
     }
   }
 }
-
 // ---- a squirrel in a tree: now and then a nut. It does not hurt. It does make a sheep bolt.
 function herdSquirrelTick(sh,q,dt){
   if(q.nut){
@@ -26359,10 +26438,13 @@ function herdSquirrelTick(sh,q,dt){
     return;
   }
   if(q.wind>0){
+    // 0.6s of warning before anything leaves the tree: it turns to the flock, puffs its cheeks,
+    // a "!" goes up, the arm goes back - then the nut
+    const s=sh.sheep.find(o=>o.id===q.tgt);
+    if(s) q.face = s.x<q.x ? -1 : 1;
     q.wind-=dt;
     if(q.wind<=0){
-      const s=sh.sheep.find(o=>o.id===q.tgt);
-      if(s){ q.nut={x0:q.x, y0:q.y-22, x1:s.x+s.vx*M5_NUT_FLY*0.6, y1:s.y+s.vy*M5_NUT_FLY*0.6, t:0, T:M5_NUT_FLY}; beep(980,.03,"square",.02); }
+      if(s){ q.nut={x0:q.x+q.face*4, y0:q.y-20, x1:s.x+s.vx*M5_NUT_FLY*0.45, y1:s.y+s.vy*M5_NUT_FLY*0.45, t:0, T:M5_NUT_FLY}; beep(980,.03,"square",.02); }
     }
     return;
   }
@@ -26372,10 +26454,9 @@ function herdSquirrelTick(sh,q,dt){
     if(!herdInView(sh,q.y,-20)) return;
     let best=null, bd=M5_NUT_R;
     for(const s of sh.sheep){ const dd=Math.hypot(s.x-q.x,s.y-q.y); if(dd<bd){ bd=dd; best=s; } }
-    if(best){ q.tgt=best.id; q.wind=M5_NUT_WIND; }
+    if(best){ q.tgt=best.id; q.wind=M5_NUT_WIND; q.face = best.x<q.x ? -1 : 1; beep(1400,.03,"square",.015); }
   }
 }
-
 // ---- drawing the mountain
 // the far valley and peaks behind the drops, at a third of the camera's speed
 function herdDrawClimbBack(ctx,w,h,camY,v,t){
@@ -26425,58 +26506,163 @@ function herdDrawBoulder(ctx,x,y,spin){
   ctx.restore();
 }
 function herdDrawLog(ctx,l){
-  const dx=l.x1-l.x0, dy=l.y1-l.y0, a=Math.atan2(dy,dx), len=Math.hypot(dx,dy);
-  ctx.save(); ctx.translate(l.x0,l.y0); ctx.rotate(a);
-  herdShadow(ctx,len/2,l.r+2,len/2+4,4,0.28);
-  ctx.fillStyle="#f1ede4"; ctx.strokeStyle=HB_OUT; ctx.lineWidth=2;
-  ctx.fillRect(0,-l.r,len,l.r*2); ctx.strokeRect(0,-l.r,len,l.r*2);
-  ctx.fillStyle="#2a2620";                                   // birch marks
-  for(let x=10;x<len-6;x+=17){ ctx.fillRect(x,-l.r+2,5,1.6); ctx.fillRect(x+7,l.r-4,4,1.4); }
-  ctx.fillStyle="#d9d2c2"; ctx.beginPath(); ctx.ellipse(len,0,3,l.r,0,0,7); ctx.fill(); ctx.stroke();
-  // the stump it came off, grey
-  const sx=l.stump? -6 : len+8;
-  ctx.fillStyle="#8a8a8a"; ctx.beginPath(); ctx.ellipse(sx,1,l.r+2,l.r*0.8,0,0,7); ctx.fill(); ctx.stroke();
-  ctx.fillStyle="#5c5c5c"; ctx.beginPath(); ctx.ellipse(sx,0,l.r-2,l.r*0.5,0,0,7); ctx.fill();
+  // drawn from the thick end (against the wall it fell from) out to the snapped thin end
+  const tx=l.stump?l.x0:l.x1, ty=l.stump?l.y0:l.y1, ox=l.stump?l.x1:l.x0, oy=l.stump?l.y1:l.y0;
+  const a=Math.atan2(oy-ty,ox-tx), len=Math.hypot(ox-tx,oy-ty), rnd=herdRng((l.seed|0)+7);
+  const R0=l.r+2.5, R1=l.r-3;
+  ctx.save(); ctx.translate(tx,ty); ctx.rotate(a);
+  herdShadow(ctx,len/2,R0,len/2+4,4,0.3);
+  // the trunk, tapering, with a jagged broken tip
+  ctx.fillStyle="#6b4a32"; ctx.strokeStyle=HB_OUT; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(0,-R0); ctx.lineTo(len-6,-R1);
+  ctx.lineTo(len,-R1*0.4); ctx.lineTo(len-4,0); ctx.lineTo(len+2,R1*0.5); ctx.lineTo(len-6,R1);
+  ctx.lineTo(0,R0); ctx.closePath(); ctx.fill(); ctx.stroke();
+  // faded highlight along the top, and the split down its length
+  ctx.fillStyle="#8a6244"; ctx.beginPath(); ctx.moveTo(4,-R0+2); ctx.lineTo(len-10,-R1+1.5); ctx.lineTo(len-10,-R1+3); ctx.lineTo(4,-R0+4.5); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle="#3a2a1c"; ctx.lineWidth=1.4;
+  ctx.beginPath(); ctx.moveTo(2,0.5); for(let x=10;x<len*0.62;x+=10) ctx.lineTo(x,(rnd()-0.5)*2.2); ctx.stroke();
+  for(let x=14;x<len-14;x+=19){ ctx.beginPath(); ctx.moveTo(x,R0*0.55); ctx.lineTo(x+5,R0*0.4); ctx.stroke(); }
+  // the snapped branch, sticking up off the trunk
+  const bx=len*0.42;
+  ctx.strokeStyle=HB_OUT; ctx.lineWidth=4.2; ctx.beginPath(); ctx.moveTo(bx,-R0*0.7); ctx.lineTo(bx+9,-R0-9); ctx.stroke();
+  ctx.strokeStyle="#6b4a32"; ctx.lineWidth=2.4; ctx.beginPath(); ctx.moveTo(bx,-R0*0.7); ctx.lineTo(bx+9,-R0-9); ctx.stroke();
+  ctx.fillStyle="#8a6244"; ctx.fillRect(bx+8,-R0-11,2.5,2.5);
+  // the stump it broke from, at the wall: dead, splintered, darker on top
+  ctx.fillStyle="#6b4a32"; ctx.strokeStyle=HB_OUT; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(-12,R0); ctx.lineTo(-12,-R0+1); ctx.lineTo(-9,-R0-4); ctx.lineTo(-6,-R0); ctx.lineTo(-3,-R0-5); ctx.lineTo(0,-R0+1); ctx.lineTo(0,R0); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle="#3a2a1c"; ctx.fillRect(-10,-R0+2,8,1.5);
+  // 2-3 shards of bark lying beside it
+  for(let i=0;i<3;i++){
+    const sx=12+rnd()*(len-30), sy=(rnd()<0.5?-1:1)*(R0+5+rnd()*5);
+    ctx.fillStyle=i%2?"#3a2a1c":"#6b4a32"; ctx.strokeStyle=HB_OUT; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(sx,sy); ctx.lineTo(sx+5,sy-1.5); ctx.lineTo(sx+6,sy+1.5); ctx.lineTo(sx+1,sy+2); ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
   ctx.restore();
 }
 function herdDrawSquirrel(ctx,q,t){
-  const wob = q.wind>0 ? Math.sin(t*40)*1.5 : 0, x=q.x-q.side*4+wob, y=q.y-24;
-  ctx.save(); ctx.translate(x,y); ctx.scale(-q.side,1);
-  ctx.fillStyle="#b0662e"; ctx.strokeStyle=HB_OUT; ctx.lineWidth=1.2;
-  ctx.beginPath(); ctx.ellipse(-4,-3,4,6,0.3,0,7); ctx.fill(); ctx.stroke();          // the tail
-  ctx.beginPath(); ctx.ellipse(1,0,3.4,4.2,0,0,7); ctx.fill(); ctx.stroke();          // the body
-  ctx.beginPath(); ctx.arc(3,-4.5,2.4,0,7); ctx.fill(); ctx.stroke();                  // the head
-  ctx.fillStyle="#141210"; ctx.fillRect(4,-5,1,1);
+  // the park's own nut-thrower, same pixels, sitting in its tree on the bank
+  const frames=ENEMYIMG.sq, img=frames && frames[Math.floor(t*4+q.x)%frames.length];
+  const x=q.x, y=q.y-14, face=q.face||(q.side<0?1:-1);
+  let sc=1, lean=0;
+  if(q.wind>0){
+    const k=1-q.wind/M5_NUT_WIND;
+    if(k<0.55) sc=1+0.14*Math.abs(Math.sin(k/0.55*Math.PI*2));     // cheeks puff
+    else lean=-0.38*((k-0.55)/0.45);                                  // the arm goes back
+  }
+  ctx.save(); ctx.translate(x,y); ctx.rotate(lean*face); ctx.scale(sc*face,sc); ctx.imageSmoothingEnabled=false;
+  if(img && img.complete && img.naturalWidth){ const eh=16, ew=eh*img.naturalWidth/img.naturalHeight; ctx.drawImage(img,-ew/2,-eh,ew,eh); }
+  else { ctx.fillStyle="#b0662e"; ctx.beginPath(); ctx.ellipse(0,-6,4,6,0,0,7); ctx.fill(); }
   ctx.restore();
+  if(q.wind>0){
+    ctx.font="9px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    herdOutlineText(ctx,"!",x,y-20-Math.abs(Math.sin(t*10))*2,"#fff"); ctx.textAlign="left";
+  }
   if(q.nut){
-    const n=q.nut, k=n.t/n.T, nx=n.x0+(n.x1-n.x0)*k, ny=n.y0+(n.y1-n.y0)*k-Math.sin(k*Math.PI)*34;
-    herdShadow(ctx,n.x0+(n.x1-n.x0)*k, n.y0+22+(n.y1-n.y0-22)*k, 2.5,1,0.25);
-    ctx.fillStyle="#8a5a32"; ctx.strokeStyle=HB_OUT; ctx.lineWidth=1;
-    ctx.beginPath(); ctx.ellipse(nx,ny,2.4,3,0,0,7); ctx.fill(); ctx.stroke();
-    ctx.fillStyle="#5e3b1f"; ctx.fillRect(nx-2.4,ny-3.4,4.8,1.6);
+    // a slow arc, its shadow sliding along the ground under it: white with a brown cap
+    const n=q.nut, k=n.t/n.T, gx=n.x0+(n.x1-n.x0)*k, gy=n.y0+20+(n.y1-n.y0-20)*k, ny=n.y0+(n.y1-n.y0)*k-Math.sin(k*Math.PI)*42;
+    herdShadow(ctx,gx,gy,3.2,1.3,0.28);
+    ctx.save(); ctx.translate(gx,ny); ctx.rotate(t*6);
+    ctx.fillStyle="#f4efe2"; ctx.strokeStyle=HB_OUT; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.ellipse(0,0,2.8,3.4,0,0,7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle="#7a4a1f"; ctx.beginPath(); ctx.ellipse(0,-2.4,3,1.6,0,0,7); ctx.fill(); ctx.stroke();
+    ctx.restore();
   }
 }
 function herdDrawEagle(ctx,e,t){
-  // the ground shadow, and while it hovers a red ring on the sheep it has picked
-  if(e.st==="hover"){
-    const k=1-e.t/M5_EAGLE_HOVER;
-    ctx.fillStyle="rgba(0,0,0,"+(0.18+0.22*k).toFixed(3)+")";
-    ctx.beginPath(); ctx.ellipse(e.sx,e.sy+1,16-5*k,6-2*k,0,0,7); ctx.fill();
-    ctx.strokeStyle="#ff2a1f"; ctx.lineWidth=1.6; ctx.globalAlpha=0.5+0.5*Math.abs(Math.sin(t*10));
-    ctx.beginPath(); ctx.ellipse(e.sx,e.sy+1,18-6*k,7-2.5*k,0,0,7); ctx.stroke(); ctx.globalAlpha=1;
-  } else herdShadow(ctx,e.x,e.y,10*(1-e.alt/200),3*(1-e.alt/200),0.18);
-  const bx=e.x, by=e.y-e.alt, flap=e.st==="swoop" ? -0.6 : Math.sin(t*(e.st==="hover"?14:6)+e.mid)*0.5;
-  ctx.save(); ctx.translate(bx,by);
-  ctx.fillStyle="#6b4a2e"; ctx.strokeStyle=HB_OUT; ctx.lineWidth=1.4;
-  for(const sd of [-1,1]){
-    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(sd*17,-6+flap*8); ctx.lineTo(sd*13,2); ctx.lineTo(sd*5,3); ctx.closePath(); ctx.fill(); ctx.stroke();
-  }
-  ctx.beginPath(); ctx.ellipse(0,1,4,7,0,0,7); ctx.fill(); ctx.stroke();
-  ctx.fillStyle="#f6f2e8"; ctx.beginPath(); ctx.arc(0,-6,3.2,0,7); ctx.fill(); ctx.stroke();   // white head
-  ctx.fillStyle="#e8c14a"; ctx.fillRect(-1,-3.5,2,2);                                        // beak
-  ctx.fillStyle="#f6f2e8"; ctx.beginPath(); ctx.moveTo(-3,8); ctx.lineTo(3,8); ctx.lineTo(0,12); ctx.closePath(); ctx.fill();
+  // the ground shadow carries the telegraph: small when it has picked one, pulsing red when it is
+  // about to go, and it rushes in under the dive
+  if(e.st==="spot"||e.st==="warn"||e.st==="swoop"){
+    const k = clamp(e.st==="spot" ? 1-e.t/M5_EAGLE_SPOT : e.st==="warn" ? 1-e.t/M5_EAGLE_WARN : 1, 0, 1);
+    const r = e.st==="spot" ? 5+3*k : e.st==="warn" ? 8+6*k : 14;
+    ctx.fillStyle="rgba(0,0,0,"+(e.st==="spot"?0.22:e.st==="warn"?0.3:0.38)+")";
+    ctx.beginPath(); ctx.ellipse(e.sx,e.sy+1,r,r*0.42,0,0,7); ctx.fill();
+    if(e.st!=="spot"){
+      ctx.strokeStyle="#ff2a1f"; ctx.lineWidth=1.8; ctx.globalAlpha=e.st==="swoop"?0.9:0.45+0.55*Math.abs(Math.sin(t*14));
+      ctx.beginPath(); ctx.ellipse(e.sx,e.sy+1,r+2,(r+2)*0.42,0,0,7); ctx.stroke(); ctx.globalAlpha=1;
+    }
+  } else herdShadow(ctx,e.x,e.y,7*(1-Math.min(1,e.alt/200)),2.6*(1-Math.min(1,e.alt/200)),0.14);
+  const pose = e.st==="spot" ? "hover" : e.st==="warn" ? "flap" : e.st==="swoop" ? "dive" : e.st==="flare" ? "flare" : (e.st==="carry"||e.st==="away") ? "flap" : "glide";
+  const fr = pose==="flap" ? Math.floor(t*(e.st==="warn"?12:7))%3 : 0;
+  const bob = pose==="hover" ? Math.sin(t*3)*2 : 0;
+  ctx.save(); ctx.translate(e.x, e.y-e.alt+bob);
+  if(pose==="dive") ctx.rotate(Math.atan2(e.sy-e.y, e.sx-e.x)-Math.PI/2);
+  herdEagleSprite(ctx,pose,fr,t);
   if(e.carry) herdDrawSheep(ctx,0,16,1,false,false,t,0,0.55);
   ctx.restore();
+}
+// the bird itself: broad wings with fingered tips, white head, dark body, red-brown coverts, a tail
+// that fans while it hovers. pose: glide / hover / flap (3 frames) / dive (tucked) / flare.
+function herdEagleSprite(ctx,pose,fr,t){
+  const BODY="#3a2a1c", COV="#8a4a2a", PRIM="#2a1c12", HEAD="#f6f2e8";
+  ctx.lineJoin="round"; ctx.strokeStyle=HB_OUT; ctx.lineWidth=1.4;
+  if(pose==="dive"){
+    // wings tucked along the body, head first (local +y is the way it is going)
+    ctx.fillStyle=PRIM;
+    for(const sd of [-1,1]){ ctx.beginPath(); ctx.moveTo(sd*3,-6); ctx.lineTo(sd*7,4); ctx.lineTo(sd*2,9); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+    ctx.fillStyle=BODY; ctx.beginPath(); ctx.ellipse(0,0,3.6,9,0,0,7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle=HEAD; ctx.beginPath(); ctx.moveTo(-3,-9); ctx.lineTo(3,-9); ctx.lineTo(0,-14); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0,9,3.2,0,7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle="#e8c14a"; ctx.fillRect(-1,11.5,2,2.5);
+    return;
+  }
+  const lift = pose==="hover" ? -0.5 : pose==="flare" ? -0.9 : pose==="flap" ? [-0.65,-0.05,0.45][fr%3] : -0.15+0.08*Math.sin(t*2);
+  const span = pose==="flare" ? 26 : 22;
+  // the tail: fanned wide while it hovers or flares, closed in a glide
+  const fan = (pose==="hover"||pose==="flare"||pose==="flap") ? 1 : 0.45;
+  ctx.fillStyle=HEAD;
+  ctx.beginPath(); ctx.moveTo(-4*fan-1,7); ctx.lineTo(4*fan+1,7); ctx.lineTo(9*fan+2,14); ctx.lineTo(-9*fan-2,14); ctx.closePath(); ctx.fill(); ctx.stroke();
+  for(const sd of [-1,1]){
+    const wy=-3+lift*8, ty=-4+lift*16, by=2+lift*15;
+    ctx.fillStyle=PRIM;
+    ctx.beginPath(); ctx.moveTo(sd*3,-3); ctx.lineTo(sd*12,wy); ctx.lineTo(sd*span,ty);
+    ctx.lineTo(sd*(span-4),by); ctx.lineTo(sd*11,5+lift*6); ctx.lineTo(sd*3,4); ctx.closePath(); ctx.fill(); ctx.stroke();
+    // the red-brown band of coverts along the front of the wing
+    ctx.fillStyle=COV;
+    ctx.beginPath(); ctx.moveTo(sd*3,-2.5); ctx.lineTo(sd*12,wy+0.5); ctx.lineTo(sd*(span*0.62),-1+lift*11); ctx.lineTo(sd*10,2.5+lift*5); ctx.lineTo(sd*3,2); ctx.closePath(); ctx.fill();
+    // fingered tips: the primaries spread apart at the end
+    ctx.strokeStyle=PRIM; ctx.lineWidth=1.6;
+    for(let f=0;f<4;f++){ const fx=sd*(span-2-f*2.2), fy=ty+1+f*1.6; ctx.beginPath(); ctx.moveTo(fx,fy); ctx.lineTo(fx+sd*5,fy+lift*2-0.5+f*0.6); ctx.stroke(); }
+    ctx.strokeStyle=HB_OUT; ctx.lineWidth=1.4;
+  }
+  ctx.fillStyle=BODY; ctx.beginPath(); ctx.ellipse(0,1,4.2,8,0,0,7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle=HEAD; ctx.beginPath(); ctx.arc(0,-8,3.4,0,7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle="#e8c14a"; ctx.beginPath(); ctx.moveTo(-1.4,-10.6); ctx.lineTo(1.4,-10.6); ctx.lineTo(0,-13); ctx.closePath(); ctx.fill();
+  ctx.fillStyle="#141210"; ctx.fillRect(-2.2,-9,1,1); ctx.fillRect(1.2,-9,1,1);
+}
+// one stone of a bank: contact shadow, an irregular grey body, a lighter top facet, an outline, and
+// - up where the snow is - a cap of white
+function herdStone(x,cx,cy,r,ph,rim,cap){
+  x.fillStyle="rgba(0,0,0,.30)"; x.beginPath(); x.ellipse(cx+1,cy+r*0.42,r*1.02,r*0.38,0,0,7); x.fill();
+  const pts=[]; for(let i=0;i<10;i++){ const a=i/10*6.283, rr=r*(0.84+0.18*Math.sin(a*3+ph)+0.06*Math.sin(a*7+ph*2)); pts.push([cx+Math.cos(a)*rr, cy+Math.sin(a)*rr*0.78]); }
+  x.fillStyle = rim ? "#a9a9a9" : (Math.sin(ph*5)>0 ? "#8a8a8a" : "#7a7a7a");
+  x.strokeStyle=HB_OUT; x.lineWidth=1.6;
+  x.beginPath(); pts.forEach(([px,py],i)=>i?x.lineTo(px,py):x.moveTo(px,py)); x.closePath(); x.fill(); x.stroke();
+  x.fillStyle = rim ? "#d7d7d7" : "#b0b0b0";               // the top facet catches the light
+  x.beginPath(); x.ellipse(cx-r*0.12,cy-r*0.32,r*0.55,r*0.26,-0.15,0,7); x.fill();
+  x.strokeStyle = rim ? "#ffffff" : "#e6e6e6"; x.lineWidth = rim ? 2 : 1;
+  x.beginPath(); x.arc(cx,cy,r*0.72,3.5,5.3); x.stroke();
+  if(cap){
+    x.fillStyle="#f4f7fa"; x.strokeStyle=HB_OUT; x.lineWidth=1;
+    x.beginPath(); x.ellipse(cx-r*0.05,cy-r*0.5,r*0.62,r*0.3,0,Math.PI,0); x.lineTo(cx+r*0.5,cy-r*0.42); x.quadraticCurveTo(cx,cy-r*0.2,cx-r*0.6,cy-r*0.45); x.closePath(); x.fill(); x.stroke();
+  }
+}
+function herdSnowAt(y,ph){ const k=clamp((M5_SNOW_Y0-y)/700,0,1); return k>0 && (Math.sin(ph*12.9)*0.5+0.5)<k*1.1; }
+// the falling snow, in screen space: none below half way, a few slow flakes at half, thicker higher
+function herdDrawSnowfall(ctx,w,h,sh,t){
+  if(SETTINGS.reduceMotion) return;
+  const hf=1-(sh.cam.y+HF_VH/2)/M5_H;
+  if(hf<0.5) return;
+  const k=clamp((hf-0.5)/0.25,0,1), k2=clamp((hf-0.75)/0.25,0,1);
+  const n=Math.round(10+k*28+k2*14), drift=26-k*12, fall=13+k*9;
+  ctx.fillStyle="#fff";
+  for(let i=0;i<n;i++){
+    const sp=0.6+((i*37)%10)/10, sz=(i%3===0)?2:1;
+    const x=((i*97.31+Math.sin(t*0.6+i)*drift+t*5*sp)%w+w)%w;
+    const y=((i*53.7+t*fall*sp)%h+h)%h;
+    ctx.globalAlpha=0.55+0.35*((i%5)/4);
+    ctx.fillRect(Math.round(x),Math.round(y),sz,sz);
+  }
+  ctx.globalAlpha=1;
 }
 function herdDrawStrand(ctx,sh,t){
   for(const st of sh.strand){
@@ -26559,6 +26745,7 @@ function herdBuildClimbBG(sh){
         for(let k=0;k<6;k++){ const a=k/6*6.283+rnd()*0.4, rr=r*(0.7+rnd()*0.4); k?x.lineTo(cx+Math.cos(a)*rr,cy+Math.sin(a)*rr*0.6):x.moveTo(cx+Math.cos(a)*rr,cy+Math.sin(a)*rr*0.6); }
         x.closePath(); x.fill(); x.stroke();
         x.strokeStyle="#e6e6e6"; x.lineWidth=1; x.beginPath(); x.moveTo(cx-r*0.5,cy-r*0.3); x.lineTo(cx+r*0.3,cy-r*0.4); x.stroke();
+        if(herdSnowAt(cy,cx)){ x.fillStyle="#f4f7fa"; x.beginPath(); x.ellipse(cx-2,cy-r*0.3,r*0.6,r*0.22,0,0,7); x.fill(); }
       }
       for(let i=0;i<90;i++){ x.fillStyle=rnd()<0.5?"#6f6f6f":"#9a9a9a"; x.fillRect(M5_X0+rnd()*(M5_X1-M5_X0), b.y0+rnd()*(b.y1-b.y0), 2,2); }
     } else {
@@ -26570,31 +26757,45 @@ function herdBuildClimbBG(sh){
   }
   // 3. a trodden way up the middle, wandering
   for(let y=M5_H-60; y>170; y-=32) herdWorn(x,rnd,180+Math.sin(y/240)*60,y,22,0.7);
-  // 4. the rock steps: a terrace edge every M5_STEP, sheared ~8 degrees so the ground reads as rising
-  for(let y=M5_H-40; y>150; y-=M5_STEP){
-    const rise=(M5_X1-M5_X0)*M5_SHEAR;
-    x.fillStyle="rgba(40,28,16,.30)";
-    x.beginPath(); x.moveTo(M5_X0-4,y); x.lineTo(M5_X1+4,y-rise); x.lineTo(M5_X1+4,y-rise+7); x.lineTo(M5_X0-4,y+7); x.closePath(); x.fill();
-    x.strokeStyle="rgba(255,255,255,.38)"; x.lineWidth=1.6;
-    x.beginPath(); x.moveTo(M5_X0-4,y-1); x.lineTo(M5_X1+4,y-rise-1); x.stroke();
-    for(let i=0;i<7;i++){ const u=rnd(), sx=M5_X0+u*(M5_X1-M5_X0), sy=y-u*rise+3;
-      x.fillStyle="#8a8a8a"; x.strokeStyle=HB_OUT; x.lineWidth=1; x.beginPath(); x.ellipse(sx,sy,3+rnd()*2,2,0,0,7); x.fill(); x.stroke(); }
+  // 4. snow from half way up: drifts that thicken as it climbs, then a white shelf under the pen
+  for(let y=M5_SNOW_Y0; y>M5_SNOW_SHELF; y-=14){
+    const k=(M5_SNOW_Y0-y)/(M5_SNOW_Y0-M5_SNOW_SHELF);
+    if(rnd()>k*0.9) continue;
+    // a drift is a few soft lumps along the slope, a cool shadow on its downhill side
+    const cx=M5_X0+10+rnd()*(M5_X1-M5_X0-20), rr=6+rnd()*12*(0.4+k), n=2+Math.floor(rnd()*3);
+    const lumps=[]; for(let j=0;j<n;j++) lumps.push([cx+(j-(n-1)/2)*rr*0.9+(rnd()-0.5)*4, y+(rnd()-0.5)*3, rr*(0.55+rnd()*0.5)]);
+    x.fillStyle="rgba(150,170,190,.22)"; for(const [lx,ly,lr] of lumps){ x.beginPath(); x.ellipse(lx+1,ly+2,lr,lr*0.42,0,0,7); x.fill(); }
+    x.fillStyle="rgba(246,249,252,"+(0.55+0.35*k).toFixed(2)+")"; for(const [lx,ly,lr] of lumps){ x.beginPath(); x.ellipse(lx,ly,lr,lr*0.4,0,0,7); x.fill(); }
   }
+  x.fillStyle="#f2f5f8";
+  x.beginPath(); x.moveTo(M5_X0-6,0);
+  for(let px=M5_X0-6; px<=M5_X1+6; px+=8) x.lineTo(px, M5_SNOW_SHELF+Math.sin(px/26)*8+Math.sin(px/9)*3);
+  x.lineTo(M5_X1+6,0); x.closePath(); x.fill();
+  x.fillStyle="#dbe6ef";
+  for(let i=0;i<70;i++){ const px=M5_X0+rnd()*(M5_X1-M5_X0), py=40+rnd()*(M5_SNOW_SHELF-50); x.fillRect(px,py,3+rnd()*5,1.2); }
+  x.strokeStyle="#4a7a34"; x.lineWidth=1;                   // a few grass blades poking through
+  for(let i=0;i<40;i++){ const px=M5_X0+rnd()*(M5_X1-M5_X0), py=60+rnd()*(M5_SNOW_SHELF-70); x.beginPath(); x.moveTo(px,py); x.lineTo(px+1,py-3); x.moveTo(px+2,py); x.lineTo(px+2,py-2); x.stroke(); }
   // 5. the start ledge
   herdDirt(x,rnd,180,2330,62,0.45);
   x.restore();
   // 6. the drops: a jagged rim of rock down each side of the path, and nothing beyond it
   for(const [edge,dir] of [[M5_X0,-1],[M5_X1,1]]){
     for(let y=34; y<M5_H+HB_M; y+=14){
-      const cx=edge+dir*(2+rnd()*6), r=7+rnd()*5;
+      const cx=edge+dir*(2+rnd()*6), r=7+rnd()*5, ph=rnd()*6.28;
       x.fillStyle=rnd()<0.5?"#8a8a8a":"#6f6f6f"; x.strokeStyle=HB_OUT; x.lineWidth=1.5;
       x.beginPath(); x.ellipse(cx,y,r,r*0.8,rnd(),0,7); x.fill(); x.stroke();
       x.strokeStyle="#e6e6e6"; x.lineWidth=1; x.beginPath(); x.arc(cx,y,r*0.6,3.5,5.1); x.stroke();
+      if(herdSnowAt(y,ph)){ x.fillStyle="#f4f7fa"; x.beginPath(); x.ellipse(cx,y-r*0.45,r*0.7,r*0.32,0,Math.PI,0); x.closePath(); x.fill(); }
     }
   }
-  // 7. the fallen birches and the squirrels' trees
+  // 7. the boulder banks (piled stones, the white-rimmed one at each gap), the dead trees, and the
+  //    small trees on the banks the squirrels sit in
+  for(const b of HERD.layout.banks){
+    for(const st of b.back) herdStone(x,st.x,st.y,st.r,st.ph,false,herdSnowAt(st.y,st.ph));
+    for(const st of b.stones) herdStone(x,st.x,st.y,st.r,st.ph,!!st.rim,herdSnowAt(st.y,st.ph));
+  }
   for(const l of HERD.layout.logs) herdDrawLog(x,l);
-  for(const tr of HERD.layout.trees) herdTree(x,tr.x,tr.y,0.85);
+  for(const tr of HERD.layout.trees) herdTree(x,tr.x,tr.y,0.6);
   // 8. peaks behind the top, then the pen on its shelf: the back fence slants, so it sits ON the slope
   herdBakePeaks(x,W,-HB_M);
   x.fillStyle="#caa24c";
@@ -26606,6 +26807,14 @@ function herdBuildClimbBG(sh){
     x.save(); x.translate(px0,48); x.rotate(ang); herdFenceH(x,0,len,0,null); x.restore(); }
   herdFenceH(x,M5_X0,M5_X1,HG.py+2,[g0,g1]);
   herdPost(x,g0-1,HG.py+3,14); herdPost(x,g1+1,HG.py+3,14);
+  // up here it has snowed on everything: the straw, the rails, a lip on every post
+  x.fillStyle="rgba(244,247,250,.86)";
+  x.beginPath(); x.moveTo(px0,46); x.lineTo(px1,34); x.lineTo(px1,HG.py); x.lineTo(px0,HG.py); x.closePath(); x.fill();
+  const lip=(ax,ay,bx,byy)=>{ x.strokeStyle="#f8fafc"; x.lineWidth=2.2; x.beginPath(); x.moveTo(ax,ay); x.lineTo(bx,byy); x.stroke();
+    const n=Math.max(1,Math.round(Math.hypot(bx-ax,byy-ay)/24)); x.fillStyle="#f8fafc";
+    for(let i=0;i<=n;i++){ const u=i/n; x.beginPath(); x.ellipse(ax+(bx-ax)*u, ay+(byy-ay)*u-1.5, 2.8,1.6,0,0,7); x.fill(); } };
+  lip(M5_X0,HG.py-6,g0,HG.py-6); lip(g1,HG.py-6,M5_X1,HG.py-6); lip(px0,40,px1,28);
+  lip(px0,46,px0,HG.py-6); lip(px1,34,px1,HG.py-6);
   HERD.bg={key,c,ok:tilesOk,res:R};
   return c;
 }
@@ -27589,7 +27798,7 @@ function herdSheepTick(sh,dt){
       if(s.x<HG.x0+26) ax+=(HG.x0+26-s.x)*hk; if(s.x>HG.x1-26) ax-=(s.x-(HG.x1-26))*hk;
       if(s.y>HG.H-26) ay-=(s.y-(HG.H-26))*hk;
     }
-    if(s.lagY){ ax+=s.lagX*70; ay+=s.lagY*70; s.alarm=Math.max(s.alarm,0.25); }
+    if(s.lagX||s.lagY){ ax+=s.lagX*70; ay+=s.lagY*70; s.alarm=Math.max(s.alarm,0.25); }
     if(!alarmed){
       // grazing: a slow amble
       s.wa+=(Math.random()-0.5)*2.4*dt;
@@ -27632,7 +27841,7 @@ function herdSheepTick(sh,dt){
   const vehs=herdVehicles(sh);
   for(const s of sheep){
     if(s.out) continue;
-    if(HERD.solids.length) herdPushOut(s,5);
+    if(HERD.solids.length){ const hs=herdPushOut(s,5); if(hs && hs.juice) herdBumpFx(s,hs); }
     const inGate=Math.abs(s.x-HG.gx)<HG.gw/2-3;
     if(s.y<HG.py-4 && inGate){ herdPen(sh,s); continue; }
     if(s.y<HG.py+4 && !inGate){ s.y=HG.py+4; if(s.vy<0) s.vy=0; }
@@ -27932,6 +28141,7 @@ function herdDrawWolf(ctx,wf,t,RM,howl){
   const moving=Math.hypot(wf.vx,wf.vy)>6, step=moving?Math.sin(t*14+wf.x)*1.4:0;
   ctx.save(); ctx.translate(wf.x,wf.y);
   herdShadow(ctx,0,1.5,10,2.8,0.3);
+  if(wf.st==="stalk") ctx.scale(1.08,0.78);                     // stalking: low crouch
   ctx.scale(face,1);
   ctx.fillStyle="#2a2a2e";
   for(const [lx,o] of [[-6,step],[-3,-step],[4,step],[6.6,-step]]) ctx.fillRect(lx-0.7+o*0.4,-3,1.5,4.2);
@@ -28077,6 +28287,7 @@ function herdDraw(sh,t){
   herdDrawParts(ctx,false);
   herdDrawInbound(ctx,sh,t,RM);
   ctx.restore();
+  if(L.climb) herdDrawSnowfall(ctx,w,h,sh,t);
   herdDrawFxText(ctx,sh,t);
   herdDrawHud(ctx,w,h,sh,t);
   if(HERD.fadeT>0){ ctx.fillStyle="rgba(0,0,0,"+(HERD.fadeT/HFX_FADE).toFixed(3)+")"; ctx.fillRect(0,0,w,h); }
@@ -28400,6 +28611,7 @@ function herdFxTick(sh,dt){
     if(p.k==="conf"){ p.vy+=170*dt; p.vx*=1-1.2*dt; p.rot+=p.vr*dt; }
     else if(p.k==="drop"){ p.vy+=120*dt; }
     else if(p.k==="shard"){ p.vy+=260*dt; p.rot+=p.vr*dt; }
+    else if(p.k==="feather"){ p.vy+=30*dt; p.vx=Math.sin(p.life*8)*20; p.rot+=p.vr*dt; }
     else if(p.k==="puff"){ const k=Math.max(0,1-3*dt); p.vx*=k; p.vy*=k; }
     if(p.vx!=null){ p.x+=p.vx*dt; p.y+=p.vy*dt; }
   }
@@ -28468,11 +28680,15 @@ function herdDrawParts(ctx,ground){
       ctx.beginPath(); ctx.arc(p.x,p.y,R,p.a-HERD_BARK_HALF,p.a+HERD_BARK_HALF); ctx.stroke();
     } else if(p.k==="shard"){
       ctx.globalAlpha=Math.min(1,f*1.5); ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot);
-      ctx.fillStyle="#8a8a8a"; ctx.strokeStyle=HB_OUT; ctx.lineWidth=1;
+      ctx.fillStyle=p.col||"#8a8a8a"; ctx.strokeStyle=HB_OUT; ctx.lineWidth=1;
       ctx.beginPath(); ctx.moveTo(-p.r,-p.r*0.5); ctx.lineTo(p.r*0.7,-p.r*0.8); ctx.lineTo(p.r,p.r*0.5); ctx.lineTo(-p.r*0.4,p.r*0.8); ctx.closePath(); ctx.fill(); ctx.stroke();
       ctx.restore();
     } else if(p.k==="drop"){
       ctx.globalAlpha=f; ctx.fillStyle="#9fd3e6"; ctx.fillRect(p.x-0.8,p.y-1.5,1.6,3);
+    } else if(p.k==="feather"){
+      ctx.globalAlpha=Math.min(1,f*1.6); ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+      ctx.fillStyle="#1b140c"; ctx.fillRect(-2.6,-1.2,5.2,2.4); ctx.fillStyle=p.col; ctx.fillRect(-2,-0.6,4,1.2);
+      ctx.restore();
     }
   }
   ctx.globalAlpha=1;
