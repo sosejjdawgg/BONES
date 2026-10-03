@@ -683,7 +683,15 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
 @keyframes hrStar{0%{transform:scale(0) rotate(-90deg)}100%{transform:none}}
 .hr-star i{font-style:normal;font-size:5px;letter-spacing:1px;color:#8a8a82;line-height:1.4}
 .hr-star.on i{color:#f6f2e8}
-.hr-tiles{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:6px}
+.hr-tiles{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:6px;margin-top:16px}   /* headroom: the parade walks on them */
+.hr-parade{position:absolute;left:0;top:0;pointer-events:none;z-index:7}
+.hr-tile{transform-origin:50% 100%}
+.hr-tile.hr-thump{animation:hrThump .28s ease-out}
+@keyframes hrThump{0%{transform:none}35%{transform:translateY(3px) scale(1.05,.9)}70%{transform:translateY(-1px) scale(.98,1.03)}100%{transform:none}}
+.hr-tile.hr-bonkR{animation:hrBonkR .4s ease-out}
+.hr-tile.hr-bonkL{animation:hrBonkL .4s ease-out}
+@keyframes hrBonkR{0%{transform:none}20%{transform:translateX(4px) rotate(2deg)}45%{transform:translateX(-3px) rotate(-1.5deg)}70%{transform:translateX(1px)}100%{transform:none}}
+@keyframes hrBonkL{0%{transform:none}20%{transform:translateX(-4px) rotate(-2deg)}45%{transform:translateX(3px) rotate(1.5deg)}70%{transform:translateX(-1px)}100%{transform:none}}
 .hr-tile{border:2px solid rgba(255,255,255,.3);padding:7px 2px 5px;display:flex;flex-direction:column;align-items:center;gap:5px;background:rgba(0,0,0,.35)}
 .hr-tile b{font-size:13px;color:#fff;font-weight:normal}
 .hr-tile.big{border-color:#7fd46a}
@@ -945,7 +953,7 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.386a</span>
+          <span id="devToggle">v0.387a</span>
         </div>
       </div>
 
@@ -28338,7 +28346,468 @@ function herdNextStop(from){
   let best=0; for(let lv=1;lv<=HERD_PLAYABLE;lv++) if(!HERD_LV[lv].plan && herdUnlocked(lv) && herdStation(lv)>0) best=lv;
   return best;
 }
-function herdRecapHide(){ const el=$("#hRecap"); if(el){ el.classList.add("hidden"); el.innerHTML=""; } clearInterval(HERD.recapTimer); }
+/* ==================== THE LAP OF HONOUR ====================
+   The recap's own little show: the sheep that made it through the gate come trotting across the
+   screen as one clumsy herd - up onto the stat boxes, along the top, and off the far end - and not
+   all of them gracefully.
+   It is Lemmings with wool. Every sheep runs the same handful of rules (walk on whatever is under
+   you, hop up onto a box, step off an edge, bounce off a wall, keep up with the one in front) and the
+   comedy is what a crowd does with them: a hop started a beat late ends nose-first in the side of a
+   box; the one behind walks straight into a friend who is down, or leapfrogs them; a lamb that lands
+   hard ends up CAST - a real thing, a sheep on its back cannot right itself without a lot of leg-
+   waving - and has to roll back up, shake it off and leg it after the others. Real lambs PRONK when
+   they are happy - spring straight up, all four legs stiff - so these do too.
+   Side-on, on a canvas laid over the recap and reading the recap's own boxes for its terrain: the
+   four stat tiles are a block to climb, the cracks between them are something to trip on, and every
+   landing and every bonk shows on the box itself. The canvas takes no taps; the buttons underneath
+   stay live. Each pass picks its own fools; the next pass comes back the other way.
+   Reduced motion: they stand in a row on the boxes instead, still. */
+const HP_G=1500;                 // the parade's gravity, px/s² - snappy and cartoon, not the field's
+const HP_V=66;                   // a trot, px/s
+const HP_SC=1.85;                // sprite scale: a touch bigger than out on the field, so they read closer
+const HP_HW=8.2*HP_SC;           // half a sheep, nose to tail
+const HP_H=12*HP_SC;             // a sheep, feet to the top of the wool
+const HPARADE={token:null, raf:0, cv:null, ctx:null, el:null, sheep:[], parts:[], dir:1, t:0, last:0,
+               pass:0, passT:0, gapT:0, terr:null, n:0, sndT:0};
+
+// ---- the terrain: the recap's tiles, in the overlay's own scrolling coordinates
+function hpTerrain(){
+  const el=HPARADE.el; if(!el) return null;
+  const o=el.getBoundingClientRect(), sx=el.scrollLeft, sy=el.scrollTop;
+  const tiles=[...el.querySelectorAll(".hr-tile")].map(t=>{ const r=t.getBoundingClientRect();
+    return {l:r.left-o.left+sx, r:r.right-o.left+sx, t:r.top-o.top+sy, b:r.bottom-o.top+sy, el:t, pk:0}; });
+  if(!tiles.length) return null;
+  tiles.sort((a,b)=>a.l-b.l);
+  const B=Math.max(...tiles.map(t=>t.b));
+  const cracks=[];
+  for(let i=0;i<tiles.length-1;i++){ const a=tiles[i], b=tiles[i+1];
+    if(b.l-a.r>0.5 && Math.abs(a.t-b.t)<3) cracks.push({x:(a.r+b.l)/2, y:Math.min(a.t,b.t)}); }
+  return {tiles, B, W:el.clientWidth, cracks};
+}
+// the highest surface at x: a tile's top, or the ground line the tiles stand on
+function hpSurf(T,x){
+  let y=T.B;
+  for(const t of T.tiles) if(x>=t.l && x<=t.r) y=Math.min(y,t.t);
+  return y;
+}
+// ...under a sheep's whole footprint, so a crack between two boxes does not swallow it
+function hpSupport(T,x){ return Math.min(hpSurf(T,x-HP_HW*0.45), hpSurf(T,x), hpSurf(T,x+HP_HW*0.45)); }
+function hpTileAt(T,x,y){ return T.tiles.find(t=>x>=t.l-HP_HW*0.45 && x<=t.r+HP_HW*0.45 && Math.abs(y-t.t)<3); }
+// the nearest box side ahead that is taller than a step
+function hpWallAhead(T,x,y,dir){
+  let best=null;
+  for(const t of T.tiles){
+    if(t.t>y-6) continue;
+    const e = dir>0 ? t.l : t.r;
+    if(dir>0 ? e<x-1 : e>x+1) continue;
+    if(!best || Math.abs(e-x)<Math.abs(best.x-x)) best={x:e, top:t.t, tile:t};
+  }
+  return best;
+}
+function hpDown(s){ return s.st==="cast"||s.st==="plant"||s.st==="getup"||s.st==="shake"||s.st==="tumble"; }
+
+// ---- the boxes answer back
+function hpPoke(tile,kind,dir){
+  if(!tile||!tile.el) return;
+  const now=performance.now(); if(now-tile.pk<150) return; tile.pk=now;
+  const c = kind==="bonk" ? (dir>0?"hr-bonkR":"hr-bonkL") : "hr-thump";
+  tile.el.classList.remove("hr-bonkR","hr-bonkL","hr-thump"); void tile.el.offsetWidth; tile.el.classList.add(c);
+}
+function hpSnd(kind){
+  const now=performance.now(); if(now-HPARADE.sndT<60) return; HPARADE.sndT=now;
+  if(kind==="bonk"){ beep(150,.07,"square",.024); if(SETTINGS.sound){ try{ audioInit(); noiseBurst(0.05,700,1.4,0.05,AC.currentTime); }catch(e){} } }
+  else if(kind==="land") beep(200,.03,"sine",.016);
+  else if(kind==="boing") beep(520+Math.random()*80,.04,"sine",.012);
+  else if(kind==="baa"){ const f=560+Math.random()*90; beep(f,.05,"square",.016); setTimeout(()=>beep(f*0.84,.09,"square",.016),55); }
+  else if(kind==="oof") beep(120,.05,"triangle",.02);
+}
+function hpPart(p){ const P=HPARADE.parts; P.push(p); if(P.length>160) P.shift(); }
+function hpDust(x,y,n,spread,up){
+  for(let i=0;i<n;i++) hpPart({k:"dust", x:x+(Math.random()-0.5)*spread, y:y-1, vx:(Math.random()-0.5)*50, vy:-(up||20)*Math.random(),
+                               r:1.6+Math.random()*2.2, life:0.35+Math.random()*0.25, max:0.6});
+}
+function hpStars(x,y,n){
+  for(let i=0;i<n;i++){ const a=Math.random()*Math.PI*2, v=60+Math.random()*90;
+    hpPart({k:"spark", x, y, vx:Math.cos(a)*v, vy:Math.sin(a)*v-40, life:0.4+Math.random()*0.2, max:0.6, col:i%3?"#f4d23c":"#fff"}); }
+}
+function hpSay(x,y,txt,col){
+  const W=HPARADE.terr ? HPARADE.terr.W : 400;
+  hpPart({k:"txt", x:clamp(x,22,W-22), y, vx:0, vy:-26, life:0.8, max:0.8, txt, col});
+}
+
+// ---- a pass: the herd lined up off one side of the screen, heading for the other
+function hpNewPass(){
+  const P=HPARADE, T=hpTerrain(); if(!T) return false;
+  P.terr=T; P.pass++; P.passT=0; P.sheep=[];
+  const dir=P.dir, n=P.n;
+  // who makes a fool of themselves this time: never the ram out in front (unless he is all there is)
+  const pool=[]; for(let i=1;i<n;i++) pool.push(i);
+  for(let i=pool.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [pool[i],pool[j]]=[pool[j],pool[i]]; }
+  const role={};
+  if(n===1) role[0]="trip";
+  if(pool[0]!=null) role[pool[0]]="bonk";
+  if(pool[1]!=null) role[pool[1]]="trip";
+  if(n>=5 && pool[2]!=null) role[pool[2]]="flop";
+  // ...and at most one pile-up, where somebody walks straight into a friend who is down
+  P.domino = n>=6 ? 1 : 0;
+  const x0 = dir>0 ? -HP_HW-6 : T.W+HP_HW+6;
+  let off=0;
+  for(let i=0;i<n;i++){
+    off += i===0 ? 0 : 12+Math.random()*15+(Math.random()<0.18?16:0);       // loose clumps, not a queue
+    P.sheep.push({i, x:x0-dir*off, y:T.B, px:x0-dir*off, vx:0, vy:0, dir, st:"walk", stT:0,
+                  spd:HP_V*(0.93+Math.random()*0.14), gap:13+Math.random()*11, z:Math.random(), ram:i===0,
+                  role:role[i]||"", oops:false, ph:Math.random()*7, sqx:1, sqy:1, rot:0, rot0:0, yo:0,
+                  pronkT:1.5+Math.random()*4, dustT:0, late:0, dizzy:0, slide:0, hopped:false, castT:1});
+  }
+  // and the last one is always a straggler: still chewing when the rest set off
+  if(n>=4){ const s=P.sheep[n-1]; s.late=0.8+Math.random()*0.9; s.x-=dir*26; s.px=s.x; }
+  return true;
+}
+// launch: up and forward; for a box, worked out so the front of the sheep meets the box's edge
+// just as its feet clear the top (or, for the one who leaves it late, nowhere near)
+function hpJump(s,vy0,vx,kind){
+  s.st="air"; s.air=kind||"jump"; s.stT=0;
+  s.vy=-vy0; s.vx=s.dir*vx;
+  s.sqx=0.82; s.sqy=1.2;                                       // a stretch as it springs
+  hpDust(s.x,s.y,3,10,14);
+  if(kind==="pronk" && Math.random()<0.3) hpSnd("boing");
+}
+function hpBoxJump(s,w,v,late){
+  const need=s.y-w.top;
+  if(late){                                                     // too close, too weak: smack
+    hpJump(s, Math.sqrt(2*HP_G*Math.max(10,need*0.55)), Math.max(v,80), "jump");
+    return;
+  }
+  const vy0=Math.sqrt(2*HP_G*(need+15));
+  const h=need+4, disc=vy0*vy0-2*HP_G*h;
+  const t1=disc>0 ? (vy0-Math.sqrt(disc))/HP_G : vy0/HP_G;
+  const front=Math.abs(w.x-s.x)-HP_HW*0.55;
+  hpJump(s, vy0, clamp(front/Math.max(0.05,t1),12,230), "jump");       // right up against it: nearly straight up
+}
+function hpBonk(s,wx,tile){
+  s.st="air"; s.air="tumble"; s.stT=0; s.oops=true;
+  s.vx=-s.dir*80; s.vy=Math.min(s.vy,-150);
+  s.sqx=1.3; s.sqy=0.75;
+  if(tile) hpPoke(tile,"bonk",s.dir);
+  hpStars(wx, s.y-HP_H*0.55, 8);
+  hpSay(wx-s.dir*6, s.y-HP_H-8, "BONK!", "#f4d23c");
+  hpSnd("bonk");
+}
+function hpCast(s){
+  s.st="cast"; s.stT=0; s.oops=true; s.air=""; s.vx=0; s.vy=0;
+  s.castT=0.95+Math.random()*0.75; s.rot=Math.PI; s.dizzy=1;
+  s.sqx=1.25; s.sqy=0.75;
+  hpDust(s.x,s.y,6,22,30);
+  hpSay(s.x, s.y-HP_H-14, "baa!", "#fff");
+  hpSnd("baa");
+}
+function hpLand(s,T){
+  const hard=s.vy;
+  s.vy=0; s.vx=0;
+  const tile=hpTileAt(T,s.x,s.y);
+  if(tile) hpPoke(tile,"thump");
+  if(s.air==="tumble"){ hpSnd("land"); return hpCast(s); }
+  // off the far end, a flopper comes down on its back
+  if(s.role==="flop" && !s.oops && hard>300){ s.role=""; hpSnd("oof"); return hpCast(s); }
+  s.sqx=1.25; s.sqy=0.72;
+  hpDust(s.x,s.y, hard>380?5:2, 16, 18);
+  if(hard>200) hpSnd("land");
+  s.air=""; s.st = s.wasScamper ? "scamper" : "walk"; s.stT=0; s.hopped=false;
+}
+function hpSheep(s,ahead,dt,T,P){
+  const dir=s.dir;
+  s.px=s.x;
+  s.sqx+=(1-s.sqx)*Math.min(1,dt*11); s.sqy+=(1-s.sqy)*Math.min(1,dt*11);
+  if(s.dizzy>0 && s.st!=="cast") s.dizzy=Math.max(0,s.dizzy-dt*1.4);
+  if(s.late>0){ s.late-=dt; s.eat=true; return; }
+  s.eat=false;
+  s.stT+=dt;
+  if(s.st==="walk" || s.st==="scamper"){
+    s.ph+=dt*(s.st==="scamper"?30:15);
+    let v=s.spd*(s.st==="scamper"?2.35:1);
+    const gap = ahead ? Math.abs(ahead.x-s.x) : 1e9;
+    if(ahead && s.st==="walk"){
+      v*=clamp(1+(gap-s.gap)/45,0.55,1.4);
+      if(gap>78){ s.st="scamper"; s.stT=0; }                        // fallen well behind: leg it
+    }
+    if(s.st==="scamper" && (!ahead ? s.stT>0.8 : (gap<s.gap+6 && !hpDown(ahead)))){ s.st="walk"; s.stT=0; }
+    const w=hpWallAhead(T,s.x,s.y,dir), front=w ? Math.abs(w.x-s.x)-HP_HW*0.55 : 1e9;
+    // a friend down in front: hop over them - or, if this one is that sort of sheep, walk right into them
+    if(ahead && hpDown(ahead) && gap<HP_HW*1.75 && Math.abs(ahead.y-s.y)<4 && !s.hopped){
+      s.hopped=true;
+      if(!s.oops && !s.ram && P.domino>0 && Math.random()<0.6){
+        P.domino--;
+        s.oops=true; s.st="air"; s.air="tumble"; s.vx=-dir*55; s.vy=-170;
+        ahead.sqx=1.2; ahead.sqy=0.8; ahead.x+=dir*4;
+        hpStars((s.x+ahead.x)/2, s.y-HP_H*0.5, 5); hpSnd("oof");
+        return;
+      }
+      if(w && front<70){
+        // over the friend AND up the box in one bound - if one bound will reach; if not, wait for them
+        const need=s.y-w.top, vy0=Math.sqrt(2*HP_G*(need+15)), disc=vy0*vy0-2*HP_G*(need+4);
+        const t1=disc>0?(vy0-Math.sqrt(disc))/HP_G:vy0/HP_G;
+        if(front/Math.max(0.05,t1)<=230){ s.wasScamper=s.st==="scamper"; hpBoxJump(s,w,v,false); return; }
+        s.hopped=false; s.y=hpSupport(T,s.x); return;            // waits politely behind them
+      }
+      s.wasScamper=s.st==="scamper"; hpJump(s, 300, Math.max(v,128), "leap"); return;
+    }
+    if(w){
+      const late = s.role==="bonk" && !s.oops;
+      const vx=Math.max(v,92), need=s.y-w.top, vy0=Math.sqrt(2*HP_G*(need+15));
+      const disc=vy0*vy0-2*HP_G*(need+4), t1=disc>0?(vy0-Math.sqrt(disc))/HP_G:vy0/HP_G;
+      if(front <= (late ? 10 : vx*t1+2)){
+        if(late) s.role="";
+        s.wasScamper=s.st==="scamper";
+        hpBoxJump(s,w,v,late); return;
+      }
+      if(front<=0) v=0;
+    }
+    s.x+=dir*v*dt;
+    if(w){ const lim=w.x-dir*HP_HW*0.55; if(dir>0? s.x>lim : s.x<lim) s.x=lim; }
+    // a crack between two boxes: somebody always finds one
+    if(Math.abs(s.y-T.B)>2) for(const c of T.cracks){
+      if(Math.abs(s.y-c.y)<2 && (s.px-c.x)*(s.x-c.x)<=0){
+        if(s.role==="trip" && !s.oops){
+          s.role=""; s.oops=true; s.st="plant"; s.stT=0; s.slide=46; s.rot0=0;
+          hpPoke(hpTileAt(T,s.x,s.y),"thump");
+          hpDust(s.x+dir*HP_HW*0.6,s.y,4,10,16); hpSay(s.x, s.y-HP_H-6, "oof", "#fff"); hpSnd("oof");
+          return;
+        }
+      }
+    }
+    // stepped off an edge: lemmings fall, and so do sheep - or, feeling good, they leap
+    const sup=hpSupport(T,s.x);
+    if(sup>s.y+2){
+      s.wasScamper=s.st==="scamper";
+      if(Math.random()<0.35 && s.role!=="flop"){ hpJump(s,330,v*1.35,"pronk"); }
+      else { s.st="air"; s.air="fall"; s.stT=0; s.vx=dir*v*0.85; s.vy=-40; }
+      return;
+    }
+    s.y=sup;
+    if(s.st==="scamper"){ s.dustT-=dt; if(s.dustT<=0){ s.dustT=0.07; hpDust(s.x-dir*HP_HW*0.7,s.y,1,4,10); } }
+    // and now and then, out of sheer joy, a pronk
+    s.pronkT-=dt;
+    if(s.pronkT<=0 && s.st==="walk"){
+      s.pronkT=2.2+Math.random()*4.2;
+      if(front>70){ s.wasScamper=false; hpJump(s,250+Math.random()*70,v,"pronk"); }
+    }
+    return;
+  }
+  if(s.st==="air"){
+    s.vy+=HP_G*dt;
+    const nx=s.x+s.vx*dt, ny=s.y+s.vy*dt;
+    const sg=Math.sign(s.vx)||dir, fx=nx+sg*HP_HW*0.55, sf=hpSurf(T,fx);
+    // a box side is something ABOVE where the feet are now - the floor coming up under a fall is a landing
+    if(sf<Math.min(s.y,ny)-3 && hpSurf(T,s.x+sg*HP_HW*0.4)>=s.y-1){
+      // the side of a box
+      const tile=T.tiles.find(t=>fx>=t.l && fx<=t.r);
+      const wx = tile ? (sg>0 ? tile.l : tile.r) : fx;
+      s.x = wx-sg*(HP_HW*0.55+0.5);
+      if(s.air==="tumble") s.vx=0;
+      else hpBonk(s,wx,tile);
+    } else s.x=nx;
+    s.y=ny;
+    if(s.air==="tumble"){
+      s.rot-=dir*10*dt;                                              // going over backwards...
+      const lo=HP_HW+3, hi=T.W-HP_HW-3;                               // ...but not off the edge of the phone
+      if(s.x<lo){ s.x=lo; s.vx=Math.max(0,s.vx); } else if(s.x>hi){ s.x=hi; s.vx=Math.min(0,s.vx); }
+    }
+    else if(s.air==="fall") s.rot+=( dir*0.35-s.rot)*Math.min(1,dt*6);
+    const sup=hpSupport(T,s.x);
+    if(s.vy>0 && s.y>=sup){ s.y=sup; if(s.air!=="tumble") s.rot=0; hpLand(s,T); }
+    return;
+  }
+  if(s.st==="cast"){
+    // on its back, legs going, rocking - cast
+    s.rot=Math.PI+Math.sin(s.stT*9)*0.17;
+    s.ph+=dt*34;
+    if(s.stT>=s.castT){ s.st="getup"; s.stT=0; s.rot0=s.rot; hpSnd("boing"); }
+    return;
+  }
+  if(s.st==="plant"){
+    // nose in the dirt, bum in the air, a little slide
+    const k=Math.min(1,s.stT/0.12);
+    s.rot=dir*0.95*(1-(1-k)*(1-k));
+    s.x+=dir*s.slide*dt; s.slide*=Math.pow(0.02,dt);
+    const sup=hpSupport(T,s.x); if(sup<=s.y+2) s.y=sup;
+    if(s.stT>0.8){ s.st="getup"; s.stT=0; s.rot0=s.rot; }
+    return;
+  }
+  if(s.st==="getup"){
+    // roll back onto its feet with a hop
+    const k=Math.min(1,s.stT/0.34), e=1-(1-k)*(1-k);
+    s.rot=s.rot0*(1-e);
+    s.yo=-Math.sin(k*Math.PI)*13;
+    if(k>=1){ s.rot=0; s.yo=0; s.st="shake"; s.stT=0; s.sqx=1.2; s.sqy=0.8;
+      for(let i=0;i<2;i++) hpPart({k:"drop", x:s.x+dir*4, y:s.y-HP_H, vx:-dir*(30+Math.random()*40)+(i?20:-20), vy:-90-Math.random()*40, life:0.5, max:0.5}); }
+    return;
+  }
+  if(s.st==="shake"){
+    // shake it off...
+    const k=Math.min(1,s.stT/0.32);
+    s.rot=Math.sin(s.stT*46)*0.2*(1-k);
+    if(k>=1){ s.rot=0; s.st="scamper"; s.stT=0; s.hopped=false; }   // ...and hurry after them
+    return;
+  }
+}
+function hpStep(dt){
+  const P=HPARADE, T=P.terr; if(!T) return;
+  P.t+=dt; P.passT+=dt;
+  const dir=P.dir;
+  const order=[...P.sheep].sort((a,b)=>dir>0 ? b.x-a.x : a.x-b.x);   // front of the herd first
+  for(let k=0;k<order.length;k++) hpSheep(order[k], k>0?order[k-1]:null, dt, T, P);
+  for(let i=P.parts.length-1;i>=0;i--){
+    const p=P.parts[i]; p.life-=dt; if(p.life<=0){ P.parts.splice(i,1); continue; }
+    p.x+=p.vx*dt; p.y+=p.vy*dt;
+    p.vy+=(p.k==="drop"?520:p.k==="spark"?260:p.k==="dust"?-8:0)*dt;
+    if(p.k==="dust"){ p.vx*=Math.pow(0.1,dt); }
+  }
+  const gone=P.sheep.every(s=> dir>0 ? s.x>T.W+HP_HW+12 : s.x<-HP_HW-12);
+  if(gone || P.passT>40){ P.sheep=[]; P.dir=-P.dir; P.gapT=1.5; }
+}
+
+// ---- drawing: the field's own sheep, posed
+function hpDrawSheep(ctx,s,t){
+  const face=s.dir, airK=s.st==="air"?s.air:"";
+  ctx.save();
+  ctx.translate(s.x, s.y+(s.yo||0));
+  ctx.scale(s.sqx,s.sqy);
+  const cy=-6*HP_SC;
+  let rot=s.rot;
+  if(s.st==="scamper") rot+=face*0.1;
+  if(rot){ ctx.translate(0,cy); ctx.rotate(rot); ctx.translate(0,-cy); }
+  ctx.scale(HP_SC,HP_SC);
+  // legs: a trot, a scramble, stiff for a pronk, splayed in a fall, bicycling on its back
+  ctx.fillStyle="#141210";
+  const L=[[-3.8,0],[-1.6,1],[1.8,0],[4,1]];
+  if(s.st==="cast" || airK==="tumble"){
+    for(const [lx,o] of L){ const w=Math.sin(s.ph+o*2.2+lx)*1.5; ctx.fillRect(lx-0.6+w*0.5,-2.6,1.3,4.2); }
+  } else if(airK==="pronk" || airK==="jump" || airK==="leap"){
+    for(const [lx,o] of L){ const lean=(lx>0?0.5:-0.5)*face; ctx.fillRect(lx-0.6+lean,-2.2,1.3,4.4); }
+  } else if(airK==="fall"){
+    for(const [lx] of L){ ctx.save(); ctx.translate(lx,-2.2); ctx.rotate((lx>0?-0.8:0.8)*face); ctx.fillRect(-0.6,0,1.3,3.8); ctx.restore(); }
+  } else {
+    const amp = s.st==="scamper" ? 2.1 : (s.st==="walk" && !s.eat ? 1.2 : 0);
+    for(const [lx,o] of L){ const st=Math.sin(s.ph+o*Math.PI)*amp; ctx.fillRect(lx-0.6+st*0.45,-2.2,1.3,3.4); }
+  }
+  const bob = (s.st==="walk"&&!s.eat) ? Math.abs(Math.sin(s.ph))*0.9 : s.st==="scamper" ? Math.abs(Math.sin(s.ph))*1.3 : 0;
+  ctx.translate(0,-bob);
+  const puffs=[[-4,-6,3.4],[0,-7.3,3.9],[4,-6,3.4],[-2,-4.2,3.3],[2.2,-4.2,3.3]];
+  ctx.strokeStyle="#111"; ctx.lineWidth=2.2;
+  for(const [px,py,r] of puffs){ ctx.beginPath(); ctx.arc(px,py,r,0,7); ctx.stroke(); }
+  ctx.fillStyle=s.ram?HB_WOOL_RAM:HB_WOOL;
+  for(const [px,py,r] of puffs){ ctx.beginPath(); ctx.arc(px,py,r,0,7); ctx.fill(); }
+  ctx.fillStyle="rgba(255,255,255,.7)"; ctx.fillRect(-2,-9.2,3,1.2);
+  const dip = s.eat ? 2.6 : 0;
+  ctx.fillStyle="#141210"; ctx.strokeStyle="#111"; ctx.lineWidth=0.8;
+  ctx.beginPath(); ctx.ellipse(face*6.4,-6.4+dip,2.5,2.1,face*(0.25+dip*0.2),0,7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(face*4.6,-8+dip,1.5,0.8,face*-0.5,0,7); ctx.fill();
+  // eyes: crosses while it is seeing stars, shut tight for a bonk, a blink now and then
+  const ex=face*7.2, ey=-7.2+dip;
+  if(s.dizzy>0.15 || airK==="tumble"){
+    ctx.strokeStyle="#fff"; ctx.lineWidth=0.45;
+    ctx.beginPath(); ctx.moveTo(ex-0.8,ey-0.8); ctx.lineTo(ex+0.8,ey+0.8); ctx.moveTo(ex+0.8,ey-0.8); ctx.lineTo(ex-0.8,ey+0.8); ctx.stroke();
+  } else if(s.st==="plant" || s.st==="getup"){
+    ctx.fillStyle="#fff"; ctx.fillRect(ex-0.8,ey,1.6,0.45);
+  } else if(((t*0.45+s.ph*0.03+s.i*0.21)%1)>0.035 && !s.eat){
+    ctx.fillStyle="#fff"; ctx.fillRect(ex-0.5,ey,1,1);
+  }
+  if(s.ram){ ctx.strokeStyle="#c8a15e"; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(face*5.6,-7+dip,1.9,0,5.2); ctx.stroke(); }
+  ctx.restore();
+}
+function hpSize(){
+  const P=HPARADE, el=P.el, cv=P.cv; if(!el||!cv) return;
+  const card=el.querySelector(".hr-card");
+  const W=el.clientWidth, H=Math.max(el.clientHeight, card ? card.offsetTop+card.offsetHeight+30 : 0);
+  const dpr=Math.min(3,window.devicePixelRatio||1);
+  if(cv._w!==W || cv._h!==H || cv._d!==dpr){
+    cv._w=W; cv._h=H; cv._d=dpr;
+    cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr);
+    cv.style.width=W+"px"; cv.style.height=H+"px";
+  }
+  P.ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+function hpDraw(){
+  const P=HPARADE, ctx=P.ctx, T=P.terr, cv=P.cv; if(!ctx||!cv) return;
+  ctx.clearRect(0,0,cv._w||cv.width,cv._h||cv.height);
+  if(!T) return;
+  const t=P.t;
+  // shadows on whatever is underneath, shrinking with height
+  for(const s of P.sheep){
+    const sup=hpSupport(T,s.x), up=Math.max(0,sup-(s.y+(s.yo||0)));
+    const k=1/(1+up/34);
+    ctx.fillStyle="rgba(0,0,0,"+(0.32*k).toFixed(3)+")";
+    ctx.beginPath(); ctx.ellipse(s.x, sup+1, HP_HW*0.8*k+2, 2.6*k+0.6, 0, 0, 7); ctx.fill();
+  }
+  const list=[...P.sheep].sort((a,b)=>a.z-b.z);
+  for(const s of list) hpDrawSheep(ctx,s,t);
+  // seeing stars
+  for(const s of P.sheep) if(s.dizzy>0.05){
+    ctx.save(); ctx.globalAlpha=Math.min(1,s.dizzy*1.4);
+    for(let i=0;i<3;i++){
+      const a=t*6.5+i*2.09, px=s.x+Math.cos(a)*11, py=s.y+(s.yo||0)-HP_H-5+Math.sin(a)*3.2;
+      hpStarShape(ctx,px,py,2.6,i===1?"#fff":"#f4d23c");
+    }
+    ctx.restore();
+  }
+  for(const p of P.parts){
+    const a=clamp(p.life/p.max,0,1);
+    if(p.k==="dust"){ ctx.fillStyle="rgba(222,212,186,"+(0.55*a).toFixed(3)+")"; ctx.beginPath(); ctx.arc(p.x,p.y,p.r*(1.8-a*0.8),0,7); ctx.fill(); }
+    else if(p.k==="spark"){ ctx.save(); ctx.globalAlpha=a; hpStarShape(ctx,p.x,p.y,2.4,p.col); ctx.restore(); }
+    else if(p.k==="drop"){ ctx.save(); ctx.globalAlpha=a; ctx.fillStyle="#9fd3ff"; ctx.beginPath(); ctx.ellipse(p.x,p.y,1.4,2.2,Math.atan2(p.vy,p.vx)+Math.PI/2,0,7); ctx.fill(); ctx.restore(); }
+    else if(p.k==="txt"){
+      ctx.save(); ctx.globalAlpha=Math.min(1,a*1.6); ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
+      ctx.fillStyle="#000"; ctx.fillText(p.txt,p.x+1,p.y+1); ctx.fillStyle=p.col; ctx.fillText(p.txt,p.x,p.y); ctx.restore();
+    }
+  }
+}
+function hpStarShape(ctx,x,y,r,col){
+  ctx.fillStyle=col; ctx.beginPath();
+  ctx.moveTo(x,y-r); ctx.lineTo(x+r*0.32,y-r*0.32); ctx.lineTo(x+r,y); ctx.lineTo(x+r*0.32,y+r*0.32);
+  ctx.lineTo(x,y+r); ctx.lineTo(x-r*0.32,y+r*0.32); ctx.lineTo(x-r,y); ctx.lineTo(x-r*0.32,y-r*0.32);
+  ctx.closePath(); ctx.fill();
+}
+// reduced motion: the herd, standing on the boxes in a row, still
+function hpStill(){
+  const P=HPARADE, T=P.terr; if(!T) return;
+  const x0=T.tiles[0].l+HP_HW, x1=T.tiles[T.tiles.length-1].r-HP_HW, n=P.n;
+  P.sheep=[]; P.parts=[];
+  for(let i=0;i<n;i++){
+    const x = n===1 ? (x0+x1)/2 : x1-(x1-x0)*i/(n-1);
+    P.sheep.push({i, x, y:hpSupport(T,x), dir:1, st:"stand", rot:0, sqx:1, sqy:1, yo:0, ph:i, z:i, ram:i===0, dizzy:0, eat:false});
+  }
+  hpDraw();
+}
+function herdParadeStart(R){
+  herdParadeStop();
+  const P=HPARADE, el=$("#hRecap"); if(!el) return;
+  const n=Math.min(HERD_FLOCK, Math.max(0,R.penned|0)); if(n<=0) return;
+  const cv=document.createElement("canvas"); cv.className="hr-parade"; cv.setAttribute("aria-hidden","true");
+  el.appendChild(cv);
+  const tok={}; P.token=tok;
+  Object.assign(P,{el, cv, ctx:cv.getContext("2d"), n, dir:1, pass:0, parts:[], sheep:[], terr:null, t:0, gapT:1.15});
+  if(SETTINGS.reduceMotion){
+    setTimeout(()=>{ if(P.token!==tok) return; hpSize(); P.terr=hpTerrain(); hpStill(); }, 650);
+    return;
+  }
+  P.last=performance.now();
+  const loop=now=>{
+    if(P.token!==tok) return;
+    const dt=Math.min(0.033,Math.max(0,(now-P.last)/1000)); P.last=now;
+    hpSize();
+    if(P.gapT>0){ P.gapT-=dt; P.t+=dt; if(P.gapT<=0 && !hpNewPass()) P.gapT=1; }
+    else hpStep(dt);
+    hpDraw();
+    P.raf=requestAnimationFrame(loop);
+  };
+  P.raf=requestAnimationFrame(loop);
+}
+function herdParadeStop(){
+  const P=HPARADE; P.token=null; cancelAnimationFrame(P.raf);
+  if(P.cv && P.cv.parentNode) P.cv.remove();
+  P.cv=null; P.ctx=null; P.el=null; P.sheep=[]; P.parts=[]; P.terr=null;
+}
+function herdRecapHide(){ herdParadeStop(); const el=$("#hRecap"); if(el){ el.classList.add("hidden"); el.innerHTML=""; } clearInterval(HERD.recapTimer); }
 function herdRecapShow(R){
   const el=$("#hRecap"); if(!el) return herdOpenMap(null);
   const RM=!!SETTINGS.reduceMotion;
@@ -28387,6 +28856,8 @@ function herdRecapShow(R){
   },40);
   R.stars.on.forEach((on,i)=>{ if(on) setTimeout(()=>{ beep([880,1109,1319][i],.12,"square",.045); haptic(14); }, RM?0:(450+i*320)); });
   if(R.lostN===0 && R.penned>0) setTimeout(()=>{ [523,659,784,1047,1319].forEach((f,i)=>setTimeout(()=>beep(f,.09,"square",.035),i*70)); }, RM?0:1500);
+  // ...and the ones who made it, on parade across the boxes
+  herdParadeStart(R);
   const go=(fn)=>{ herdRecapHide(); fn(); };
   $("#hrMap").onclick=()=>go(()=>herdOpenMap(null,{move:R.move, locked:R.locked}));
   const nb=$("#hrNext");
