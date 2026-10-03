@@ -893,7 +893,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.377a</span>
+          <span id="devToggle">v0.378a</span>
         </div>
       </div>
 
@@ -26094,7 +26094,7 @@ function herdRockBonk(sh,x,y){
   d.hitCd=HD_BONK_CD; d.stunT=HD_BONK_T; d.dashT=0; d.vx=side*120; d.vy=40;
   if(sh.bx) sh.bx.bonk++;
   sh.cash-=HERD_LOSS;
-  S.energy=clamp(S.energy-HD_BONK_COST,0,100);
+  herdSpend(HD_BONK_COST);
   herdPop(d.x, d.y-22, "BONK! -"+herdCash(HERD_LOSS), "#ff5a4f", true);
   herdShake(5); haptic([40,30,40]);
   beep(140,.12,"square",.05);
@@ -26259,11 +26259,12 @@ function herdPushOut(o,r){
   return hit;
 }
 // the twenty strays, asleep in the pockets
-function herdClimbStrand(sh){
+function herdClimbStrand(sh,n){
   const rnd=herdRng(sh.seed^0x2d15a7), out=[];
-  for(const b of M5_BANDS){
-    if(b.k!=="pocket") continue;
-    for(let i=0;i<5;i++){
+  const pockets=M5_BANDS.filter(b=>b.k==="pocket");
+  for(let pi=0;pi<pockets.length;pi++){
+    const b=pockets[pi], per=Math.floor(n/pockets.length)+(pi<n%pockets.length?1:0);
+    for(let i=0;i<per;i++){
       let x=0,y=0,tries=0;
       do{ x=80+rnd()*200; y=b.y0+(b.y1-b.y0)*(0.25+rnd()*0.5); tries++; }
       while(tries<60 && (out.some(o=>Math.hypot(o.x-x,o.y-y)<26) || HERD.holes.some(h=>Math.hypot(h.x-x,h.y-y)<HD_HOLE_PULL+16)));
@@ -26275,15 +26276,17 @@ function herdClimbStrand(sh){
 function herdClimbSetup(sh){
   const C={y:M5_H-HF_VH, high:0, bumpT:0, cd:0};
   sh.cam=C;
-  sh.strand=[];                                         // nobody asleep up the hill: the convoy walks up together
-  // everyone waiting at the foot: five on the ledge in front, the rest grazing just behind them
+  // five with him on the ledge; the rest of the station is spread up the long way, grazing where they
+  // stopped. Everyone starts with a full belly: there is no fresh grass above the ledge
+  const nUp=Math.max(0,sh.visitN-5);
+  sh.strand=herdClimbStrand(sh,nUp);
   const rnd=herdRng(sh.seed^0x51f15e);
-  for(let i=0;i<sh.visitN;i++){
+  for(let i=0;i<sh.visitN-nUp;i++){
     let x=0,y=0,tries=0;
     const front=i<5;
     do{ x=front?130+rnd()*100:70+rnd()*220; y=front?2250+rnd()*70:2322+rnd()*62; tries++; }
     while(tries<80 && (sh.sheep.some(o=>Math.hypot(o.x-x,o.y-y)<24) || HERD.holes.some(h=>Math.hypot(h.x-x,h.y-y)<HD_HOLE_PULL+18)));
-    const s=herdNewSheep(sh,x,y,i===0); s.joined=true; sh.sheep.push(s);
+    const s=herdNewSheep(sh,x,y,i===0); s.joined=true; s.graze=HG_MAX; sh.sheep.push(s);
   }
   sh.started=sh.visitN;
   let cy=0; for(const s of sh.sheep) cy+=s.y; C.high=sh.sheep.length ? cy/sh.sheep.length : 2300;
@@ -26382,7 +26385,7 @@ function herdClimbTick(sh,dt){
   for(let i=sh.strand.length-1;i>=0;i--){
     const st=sh.strand[i];
     if(st.y>C.y-M5_WAKE){
-      const s=herdNewSheep(sh,st.x,st.y,st.ram); s.joined=false; s.stray=true; s.alarm=0;
+      const s=herdNewSheep(sh,st.x,st.y,st.ram); s.joined=false; s.stray=true; s.alarm=0; s.graze=HG_MAX;
       sh.sheep.push(s); sh.started++; sh.strand.splice(i,1);
       herdPuff(st.x,st.y-6,3,"#f6f2e8",16,0.4,2);
       if(!HERD.baa) HERD.baa={id:s.id, txt:"baa?", life:1.2};
@@ -27200,7 +27203,11 @@ function herdToast(msg,red){
   t.style.display="block"; clearTimeout(HERD.toastTimer);
   HERD.toastTimer=setTimeout(()=>{ t.style.display="none"; },1700);
 }
-function herdGassed(){ return S.energy<=0.5; }
+// HE NEVER RUNS DRY on the farm: barks and dashes cost, but not below HERD_EN_FLOOR, and it all
+// comes back slowly while he works. (The gassed plant is kept for old callers; it never triggers.)
+const HERD_EN_REGEN=0.9, HERD_EN_FLOOR=12;
+function herdSpend(c){ S.energy=clamp(Math.max(Math.min(S.energy,HERD_EN_FLOOR), S.energy-c),0,100); }
+function herdGassed(){ return false; }
 
 /* ---------------------------------------------------------------- the job itself: GO OUT */
 function herdGoOutRow(){
@@ -27421,7 +27428,9 @@ function herdSpawnFlock(sh){
     do{ x=A.x0-(front?0:30)+rnd()*(A.x1-A.x0+(front?0:60)); y=y0+rnd()*(y1-y0); tries++; }
     while(tries<200 && (HERD.holes.some(h=>Math.hypot(h.x-x,h.y-y)<HD_HOLE_PULL+20)
                         || sh.sheep.some(o=>Math.hypot(o.x-x,o.y-y)<(tries>120?14:gap))));
-    sh.sheep.push(herdNewSheep(sh,clamp(x,14,HF_W-14),y,i===0));   // one ram per flock — he bolts first
+    const s=herdNewSheep(sh,clamp(x,14,HF_W-14),y,i===0);           // one ram per flock — he bolts first
+    if(front) s.graze=HG_MAX;                                          // the five in front are ready
+    sh.sheep.push(s);
   }
   // the replacements: out of the barn door, round by the hedge, down onto the start grass
   for(let i=0;i<repl;i++){
@@ -27616,7 +27625,7 @@ function herdBark(){
   if(d.barkCd>0) return;
   d.barkCd=HERD_BARK_CD;
   if(sh.bx) sh.bx.bark++;
-  S.energy=clamp(S.energy-HERD_BARK_COST,0,100);
+  herdSpend(HERD_BARK_COST);
   bark(0.9);
   HERD.fx.barkT=0.28; HERD.fx.barkAng=d.faceAng;
   herdPart({k:"ring", x:d.x, y:d.y, a:d.faceAng, life:0.34, max:0.34});
@@ -27675,7 +27684,7 @@ function herdDash(){
   d.dashT=HERD_DASH_T; d.dashCd=HERD_DASH_CD;
   if(sh.bx) sh.bx.dash++;
   d.dashVx=dx*HERD_DOG_SPD*HERD_DASH_MUL; d.dashVy=dy*HERD_DOG_SPD*HERD_DASH_MUL;
-  S.energy=clamp(S.energy-HERD_DASH_COST,0,100);
+  herdSpend(HERD_DASH_COST);
   herdPuff(d.x, d.y+8, 7, "#d9c9a0", 46, 0.5, 3);
   beep(300,.05,"square",.03);
 }
@@ -27694,7 +27703,7 @@ function herdCentroid(sh){
 function herdDogTick(sh,dt){
   const d=sh.dog;
   // needs tick slower than a park run — this is a job, not a raid
-  S.energy=clamp(S.energy-0.05*dt,0,100);
+  S.energy=clamp(S.energy+HERD_EN_REGEN*dt,0,100);
   S.hunger=clamp(S.hunger-0.03*dt,0,100);
   S.thirst=clamp(S.thirst-0.05*dt,0,100);
   /* HE REFUSES YOU. Out of energy he plants for a beat and ignores everything, then moves at a
@@ -27818,8 +27827,13 @@ function herdVehicles(sh){
    (the start meadow, or a lit tuft) and going slow, it munches and the belly fills; walk it off and the
    filling pauses - it never resets. Full, it will cross the pen line; until then the gate turns it back. */
 const HG_GRAZE_T=4.5, HG_GRAZE_V=22, HG_TUFT_R=20;
+/* THE BELLY IS STAMINA. It fills to 130% (an overfill buffer) and every step a sheep takes spends a
+   little of it - a bolt spends more. 90% or more and the pen takes it; under that it is HUNGRY: it
+   lags behind the flock and wanders off to the nearest fresh grass if nobody is pushing it. */
+const HG_MAX=1.3, HG_PASS=0.9, HG_DRAIN=0.0003, HG_DRAIN_CLIMB=0.00009, HG_BOLT_MUL=1.6;
+function herdFed(s){ return (s.graze||0)>=HG_PASS; }
 function herdMeadow(sh){
-  if(HERD_LV[sh.lv].climb) return {x0:M5_X0+4, x1:M5_X1-4, y0:2236, y1:2396};
+  if(HERD_LV[sh.lv].climb) return {x0:M5_X0+4, x1:M5_X1-4, y0:2236, y1:2396};   // the ledge, and nothing above it
   const A=herdStartBand(sh.lv); return {x0:A.x0-30, x1:A.x1+30, y0:Math.max(A.y0,A.y1-70), y1:HG.H-6};
 }
 // lit tufts up the field, from the seed: clear of holes, the road, the chute and each other
@@ -27827,11 +27841,7 @@ function herdMakeTufts(sh){
   const L=HERD_LV[sh.lv], rnd=herdRng(sh.seed^0x7a1f7), out=[];
   const ok=(x,y)=>!HERD.holes.some(o=>Math.hypot(o.x-x,o.y-y)<HD_HOLE_PULL+30) && !out.some(o=>Math.hypot(o.x-x,o.y-y)<80)
                   && !HERD.solids.some(o=>herdSegD(x,y,o.x0,o.y0,o.x1,o.y1)<o.r+HG_TUFT_R+6);
-  if(L.climb){
-    for(const b of M5_BANDS){ if(b.k!=="pocket") continue;
-      for(let t=0;t<60;t++){ const x=M5_X0+40+rnd()*(M5_X1-M5_X0-80), y=b.y0+30+rnd()*(b.y1-b.y0-60); if(ok(x,y)){ out.push({x,y,r:HG_TUFT_R,bites:0}); break; } } }
-    return out;
-  }
+  if(L.climb) return out;                              // no fresh grass uphill: a full belly and a clean pass
   const A=herdStartBand(sh.lv);
   for(let t=0;t<400 && out.length<3;t++){
     const x=40+rnd()*280, y=HG.py+70+rnd()*Math.max(40,A.y0-HG.py-100);
@@ -27844,10 +27854,19 @@ function herdMakeTufts(sh){
 // any grass will do in the end - just not the road, the chute's gravel or the pen
 function herdOnGrass(sh,s){
   const L=HERD_LV[sh.lv];
+  if(L.climb) return false;                           // the mountain feeds nobody
   if(s.y<HG.py+2) return false;
   if(L.road && Math.abs(s.y-HF_ROAD_Y)<HF_ROAD_H/2+2) return false;
   if(L.chute && s.y<M4_CH_Y1+8 && s.x>M4_LANE_X0-4 && s.x<M4_LANE_X1+4) return false;
   return true;
+}
+// the closest fresh grass to a hungry sheep: a lit tuft, or the start meadow
+function herdNearestFresh(sh,s){
+  let best=null, bd=1e9;
+  for(const t of HERD.tufts||[]){ const d=Math.hypot(t.x-s.x,t.y-s.y); if(d<bd){ bd=d; best=t; } }
+  const m=HERD.meadow;
+  if(m){ const mx=clamp(s.x,m.x0+10,m.x1-10), my=clamp(s.y,m.y0+10,m.y1-10), d=Math.hypot(mx-s.x,my-s.y); if(d<bd){ bd=d; best={x:mx,y:my}; } }
+  return best;
 }
 function herdOnFresh(sh,s){
   const m=HERD.meadow; if(m && s.x>m.x0 && s.x<m.x1 && s.y>m.y0 && s.y<m.y1) return true;
@@ -27990,7 +28009,7 @@ function herdDogVehicles(sh,dt){
     if(d.hitCd<=0){
       d.hitCd=HD_BONK_CD; d.stunT=HD_BONK_T; d.dashT=0;
       d.vx=v.dir*150; d.vy=(up?-1:1)*70;
-      S.energy=clamp(S.energy-HD_BONK_COST,0,100);
+      herdSpend(HD_BONK_COST);
       herdPop(d.x, d.y-22, "BONK!", "#ff5a4f", true);
       herdPuff(d.x, d.y, 8, "#d9c9a0", 50, 0.5, 3);
       herdShake(5); haptic([40,30,40]);
@@ -28289,7 +28308,9 @@ function herdSheepTick(sh,dt){
       ax+=(HG.gx-s.x)*2.2; ay-=24;
     }
     // full, and near the gate: it turns to face it on its own
-    if(s.full && s.panicT<=0){ const gx=HG.gx-s.x, gy=(HG.py-6)-s.y, gd=Math.hypot(gx,gy); if(gd<90 && gd>1){ ax+=gx/gd*40; ay+=gy/gd*40; } }
+    if(herdFed(s) && s.panicT<=0){ const gx=HG.gx-s.x, gy=(HG.py-6)-s.y, gd=Math.hypot(gx,gy); if(gd<90 && gd>1){ ax+=gx/gd*40; ay+=gy/gd*40; } }
+    // hungry and left alone: it ambles off to the nearest fresh grass
+    if(!herdFed(s) && !alarmed && s.panicT<=0){ const f=herdNearestFresh(sh,s); if(f){ const fx=f.x-s.x, fy=f.y-s.y, fd=Math.hypot(fx,fy); if(fd>6 && fd<240){ ax+=fx/fd*16; ay+=fy/fd*16; } } }
     // dazed (an acorn): it stands where it ran to, seeing stars - only the dog moves it now
     if(s.dazeT>0){ s.dazeT=Math.max(0,s.dazeT-dt);
       if(s.panicT<=0){ ax=dax; ay=day; const k=Math.max(0,1-4*dt); s.vx*=k; s.vy*=k; } }
@@ -28319,7 +28340,7 @@ function herdSheepTick(sh,dt){
     s.vx+=ax*dt; s.vy+=ay*dt;
     const damp=alarmed?1.4:3.2, dk=Math.max(0,1-damp*dt);
     s.vx*=dk; s.vy*=dk;
-    const vmax = s.panicT>0 ? SH_MAX_BOLT : alarmed ? SH_MAX_DRIVE*(s.ram?1.12:1) : SH_MAX_CALM;
+    const vmax = (s.panicT>0 ? SH_MAX_BOLT : alarmed ? SH_MAX_DRIVE*(s.ram?1.12:1) : SH_MAX_CALM) * (herdFed(s) ? 1 : 0.8);   // a hungry one hangs behind
     const v=Math.hypot(s.vx,s.vy); if(v>vmax){ s.vx*=vmax/v; s.vy*=vmax/v; }
     s.x+=s.vx*dt; s.y+=s.vy*dt;
     s.alarm=Math.max(0,s.alarm-dt);
@@ -28330,17 +28351,20 @@ function herdSheepTick(sh,dt){
     // grazing: fresh grass under a slow sheep fills the belly; walking off pauses it, never resets it
     if(s.alarm>0) s.drove=true;
     s.refuseCd=Math.max(0,(s.refuseCd||0)-dt); if(s.hopT>0) s.hopT-=dt; if(s.heartT>0) s.heartT-=dt;
-    if(!s.full){
-      // fresh grass (the start meadow, a lit tuft) fills it fast; any other grass, slowly - so a hungry
-      // sheep left to stand anywhere on the field gets there in the end
+    // every step spends the belly (a bolt spends more)
+    { const sp=Math.hypot(s.vx,s.vy), k=HERD_LV[sh.lv].climb?HG_DRAIN_CLIMB:HG_DRAIN;
+      s.graze=Math.max(0,(s.graze||0)-sp*dt*k*(s.panicT>0?HG_BOLT_MUL:1)); }
+    // fresh grass (the start meadow, a lit tuft) fills it fast; any other grass, slowly; up to 130%
+    if(s.graze<HG_MAX){
       const g=herdOnFresh(sh,s), grass=!!g || herdOnGrass(sh,s);
       s.munch = grass && Math.hypot(s.vx,s.vy)<HG_GRAZE_V && s.panicT<=0;
       if(s.munch){
-        const was=s.graze||0; s.graze=Math.min(1,was+dt/(g?HG_GRAZE_T:HG_GRAZE_T*3));
+        const was=s.graze; s.graze=Math.min(HG_MAX,was+dt*HG_MAX/(g?HG_GRAZE_T:HG_GRAZE_T*3));
         if(Math.floor(s.graze*4)>Math.floor(was*4) && g!==true) g.bites=(g.bites||0)+1;   // a blade gone
-        if(s.graze>=1){ s.full=true; s.munch=false; s.hopT=0.45; s.heartT=1.1; sh.anyFull=true; beep(1180,.04,"square",.02); }
+        if(was<1 && s.graze>=1){ s.hopT=0.45; s.heartT=1.1; beep(1180,.04,"square",.02); }    // full: a hop, a heart
       }
     } else s.munch=false;
+    s.full=herdFed(s); if(s.full) sh.anyFull=true;
   }
   // resolve the field: pen, fence, holes, road, hedge
   const vehs=herdVehicles(sh);
@@ -28349,7 +28373,7 @@ function herdSheepTick(sh,dt){
     if(HERD.solids.length){ const hs=herdPushOut(s,5); if(hs && hs.juice) herdBumpFx(s,hs); }
     const inGate=Math.abs(s.x-HG.gx)<HG.gw/2-3;
     if(s.y<HG.py-4 && inGate){
-      if(s.full){ herdPen(sh,s); continue; }
+      if(herdFed(s)){ herdPen(sh,s); continue; }
       // hungry: the pen will not take it - it turns back onto the grass
       s.y=HG.py+3; s.vy=Math.max(34,Math.abs(s.vy)*0.6); s.vx*=0.4; herdRefusedGate(sh,s);
     }
@@ -28655,13 +28679,15 @@ function herdHop(s){ return s.hopT>0 ? Math.sin((1-s.hopT/0.45)*Math.PI)*5 : 0; 
 // eats; solid green when it is full. A full one gets a heart, once
 function herdDrawBelly(ctx,s,y,t){
   if(s.heartT>0){ const k=1-s.heartT/1.1; ctx.globalAlpha=Math.min(1,s.heartT/0.3); herdPixelHeart(ctx,s.x,y-26-k*10,0.9); ctx.globalAlpha=1; }
-  if(!s.drove && !s.full) return;
-  const px=s.x, py=y-17;
-  ctx.fillStyle="rgba(27,20,12,.75)"; ctx.beginPath(); ctx.arc(px,py,3.2,0,7); ctx.fill();
-  if(s.full){ ctx.fillStyle="#7fd46a"; ctx.beginPath(); ctx.arc(px,py,2.3,0,7); ctx.fill(); return; }
-  const g=s.graze||0;
-  ctx.strokeStyle="#cfc6b0"; ctx.lineWidth=0.9; ctx.beginPath(); ctx.arc(px,py,2.2,0,7); ctx.stroke();
-  if(g>0){ ctx.fillStyle=s.munch&&Math.floor(t*6)%2?"#b9e88a":"#7fd46a"; ctx.beginPath(); ctx.moveTo(px,py); ctx.arc(px,py,2.3,-Math.PI/2,-Math.PI/2+g*Math.PI*2); ctx.closePath(); ctx.fill(); }
+  if(!s.drove) return;
+  const px=s.x, py=y-17, g=s.graze||0, fed=g>=HG_PASS, top=-Math.PI/2;
+  ctx.fillStyle="rgba(27,20,12,.78)"; ctx.beginPath(); ctx.arc(px,py,3.8,0,7); ctx.fill();
+  ctx.strokeStyle="#cfc6b0"; ctx.lineWidth=0.8; ctx.beginPath(); ctx.arc(px,py,2.3,0,7); ctx.stroke();
+  if(g>0){ ctx.fillStyle = !fed ? (Math.floor(t*4)%2?"#e8c14a":"#c99a2e") : s.munch&&Math.floor(t*6)%2 ? "#b9e88a" : "#7fd46a";
+    ctx.beginPath(); ctx.moveTo(px,py); ctx.arc(px,py,2.4,top,top+Math.min(1,g)*Math.PI*2); ctx.closePath(); ctx.fill(); }
+  if(g>1){ ctx.strokeStyle="#f4d23c"; ctx.lineWidth=1.3; ctx.beginPath(); ctx.arc(px,py,3.6,top,top+(g-1)/(HG_MAX-1)*Math.PI*2); ctx.stroke(); }
+  // the 90% line
+  const a=top+HG_PASS*Math.PI*2; ctx.strokeStyle="#fff"; ctx.lineWidth=0.8; ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px+Math.cos(a)*2.6,py+Math.sin(a)*2.6); ctx.stroke();
 }
 // fresh grass: the start meadow a shade brighter, and each lit tuft with its own soft glow
 function herdDrawGrazing(ctx,sh,t,RM){
@@ -28898,7 +28924,7 @@ function herdDrawHud(ctx,w,h,sh,t){
   ctx.textAlign="left";
   // who still needs to eat before the pen will take them
   { ctx.font="6px 'Press Start 2P',monospace";
-    const hungry=sh.sheep.filter(s=>!s.full).length, ready=sh.sheep.length-hungry;
+    const hungry=sh.sheep.filter(s=>!herdFed(s)).length, ready=sh.sheep.length-hungry;
     ctx.fillStyle = hungry ? "#e8c14a" : "#7fd46a";
     ctx.fillText(hungry ? "HUNGRY "+hungry+(ready?" · READY "+ready:"") : "ALL FED", 10, 43); }
   if(L.climb){
