@@ -893,7 +893,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.380a</span>
+          <span id="devToggle">v0.381a</span>
         </div>
       </div>
 
@@ -4595,7 +4595,14 @@ function atBedSpot(){
 const BOWL = { level:0 };
 const FBOWL = { level:0 };
 const POOS=[];
-const BAGS=[];        // poo in a bag, put down somewhere that is not the bin: still unpleasant
+const BAGS=[];
+// the ball's squash: a hit flattens it, and it springs back round with a wobble
+const BALLSQ={a:0,t0:0};
+function ballSquash(a){
+  if(SETTINGS.reduceMotion) return;
+  const now=performance.now(), cur=BALLSQ.a*Math.exp(-(now-BALLSQ.t0)/1000*9);
+  if(a>cur*0.8){ BALLSQ.a=Math.min(1,a); BALLSQ.t0=now; }
+}        // poo in a bag, put down somewhere that is not the bin: still unpleasant
 const TAPS={water:{t:0,combo:0},food:{t:0,combo:0}};
 // both hang high on the wall, above where BONES' head reaches, so tapping him for his
 // stats can never grab one by accident
@@ -5558,7 +5565,7 @@ function camBehavior(dt){
     BALL.hz += BALL.vh*dt;
     if(BALL.hz<=0){
       BALL.hz=0;
-      if(BALL.vh<-0.35){ BALL.vh=-BALL.vh*BALL_BOUNCE*0.6; beep(220,.03,"sine",.025); }
+      if(BALL.vh<-0.35){ ballSquash(Math.min(0.7,-BALL.vh*0.4)); BALL.vh=-BALL.vh*BALL_BOUNCE*0.6; beep(220,.03,"sine",.025); }
       else BALL.vh=0;
     }
     BALL.z += (BALL.settle.z-BALL.z)*Math.min(1,7*dt);
@@ -5583,6 +5590,7 @@ function camBehavior(dt){
     if(BALL.hz<=0){
       BALL.hz=0;
       if(BALL.vh<-0.25){                       // a real bounce
+        ballSquash(Math.min(0.9,-BALL.vh*0.45));
         BALL.vh=-BALL.vh*BALL_BOUNCE; trickBounce(); TRICK.floorB++;
         if(TRICK.floorB>=3 && TRICK.live){ TRICK.live=false; beep(160,.12,"sawtooth",.03); }
       } else {
@@ -7480,26 +7488,30 @@ function markWallTouch(wall){
    leaves, it rolls off the tipping lid instead. Only an OPEN bin swallows a ball, and it stays open
    until the throwing stops or a shot goes nowhere near it; then the lid hops back on, and the next
    ping is Hit 1 again.
-   THE RIM DECIDES, AND IT TAKES ITS TIME. The mouth is a true circle on the floor plane, BIN_H up:
-   a thick rim between BIN_RI and BIN_RO and a narrower throat inside it. A ball whose centre comes
-   down inside the lip, slow enough, drops CLEAN. One that meets the rim SITS on it for BIN_HOLD -
-   and if it came in glancing, rolls round it once or twice - drifting the way it is going to go,
-   then falls in (LIP) or off (OUT) on its own side. Nothing is rolled: the contact decides.
-   TWO CLEAN IN A ROW and he trots over, bumps it, it topples toward him, he noses the ball out -
-   and the bin rights itself and drags off somewhere a little further or ruder. A lip-in never
-   moves it. */
-const BIN_H=0.13, BIN_RO=0.064, BIN_RI=0.046;
+   THE RIM DECIDES, AND IT RATTLES. The mouth is the same oval as the bowls on the glass, BIN_H up:
+   a circle on the collider squashed front-to-back by binZK(), with a thick rim between BIN_RI and
+   BIN_RO and a narrower throat inside it. A ball whose centre comes down inside the lip, slow
+   enough, drops CLEAN. One that meets the rim HOPS on it - a real bounce under its own gravity,
+   still carrying where it was going, two or three hops dying each time, or, if it came in
+   glancing, a chattering roll round it once or twice - and its last hop takes it over the inside
+   edge (IN) or the outside one (OUT). Nothing is rolled: the contact decides.
+   ANY IN COUNTS. Two in a row and he trots over, bumps it, it topples toward him, he noses the
+   ball out - and the bin rights itself and drags off somewhere a little further or ruder. */
+const BIN_H=0.13, BIN_RO=0.076, BIN_RI=0.055;
 const BIN_REST={x:0.80, z:0.10};               // the far-right corner, under the window
-const BIN_HOLD=0.42;          // seconds a ball sits on the rim before it chooses
+const BIN_OVAL=0.34;          // the mouth's depth over its width on the glass: the bowls' own ratio
+const BIN_RIM_G=BALL_G*1.5;   // the rim's hops fall a little snappier than the room's lobs
 const BIN_IDLE=14;            // seconds of nobody throwing at an open bin before the lid goes back
 const BIN_FAR=0.34;           // a live shot landing this far off, never touching it, ends the round
 const BIN_FAST=1.15;          // ...and a ball moving this fast across the mouth clips the far rim
 const BIN_SPIN_V=0.30;        // tangential speed on contact that sets it rolling round the rim
+const BIN_SPIN_DECAY=0.45;    // ...and how fast that roll dies (per second, exponential)
 const BIN_LID_T=0.62, BIN_HOP_T=0.42, BIN_DRAG_T=0.9;
 const BIN={ init:false, x:BIN_REST.x, z:BIN_REST.z, lid:"on", lidT:0, lidX:0, lidZ:0, lidSide:1,
             crack:0, flashF:0, flashRed:false, flinch:0, flinchDir:1, idle:0, endT:0, cleanRun:0,
             lastRude:0, ball:null, rim:null, drop:0, ceremony:false, phase:"stand", phT:0, tip:0,
-            tipSide:1, from:null, to:null, dust:[], dustT:0, block:false, touched:false };
+            tipSide:1, from:null, to:null, dust:[], dustT:0, block:false, touched:false,
+            dropOX:0, dropOY:0, thudK:0, gulp:0 };
 // the poo bag: held in the finger, or left lying about
 const BAG={ held:false, x:0, y:0, t:0 };
 function binInit(){
@@ -7507,6 +7519,12 @@ function binInit(){
   BIN.init=true;
   if(S.bin && isFinite(S.bin.x) && isFinite(S.bin.z)){ BIN.x=clamp(S.bin.x,0.10,0.90); BIN.z=clamp(S.bin.z,0.08,0.70); }
   BIN.lastRude=binRude(BIN.x,BIN.z);
+}
+// floor units are not square: this is how much shorter the mouth is front-to-back than across, at
+// its depth, for a circle on the collider to draw as exactly the oval the bowls are drawn as
+function binZK(){
+  if(!(RMW>0 && RMH>0)) return 0.42;
+  return clamp(BIN_OVAL*rmUnit(BIN.z)/((ROOM.nearY-ROOM.backY)*RMH),0.2,1);
 }
 // how far it is from where the ball comes back to, plus a little for hugging a wall
 function binRude(x,z){
@@ -7521,28 +7539,30 @@ function binOnThrow(){ BIN.block=false; BIN.touched=false; BIN.idle=0; BIN.endT=
 function binFlight(px,pz,ph){
   binInit();
   if(BIN.phase!=="stand") return false;
-  const lidOn = BIN.lid!=="off" || BIN.block;
+  const lidOn = BIN.lid!=="off" || BIN.block, zk=binZK();
   const top=BIN_H+BALL_R*0.5;
-  // coming DOWN through the plane of the rim
+  // coming DOWN through the plane of the rim. dz is in the mouth's own round space (z over zk)
   if(FETCH.live && ph>=top && BALL.hz<top && BALL.vh<0){
     const k=(ph-top)/Math.max(1e-6,ph-BALL.hz);
     const cx=px+(BALL.x-px)*k, cz=pz+(BALL.z-pz)*k;
-    const dx=cx-BIN.x, dz=cz-BIN.z, r=Math.hypot(dx,dz);
+    const dx=cx-BIN.x, dz=(cz-BIN.z)/zk, r=Math.hypot(dx,dz);
     if(lidOn){
-      if(r<BIN_RO+BALL_R){ BALL.x=cx; BALL.z=cz; BALL.hz=top; binLidPing(dx,dz,r,true); return false; }
+      if(r<BIN_RO+BALL_R){ BALL.x=cx; BALL.z=cz; BALL.hz=top; binLidPing(dx,dz,r,true); ballSquash(0.8); return false; }
     } else {
       const hs=Math.hypot(BALL.vx,BALL.vz);
-      if(r<=BIN_RI-BALL_R*0.6 && hs<BIN_FAST){ BALL.x=cx; BALL.z=cz; binIn(true); return true; }
+      if(r<=BIN_RI-BALL_R*0.6 && hs<BIN_FAST){ BALL.x=cx; BALL.z=cz; binIn(true,dx/BIN_RO,dz/BIN_RO); return true; }
       if(r<BIN_RO+BALL_R*0.6){ BALL.x=cx; BALL.z=cz; binRimStart(dx,dz,Math.max(r,1e-4)); return true; }
     }
   }
   // the can itself: anything below the rim inside the outer wall goes back out on its own side
-  const dx=BALL.x-BIN.x, dz=BALL.z-BIN.z, r=Math.hypot(dx,dz);
+  const dx=BALL.x-BIN.x, dz=(BALL.z-BIN.z)/zk, r=Math.hypot(dx,dz);
   if(BALL.hz<BIN_H && r<BIN_RO+BALL_R){
     const ux=r>1e-5?dx/r:1, uz=r>1e-5?dz/r:0;
-    BALL.x=BIN.x+ux*(BIN_RO+BALL_R+0.002); BALL.z=BIN.z+uz*(BIN_RO+BALL_R+0.002);
-    const vr=BALL.vx*ux+BALL.vz*uz;
-    if(vr<0){ BALL.vx-=1.55*vr*ux; BALL.vz-=1.55*vr*uz; }
+    BALL.x=BIN.x+ux*(BIN_RO+BALL_R+0.002); BALL.z=BIN.z+uz*(BIN_RO+BALL_R+0.002)*zk;
+    // the wall's normal on the floor: the oval is flatter front to back, so it leans that way
+    let nx=ux, nz=uz/zk; const nl=Math.hypot(nx,nz)||1; nx/=nl; nz/=nl;
+    const vr=BALL.vx*nx+BALL.vz*nz;
+    if(vr<0){ BALL.vx-=1.55*vr*nx; BALL.vz-=1.55*vr*nz; ballSquash(Math.min(0.8,-vr*0.6)); }
     BALL.vx*=0.8; BALL.vz*=0.8;
     if(FETCH.live){
       if(BIN.lid==="on" && !BIN.block) binLidPing(dx,dz,r,false);
@@ -7592,58 +7612,87 @@ function binRimStart(dx,dz,r){
   // spin only off a glancing hit: a head-on one carries no sideways speed to keep
   const spin=Math.abs(vt)>BIN_SPIN_V && Math.abs(vt)>Math.abs(vr)*1.2;
   const turns=spin ? (Math.abs(vt)>0.75?2:1) : 0;
-  const w0=spin ? Math.sign(vt)*Math.max(6,Math.abs(vt)/rMid) : 0;
-  const T=BIN_HOLD+(spin ? turns*2*Math.PI/Math.abs(w0)*1.35 : 0);
-  BIN.rim={t:0, T, ang:Math.atan2(dz,dx), r0:clamp(r,BIN_RI+0.003,BIN_RO), w0, spin, out:lean<=0, turns};
+  const w0=spin ? Math.sign(vt)*Math.max(turns===2?11:7,Math.abs(vt)/rMid) : clamp(vt/rMid*0.35,-2.5,2.5);
+  // how long the roll lasts for the spin, slowing as it goes, to cover its turns
+  const roll=spin ? -Math.log(Math.max(0.05,1-turns*2*Math.PI*BIN_SPIN_DECAY/Math.abs(w0)))/BIN_SPIN_DECAY : 0;
+  // the first hop: up off the rim, harder the harder it came down
+  const vh0=clamp(-BALL.vh*0.42,0.34,0.85);
+  const R={t:0, ang:Math.atan2(dz,dx), r:clamp(r,BIN_RI+0.002,BIN_RO), w:w0, spin, turns, roll,
+           out:lean<=0, lean, h:0, vh:vh0, vr:0, hops:spin?99:(Math.abs(lean)<0.35?3:2), last:false, n:0};
+  BIN.rim=R; binRimPlan(R,vr);
   BIN.ball="rim"; BIN.touched=true;
   BALL.vx=0; BALL.vz=0; BALL.vh=0; BALL.hz=BIN_H+0.004;
-  BALL.hold=Math.max(BALL.hold||0, T+0.5);
+  BALL.hold=Math.max(BALL.hold||0,3);
   TRICK.live=false;
   BIN.flashF = SETTINGS.reduceMotion ? 0 : 1; BIN.flashRed = lean<=0;
-  sfxBinRim();
+  BIN.flinch=0.14; BIN.flinchDir=-Math.sign(ux)||1;
+  ballSquash(0.9);
+  sfxBinRim(1);
+}
+// one hop's worth of plan: where along the rim it comes down. The first follows its own momentum -
+// that is the lie - the middle ones creep toward the edge it is dying over, the last goes over it
+function binRimPlan(R,vIn){
+  const d=2*R.vh/BIN_RIM_G;
+  R.hops--;
+  R.last = R.spin ? R.t>=R.roll : R.hops<=0;
+  let rt;
+  if(R.last) rt = R.out ? BIN_RO+BALL_R+0.006 : BIN_RI-BALL_R*0.9;
+  else if(vIn!==undefined) rt=clamp(R.r+vIn*0.09+(R.out?0.004:-0.004),BIN_RI+0.002,BIN_RO-0.002);
+  else { const edge=R.out?BIN_RO-0.003:BIN_RI+0.003; rt=R.r+(edge-R.r)*(R.spin?0.3:0.65); }
+  R.vr=(rt-R.r)/Math.max(0.04,d);
 }
 function binRimTick(dt){
   const R=BIN.rim; if(!R){ BIN.ball=null; return; }
-  R.t+=dt; const k=Math.min(1,R.t/R.T);
-  if(R.spin) R.ang+=R.w0*(1-0.55*k)*dt;
-  else R.ang+=Math.sin(R.t*26)*0.6*(1-k)*dt;               // a little rock while it makes up its mind
-  // ...and it drifts the way it is dying, so you can see it coming
-  const tgt=R.out ? BIN_RO+0.004 : BIN_RI-0.003;
-  const e0=R.spin ? k : Math.max(0,(k-0.5)/0.5), e=e0*e0*(3-2*e0);
-  const rr=R.r0+(tgt-R.r0)*e;
-  BALL.x=BIN.x+Math.cos(R.ang)*rr; BALL.z=BIN.z+Math.sin(R.ang)*rr; BALL.hz=BIN_H+0.004;
-  if(R.t>=R.T) binRimResolve();
+  const zk=binZK();
+  R.t+=dt;
+  R.vh-=BIN_RIM_G*dt; R.h+=R.vh*dt; R.r+=R.vr*dt; R.ang+=R.w*dt;
+  R.w*=Math.exp(-(R.spin?BIN_SPIN_DECAY:3)*dt);
+  if(R.h<=0){
+    if(R.last){                                // over the edge: in, or off and away
+      BALL.x=BIN.x+Math.cos(R.ang)*R.r; BALL.z=BIN.z+Math.sin(R.ang)*R.r*zk; BALL.hz=BIN_H+0.004+R.h;
+      binRimResolve(); return;
+    }
+    // a bounce on the rim: up again, lower each time, a little rock of the can and a tick
+    R.h=0; R.n++;
+    const nextLast = R.spin ? R.t>=R.roll : R.hops<=1;
+    R.vh = nextLast ? Math.max(0.30,Math.min(0.42,-R.vh*0.7))
+         : R.spin ? 0.12+0.10*Math.max(0,1-R.t/Math.max(0.1,R.roll))
+         : Math.max(0.2,-R.vh*0.5);
+    if(!R.spin) R.w*=0.5;
+    binRimPlan(R);
+    const k=Math.max(0.35,1-R.n*0.22);
+    ballSquash(R.spin?0.25:0.7*k);
+    if(!R.spin || R.n%3===0) sfxBinRim(R.spin?0.45:k);
+    BIN.flinch=Math.max(BIN.flinch,0.08*k); BIN.flinchDir=-Math.sign(Math.cos(R.ang))||1;
+  }
+  BALL.x=BIN.x+Math.cos(R.ang)*R.r; BALL.z=BIN.z+Math.sin(R.ang)*R.r*zk; BALL.hz=BIN_H+0.004+Math.max(0,R.h);
 }
 function binRimResolve(){
   const R=BIN.rim; BIN.rim=null;
-  if(!R.out){ binIn(false); return; }
-  // OUT: off the lip, on its own side, and a rolling one keeps a little of its roll
-  const ux=Math.cos(R.ang), uz=Math.sin(R.ang), tx=-uz, tz=ux, sp=R.spin?Math.sign(R.w0)*0.14:0;
+  const c=Math.cos(R.ang), sn=Math.sin(R.ang);
+  if(!R.out){ BALL.hold=0; binIn(false,c*R.r/BIN_RO,sn*R.r/BIN_RO); return; }
+  // OUT: off the lip and away on its own side, keeping its hop and whatever roll it had left
+  const zk=binZK();
   BIN.ball=null;
-  BALL.x=BIN.x+ux*(BIN_RO+BALL_R+0.004); BALL.z=BIN.z+uz*(BIN_RO+BALL_R+0.004); BALL.hz=BIN_H;
-  BALL.vx=ux*0.30+tx*sp; BALL.vz=uz*0.30+tz*sp; BALL.vh=0.26;
+  BALL.vx=c*(R.vr+0.12) - sn*R.r*R.w; BALL.vz=(sn*(R.vr+0.12) + c*R.r*R.w)*zk; BALL.vh=Math.min(-0.1,R.vh);
   FETCH.live=false; FETCH.good=false; FETCH.hot=false;
   FETCH.label="OUT"; FETCH.labelT=1.3;
-  BIN.cleanRun=0; BALL.hold=Math.max(BALL.hold||0,0.6);
-  sfxBinRim(); setTimeout(()=>beep(300,.06,"sine",.03),70);
+  BIN.cleanRun=0; BALL.hold=0.6;
+  setTimeout(()=>beep(300,.06,"sine",.03),40);
 }
 // IN. A clean one is the perfect; a lip-in is a tick and the bin stays put
-function binIn(clean){
-  BIN.ball="in"; BIN.drop=1; BIN.dropFrom=BALL.hz;
+function binIn(clean,ox,oy){
+  BIN.ball="in"; BIN.drop=1; BIN.dropFrom=BALL.hz; BIN.dropOX=ox||0; BIN.dropOY=oy||0;
   BALL.vx=0; BALL.vz=0; BALL.vh=0; BALL.x=BIN.x; BALL.z=BIN.z; BALL.hz=0;
   BALL.needsFetch=true; BALL.hold=Math.max(BALL.hold||0,0.7);
   FETCH.live=false; FETCH.good=true; FETCH.hot=true; TRICK.live=false;
-  if(clean){
-    FETCH.label="IN"; S.fun=clamp(S.fun+5,0,100);
-    BIN.cleanRun++;
-    if(BIN.cleanRun>=2){ BIN.ceremony=true; BIN.cleanRun=0; }
-    sfxBinThump(1.25);
-  } else {
-    FETCH.label="LIP"; S.fun=clamp(S.fun+2,0,100); BIN.cleanRun=0;
-    sfxBinThump(0.85);
-  }
-  FETCH.labelT=1.3;
-  haptic(clean?[20,30,40]:18);
+  // a rim-in is still IN: same word, near enough the same fun, and it counts toward two in a row
+  FETCH.label="IN"; FETCH.labelT=1.3;
+  S.fun=clamp(S.fun+(clean?5:4),0,100);
+  BIN.cleanRun++;
+  if(BIN.cleanRun>=2){ BIN.ceremony=true; BIN.cleanRun=0; }
+  BIN.thudK = clean ? 1.25 : 1.1;               // the thud waits for it to hit the bottom
+  haptic(clean?[20,30,40]:[16,24,30]);
 }
 // he has come for it: out it comes, in front of the can, or out of its mouth if it is on its side
 function binRelease(tipped){
@@ -7680,7 +7729,11 @@ function binNewSpot(){
 function binTick(dt){
   binInit();
   BIN.flinch=Math.max(0,BIN.flinch-dt);
-  if(BIN.drop>0) BIN.drop=Math.max(0,BIN.drop-dt/0.24);
+  if(BIN.drop>0){
+    BIN.drop=Math.max(0,BIN.drop-dt/0.26);
+    if(BIN.drop<=0 && BIN.thudK){ sfxBinThump(BIN.thudK); BIN.thudK=0; BIN.gulp=1; }
+  }
+  if(BIN.gulp>0) BIN.gulp=Math.max(0,BIN.gulp-dt/0.42);
   // the lid
   if(BIN.lid==="fly"){ BIN.lidT+=dt; if(BIN.lidT>=BIN_LID_T){ BIN.lid="off"; sfxBinClatter(); } }
   else if(BIN.lid==="hop"){ BIN.lidT+=dt; if(BIN.lidT>=BIN_HOP_T){ BIN.lid="on"; sfxBinClack(); } }
@@ -7747,7 +7800,7 @@ function binUnderFinger(fx,fy){
   const w=RMW, h=RMH, u=rmUnit(BIN.z), v=(ROOM.nearY-ROOM.backY)*h;
   const cx=rmX(BIN.x,BIN.z)*w, by=rmY(BIN.z)*h, rx=BIN_RO*u, H=BIN_H*u, pad=16;
   const px=fx*w, py=fy*h;
-  return px>cx-rx-pad && px<cx+rx+pad && py>by-H-BIN_RO*v-pad*1.4 && py<by+BIN_RO*v+pad*0.6;
+  return px>cx-rx-pad && px<cx+rx+pad && py>by-H-rx*BIN_OVAL-pad*1.4 && py<by+rx*BIN_OVAL+pad*0.6;
 }
 
 /* ---- the sounds: short, dry, no stings */
@@ -7755,9 +7808,10 @@ function sfxBinBonk(){
   if(SETTINGS.sound){ try{ audioInit(); noiseBurst(0.05,900,1.6,0.10,AC.currentTime); }catch(e){} }
   beep(330,.05,"square",.045); setTimeout(()=>beep(250,.07,"square",.035),55);
 }
-function sfxBinRim(){
-  if(SETTINGS.sound){ try{ audioInit(); noiseBurst(0.02,3400,3,0.07,AC.currentTime); }catch(e){} }
-  beep(1560,.02,"square",.022);
+function sfxBinRim(k){
+  k=k===undefined?1:k;
+  if(SETTINGS.sound){ try{ audioInit(); noiseBurst(0.02,3000+600*k,3,0.07*k,AC.currentTime); }catch(e){} }
+  beep(1300+300*k,.02,"square",.022*k);
 }
 function sfxBinThump(k){
   if(SETTINGS.sound){ try{ audioInit(); noiseBurst(0.08,150,1.0,0.12*k,AC.currentTime); }catch(e){} }
@@ -7794,7 +7848,7 @@ function drawBin(ctx,w,h,t){
   binInit();
   const u=rmUnit(BIN.z), v=(ROOM.nearY-ROOM.backY)*h;
   const bx=rmX(BIN.x,BIN.z)*w, by=rmY(BIN.z)*h;
-  const rx=BIN_RO*u, ry=BIN_RO*v, H=BIN_H*u;
+  const rx=BIN_RO*u, ry=rx*BIN_OVAL, H=BIN_H*u;       // the bowls' oval, so it sits in the same room
   // the lid, lying where it landed
   if(BIN.lid==="off"){
     const lx=rmX(BIN.lidX,BIN.lidZ)*w, ly=rmY(BIN.lidZ)*h, lu=rmUnit(BIN.lidZ)/u;
@@ -7806,6 +7860,11 @@ function drawBin(ctx,w,h,t){
   const fl=(BIN.flinch>0 && !SETTINGS.reduceMotion) ? Math.sin(BIN.flinch*70)*BIN.flinch*7*BIN.flinchDir : 0;
   ctx.translate(bx+fl,by);
   if(BIN.tip) ctx.rotate(BIN.tip*BIN.tipSide);
+  // a ball landing in the bottom: the can takes it, squats and springs back
+  if(BIN.gulp>0 && !SETTINGS.reduceMotion){
+    const g=Math.sin((1-BIN.gulp)*Math.PI*2.5)*BIN.gulp;
+    ctx.scale(1+0.06*g,1-0.08*g);
+  }
   // the can: straight sides, a hair narrower at the foot
   ctx.fillStyle="#0e0e10";
   ctx.beginPath();
@@ -7824,11 +7883,13 @@ function drawBin(ctx,w,h,t){
     const ki=BIN_RI/BIN_RO;
     ctx.fillStyle="#000"; ctx.beginPath(); ctx.ellipse(0,-H,rx*ki,ry*ki,0,0,7); ctx.fill();
     ctx.strokeStyle="#6a6a72"; ctx.lineWidth=1; ctx.beginPath(); ctx.ellipse(0,-H,rx*ki,ry*ki,0,0,7); ctx.stroke();
-    // a ball on its way down inside
+    // a ball on its way down inside: from where it went over, falling, swallowed by the front lip
     if(BIN.ball==="in" && BIN.drop>0){
-      ctx.save(); ctx.beginPath(); ctx.ellipse(0,-H,rx*ki,ry*ki,0,0,7); ctx.clip();
-      const br=Math.max(3,8*rmSc(BIN.z)), yy=-H-(BIN.dropFrom-BIN_H)*u*BIN.drop+(1-BIN.drop)*ry*1.8;
-      ctx.fillStyle="#f22"; ctx.beginPath(); ctx.arc(0,yy,br,0,7); ctx.fill();
+      ctx.save(); ctx.beginPath(); ctx.rect(-rx*3,-H-rx*8,rx*6,rx*8); ctx.ellipse(0,-H,rx,ry,0,0,7); ctx.clip();
+      const k=BIN.drop, f=1-k, br=Math.max(3,8*rmSc(BIN.z)), hA=Math.max(0,BIN.dropFrom-BIN_H)*u;
+      const xx=(BIN.dropOX||0)*rx*k, yy=-H+(BIN.dropOY||0)*ry*k-hA*(1-f*f)+f*f*(ry*ki+br*2.4);
+      ctx.fillStyle="#f22"; ctx.beginPath(); ctx.arc(xx,yy,br,0,7); ctx.fill();
+      ctx.strokeStyle="#fff"; ctx.lineWidth=Math.max(1.5,2*rmSc(BIN.z)); ctx.stroke();
       ctx.restore();
     }
   }
@@ -7853,9 +7914,9 @@ function drawBin(ctx,w,h,t){
     const lu=rmUnit(fz);
     const lx=rmX(fx,fz)*w, ly=rmY(fz)*h-arc*lu;
     const rot=fly ? k*Math.PI*2 : 0;                      // it spins once on the way down
-    const sq=Math.max(0.12,Math.abs(Math.cos(rot)));
+    const sq=BIN_OVAL+(0.85-BIN_OVAL)*Math.abs(Math.sin(rot));   // flat, face-on, flat again
     ctx.save(); ctx.translate(lx,ly); ctx.rotate(fly?Math.sin(rot)*0.6:0);
-    binLidShape(ctx,0,0,BIN_RO*lu,BIN_RO*v*sq,!fly||k>0.9);
+    binLidShape(ctx,0,0,BIN_RO*lu,BIN_RO*lu*sq,!fly||k>0.9);
     ctx.restore();
   }
   // the scrape: two frames of dust per puff
@@ -8521,9 +8582,12 @@ function drawCam(t){
        the ball, and with the deck line doing the same job a foot lower it was two slingshots
        arguing over one gesture. The aiming UI lives on #slingcv now and nowhere else; all the
        room keeps is the ball, and the prompt that tells you which way to pull it. */
-    ctx.fillStyle="#f22"; ctx.beginPath(); ctx.arc(bpx,bpy,br,0,7); ctx.fill();
+    // squashed flat on a hit and springing back: bottom stays put, so it reads as landing on things
+    const sqT=(performance.now()-BALLSQ.t0)/1000, sq=BALLSQ.a*Math.exp(-sqT*9)*Math.cos(sqT*34);
+    const sx=br*(1+0.34*sq), sy=br*(1-0.34*sq), sby=bpy+br*0.34*sq;
+    ctx.fillStyle="#f22"; ctx.beginPath(); ctx.ellipse(bpx,sby,sx,sy,0,0,7); ctx.fill();
     ctx.strokeStyle="#fff"; ctx.lineWidth=Math.max(1.5,2*bsc);
-    ctx.beginPath(); ctx.arc(bpx,bpy,br,0,7); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(bpx,sby,sx,sy,0,0,7); ctx.stroke();
     if(TRICK.live && (TRICK.mult>1 || TRICK.ticks>0)){
       ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
       if(TRICK.mult>1){
