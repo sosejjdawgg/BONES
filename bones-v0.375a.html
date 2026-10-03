@@ -882,7 +882,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.374a</span>
+          <span id="devToggle">v0.375a</span>
         </div>
       </div>
 
@@ -26147,7 +26147,7 @@ function herdClimbLayout(seed){
     logs.push({x0, y0:y-tilt/2, x1, y1:y+tilt/2, r:7, stump:left?1:0, seed:rnd()*1000});
   }
   M5_BANKS.forEach((by,i)=>{
-    const left=i%2===0, gap=72+rnd()*18;
+    const left=i%2===0, gap=86+rnd()*16;                   // wide enough to pass the choke hole in single file
     const xs=left?M5_X0-4:M5_X1+4, xe=left?M5_X1-gap:M5_X0+gap, dir=left?1:-1;
     const stones=[]; let x=xs, prevR=0;
     for(let k=0;k<9;k++){
@@ -26271,7 +26271,8 @@ function herdClimbSetup(sh){
   const rnd=herdRng(sh.seed^0x51f15e);
   for(let i=0;i<5;i++){
     let x=0,y=0,tries=0;
-    do{ x=130+rnd()*100; y=2250+rnd()*70; tries++; } while(tries<80 && sh.sheep.some(o=>Math.hypot(o.x-x,o.y-y)<24));
+    do{ x=130+rnd()*100; y=2250+rnd()*70; tries++; }
+    while(tries<80 && (sh.sheep.some(o=>Math.hypot(o.x-x,o.y-y)<24) || HERD.holes.some(h=>Math.hypot(h.x-x,h.y-y)<HD_HOLE_PULL+18)));
     const s=herdNewSheep(sh,x,y,i===0); s.joined=true; sh.sheep.push(s);
   }
   sh.started=5;
@@ -26340,7 +26341,10 @@ function herdClimbTick(sh,dt){
     // the flock is over a bank and this one is still under it: it goes to them
     else if(HERD.layout.banks.some(b=>b.y<s.y-4 && b.y>cy+4) || herdLogBetween(s,cy)){ tx=cx; ty=cy; }
     // with a bank of stones between, it makes for the gap first, not the rocks
-    if(tx!=null) for(const b of HERD.layout.banks) if(b.y<s.y-4 && b.y>ty){ tx=b.left?M5_X1-b.gap/2:M5_X0+b.gap/2; ty=b.y; break; }
+    if(tx!=null) for(const b of HERD.layout.banks) if(b.y<s.y-4 && b.y>ty){
+      tx=b.left?M5_X1-b.gap/2:M5_X0+b.gap/2;
+      ty = (Math.abs(s.x-tx)>b.gap*0.3 && s.y>b.y+30) ? b.y+104 : b.y-10;      // line up under the gap first, below its hole
+      break; }
     // and round the open end of a fallen tree that is in its way
     if(tx!=null){ const l=herdLogBetween(s,ty); if(l){ tx=l.open; ty=l.y; } }
     if(tx!=null){ const dx=tx-s.x, dy=ty-s.y, dd=Math.hypot(dx,dy)||1; s.lagX=dx/dd; s.lagY=dy/dd; }
@@ -27316,9 +27320,18 @@ function herdMakeHoles(lv,seed){
   // from its gap as it gets, so the way through stays clear and a burrow is a danger to a sheep that
   // drifts into the squirrel's corner or is sent there
   if(L.climb){
-    herdClimbLayout(seed).banks.forEach((b,i)=>{
+    const lay=herdClimbLayout(seed);
+    lay.banks.forEach((b,i)=>{
       if(i!==1 && i!==2 && i!==4) return;
       out.push({x:b.left ? M5_X0+40+rnd()*22 : M5_X1-40-rnd()*22, y:b.y+56+rnd()*18});
+    });
+    /* THE CHOKE POINTS. A hole tucked in under the end of every bank, right at the mouth of its gap:
+       the way through is still there - between the hole and the drop - but it is a single file, so
+       a flock that comes at the gap loose, or cuts the corner, feeds the hole. Tight or nothing. */
+    lay.banks.forEach((b,i)=>{
+      if(i===0) return;                 // not the first: the flock starts right under it
+      const edge = b.left ? Math.max(...b.stones.map(s=>s.x+s.r)) : Math.min(...b.stones.map(s=>s.x-s.r));
+      out.push({x:edge+(b.left?-12:12), y:b.y+58+rnd()*6, choke:true});
     });
     return out;
   }
