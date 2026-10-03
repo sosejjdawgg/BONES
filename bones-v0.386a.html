@@ -664,6 +664,57 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
 .hm-bank{font-size:8px;color:#fff;letter-spacing:1px;background:rgba(10,14,8,.72);padding:5px 7px}
 .hm-title{font-size:14px;letter-spacing:3px;margin-top:4px;color:#fff;text-shadow:2px 2px 0 #1b140c,-1px -1px 0 #1b140c,1px -1px 0 #1b140c,-1px 1px 0 #1b140c}
 .hm-subline{font-size:7px;color:#fff;letter-spacing:2px;text-shadow:1px 1px 0 #1b140c,-1px -1px 0 #1b140c,1px -1px 0 #1b140c,-1px 1px 0 #1b140c}
+#hRecap{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;padding:14px;
+  background:rgba(4,8,3,.72);animation:hrIn .35s ease both;overflow-y:auto}
+#hRecap.hidden{display:none}
+@keyframes hrIn{from{opacity:0}to{opacity:1}}
+.hr-card{width:100%;max-width:360px;border:3px solid #fff;background:#10160c;padding:14px 14px 12px;display:flex;flex-direction:column;
+  gap:10px;align-items:stretch;text-align:center;animation:hrPop .5s cubic-bezier(.2,1.6,.4,1) both;box-shadow:0 0 0 3px #1b140c,0 10px 0 rgba(0,0,0,.35)}
+@keyframes hrPop{from{transform:scale(.6) translateY(20px);opacity:0}to{transform:none;opacity:1}}
+.hr-top{display:flex;flex-direction:column;gap:6px}
+.hr-kick{font-size:7px;letter-spacing:2px;color:#e8c14a}
+.hr-field{font-size:13px;letter-spacing:1px;color:#fff}
+.hr-head{font-size:15px;color:#7fd46a;letter-spacing:1px;text-shadow:2px 2px 0 #000;animation:hrHead 1.2s ease .2s both}
+@keyframes hrHead{0%{transform:scale(.4);opacity:0}45%{transform:scale(1.2);opacity:1}70%{transform:scale(.95)}100%{transform:none}}
+.hr-stars{display:flex;justify-content:center;gap:14px}
+.hr-star{display:flex;flex-direction:column;align-items:center;gap:5px;width:84px}
+.hr-star b{width:34px;height:34px;background:#3a3a34;clip-path:polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)}
+.hr-star.on b{background:#f4d23c;animation:hrStar .55s cubic-bezier(.2,1.8,.4,1) var(--d) both;filter:drop-shadow(0 0 6px rgba(244,210,60,.8))}
+@keyframes hrStar{0%{transform:scale(0) rotate(-90deg)}100%{transform:none}}
+.hr-star i{font-style:normal;font-size:5px;letter-spacing:1px;color:#8a8a82;line-height:1.4}
+.hr-star.on i{color:#f6f2e8}
+.hr-tiles{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:6px}
+.hr-tile{border:2px solid rgba(255,255,255,.3);padding:7px 2px 5px;display:flex;flex-direction:column;align-items:center;gap:5px;background:rgba(0,0,0,.35)}
+.hr-tile b{font-size:13px;color:#fff;font-weight:normal}
+.hr-tile.big{border-color:#7fd46a}
+.hr-tile.big b{font-size:18px;color:#7fd46a}
+.hr-tile small{font-size:8px;color:#9a9a92;margin-top:-4px}
+.hr-tile i{font-style:normal;font-size:5px;letter-spacing:1px;color:#b9b9a8}
+.hr-tile.bad b{color:#ff6a5f}
+.hr-lost{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 8px;font-size:6px;letter-spacing:1px;color:#ff8a7f}
+.hr-note{font-size:6px;letter-spacing:1px;color:#9fb7ff}
+.hr-pay{display:flex;justify-content:center;align-items:baseline;gap:14px}
+.hr-cash{font-size:20px;color:#f4d23c;text-shadow:2px 2px 0 #000}
+.hr-xp{font-size:8px;color:#9fd3ff}
+.hr-badge{align-self:center;font-size:7px;letter-spacing:1px;color:#1b140c;background:#7fd46a;padding:4px 8px;animation:hrHead 1s ease 1.2s both}
+.hr-goals{display:flex;flex-direction:column;gap:4px;text-align:left;border-top:1px solid rgba(255,255,255,.15);padding-top:8px}
+.hr-goal{font-size:6px;letter-spacing:1px;color:#8a8a82}
+.hr-goal.done{color:#7fd46a}
+.hr-goal b{color:#9fd3ff;font-weight:normal}
+.hr-goal em{font-style:normal;color:#6a6a62}
+.hr-move{font-size:7px;letter-spacing:1px;color:#f6f2e8}
+.hr-move b{color:#e8c14a;font-weight:normal}
+.hr-tag{font-size:6px;letter-spacing:1px;color:#b9b9a8;line-height:1.6}
+.hr-tag.tip{color:#e8c14a}
+.hr-saved{font-size:5px;letter-spacing:1px;color:#6a8a5a}
+.hr-saved.bad{color:#ff6a5f}
+.hr-btns{display:flex;gap:8px;margin-top:2px}
+.hr-btns button{flex:1;font-size:9px;padding:11px 6px;border:2px solid #fff;background:#000;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px}
+.hr-btns .hr-next{flex:1.6;background:#e8c14a;color:#1b140c;border-color:#1b140c;animation:hrNext 1.4s ease-in-out 1.8s infinite}
+.hr-btns .hr-next small{font-size:6px;letter-spacing:1px}
+.hr-btns .hr-next.done{background:#7fd46a;animation:none}
+@keyframes hrNext{50%{box-shadow:0 0 0 3px rgba(232,193,74,.6)}}
+#hRecap.rm,#hRecap.rm *{animation:none !important}
 #hmCard{display:flex;gap:12px;align-items:center;border:3px solid #fff;padding:10px;width:92%;max-width:360px;background:rgba(10,14,8,.84)}
 #hmCard.hidden{display:none}
 #hmCardImg{width:58px;height:58px;object-fit:cover;border:2px solid #fff;image-rendering:pixelated;flex:none}
@@ -763,22 +814,12 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
 #herdPanel{z-index:53;touch-action:none}
 #herdcv{flex:1;min-height:0;width:100%;display:block;touch-action:none;image-rendering:pixelated}
 #hBack{position:absolute;top:8px;left:8px;z-index:2;font-size:7px;padding:6px 8px;background:#000}
-#hCheckout{position:absolute;right:12px;bottom:88px;z-index:2;display:flex;flex-direction:column;
   align-items:center;gap:6px;padding:8px 10px;background:#000;border:3px solid #fff}
-#hCheckout.hidden{display:none}
-#hCheckout .hc-box{border:2px solid #fff;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:12px}
-#hCheckout .hc-lb{font-size:6px;letter-spacing:1px}
-#hCheckout:not(.hidden){animation:hcGlow 1.6s ease-in-out infinite}
-#hCheckout.pulse1{animation:hcPulse .7s ease 1,hcGlow 1.6s ease-in-out .7s infinite}
-@keyframes hcGlow{50%{box-shadow:0 0 0 3px rgba(232,193,74,.85),0 0 20px rgba(232,193,74,.55)}}
-#hCheckout .hc-box{background:#e8c14a;color:#1b140c;border-color:#1b140c}
 #hCtrl button{position:relative;overflow:hidden;transition:transform .06s ease,opacity .2s ease}
 #hCtrl button:active{transform:scale(.96)}
 #hCtrl button::after{content:"";position:absolute;left:0;top:0;bottom:0;width:calc(var(--cd,0)*100%);
   background:rgba(255,255,255,.22);pointer-events:none}
 #hCtrl button.tired{opacity:.4}
-@keyframes hcPulse{0%{transform:scale(1)}40%{transform:scale(1.18)}100%{transform:scale(1)}}
-body.reduce-motion #hCheckout.pulse1{animation:none}
 #herdToast{position:absolute;left:50%;top:100px;transform:translateX(-50%);background:#000;border:3px solid #fff;
   padding:8px 12px;font-size:8px;z-index:61;display:none;max-width:88%;text-align:center;line-height:1.6;pointer-events:none}
 #herdToast.red{border-color:#f22;color:#f22}
@@ -904,7 +945,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.385a</span>
+          <span id="devToggle">v0.386a</span>
         </div>
       </div>
 
@@ -1304,7 +1345,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
   <div id="herdPanel" aria-label="Sheep herding field">
     <canvas id="herdcv"></canvas>
     <button class="tiny" id="hBack">&#10005; EXIT</button>
-    <button id="hCheckout" class="hidden" aria-label="Check out"><span class="hc-box">&#10003;</span><span class="hc-lb">CHECK OUT</span></button>
+    <div id="hRecap" class="hidden" role="dialog" aria-label="Round recap"></div>
     <div class="ctrlrow" id="hCtrl"><button id="hBark">BARK</button><button id="hDash">DASH</button></div>
   </div>
   <div id="herdToast"></div>
@@ -2185,7 +2226,7 @@ const S = {
   str:10, stam:10, vit:10, pts:0, trainAcc:{},
   lastSaveAt:null, lastSaveDay:0, lastSaveH:0,
   /* SHEEP HERDING. levels[n] = {cleared, bestPenned, bestCash, visits}; `shift` is the one live
-     shift, whole — sheep, dog, road, wolves, overtime — so a save made mid-shift resumes it exactly.
+     shift, whole — sheep, dog, road, wolves, the farmer's drop — so a save made mid-shift resumes it exactly.
      Holes are NOT stored: they are regenerated from shift.seed, which is what "seed once per
      shift" means and keeps the save small. */
   herd:{applied:false, mailed:false, seenTip:false, banked:0, levels:{}, shift:null, flock:0, st:{2:0,3:0,4:0,5:0}, top:0, repl:0}
@@ -26688,11 +26729,11 @@ function drawPaperboy(t){
 const HF_W=360, HF_H=640;                 // the paddock, in field units; the canvas letterboxes it
 const HF_PEN_Y=96, HF_GATE_X=180, HF_GATE_W=96;
 const HF_ROAD_Y=320, HF_ROAD_H=40;
-const HF_DROP_Y=606;                      // the safe edge the overtime tractor drives
+const HF_DROP_Y=606;                      // the safe edge the farmer's tractor drives
 const HF_CAP=16;                          // most sheep ever loose in one field at once
 /* ================================================================= THE MOUNTAIN: Lv.4 BASE, Lv.5 THE CLIMB
    Two new paddocks on top of the three that exist, sharing every rule they already have (the dog's
-   verbs, the flock, the pen, the pay, the checkout) and adding only what the mountain is about.
+   verbs, the flock, the pen, the pay, the recap) and adding only what the mountain is about.
    - BASE is still the 360x640 paddock, but the top third is a rock chute the flock has to cross,
      and three boulders take turns rolling down its three gutters. You watch the smash, then you
      move the cloud through the quiet gutter. Cute, not grim: they telegraph, they roll slower than
@@ -27768,32 +27809,31 @@ const HERD_CUR="£";                       // the farm pays in pounds — see th
 const HERD_LOSS=3;                        // what a lost sheep costs, every level
 const HERD_PLAYABLE=5;                    // 6-7 are on the map as plan only
 const HERD_LV={
-  1:{n:"OPEN FIELD",   pay:1, sheep:[4,4], quota:4, need:0, holes:[1,1], road:false, wolves:0, overtime:false, par:45,
+  1:{n:"OPEN FIELD",   pay:1, holes:[1,1], road:false, wolves:0, par:90,
      hint:"£1 A HEAD", tip:"THEY EAT. THEN THEY CROSS."},
-  2:{n:"COUNTRY ROAD", pay:2, sheep:[10,10], quota:10, need:4, holes:[3,3], road:true,  wolves:0, overtime:true,
+  2:{n:"COUNTRY ROAD", pay:2, holes:[3,3], road:true,  wolves:0, par:120,
      arrow:true, hint:"£2 A HEAD", tip:"LET THE RIG PASS."},
-  3:{n:"THE WOLFPACK", pay:2, sheep:[15,15], quota:15, need:10, holes:[4,5], road:false, wolves:2, wolvesOT:3,
-     overtime:true, hint:"£2 A HEAD", tip:"KEEP THEM TIGHT."},
-  4:{n:"BASE", pay:6, sheep:[6,6], quota:6, need:15, holes:[1,1], road:false, wolves:0, overtime:true, otLoad:2, flock:8,
-     chute:true, mountain:true, hint:"£6 A HEAD", tip:"WAIT FOR THE SMASH. THEN PUSH.", teaser:"THE LANE GETS THIN.",
-     star3:{n:8, lbl:"EVERY LAST ONE"}},
-  5:{n:"THE CLIMB", pay:10, sheep:[5,5], quota:18, need:30, holes:[3,3], road:false, wolves:0, overtime:false,
+  3:{n:"THE WOLFPACK", pay:2, holes:[4,5], road:false, wolves:2, wolvesDrop:3, par:150,
+     hint:"£2 A HEAD", tip:"KEEP THEM TIGHT."},
+  4:{n:"BASE", pay:6, holes:[1,1], road:false, wolves:0, par:150,
+     chute:true, mountain:true, hint:"£6 A HEAD", tip:"WAIT FOR THE SMASH. THEN PUSH.", teaser:"THE LANE GETS THIN."},
+  5:{n:"THE CLIMB", pay:10, holes:[3,3], road:false, wolves:0, par:300,
      climb:true, mountain:true, fieldH:2400, gateX:210, arrow:true, hint:"£10 A HEAD",
-     tip:"NO GOING BACK DOWN. KEEP THEM CLOSE.", star3:{n:22, lbl:"22+ PENNED"}},
+     tip:"NO GOING BACK DOWN. KEEP THEM CLOSE."},
   6:{n:"ROCKFALL",   plan:true},
   7:{n:"SUMMIT",     plan:true}
 };
 /* BONUS GOALS. Two a field, each about how that field is played, each worth XP the first time it is
-   done on a shift that checks out. The counters live on the shift (sh.bx) and only ever count. */
+   done on a round that is finished. The counters live on the shift (sh.bx) and only ever count. */
 const HERD_GOALS={
   1:[{lbl:"NO BARKING",          xp:40,  ok:sh=>sh.bx.bark===0},
-     {lbl:"ALL IN UNDER 30S",    xp:40,  ok:sh=>(sh.quotaT!=null?sh.quotaT:sh.t)<=30}],
+     {lbl:"DONE IN UNDER 90S",   xp:40,  ok:sh=>sh.t<=90}],
   2:[{lbl:"NO CLOSE CALLS",      xp:60,  ok:sh=>sh.bx.near===0},
      {lbl:"3 BARKS OR FEWER",    xp:60,  ok:sh=>sh.bx.bark<=3}],
   3:[{lbl:"A WOLF DOWN A HOLE",  xp:80,  ok:sh=>(sh.wolvesDown||0)>=1},
      {lbl:"SEE OFF 3 ATTACKS",   xp:80,  ok:sh=>sh.bx.fend>=3}],
   4:[{lbl:"NEVER BONKED",        xp:100, ok:sh=>sh.bx.bonk===0},
-     {lbl:"QUOTA IN UNDER 90S",  xp:100, ok:sh=>sh.quotaT!=null && sh.quotaT<=90}],
+     {lbl:"DONE IN UNDER 2 MIN", xp:100, ok:sh=>sh.t<=120}],
   5:[{lbl:"SHOO 3 EAGLES",       xp:150, ok:sh=>sh.bx.shoo>=3},
      {lbl:"SPOIL 2 SQUIRRELS",   xp:150, ok:sh=>sh.bx.eek>=2}]
 };
@@ -27819,10 +27859,10 @@ const HD_HOLE_R=15, HD_HOLE_PULL=30, HD_HOLE_EAT=7, HD_HOLE_SUCK=72;   // a soft
 const HD_ROAD_GAPS=[8.5,6.5,10.0,7.5];          // two lanes now, so each one rests longer: there is still
 const HD_ROAD_GAPS2=[9.5,11.0,7.5,10.5];        // a moment the whole road is clear, it just has to be watched for        // seconds between rigs — a readable rotation, not dice
 const HD_ROAD_WARN=0.8, HD_ROAD_SPD=150, HD_RIG_W=44, HD_RIG_H=24;
-const HD_OT_FIRST=4, HD_DROP_FIRST=9;                          // the first overtime run comes this soon after quota
+const HD_DROP_FIRST=20;                                        // the farmer's tractor brings the rest at 20 seconds
 const HD_WOLF_PROWL=58, HD_WOLF_STALK=34, HD_WOLF_LUNGE=150, HD_WOLF_BLOCK_R=34, HD_WOLF_BARK_R=130;
 // the pack: how far out it circles, how fast, how tight it runs, the gap between strikes, the breather
-// it gives after an overtime drop, how much a sheep's closeness to the pack outweighs its loneliness,
+// it gives after the farmer's drop, how much a sheep's closeness to the pack outweighs its loneliness,
 // and how far one bark pushes the whole pack back
 const HD_PACK_RAD=150, HD_PACK_ORBIT=0.26, HD_PACK_SLOT=22, HD_PACK_CD=[4,6], HD_PACK_GRACE=3.5,
       HD_PACK_REACH=1.6, HD_PACK_LONELY=400, HD_PACK_PUSH=70, HD_PACK_PUSH_T=2.5;
@@ -27848,6 +27888,15 @@ function herdUnlocked(lv){
   return !!S.herd.applied && herdStation(lv)>0;       // anywhere else: only while sheep are waiting there
 }
 function herdTop(){ return clamp(S.herd.top||0,0,HERD_FLOCK); }
+// the flock was thirty once: a save from then is trimmed to fit, from the farm end of the line up,
+// so whatever was furthest along keeps its place
+function herdFlockFit(){
+  const st=S.herd.st||(S.herd.st={2:0,3:0,4:0,5:0});
+  let over=(S.herd.top||0)+[2,3,4,5].reduce((a,k)=>a+(st[k]||0),0)-HERD_FLOCK;
+  for(const k of [2,3,4,5]){ if(over<=0) break; const d=Math.min(st[k]||0,over); st[k]=(st[k]||0)-d; over-=d; }
+  if(over>0) S.herd.top=Math.max(0,(S.herd.top||0)-over);
+  S.herd.repl=clamp(S.herd.repl||0,0,HERD_FLOCK);
+}
 function herdStation(lv){
   const st=S.herd.st||(S.herd.st={2:0,3:0,4:0,5:0});
   if(lv===1){ let up=herdTop(); for(const k of [2,3,4,5]) up+=st[k]||0; return Math.max(0,HERD_FLOCK-up); }
@@ -27907,8 +27956,10 @@ function herdMailCheck(){
 }
 
 /* ---------------------------------------------------------------- THE MAP — the hub */
-function herdOpenMap(card){
+function herdOpenMap(card,after){
   HERD.shown=true; HERD.active=false; HERD.joy=null;
+  herdFlockFit();
+  herdRecapHide();
   $("#herdPanel").classList.remove("show");
   herdRenderMap();
   const c=$("#hmCard");
@@ -27939,7 +27990,16 @@ function herdOpenMap(card){
         if(n){ n.classList.remove("hm-shake"); void n.offsetWidth; n.classList.add("hm-shake"); }
         setTimeout(()=>herdMapMovers(card.locked, 1, 1, true), 450); }
     }, 350);
-  } else { clearInterval(HERD.cardTimer); c.classList.add("hidden"); }
+  } else {
+    clearInterval(HERD.cardTimer); c.classList.add("hidden");
+    // straight from the recap: no card, but the sheep still walk the line to where they wait now
+    if(after) setTimeout(()=>{
+      if(after.move && after.move.n>0) herdMapMovers(after.move.from, after.move.to, Math.min(8,after.move.n));
+      if(after.locked){ const n=document.querySelector('.hm-node[data-lv="'+after.locked+'"]');
+        if(n){ n.classList.remove("hm-shake"); void n.offsetWidth; n.classList.add("hm-shake"); }
+        setTimeout(()=>herdMapMovers(after.locked, 1, 1, true), 450); }
+    }, 350);
+  }
   $("#herdMap").classList.add("show");
   herdDrawMapBg();
   requestAnimationFrame(herdDrawMapBg);          // again once fonts and the card have settled
@@ -28083,13 +28143,13 @@ function herdStartBand(lv){
 }
 /* Up to five on the start grass, the rest standing just behind them - all awake, all grazing. On the
    farm, any replacements for sheep lost up the hill come walking out of the barn instead. */
-/* A field visit starts with FIVE on the start grass, fed and ready. The rest of this field's waiting
-   sheep are brought out by the farmer's tractor, five at a time (herdOvertimeTick), and come off the
+/* A field visit starts with SEVEN on the start grass, fed and ready. The rest of this field's waiting
+   sheep are brought out by the farmer's tractor in one run (herdDropTick), and come off the
    trailer hungry. On the farm, replacements for sheep lost up the hill walk out of the barn instead. */
 function herdSpawnFlock(sh){
   const rnd=herdRng(sh.seed^0x51f15e);
   const n=sh.visitN, A=herdStartBand(sh.lv);
-  const front=Math.min(5,n);
+  const front=Math.min(HERD_START_N,n);
   const repl = (sh.lv===1 && !HERD_LV[1].mountain) ? Math.min(n-front, S.herd.repl||0) : 0;
   const y0=Math.max(A.y0,A.y1-60), y1=A.y1;
   for(let i=0;i<front;i++){
@@ -28098,7 +28158,7 @@ function herdSpawnFlock(sh){
     while(tries<200 && (HERD.holes.some(h=>Math.hypot(h.x-x,h.y-y)<HD_HOLE_PULL+20)
                         || sh.sheep.some(o=>Math.hypot(o.x-x,o.y-y)<(tries>120?14:A.gap))));
     const s=herdNewSheep(sh,clamp(x,14,HF_W-14),y,i===0);           // one ram per flock — he bolts first
-    s.graze=HG_MAX;                                                    // the five are ready
+    s.graze=HG_MAX;                                                    // the first seven are ready
     sh.sheep.push(s);
   }
   // the replacements: out of the barn door, round by the hedge, down onto the start grass
@@ -28130,15 +28190,15 @@ function herdNewShift(lv){
   const L=HERD_LV[lv];
   herdGeom(lv);
   const sh={v:1, lv, seed:(Math.random()*4294967296)>>>0, t:0, started:0, penned:0, cash:0,
-            quotaMet:false, lastOut:null, lost:{hole:0,road:0,wolf:0,off:0,rock:0,eagle:0,mtn:0}, nextId:1,
+            lastOut:null, lost:{hole:0,road:0,wolf:0,off:0,rock:0,eagle:0,mtn:0}, nextId:1,
             sheep:[], wolves:[],
             dog:{x:HG.gx, y:HG.H-16, vx:0, vy:0, faceI:6, faceAng:-Math.PI/2,
                  dashT:0, dashVx:0, dashVy:0, dashCd:0, barkCd:0, plantT:0, gassed:false},
             road: L.road ? {ph:"gap", t:3.5, idx:0, dir:1, x:0, y:HF_ROAD_Y+6, lane:0} : null,
             road2: L.road ? {ph:"gap", t:6.2, idx:0, dir:-1, x:0, y:HF_ROAD_Y-8, lane:1} : null,
             ot:{on:false, nextT:0, truck:null, drops:0},
-            // this visit: everyone waiting at this field's station, and what it takes to check out
-            visitN:herdStation(lv), quota:Math.max(1,Math.min(L.quota,herdStation(lv))), walkers:[], strand:[],
+            // this visit: everyone waiting at this field's station - the round is all of them
+            visitN:Math.min(HERD_FLOCK,herdStation(lv)), walkers:[], strand:[],
             bx:{bark:0, dash:0, near:0, bonk:0, shoo:0, eek:0, fend:0}};
   S.herd.shift=sh;
   HERD.holes=herdMakeHoles(lv,sh.seed);
@@ -28151,6 +28211,7 @@ function herdNewShift(lv){
   return sh;
 }
 function herdStart(lv){
+  herdFlockFit();
   let sh=S.herd.shift;
   const resumed = !!(sh && sh.lv===lv);
   herdGeom(lv);
@@ -28163,10 +28224,10 @@ function herdStart(lv){
   const tip = (lv===1 && !S.herd.seenTip) ? L.tip : (!resumed ? L.tip : null);
   if(lv===1) S.herd.seenTip=true;
   { const bt=resumed?1.8:(tip?3.6:2.4);
-    HERD.banner={text:resumed?"BACK ON "+L.n:L.n, sub:tip||(resumed?sh.penned+"/"+herdQuota(sh)+" PENNED":""), life:bt, max:bt, color:"#e8c14a"}; }
+    HERD.banner={text:resumed?"BACK ON "+L.n:L.n, sub:tip||(resumed?sh.penned+"/"+herdTotal(sh)+" PENNED":herdTotal(sh)+" SHEEP \u2014 PEN THEM ALL"), life:bt, max:bt, color:"#e8c14a"}; }
   $("#herdMap").classList.remove("show");
   $("#herdPanel").classList.add("show");
-  herdSyncCheckout(false);
+  herdRecapHide();
   beep(520,.06); setTimeout(()=>beep(700,.08),90);
 }
 /* EXIT. There is no leaving a field to come back to it: you finish it, or you walk off it and it is
@@ -28199,88 +28260,137 @@ function herdLogLine(sh){
   if(L.eagle) s+=" "+w(L.eagle)+" TO THE EAGLES.";
   if(L.mtn)  s+=" "+w(L.mtn)+" LEFT ON THE MOUNTAIN.";
   if(sh.wolvesDown) s+=" "+w(sh.wolvesDown)+(sh.wolvesDown===1?" WOLF DOWN.":" WOLVES DOWN.");
-  // checking out at quota can leave a few still grazing — they go back to the farmer, unpaid
+  // walking off can leave a few still grazing — they go back to waiting, unpaid
   if(sh.sheep.length) s+=" "+w(sh.sheep.length)+" LEFT IN THE FIELD.";
   if(!L.hole&&!L.road&&!L.wolf&&!L.off&&!L.rock&&!L.eagle&&!L.mtn) s+=" NOT ONE LOST.";
   return s;
 }
-/* One door out, three ways through it. CHECKOUT banks the visit and marks the paddock CLEARED
-   (which is what opens the next one). A WIPE or an ABANDON banks the same running total — penned
-   pay is never taken back — but clears nothing. Every door never pays below zero. */
-/* One door out, and only one of its ways banks anything. CHECKOUT pays the visit, marks the paddock
-   CLEARED (which is what opens the next one), settles YOUR FLOCK (your own sheep lost are gone for
-   good; the farmer's spares you penned are yours now) and scores the bonus goals - then saves.
-   A WIPE or an EXIT banks nothing at all and saves nothing: the flock is what it was. */
-/* One door out. CHECKOUT pays the visit, scores the stars and goals, and WALKS THE PENNED SHEEP ON:
-   into the next field's station, or out of the last field to the top. A WIPE or an EXIT pays nothing
-   and walks nobody anywhere - the ones still standing go back to waiting here. Sheep LOST are gone
-   either way (that already happened, the moment they were lost), and their replacements wait at the
-   farm. So every ending is saved: the convoy has to be where it really is. */
+/* TWO WAYS OFF A FIELD. FINISH is the round played out - every sheep penned or lost, the farmer's
+   drop in - and it always pays what was penned, scores the stars and goals, WALKS THE PENNED SHEEP ON
+   (to the next field's station, or off the last field to the top) and shows the recap. EXIT is a
+   forfeit: no pay, nobody walks on, the ones still standing go back to waiting here. Sheep LOST are
+   gone either way - that happened the moment they were lost - and wait again at the farm. So every
+   ending is saved: the convoy has to be where it really is. */
 function herdEndShift(kind){
   const sh=S.herd.shift; if(!sh) return;
   const L=HERD_LV[sh.lv], st=herdLvState(sh.lv);
-  const ok = kind==="checkout";
-  const wasCleared=!!st.cleared, prevStars=st.stars||0, prevBest=st.bestCash||0;
+  const ok = kind==="finish";
+  const wasCleared=!!st.cleared, prevStars=st.stars||0, prevBestPen=st.bestPenned||0;
   const pay = ok ? Math.max(0,Math.round(sh.cash)) : 0;
   const lostN=Object.values(sh.lost).reduce((a,b)=>a+(b||0),0);
   const line=herdLogLine(sh);
-  const before=herdStation(sh.lv)+(ok?0:0);
-  let head, pic, stars=null, tag="", tip=false, unlocked=0, headPre="", bonus=null, move=null;
+  let stars=null, bonus=null, move=null, xp=0, tag="", tip=false;
   if(ok){
     S.money+=pay; S.earned+=pay; S.herd.banked=(S.herd.banked||0)+pay;
     stars=herdStarsFor(sh,L,lostN);
     const nS=stars.on.filter(Boolean).length;
     st.stars=Math.max(prevStars,nS);
-    st.cleared=true;
-    st.bestPenned=Math.max(st.bestPenned,sh.penned);
-    st.bestCash=Math.max(st.bestCash,pay);
-    // walk them on
+    if(sh.penned>0) st.cleared=true;
+    st.bestPenned=Math.max(st.bestPenned||0,sh.penned);
+    st.bestCash=Math.max(st.bestCash||0,pay);
     const to = sh.lv<HERD_PLAYABLE ? sh.lv+1 : 0;
-    if(sh.lv>1) herdStationAdd(sh.lv,-sh.penned);
-    if(to) herdStationAdd(to, sh.penned); else S.herd.top=clamp(herdTop()+sh.penned,0,HERD_FLOCK);
-    move={from:sh.lv, to, n:sh.penned};
-    tag = to ? sh.penned+" WALKED ON TO "+HERD_LV[to].n+"." : sh.penned+" MADE IT TO THE TOP. "+herdTop()+"/"+HERD_FLOCK+".";
-    if(!wasCleared && to) unlocked=to;
+    if(sh.penned>0){
+      if(sh.lv>1) herdStationAdd(sh.lv,-sh.penned);
+      if(to) herdStationAdd(to, sh.penned); else S.herd.top=clamp(herdTop()+sh.penned,0,HERD_FLOCK);
+      move={from:sh.lv, to, n:sh.penned};
+    }
     bonus=(HERD_GOALS[sh.lv]||[]).map((g,i)=>{
-      const done=!!(sh.bx && g.ok(sh)), fresh=done && !st.bonus[i];
-      if(fresh){ st.bonus[i]=true; addXP(g.xp); }
+      const done=!!(sh.bx && sh.penned>0 && g.ok(sh)), fresh=done && !st.bonus[i];
+      if(fresh){ st.bonus[i]=true; addXP(g.xp); xp+=g.xp; }
       return {lbl:g.lbl, xp:g.xp, done, fresh, had:!!st.bonus[i]};
     });
-    if(lostN===0){ S.fun=clamp(S.fun+8,0,100); S.mood=clamp(S.mood+4,0,100); }
-    addXP(Math.max(1,Math.round(sh.penned*0.5)));        // small — the wage is the point
-    // (no flat charge here any more: the shift clock bills its two hours as the field closes)
-    headPre="CHECKED OUT — +"; head=headPre+herdCash(pay);
-    pic = lostN===0 ? "happy" : "content";
-    beep(660,.08); setTimeout(()=>beep(990,.12),100);
-    haptic([20,40,20]);
-  } else {
-    head = kind==="wipe" ? "SHIFT OVER — NOTHING BANKED" : "WALKED OFF — NOTHING BANKED";
-    if(kind==="wipe"){
+    if(lostN===0 && sh.penned>0){ S.fun=clamp(S.fun+8,0,100); S.mood=clamp(S.mood+4,0,100); }
+    const base=Math.max(sh.penned>0?1:0,Math.round(sh.penned*0.5)); addXP(base); xp+=base;
+    if(sh.penned===0){
       const why=["hole","road","wolf","off","rock","eagle","mtn"].reduce((a,k)=>(sh.lost[k]||0)>(sh.lost[a]||0)?k:a,"none");
       tag="TIP: "+HERD_TIPS[why]; tip=true;
-    } else tag = herdStation(sh.lv)>0 ? herdStation(sh.lv)+" STILL WAITING ON "+L.n+"." : "";
-    pic="sad";
+    }
+    herdFxFinish(sh);
+    haptic([20,40,20]);
+  } else {
+    tag = herdStation(sh.lv)>0 ? herdStation(sh.lv)+" STILL WAITING ON "+L.n+"." : "";
     beep(180,.2,"sawtooth",.04);
   }
   if(lostN>0) tag=(tag?tag+" ":"")+"LOST SHEEP START AGAIN AT THE FARM.";
   // a field that is empty now, and lost sheep did it: it shakes, and one goes back down to the farm
   const locked = (sh.lv>1 && herdStation(sh.lv)===0 && lostN>0) ? sh.lv : 0;
   dogLog(line+(pay>0?" +"+herdCash(pay):""), !ok);
+  const recap = ok ? {lv:sh.lv, name:L.n, penned:sh.penned, total:herdTotal(sh), lost:{...sh.lost}, lostN, t:sh.t,
+                      barks:sh.bx?sh.bx.bark:0, dashes:sh.bx?sh.bx.dash:0, wolvesDown:sh.wolvesDown||0,
+                      pay, xp, stars, prevStars, bonus, move, tag, tip, line, locked,
+                      best: sh.penned>prevBestPen && wasCleared, first: !wasCleared && sh.penned>0} : null;
   S.herd.shift=null;
   HERD.active=false; HERD.joy=null;
-  herdSyncCheckout(false);
   renderMeters();
   /* AUTOSAVE — the one exception to the save-when-you-choose rule. Whatever happened on that field
      happened to real sheep: the convoy is saved where it now stands. The shift itself is already
      cleared off S, so what is saved is the settled result, never a half-finished field. */
   const saved=performSave();
-  herdOpenMap({head, line, pic, saved, stars, tag, tip, unlocked, headPre, countTo:ok?pay:0, bonus, move, locked});
+  if(ok){ recap.saved=saved; return herdRecapShow(recap); }
+  herdOpenMap({head:"WALKED OFF — FORFEIT", line, pic:"sad", saved, stars:null, tag, tip:false, unlocked:0,
+               headPre:"", countTo:0, bonus:null, move:null, locked});
 }
-function herdSyncCheckout(pulse){
-  const sh=S.herd.shift, b=$("#hCheckout");
-  const on=!!(sh && sh.quotaMet && HERD.active);
-  b.classList.toggle("hidden",!on);
-  if(on && pulse){ b.classList.remove("pulse1"); void b.offsetWidth; b.classList.add("pulse1"); }
+/* THE RECAP. The field freezes behind it, dimmed; the stars come in one at a time, the numbers
+   count up, the pay rolls, the goals tick - and then the two ways on: the NEXT stop on the line, or
+   the map. */
+function herdNextStop(from){
+  if(from<HERD_PLAYABLE && herdStation(from+1)>0) return from+1;
+  let best=0; for(let lv=1;lv<=HERD_PLAYABLE;lv++) if(!HERD_LV[lv].plan && herdUnlocked(lv) && herdStation(lv)>0) best=lv;
+  return best;
+}
+function herdRecapHide(){ const el=$("#hRecap"); if(el){ el.classList.add("hidden"); el.innerHTML=""; } clearInterval(HERD.recapTimer); }
+function herdRecapShow(R){
+  const el=$("#hRecap"); if(!el) return herdOpenMap(null);
+  const RM=!!SETTINGS.reduceMotion;
+  const mmss=t=>Math.floor(t/60)+":"+String(Math.floor(t%60)).padStart(2,"0");
+  const next=herdNextStop(R.lv);
+  const nS=R.stars?R.stars.on.filter(Boolean).length:0;
+  const head = R.penned===0 ? "NONE PENNED" : R.lostN===0 && R.penned===R.total ? "CLEAN SWEEP!" : nS>=2 ? "GREAT ROUND!" : "ROUND DONE";
+  const lostBits=[["hole","HOLE"],["road","ROAD"],["wolf","WOLF"],["off","STRAY"],["rock","ROCK"],["eagle","EAGLE"],["mtn","LEFT"]]
+     .filter(([k])=>R.lost[k]>0).map(([k,l])=>'<span>'+l+' '+R.lost[k]+'</span>').join("");
+  let h='<div class="hr-card">';
+  h+='<div class="hr-top"><span class="hr-kick">ROUND COMPLETE</span><span class="hr-field">'+R.name+'</span></div>';
+  h+='<div class="hr-head">'+head+'</div>';
+  h+='<div class="hr-stars">'+R.stars.on.map((on,i)=>'<span class="hr-star'+(on?" on":"")+'" style="--d:'+(0.45+i*0.32)+'s"><b></b><i>'+R.stars.lbl[i]+'</i></span>').join("")+'</div>';
+  h+='<div class="hr-tiles">'+
+     '<div class="hr-tile big"><b data-to="'+R.penned+'">0</b><small>/'+R.total+'</small><i>PENNED</i></div>'+
+     '<div class="hr-tile'+(R.lostN?" bad":"")+'"><b data-to="'+R.lostN+'">0</b><i>LOST</i></div>'+
+     '<div class="hr-tile"><b>'+mmss(R.t)+'</b><i>TIME</i></div>'+
+     '<div class="hr-tile"><b data-to="'+R.barks+'">0</b><i>BARKS</i></div></div>';
+  if(lostBits) h+='<div class="hr-lost">'+lostBits+'</div>';
+  if(R.wolvesDown) h+='<div class="hr-note">'+R.wolvesDown+(R.wolvesDown===1?" WOLF":" WOLVES")+' DOWN A HOLE</div>';
+  h+='<div class="hr-pay"><span class="hr-cash" data-cash="'+R.pay+'">'+herdCash(0)+'</span><span class="hr-xp">+'+R.xp+' XP</span></div>';
+  if(R.first) h+='<div class="hr-badge">FIELD CLEARED</div>';
+  else if(R.best) h+='<div class="hr-badge">NEW BEST: '+R.penned+' PENNED</div>';
+  if(R.bonus && R.bonus.length) h+='<div class="hr-goals">'+R.bonus.map(g=>'<div class="hr-goal'+(g.done?" done":"")+(g.fresh?" fresh":"")+'">'+
+      (g.done?"&#10003;":"&#9675;")+' '+g.lbl+(g.fresh?' <b>+'+g.xp+' XP</b>':g.done&&g.had?' <em>DONE BEFORE</em>':'')+'</div>').join("")+'</div>';
+  if(R.move) h+='<div class="hr-move">&#128017; '+R.move.n+' &#8594; <b>'+(R.move.to?HERD_LV[R.move.to].n:"THE TOP "+herdTop()+"/"+HERD_FLOCK)+'</b></div>';
+  if(R.tag) h+='<div class="hr-tag'+(R.tip?" tip":"")+'">'+R.tag+'</div>';
+  h+='<div class="hr-saved'+(R.saved===false?" bad":"")+'">'+(R.saved==null?"NOTHING SAVED":R.saved?"GAME SAVED":"COULDN'T SAVE — STORAGE IS BLOCKED")+'</div>';
+  h+='<div class="hr-btns"><button class="hr-map" id="hrMap">MAP</button>'+
+     (next ? '<button class="hr-next" id="hrNext">NEXT &#9654;<small>'+HERD_LV[next].n+'</small></button>'
+           : '<button class="hr-next done" disabled>FLOCK HOME<small>'+herdTop()+'/'+HERD_FLOCK+' AT THE TOP</small></button>')+'</div>';
+  h+='</div>';
+  el.innerHTML=h; el.classList.remove("hidden");
+  el.classList.toggle("rm",RM);
+  // the count-ups
+  const nums=[...el.querySelectorAll("[data-to]")], cash=el.querySelector("[data-cash]");
+  const t0=performance.now(), dur=RM?1:1100, delay=RM?0:350;
+  clearInterval(HERD.recapTimer);
+  let lastTick=0;
+  HERD.recapTimer=setInterval(()=>{
+    const k=clamp((performance.now()-t0-delay)/dur,0,1), e=1-Math.pow(1-k,3);
+    for(const n of nums) n.textContent=Math.round(+n.dataset.to*e);
+    const c=Math.round(R.pay*e); cash.textContent="+"+herdCash(c);
+    if(c!==lastTick && !RM && k<1){ lastTick=c; beep(560+Math.min(c,60)*8,.015,"square",.016); }
+    if(k>=1) clearInterval(HERD.recapTimer);
+  },40);
+  R.stars.on.forEach((on,i)=>{ if(on) setTimeout(()=>{ beep([880,1109,1319][i],.12,"square",.045); haptic(14); }, RM?0:(450+i*320)); });
+  if(R.lostN===0 && R.penned>0) setTimeout(()=>{ [523,659,784,1047,1319].forEach((f,i)=>setTimeout(()=>beep(f,.09,"square",.035),i*70)); }, RM?0:1500);
+  const go=(fn)=>{ herdRecapHide(); fn(); };
+  $("#hrMap").onclick=()=>go(()=>herdOpenMap(null,{move:R.move, locked:R.locked}));
+  const nb=$("#hrNext");
+  if(nb) nb.onclick=()=>{ if(S.sick){ beep(150,.1); return herdToast("HE'S TOO SICK TO WORK.",1); } go(()=>herdStart(next)); };
 }
 
 /* ---------------------------------------------------------------- the dog's verbs */
@@ -28377,7 +28487,7 @@ function herdDogTick(sh,dt){
   S.hunger=clamp(S.hunger-0.03*dt,0,100);
   S.thirst=clamp(S.thirst-0.05*dt,0,100);
   /* HE REFUSES YOU. Out of energy he plants for a beat and ignores everything, then moves at a
-     trudge with no bark and no dash. That is the whole reason to CHECK OUT while he still can. */
+     trudge with no bark and no dash. That is the whole reason to pace him. */
   if(herdGassed()){
     if(!d.gassed){ d.gassed=true; d.plantT=HERD_PLANT_T; herdToast("HE'S GASSED. HE WON'T GO.",1); beep(140,.3,"sawtooth",.04); }
   } else d.gassed=false;
@@ -28439,16 +28549,17 @@ function herdLaneTick(sh,r,dt){
    get past, and it sweeps more ground.
    - The ROAD RIG (COUNTRY ROAD) crosses on its rotation as before, but now tows 0-3 trailers of hay.
      A long one is called out in advance ("LONG LOAD"), because waiting for it is the whole decision.
-   - The OVERTIME TRACTOR brings the farmer's sheep. It comes in fast along the farm track, pulls off
-     onto the grass just above it and crawls alongside while the back trailer lets out five sheep in a
-     tight bunch, then swings back onto the track and is gone. One run every HD_OT_EVERY seconds.
+   - The FARMER'S TRACTOR brings the rest of the flock. It comes in fast along the farm track, pulls
+     off onto the grass just above it and crawls alongside while the back trailer lets out the sheep
+     in a tight bunch, then swings back onto the track and is gone.
      Its route is a fixed curve of x, so every trailer follows exactly where the tractor went. */
-const HERD_FLOCK=30;                            // the farmer's whole flock, on every paddock: start + every drop
-const HD_OT_EVERY=30, HD_OT_LOAD=5;             // one run every 30 seconds, five sheep a run
+const HERD_FLOCK=15;                            // the farmer's whole flock, on every paddock: the start + the drop
+const HD_OT_EVERY=30, HD_OT_LOAD=8;             // one run brings the rest: eight sheep (another only if the field was full)
+const HERD_START_N=7;                           // the ones in the field when the round starts
 const HD_OT_FAST=190, HD_OT_CRAWL=30, HD_OT_ZOOM=250;
 const HD_OT_TRACK_Y=HF_DROP_Y+18, HD_OT_LANE_Y=HF_DROP_Y-14;
 const HD_OT_U=[70,112,250,292];                 // along its way: pull off, on the grass, pull back, on the track
-const HD_OT_DROP_U=150, HD_OT_DROP_GAP=11;      // where the five come out, and how close together
+const HD_OT_DROP_U=146, HD_OT_DROP_GAP=10;      // where the eight come out, and how close together
 const HD_TRAC_HALF=16, HD_TRL_HALF=12, HD_TRL_LEN=30, HD_TRL_FIRST=32;
 const HD_RIG_TRL_W=[0.4,0.3,0.2,0.1], HD_OT_TRL_W=[0,0.5,0.3,0.2];   // how often 0/1/2/3 trailers
 const HD_BONK_T=0.6, HD_BONK_COST=6, HD_BONK_CD=1.2;
@@ -28555,19 +28666,19 @@ function herdRefusedGate(sh,s){
     t.pulse=1.6;
   }
 }
-// what this visit needs penned to check out: the field's quota, or everyone who came if fewer did
-function herdQuota(sh){ return sh.quota!=null ? sh.quota : HERD_LV[sh.lv].quota; }
+// everyone who came on this visit: the whole station is the job
+function herdTotal(sh){ return sh.visitN!=null ? sh.visitN : HERD_FLOCK; }
 function herdFlockLeft(sh){
   const L=HERD_LV[sh.lv];
   if(L.climb) return (sh.strand||[]).length;
   if(sh.visitN!=null) return Math.max(0, sh.visitN-sh.started);
-  return Math.max(0, (L.flock||HERD_FLOCK)-sh.started);
+  return Math.max(0, HERD_FLOCK-sh.started);
 }
 
-/* OVERTIME. Once quota is met on a paddock that has it, the farmer's tractor brings the rest of his
-   flock HD_OT_LOAD at a time (the first run HD_OT_FIRST after quota, then one every HD_OT_EVERY)
-   until all HERD_FLOCK have been in the field. Same rules, same pen, same pay. */
-function herdOvertimeTick(sh,dt){
+/* THE FARMER'S DROP. HERD_START_N are in the field when the round starts; at HD_DROP_FIRST seconds
+   (sooner if the field runs dry) the farmer's tractor brings the rest of the station in one run of
+   up to HD_OT_LOAD. Same rules, same pen, same pay. */
+function herdDropTick(sh,dt){
   const ot=sh.ot, L=HERD_LV[sh.lv];
   if(!ot.on) return;
   if(ot.truck && ot.truck.trl==null){ ot.truck=null; ot.nextT=HD_OT_WARN+1; }   // a run from an older save
@@ -28575,7 +28686,7 @@ function herdOvertimeTick(sh,dt){
     if(herdFlockLeft(sh)<=0){ ot.nextT=0; return; }      // that's the lot
     // the side it comes in on is picked when it is scheduled, so the warning can point at it
     if(!ot.dir) ot.dir=Math.random()<0.5?1:-1;
-    if(sh.sheep.length<=1 && !(sh.walkers||[]).length) ot.nextT=Math.min(ot.nextT, HD_OT_WARN+2);   // nobody left to work: bring the next five
+    if(sh.sheep.length<=1 && !(sh.walkers||[]).length) ot.nextT=Math.min(ot.nextT, HD_OT_WARN+2);   // nobody left to work: bring the rest now
     const was=ot.nextT;
     ot.nextT-=dt;
     if(was>HD_OT_WARN && ot.nextT<=HD_OT_WARN && HERD.active){ beep(330,.12,"square",.05); setTimeout(()=>beep(262,.16,"square",.05),150); }
@@ -28588,7 +28699,7 @@ function herdOvertimeTick(sh,dt){
       ot.truck={x:herdOtX(dir,-HD_TRAC_HALF), dir, n, trl, drops, dropped:0, age:0, spd:HD_OT_FAST};
       if(sh.pack) sh.pack.cd=Math.max(sh.pack.cd, HD_PACK_GRACE+4);
       beep(60,.5,"sawtooth",.05); haptic([25,25,25,25,25]);
-      if(sh.lv===3 && sh.quotaMet && !sh.wolf3 && sh.wolves.length<L.wolvesOT){ sh.wolf3=true; herdSpawnWolf(sh,6); }
+      if(sh.lv===3 && !sh.wolf3 && sh.wolves.length<L.wolvesDrop){ sh.wolf3=true; herdSpawnWolf(sh,6); }   // the drop brings a third
     }
     return;
   }
@@ -28635,7 +28746,7 @@ function herdDrawTractorBody(ctx,x,y,dir,t){
   ctx.fillStyle="rgba(210,210,210,"+(0.6*(1-puff))+")"; ctx.beginPath(); ctx.arc(6-puff*4,-17-puff*6,1.8+puff*2.4,0,7); ctx.fill();
   ctx.restore();
 }
-// one trailer: sheep in it (overtime), or hay (the road)
+// one trailer: sheep in it (the farmer's drop), or hay (the road)
 function herdDrawTrailer(ctx,x,y,dir,load,hay,t,seed){
   ctx.save(); ctx.translate(x,y); ctx.scale(dir,1);
   herdShadow(ctx,0,6,14,3,0.28);
@@ -28692,13 +28803,13 @@ function herdDogVehicles(sh,dt){
 /* THE PACK HUNTS AS ONE. The wolves move as a unit: a single pack anchor circles the flock, and
    every wolf that isn't busy runs in a tight wedge on it. So the pressure comes from ONE side at a
    time — the flock edges away from it together, and the dog has a front to hold — instead of two or
-   three wolves ringing the flock from every side and scattering it (which is what made overtime,
+   three wolves ringing the flock from every side and scattering it (which is what made the drop,
    with fresh sheep landing at the bottom, nearly impossible to pull back together).
    The strike itself is unchanged: at most one wolf is ever committed, it creeps in on a telegraphed
    line, lunges, and takes one sheep. What changed is the choice. The pack still prefers a lonely
    sheep, but distance from the PACK now counts for more than loneliness, so it takes what is near
    it rather than crossing the field. A bark that scares any of them pushes the whole pack back, and
-   an overtime drop buys a few seconds before the next strike. Pressure, not a boss. */
+   the farmer's drop buys a few seconds before the next strike. Pressure, not a boss. */
 function herdPack(sh){
   if(!sh.pack){
     const c=herdCentroid(sh)||{x:HF_W/2, y:HG.H/2}, w=sh.wolves[0];
@@ -28828,7 +28939,7 @@ function herdWolfTick(sh,w,dt){
   herdWolfHazards(sh,w);
 }
 /* THE FIELD BITES WOLVES TOO. A hole takes one exactly as it takes a sheep; so does a rig on the
-   road, and the overtime tractor runs down anything grey on its track. When one goes, the rest
+   road, and the farmer's tractor runs down anything grey on its track. When one goes, the rest
    break off, huddle further out and howl for HD_WOLF_HOWL_T — the player's moment to make a break
    for the gate — and HD_WOLF_RESPAWN after it fell, another comes in and joins them. */
 function herdWolfHazards(sh,w){
@@ -29081,7 +29192,7 @@ function herdUpdate(sh,dt){
   sh.t+=dt;
   herdDogTick(sh,dt);
   herdRoadTick(sh,dt);
-  herdOvertimeTick(sh,dt);
+  herdDropTick(sh,dt);
   herdWalkersTick(sh,dt);
   if(sh.rocks) herdRockTick(sh,dt);
   if(L.climb) herdClimbTick(sh,dt);
@@ -29098,18 +29209,11 @@ function herdUpdate(sh,dt){
   for(let i=HERD.xs.length-1;i>=0;i--){ HERD.xs[i].t-=dt; if(HERD.xs[i].t<=0) HERD.xs.splice(i,1); }
   if(HERD.banner){ HERD.banner.life-=dt; if(HERD.banner.life<=0) HERD.banner=null; }
   herdFxTick(sh,dt);
-  // quota
-  if(!sh.quotaMet && sh.penned>=herdQuota(sh)){
-    sh.quotaMet=true;
-    herdSyncCheckout(true);
-    HERD.banner={text:"QUOTA MET", sub:"CHECK OUT WHEN YOU'RE READY", life:2.6, max:2.6, color:"#7fd46a"};
-    sh.quotaT=sh.t; herdFxQuota(sh);
-  }
-  // wipe: nothing left to move and the quota never made — the shift is over
+  // THE ROUND IS OVER when there is nobody left to move: every sheep penned or lost, the drop done
   // (on the climb, an empty field with strays still asleep up the hill is not the end of it)
   if(sh.sheep.length===0 && !(sh.walkers||[]).length && !(L.climb && sh.strand.length) && !(sh.eagles||[]).some(e=>e.carryS)
      && !(sh.ot && sh.ot.truck) && herdFlockLeft(sh)<=0)
-    return herdEndShift(sh.quotaMet ? "checkout" : "wipe");
+    return herdEndShift("finish");
 }
 
 /* ---------------------------------------------------------------- drawing: the farm
@@ -29248,7 +29352,7 @@ function herdBuildBG(sh){
   // 2. trodden grass: a worn line up the middle where the flocks always go, and a few loose patches
   for(let y=HG.H-40; y>HG.py+16; y-=34) herdWorn(x,rnd,HG.gx+(rnd()-0.5)*22,y,30,0.7);
   for(let i=0;i<5;i++) herdWorn(x,rnd,30+rnd()*300,160+rnd()*420,34+rnd()*20,0.72);
-  // 3. bare earth: a mud apron at the gate, and the farm track the overtime tractor runs
+  // 3. bare earth: a mud apron at the gate, and the farm track the farmer's tractor runs
   herdDirt(x,rnd,HG.gx,HG.py+14,34,0.55);
   if(herdTileOk("dirt")){
     x.save(); x.beginPath(); x.rect(-HB_M,HF_DROP_Y+4,W,24); x.clip();
@@ -29554,7 +29658,7 @@ function herdDraw(sh,t){
   herdDrawHud(ctx,w,h,sh,t);
   if(HERD.fadeT>0){ ctx.fillStyle="rgba(0,0,0,"+(HERD.fadeT/HFX_FADE).toFixed(3)+")"; ctx.fillRect(0,0,w,h); }
 }
-/* OVERTIME, SIGNPOSTED. The next drop is never a surprise: while the field waits, the HUD counts it
+/* THE DROP, SIGNPOSTED. The next drop is never a surprise: while the field waits, the HUD counts it
    down, and for the last HD_OT_WARN seconds the edge it will come in on flashes a pair of red
    chevrons with SHEEP INBOUND, and the tractor sounds its horn. */
 function herdDrawInbound(ctx,sh,t,RM){
@@ -29573,7 +29677,7 @@ function herdDrawHud(ctx,w,h,sh,t){
   const L=HERD_LV[sh.lv], RM=!!SETTINGS.reduceMotion;
   const alive=sh.penned+sh.sheep.length;
   const trouble=sh.sheep.some(s=>s.st==="split"||s.st==="bolt");
-  const Q=herdQuota(sh), reach=sh.penned+sh.sheep.length+(sh.walkers||[]).length>=Q || sh.quotaMet;
+  const Q=herdTotal(sh), reach=true;
   // the park's own header treatment: a dark strip across the top, white type on it
   ctx.fillStyle="rgba(0,0,0,.42)"; ctx.fillRect(0,0,w,48);
   ctx.textBaseline="alphabetic";
@@ -29581,8 +29685,8 @@ function herdDrawHud(ctx,w,h,sh,t){
   ctx.fillText(L.n, w/2, 20);
   ctx.font="7px 'Press Start 2P',monospace";
   ctx.fillStyle = reach ? "#d8d8d8" : "#ff4a3f";
-  if(!sh.quotaMet && Q<=12) herdDrawPips(ctx,w/2,37,sh,L,t);
-  else { ctx.fillStyle = sh.quotaMet ? "#7fd46a" : ctx.fillStyle; ctx.fillText("PEN "+sh.penned+"/"+Q, w/2, 35); }
+  if(Q<=10) herdDrawPips(ctx,w/2,37,sh,L,t);
+  else { ctx.fillStyle = sh.penned>=Q ? "#7fd46a" : "#d8d8d8"; ctx.fillText("PEN "+sh.penned+"/"+Q, w/2, 35); }
   ctx.textAlign="right";
   ctx.font="9px 'Press Start 2P',monospace";
   ctx.fillStyle = trouble ? "#ff4a3f" : "#fff";
@@ -29631,13 +29735,12 @@ function herdDrawHud(ctx,w,h,sh,t){
     ctx.beginPath(); ctx.moveTo(ax-6,ay+4); ctx.lineTo(ax,ay-2); ctx.lineTo(ax+6,ay+4); ctx.stroke();
     ctx.globalAlpha=1;
   }
-  // SHEEP INBOUND, centred over the track in screen space (CHECK OUT sits on the bottom-right corner,
-  // so nothing pinned to an edge can be trusted to show), with arrows the way the tractor will run
+  // SHEEP INBOUND, centred over the track in screen space, with arrows the way the tractor will run
   const ot=sh.ot;
   if(ot.on && !ot.truck && ot.nextT<=HD_OT_WARN){
     const v=HERD.view, dir=ot.dir||1, cx=w/2, ty=v.oy+(HF_DROP_Y-26)*v.sc;
     ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    const label=Math.min(L.otLoad||HD_OT_LOAD, herdFlockLeft(sh), Math.max(1,HF_CAP-sh.sheep.length))+" SHEEP INBOUND", tw=ctx.measureText(label).width, bw=tw+52;
+    const label=Math.min(HD_OT_LOAD, herdFlockLeft(sh), Math.max(1,HF_CAP-sh.sheep.length))+" SHEEP INBOUND", tw=ctx.measureText(label).width, bw=tw+52;
     ctx.fillStyle="rgba(0,0,0,.68)"; ctx.fillRect(cx-bw/2, ty-12, bw, 17);
     ctx.strokeStyle="#ff2a1f"; ctx.lineWidth=1.5; ctx.strokeRect(cx-bw/2+0.5, ty-11.5, bw-1, 16);
     ctx.fillStyle="#fff"; ctx.fillText(label, cx, ty);
@@ -29666,7 +29769,7 @@ function herdDrawHud(ctx,w,h,sh,t){
   const d=sh.dog;
   if(d.gassed || HERD.fx.refuseT>0){
     ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    const msg = d.plantT>0 ? "HE'S GASSED" : HERD.fx.refuseT>0 ? "HE WON'T." : "GASSED — CHECK OUT";
+    const msg = d.plantT>0 ? "HE'S GASSED" : HERD.fx.refuseT>0 ? "HE WON'T." : "GASSED — LET HIM BREATHE";
     const tw=ctx.measureText(msg).width;
     ctx.fillStyle="rgba(0,0,0,.6)"; ctx.fillRect(w/2-tw/2-6,52,tw+12,15);
     ctx.fillStyle="#ff4a3f"; ctx.fillText(msg, w/2, 63);
@@ -29899,7 +30002,7 @@ function herdDrawFalls(ctx,t,RM){
   }
   ctx.globalAlpha=1;
 }
-function herdFxQuota(sh){
+function herdFxFinish(sh){
   herdConfetti(HG.gx, HG.py-8, 46);
   HERD.hearts=1.8;
   [523,659,784,1047].forEach((f,i)=>setTimeout(()=>beep(f,.1,"square",.04),i*90));
@@ -30072,11 +30175,11 @@ function herdDrawFxText(ctx,sh,t){
 }
 // the pen line as a row of little sheep: one filled in for every one through the gate
 function herdDrawPips(ctx,cx,y,sh,L,t){
-  const n=herdQuota(sh), gap=13, lbl="PEN";
+  const n=herdTotal(sh), gap=13, lbl="PEN";
   ctx.font="7px 'Press Start 2P',monospace";
   const lw=ctx.measureText(lbl).width+8, total=lw+n*gap;
   let x=cx-total/2;
-  const short=sh.penned+sh.sheep.length+(sh.walkers||[]).length<n;
+  const short=false;
   ctx.textAlign="left"; ctx.fillStyle=short?"#ff4a3f":"#d8d8d8"; ctx.fillText(lbl,x,y);
   x+=lw+gap/2;
   for(let i=0;i<n;i++){
@@ -30110,9 +30213,12 @@ const HERD_TIPS={
   mtn:"KEEP THEM TOGETHER. THE MOUNTAIN KEEPS WHAT YOU LEAVE BEHIND.",
   none:"STAND BEHIND THEM. THE BARK IS A SHOVE."
 };
+// three stars: half the station penned, nobody lost, and done inside the field's par
 function herdStarsFor(sh,L,lostN){
-  const third = L.star3 ? sh.penned>=L.star3.n : L.overtime ? sh.penned>=herdQuota(sh)+3 : (sh.quotaT!=null?sh.quotaT:sh.t)<=L.par;
-  return {on:[true, lostN===0, third], lbl:["QUOTA","NONE LOST", L.star3?L.star3.lbl:L.overtime?"QUOTA +3":"UNDER "+L.par+"S"]};
+  const n=herdTotal(sh), par=L.par||120;
+  const parTxt = par%60===0 ? "UNDER "+(par/60)+" MIN" : "UNDER "+par+"S";
+  return {on:[sh.penned*2>=n && sh.penned>0, lostN===0 && sh.penned>0, sh.penned>0 && sh.t<=par],
+          lbl:["HALF IN","NONE LOST",parTxt]};
 }
 function herdStarHtml(n,max){
   let h="<span class='hm-stars' aria-label='"+n+" of "+max+" stars'>";
@@ -30179,7 +30285,6 @@ function herdLoop(dt,t){
   press("#hBark",herdBark);
   press("#hDash",herdDash);
   $("#hBack").addEventListener("click",herdExitAsk);
-  $("#hCheckout").addEventListener("click",()=>{ if(S.herd.shift && S.herd.shift.quotaMet) herdEndShift("checkout"); });
   $("#hmHome").addEventListener("click",()=>{ beep(400,.05); herdCloseMap(); });
   window.addEventListener("resize",()=>{ if(HERD.shown) herdDrawMapBg(); });
   $("#hmTrail").addEventListener("click",e=>{
