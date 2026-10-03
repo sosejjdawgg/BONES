@@ -893,7 +893,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.376a</span>
+          <span id="devToggle">v0.377a</span>
         </div>
       </div>
 
@@ -27841,6 +27841,14 @@ function herdMakeTufts(sh){
   }
   return out;
 }
+// any grass will do in the end - just not the road, the chute's gravel or the pen
+function herdOnGrass(sh,s){
+  const L=HERD_LV[sh.lv];
+  if(s.y<HG.py+2) return false;
+  if(L.road && Math.abs(s.y-HF_ROAD_Y)<HF_ROAD_H/2+2) return false;
+  if(L.chute && s.y<M4_CH_Y1+8 && s.x>M4_LANE_X0-4 && s.x<M4_LANE_X1+4) return false;
+  return true;
+}
 function herdOnFresh(sh,s){
   const m=HERD.meadow; if(m && s.x>m.x0 && s.x<m.x1 && s.y>m.y0 && s.y<m.y1) return true;
   for(const t of HERD.tufts||[]) if(Math.hypot(t.x-s.x,t.y-s.y)<t.r) return t;
@@ -27850,8 +27858,9 @@ function herdOnFresh(sh,s){
 function herdRefusedGate(sh,s){
   if((s.refuseCd||0)>0) return;
   s.refuseCd=2; herdBleat(true); HERD.baa={id:s.id, txt:"baa!", life:1.1};
-  if(!sh.refuseLesson && (HERD.tufts||[]).length){
-    sh.refuseLesson=true;
+  // every time (not too often), the tuft between the dog and the gate lights up: food is there
+  if((sh.lessonCd||0)<=sh.t && (HERD.tufts||[]).length){
+    sh.refuseLesson=true; sh.lessonCd=sh.t+4;
     const d=sh.dog, mx=(d.x+HG.gx)/2, my=(d.y+HG.py)/2;
     const t=HERD.tufts.reduce((a,b)=>Math.hypot(b.x-mx,b.y-my)<Math.hypot(a.x-mx,a.y-my)?b:a);
     t.pulse=1.6;
@@ -28322,10 +28331,12 @@ function herdSheepTick(sh,dt){
     if(s.alarm>0) s.drove=true;
     s.refuseCd=Math.max(0,(s.refuseCd||0)-dt); if(s.hopT>0) s.hopT-=dt; if(s.heartT>0) s.heartT-=dt;
     if(!s.full){
-      const g=herdOnFresh(sh,s);
-      s.munch = !!g && Math.hypot(s.vx,s.vy)<HG_GRAZE_V && s.panicT<=0;
+      // fresh grass (the start meadow, a lit tuft) fills it fast; any other grass, slowly - so a hungry
+      // sheep left to stand anywhere on the field gets there in the end
+      const g=herdOnFresh(sh,s), grass=!!g || herdOnGrass(sh,s);
+      s.munch = grass && Math.hypot(s.vx,s.vy)<HG_GRAZE_V && s.panicT<=0;
       if(s.munch){
-        const was=s.graze||0; s.graze=Math.min(1,was+dt/HG_GRAZE_T);
+        const was=s.graze||0; s.graze=Math.min(1,was+dt/(g?HG_GRAZE_T:HG_GRAZE_T*3));
         if(Math.floor(s.graze*4)>Math.floor(was*4) && g!==true) g.bites=(g.bites||0)+1;   // a blade gone
         if(s.graze>=1){ s.full=true; s.munch=false; s.hopT=0.45; s.heartT=1.1; sh.anyFull=true; beep(1180,.04,"square",.02); }
       }
