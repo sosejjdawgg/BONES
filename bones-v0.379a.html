@@ -893,7 +893,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.378a</span>
+          <span id="devToggle">v0.379a</span>
         </div>
       </div>
 
@@ -27156,7 +27156,7 @@ const HD_HOLE_R=15, HD_HOLE_PULL=30, HD_HOLE_EAT=7, HD_HOLE_SUCK=72;   // a soft
 const HD_ROAD_GAPS=[8.5,6.5,10.0,7.5];          // two lanes now, so each one rests longer: there is still
 const HD_ROAD_GAPS2=[9.5,11.0,7.5,10.5];        // a moment the whole road is clear, it just has to be watched for        // seconds between rigs — a readable rotation, not dice
 const HD_ROAD_WARN=0.8, HD_ROAD_SPD=150, HD_RIG_W=44, HD_RIG_H=24;
-const HD_OT_FIRST=4;                          // the first overtime run comes this soon after quota
+const HD_OT_FIRST=4, HD_DROP_FIRST=9;                          // the first overtime run comes this soon after quota
 const HD_WOLF_PROWL=58, HD_WOLF_STALK=34, HD_WOLF_LUNGE=150, HD_WOLF_BLOCK_R=34, HD_WOLF_BARK_R=130;
 // the pack: how far out it circles, how fast, how tight it runs, the gap between strikes, the breather
 // it gives after an overtime drop, how much a sheep's closeness to the pack outweighs its loneliness,
@@ -27415,21 +27415,22 @@ function herdStartBand(lv){
 }
 /* Up to five on the start grass, the rest standing just behind them - all awake, all grazing. On the
    farm, any replacements for sheep lost up the hill come walking out of the barn instead. */
+/* A field visit starts with FIVE on the start grass, fed and ready. The rest of this field's waiting
+   sheep are brought out by the farmer's tractor, five at a time (herdOvertimeTick), and come off the
+   trailer hungry. On the farm, replacements for sheep lost up the hill walk out of the barn instead. */
 function herdSpawnFlock(sh){
   const rnd=herdRng(sh.seed^0x51f15e);
   const n=sh.visitN, A=herdStartBand(sh.lv);
-  const repl = (sh.lv===1 && !HERD_LV[1].mountain) ? Math.min(n, S.herd.repl||0) : 0;
-  const here=n-repl;
-  const back0=A.y1+6, back1=HG.H-16;
-  for(let i=0;i<here;i++){
-    const front=i<5, gap=front?A.gap:20;
-    const y0=front?Math.max(A.y0,A.y1-60):back0, y1=front?A.y1:back1;
+  const front=Math.min(5,n);
+  const repl = (sh.lv===1 && !HERD_LV[1].mountain) ? Math.min(n-front, S.herd.repl||0) : 0;
+  const y0=Math.max(A.y0,A.y1-60), y1=A.y1;
+  for(let i=0;i<front;i++){
     let x=0,y=0,tries=0;
-    do{ x=A.x0-(front?0:30)+rnd()*(A.x1-A.x0+(front?0:60)); y=y0+rnd()*(y1-y0); tries++; }
+    do{ x=A.x0+rnd()*(A.x1-A.x0); y=y0+rnd()*(y1-y0); tries++; }
     while(tries<200 && (HERD.holes.some(h=>Math.hypot(h.x-x,h.y-y)<HD_HOLE_PULL+20)
-                        || sh.sheep.some(o=>Math.hypot(o.x-x,o.y-y)<(tries>120?14:gap))));
+                        || sh.sheep.some(o=>Math.hypot(o.x-x,o.y-y)<(tries>120?14:A.gap))));
     const s=herdNewSheep(sh,clamp(x,14,HF_W-14),y,i===0);           // one ram per flock — he bolts first
-    if(front) s.graze=HG_MAX;                                          // the five in front are ready
+    s.graze=HG_MAX;                                                    // the five are ready
     sh.sheep.push(s);
   }
   // the replacements: out of the barn door, round by the hedge, down onto the start grass
@@ -27439,7 +27440,9 @@ function herdSpawnFlock(sh){
     sh.walkers.push({s, path:[[44,82],[16,118],[16,ty-10],[tx,ty]], i:0, delay:0.6+i*0.45});
   }
   if(repl) S.herd.repl=Math.max(0,(S.herd.repl||0)-repl);
-  sh.started=n;
+  sh.started=front+repl;
+  // and the farmer brings the rest
+  if(n>sh.started){ sh.ot.on=true; sh.ot.nextT=HD_DROP_FIRST; sh.ot.dir=Math.random()<0.5?1:-1; }
 }
 function herdSpawnWolf(sh,delay){
   const P=sh.pack, side = P ? (P.x<HF_W/2?-1:1) : (sh.wolves[0] ? (sh.wolves[0].x<HF_W/2?-1:1) : (Math.random()<0.5?-1:1));
@@ -27890,6 +27893,7 @@ function herdQuota(sh){ return sh.quota!=null ? sh.quota : HERD_LV[sh.lv].quota;
 function herdFlockLeft(sh){
   const L=HERD_LV[sh.lv];
   if(L.climb) return (sh.strand||[]).length;
+  if(sh.visitN!=null) return Math.max(0, sh.visitN-sh.started);
   return Math.max(0, (L.flock||HERD_FLOCK)-sh.started);
 }
 
@@ -27904,19 +27908,20 @@ function herdOvertimeTick(sh,dt){
     if(herdFlockLeft(sh)<=0){ ot.nextT=0; return; }      // that's the lot
     // the side it comes in on is picked when it is scheduled, so the warning can point at it
     if(!ot.dir) ot.dir=Math.random()<0.5?1:-1;
+    if(sh.sheep.length<=1 && !(sh.walkers||[]).length) ot.nextT=Math.min(ot.nextT, HD_OT_WARN+2);   // nobody left to work: bring the next five
     const was=ot.nextT;
     ot.nextT-=dt;
     if(was>HD_OT_WARN && ot.nextT<=HD_OT_WARN && HERD.active){ beep(330,.12,"square",.05); setTimeout(()=>beep(262,.16,"square",.05),150); }
     if(ot.nextT<=0){
       const room=HF_CAP-sh.sheep.length;
       if(room<=0){ ot.nextT=HD_OT_WARN+1; return; }
-      const n=Math.min(room, L.otLoad||HD_OT_LOAD, herdFlockLeft(sh)), dir=ot.dir, drops=[];
+      const n=Math.min(room, HD_OT_LOAD, herdFlockLeft(sh)), dir=ot.dir, drops=[];
       for(let i=0;i<n;i++) drops.push({u:HD_OT_DROP_U+i*HD_OT_DROP_GAP, jy:(Math.random()-0.5)*12});
       const trl=Math.max(1,herdTrailerRoll(HD_OT_TRL_W));
       ot.truck={x:herdOtX(dir,-HD_TRAC_HALF), dir, n, trl, drops, dropped:0, age:0, spd:HD_OT_FAST};
       if(sh.pack) sh.pack.cd=Math.max(sh.pack.cd, HD_PACK_GRACE+4);
       beep(60,.5,"sawtooth",.05); haptic([25,25,25,25,25]);
-      if(sh.lv===3 && ot.drops===0 && sh.wolves.length<L.wolvesOT) herdSpawnWolf(sh,6);
+      if(sh.lv===3 && sh.quotaMet && !sh.wolf3 && sh.wolves.length<L.wolvesOT){ sh.wolf3=true; herdSpawnWolf(sh,6); }
     }
     return;
   }
@@ -28435,7 +28440,8 @@ function herdUpdate(sh,dt){
   }
   // wipe: nothing left to move and the quota never made — the shift is over
   // (on the climb, an empty field with strays still asleep up the hill is not the end of it)
-  if(sh.sheep.length===0 && !(sh.walkers||[]).length && !(L.climb && sh.strand.length) && !(sh.eagles||[]).some(e=>e.carryS))
+  if(sh.sheep.length===0 && !(sh.walkers||[]).length && !(L.climb && sh.strand.length) && !(sh.eagles||[]).some(e=>e.carryS)
+     && !(sh.ot && sh.ot.truck) && herdFlockLeft(sh)<=0)
     return herdEndShift(sh.quotaMet ? "checkout" : "wipe");
 }
 
@@ -28926,7 +28932,10 @@ function herdDrawHud(ctx,w,h,sh,t){
   { ctx.font="6px 'Press Start 2P',monospace";
     const hungry=sh.sheep.filter(s=>!herdFed(s)).length, ready=sh.sheep.length-hungry;
     ctx.fillStyle = hungry ? "#e8c14a" : "#7fd46a";
-    ctx.fillText(hungry ? "HUNGRY "+hungry+(ready?" · READY "+ready:"") : "ALL FED", 10, 43); }
+    ctx.fillText(hungry ? "HUNGRY "+hungry+(ready?" · READY "+ready:"") : "ALL FED", 10, 43);
+    const left=L.climb?0:herdFlockLeft(sh);
+    if(left>0){ const msg="FARMER: "+left+" TO COME", tw=ctx.measureText(msg).width;
+      ctx.fillStyle="rgba(0,0,0,.45)"; ctx.fillRect(6,48,tw+8,10); ctx.fillStyle="#d8d8d8"; ctx.fillText(msg, 10, 56); } }
   if(L.climb){
     // the ones falling behind: a red pip on the bottom edge, flashing, for their two seconds
     const v=HERD.view;
