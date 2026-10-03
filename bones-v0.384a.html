@@ -893,7 +893,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.383a</span>
+          <span id="devToggle">v0.384a</span>
         </div>
       </div>
 
@@ -29321,19 +29321,18 @@ function herdDrawSheep(ctx,x,y,face,ram,moving,t,ph,sc,graze){
   ctx.restore();
 }
 function herdHop(s){ return s.hopT>0 ? Math.sin((1-s.hopT/0.45)*Math.PI)*5 : 0; }
-// the belly pip: nothing on a sheep still waiting; an empty ring once it is in the drive, filling as it
-// eats; solid green when it is full. A full one gets a heart, once
+// the belly pip: nothing on a sheep still waiting; once it is in the drive, a small soft green pie
+// that fills as it eats, solid when it is fed - and a heart, once. No yellow, no ticks, no overfill
+// ring: that read as a dashboard over every sheep. Drawn at half strength so it sits on the wool.
 function herdDrawBelly(ctx,s,y,t){
   if(s.heartT>0){ const k=1-s.heartT/1.1; ctx.globalAlpha=Math.min(1,s.heartT/0.3); herdPixelHeart(ctx,s.x,y-26-k*10,0.9); ctx.globalAlpha=1; }
   if(!s.drove) return;
-  const px=s.x, py=y-17, g=s.graze||0, fed=g>=HG_PASS, top=-Math.PI/2;
-  ctx.fillStyle="rgba(27,20,12,.78)"; ctx.beginPath(); ctx.arc(px,py,3.8,0,7); ctx.fill();
-  ctx.strokeStyle="#cfc6b0"; ctx.lineWidth=0.8; ctx.beginPath(); ctx.arc(px,py,2.3,0,7); ctx.stroke();
-  if(g>0){ ctx.fillStyle = !fed ? (Math.floor(t*4)%2?"#e8c14a":"#c99a2e") : s.munch&&Math.floor(t*6)%2 ? "#b9e88a" : "#7fd46a";
-    ctx.beginPath(); ctx.moveTo(px,py); ctx.arc(px,py,2.4,top,top+Math.min(1,g)*Math.PI*2); ctx.closePath(); ctx.fill(); }
-  if(g>1){ ctx.strokeStyle="#f4d23c"; ctx.lineWidth=1.3; ctx.beginPath(); ctx.arc(px,py,3.6,top,top+(g-1)/(HG_MAX-1)*Math.PI*2); ctx.stroke(); }
-  // the 90% line
-  const a=top+HG_PASS*Math.PI*2; ctx.strokeStyle="#fff"; ctx.lineWidth=0.8; ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px+Math.cos(a)*2.6,py+Math.sin(a)*2.6); ctx.stroke();
+  const px=s.x, py=y-17, g=Math.min(1,(s.graze||0)/HG_PASS), fed=(s.graze||0)>=HG_PASS, top=-Math.PI/2;
+  ctx.save(); ctx.globalAlpha=0.5;
+  ctx.fillStyle="rgba(27,20,12,.6)"; ctx.beginPath(); ctx.arc(px,py,2.9,0,7); ctx.fill();
+  if(g>0){ ctx.fillStyle=fed?"#7fd46a":"#5fae55";
+    ctx.beginPath(); ctx.moveTo(px,py); ctx.arc(px,py,2.3,top,top+g*Math.PI*2); ctx.closePath(); ctx.fill(); }
+  ctx.restore();
 }
 // fresh grass: the start meadow a shade brighter, and each lit tuft with its own soft glow
 function herdDrawGrazing(ctx,sh,t,RM){
