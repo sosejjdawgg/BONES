@@ -739,6 +739,17 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
 .hmc-goal.fresh b{color:#e8c14a}
 .hm-node[data-lv="4"]{margin-top:34px}
 .hm-node.st-wait{border-color:#c9a94a}
+.hm-wait{flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:42px;padding:5px 4px 4px;border:2px solid rgba(255,255,255,.22);background:rgba(0,0,0,.35)}
+.hm-wait b{font-size:18px;line-height:1;color:#6a6a70;font-weight:normal}
+.hm-wait i{font-style:normal;font-size:5px;letter-spacing:1px;color:#8a8a92;margin-top:4px}
+.hm-wait.on{border-color:#f6f2e8;background:#f6f2e8}
+.hm-wait.on b,.hm-wait.on i{color:#1b140c}
+.hm-node.st-open .hm-wait.on{background:#e8c14a;border-color:#e8c14a}
+.hm-plat{display:flex;flex-wrap:wrap;gap:3px 4px;align-items:center;padding-left:3px}
+.hm-plat i{display:block;width:9px;height:7px;background:#f6f2e8;border:1px solid #1b140c;border-radius:4px 4px 3px 3px;position:relative}
+.hm-plat i::before{content:"";position:absolute;left:-4px;top:1px;width:3px;height:4px;background:#1b140c;border-radius:1px}
+.hm-plat em{font-style:normal;font-size:7px;color:#f6f2e8;margin-left:2px}
+.hm-next{align-self:flex-start;font-size:6px;letter-spacing:1px;color:#1b140c;background:#e8c14a;padding:3px 5px}
 .hm-sheep{flex:none;width:16px;height:12px;border:2px solid #cfc6b0;border-radius:6px 6px 5px 5px;position:relative;opacity:.7}
 .hm-sheep::before{content:"";position:absolute;left:-6px;top:1px;width:5px;height:6px;background:#1b140c;border-radius:2px}
 .hm-sheep.on{background:#f6f2e8;border-color:#1b140c;opacity:1}
@@ -893,7 +904,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.384a</span>
+          <span id="devToggle">v0.385a</span>
         </div>
       </div>
 
@@ -7554,7 +7565,8 @@ const BIN_OVAL=0.34;          // the mouth's depth over its width on the glass: 
 const BIN_RIM_G=BALL_G*1.5;   // the rim's hops fall a little snappier than the room's lobs
 const BIN_IDLE=14;            // seconds of nobody throwing at an open bin before the lid goes back
 const BIN_FAR=0.34;           // a live shot landing this far off, never touching it, ends the round
-const BIN_FAST=1.15;          // ...and a ball moving this fast across the mouth clips the far rim
+const BIN_KIND=0.65;          // ...and how much of a long landing's distance past the middle counts
+const BIN_FAST=1.35;          // ...and a ball moving this fast across the mouth clips the far rim
 const BIN_SPIN_V=0.30;        // tangential speed on contact that sets it rolling round the rim
 const BIN_SPIN_DECAY=0.45;    // ...and how fast that roll dies (per second, exponential)
 const BIN_LID_T=0.62, BIN_HOP_T=0.42, BIN_DRAG_T=0.9;
@@ -7596,13 +7608,23 @@ function binFlight(px,pz,ph){
   if(FETCH.live && ph>=top && BALL.hz<top && BALL.vh<0){
     const k=(ph-top)/Math.max(1e-6,ph-BALL.hz);
     const cx=px+(BALL.x-px)*k, cz=pz+(BALL.z-pz)*k;
-    const dx=cx-BIN.x, dz=(cz-BIN.z)/zk, r=Math.hypot(dx,dz);
+    let dx=cx-BIN.x, dz=(cz-BIN.z)/zk;
+    /* A TOUCH KIND. Most misses go long: the eye reads the near lip and the ball sails over the
+       far one. So how far PAST the middle a ball comes down, along the line it came in on, is
+       counted at BIN_KIND of itself - a shot that would have cleared the far rim clips it, and one
+       that would have landed on the far rim drops in. Short and sideways shots are judged as is. */
+    if(!lidOn){ const hv=Math.hypot(BALL.vx,BALL.vz/zk);
+      if(hv>1e-4){ const tx=BALL.vx/hv, tz=(BALL.vz/zk)/hv;
+        let al=dx*tx+dz*tz; const ac=-dx*tz+dz*tx;
+        if(al>0) al*=BIN_KIND;                       // past the middle: the far side is forgiven
+        dx=al*tx-ac*tz; dz=al*tz+ac*tx; } }
+    const r=Math.hypot(dx,dz);
     if(lidOn){
       if(r<BIN_RO+BALL_R){ BALL.x=cx; BALL.z=cz; BALL.hz=top; binLidPing(dx,dz,r,true); ballSquash(0.8); return false; }
     } else {
       const hs=Math.hypot(BALL.vx,BALL.vz);
-      if(r<=BIN_RI-BALL_R*0.6 && hs<BIN_FAST){ BALL.x=cx; BALL.z=cz; binIn(true,dx/BIN_RO,dz/BIN_RO); return true; }
-      if(r<BIN_RO+BALL_R*0.6){ BALL.x=cx; BALL.z=cz; binRimStart(dx,dz,Math.max(r,1e-4)); return true; }
+      if(r<=BIN_RI-BALL_R*0.4 && hs<BIN_FAST){ BALL.x=cx; BALL.z=cz; binIn(true,dx/BIN_RO,dz/BIN_RO); return true; }
+      if(r<BIN_RO+BALL_R*0.8){ BALL.x=cx; BALL.z=cz; binRimStart(dx,dz,Math.max(r,1e-4)); return true; }
     }
   }
   // the can itself: anything below the rim inside the outer wall goes back out on its own side
@@ -7659,7 +7681,7 @@ function binRimStart(dx,dz,r){
   const vr=BALL.vx*ux+BALL.vz*uz, vt=-BALL.vx*uz+BALL.vz*ux;
   const rMid=(BIN_RI+BIN_RO)/2, span=BIN_RO-BIN_RI, hs=Math.hypot(BALL.vx,BALL.vz);
   // inside the middle of the rim it leans in; moving outward, or fast, or dropping hard, it leans out
-  const lean=(rMid-r)/span*1.4 - vr*0.9 - Math.max(0,hs-0.6)*0.5 - Math.max(0,-BALL.vh-1.2)*0.15;
+  const lean=(rMid-r)/span*1.4 - vr*0.9 - Math.max(0,hs-0.6)*0.5 - Math.max(0,-BALL.vh-1.2)*0.15 + 0.32;   // ...leaning a touch kind
   // spin only off a glancing hit: a head-on one carries no sideways speed to keep
   const spin=Math.abs(vt)>BIN_SPIN_V && Math.abs(vt)>Math.abs(vr)*1.2;
   const turns=spin ? (Math.abs(vt)>0.75?2:1) : 0;
@@ -27961,18 +27983,23 @@ function herdRenderMap(){
     const open = herdUnlocked(lv), n = L.plan ? 0 : herdStation(lv), empty = open && n===0;
     const cls = prog ? "st-prog" : (!open||empty) ? "st-locked" : lv===front ? "st-open" : "st-wait";
     const name = L.plan ? "????" : L.n;
-    const icon = L.plan ? "" : '<span class="hm-sheep'+(n>0?" on":"")+'" aria-hidden="true"></span>';
+    /* EVERY FIELD IS A STATION. The count waiting there is the big number on the platform board,
+       and the ones waiting stand in a queue under the name - a sheep each, up to ten - so the map
+       reads like a line you are running a train up: the NEXT STOP is the one to collect from. */
+    const icon = L.plan ? "" : '<span class="hm-wait'+(n>0?" on":"")+'"><b>'+n+'</b><i>WAITING</i></span>';
+    const plat = (!L.plan && n>0) ? '<span class="hm-plat" aria-hidden="true">'+"<i></i>".repeat(Math.min(10,n))+(n>10?"<em>+"+(n-10)+"</em>":"")+'</span>' : "";
+    const nextTag = (!prog && open && n>0 && lv===front) ? '<span class="hm-next">&#9654; NEXT STOP</span>' : "";
     const right = prog ? "<span class='hm-pip'></span>"
                 : (open && n>0) ? ((st&&st.cleared) ? herdStarHtml(Math.max(1,st.stars||0),3) : "<span class='hm-go'>GO</span>") : "";
     const sub = L.plan ? "" : prog ? "IN SHIFT"
-              : n>0 ? n+" WAITING"
+              : n>0 ? ""
               : lv===1 ? "NONE AT THE FARM" : "LOCKED — NONE WAITING";
     const gl = (!L.plan && HERD_GOALS[lv] && n>0) ? '<span class="hm-goals">'+HERD_GOALS[lv].map((g,i)=>{
                  const done=!!(st&&st.bonus&&st.bonus[i]);
                  return '<span class="hm-goal'+(done?" done":"")+'">'+(done?"&#10003;":"&#9675;")+" "+g.lbl+(done?"":" +"+g.xp)+'</span>'; }).join("")+'</span>' : "";
     html+='<button class="hm-node '+cls+(lv%2?" hm-r":" hm-l")+'" data-lv="'+lv+'">'+
           '<span class="hm-n">'+lv+'</span>'+icon+
-          '<span class="hm-txt"><span class="hm-name">'+name+'</span>'+(sub?'<span class="hm-sub2">'+sub+'</span>':"")+gl+'</span>'+
+          '<span class="hm-txt">'+nextTag+'<span class="hm-name">'+name+'</span>'+plat+(sub?'<span class="hm-sub2">'+sub+'</span>':"")+gl+'</span>'+
           right+'</button>';
     if(lv>1) html+='<div class="hm-post'+(herdUnlocked(lv)?" lit":"")+'"></div>';
   }
