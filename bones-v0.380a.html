@@ -893,7 +893,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.379a</span>
+          <span id="devToggle">v0.380a</span>
         </div>
       </div>
 
@@ -1046,7 +1046,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
           <span class="gh">REFILL THE BOWLS</span><br>
           TAP THE WATER OR FOOD BOWL RIGHT IN DOGCAM TO POUR. HE'LL HELP HIMSELF WHEN HE'S HUNGRY OR THIRSTY — YOUR JOB IS JUST KEEPING THEM FULL.<br><br>
           <span class="gh">PLAY FETCH</span><br>
-          OWN A BALL? DRAG IT DOWN INTO THE CONTROL DECK AND LET GO — THAT'S <b>SLINGTOSS</b>. LAND IT ON THE WHITE CROSS AND THE CROSS POPS AND PAINTS ITSELF SOMEWHERE ELSE: THE CARPET, A SIDE WALL, THE FAR WALL. HE'LL CHASE IT DOWN AND BRING IT BACK EITHER WAY. OR TAP PLAY FETCH FROM HOME AND HE'LL START THE GAME HIMSELF.<br><br>
+          OWN A BALL? DRAG IT DOWN INTO THE CONTROL DECK AND LET GO — THAT'S <b>SLINGTOSS</b>. AIM FOR THE BIN UNDER THE WINDOW. HE'LL CHASE IT DOWN AND BRING IT BACK EITHER WAY. OR TAP PLAY FETCH FROM HOME AND HE'LL START THE GAME HIMSELF.<br><br>
           <span class="gh">WALKS & THE DOGPARK</span><br>
           TAP GO OUT FOR WORK, TRAINING OR THE BEACH — OR HEAD TO THE DOGPARK ONCE HE HITS LV.5. BARK AT SQUIRRELS, BIRDS & CATS TO SCARE THEM OFF — HE DOESN'T HURT ANYONE, THEY JUST DROP A BONE AND SCUTTLE AWAY. SURVIVE THE WAVES AND REACH THE RED EXIT TO BANK REAL XP BEFORE HE GETS OVERRUN.<br><br>
           <span class="gh">THE DOGPARK ECONOMY</span><br>
@@ -2301,7 +2301,8 @@ function tickStats(dt, force){
   S.outTimer += dt;
   if(S.clean<70) SPONGE.rew=false;
   if(S.groom<70) BRUSH.rew=false;
-  if(POOS.length){ S.mood=clamp(S.mood-0.025*POOS.length*dt,0,100); S.clean=clamp(S.clean-0.01*POOS.length*dt,0,100); }
+  { const mess=POOS.length+BAGS.length;
+    if(mess){ S.mood=clamp(S.mood-0.025*mess*dt,0,100); S.clean=clamp(S.clean-0.01*mess*dt,0,100); } }
   if(S.outTimer>150 && POOS.length<3 && !R.active && !OUTING.active){
     S.outTimer=40;
     // right by his bed, in FLOOR coordinates - the old version stored a canvas fraction taken
@@ -3360,15 +3361,27 @@ $("#dogcv").addEventListener("pointerdown",e=>{
     // ...tested where the pile is DRAWN, which is no longer where its floor x happens to be
     const pz=(POOS[i].z===undefined?0.80:POOS[i].z);
     if(Math.abs(fx-rmX(POOS[i].x,pz))<0.055 && Math.abs(fy-rmY(pz))<0.06){
-      POOS.splice(i,1); addXP(2); beep(500,.05);
-      toast("PICKED UP. GOOD OWNER."); return;
+      // it goes into a bag, and the bag is in your finger
+      POOS.splice(i,1); BAG.held=true; BAG.x=fx; BAG.y=fy;
+      try{ e.currentTarget.setPointerCapture(e.pointerId); }catch(_){}
+      if(SETTINGS.sound){ try{ audioInit(); noiseBurst(0.07,2600,0.9,0.05,AC.currentTime); }catch(_){} }
+      return;
+    }
+  }
+  for(let i=0;i<BAGS.length;i++){
+    const b=BAGS[i], bx=rmX(b.x,b.z), by=rmY(b.z);
+    if(Math.abs(fx-bx)<0.06 && fy>by-0.09 && fy<by+0.03){
+      BAGS.splice(i,1); BAG.held=true; BAG.x=fx; BAG.y=fy;
+      try{ e.currentTarget.setPointerCapture(e.pointerId); }catch(_){}
+      beep(260,.03,"square",.02); return;
     }
   }
   // grab the ball - tested against where it actually IS on the glass, which is now derived from
   // its floor position rather than stored, so a ball far up the room has a small grab radius too
-  if(S.ballOwned && !BALL.pcarried && (()=>{ const p=ballScreen();
+  if(S.ballOwned && !BALL.pcarried && BIN.ball!=="in" && (()=>{ const p=ballScreen();
         return Math.hypot(fx-p.x,(fy-p.y)*1.3) < 0.055*Math.max(0.7,p.sc); })()){
     BALL.held=true; BALL.settle=null;      // picking it up ends whatever drop was easing home
+    if(BIN.ball==="rim"){ BIN.ball=null; BIN.rim=null; }      // ...and lifts it off the rim
     BALL.grab={t:performance.now()/1000, x:fx, y:fy};
     BALL.tz=rmZof(fy); BALL.tx=rmXof(fx,BALL.tz);
     BALL.trail=[]; BALL.vx=0; BALL.vz=0; BALL.vh=0;
@@ -3387,8 +3400,8 @@ $("#dogcv").addEventListener("pointerdown",e=>{
   const px=fx*r.width, py=fy*r.height;
   const inRect=(q,padX,padY)=>px>=q.x-padX && px<=q.x+q.w+padX &&
                               py>=q.y-q.h-padY && py<=q.y+padY;
-  if(inRect(FR.water,6,10)){ tapBowl("water"); return; }
-  if(inRect(FR.food, 6,10)){ tapBowl("food");  return; }
+  if(inRect(FR.water,14,16)){ tapBowl("water"); return; }     // a bigger tap than the bowl
+  if(inRect(FR.food, 14,16)){ tapBowl("food");  return; }
   /* HIM. His sprite is drawn CENTRED on his floor spot now, not hung off its left edge, so the
      old "from CAM.x rightwards" box tested a strip beside him rather than him. */
   const dogSx=rmX(CAM.x,CAM.z), dogSy=rmY(CAM.z);
@@ -3450,6 +3463,7 @@ $("#dogcv").addEventListener("pointerdown",e=>{
 $("#dogcv").addEventListener("pointermove",e=>{
   const r=e.currentTarget.getBoundingClientRect();
   const fx=(e.clientX-r.left)/r.width, fy=(e.clientY-r.top)/r.height;
+  if(BAG.held){ BAG.x=fx; BAG.y=fy; return; }
   if(BRUSH.held){
     BRUSH.x=fx; BRUSH.y=fy;
     if(fx>CAM.x-0.02 && fx<CAM.x+CAMDWF+0.04 && fy>0.30 && fy<0.85 && !R.active && !OUTING.active && !PK.active){
@@ -3589,6 +3603,11 @@ function dogDoRoll(dir){
   return true;
 }
 $("#dogcv").addEventListener("pointerup",e=>{
+  if(BAG.held){
+    const r=e.currentTarget.getBoundingClientRect();
+    bagRelease((e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height);
+    return;
+  }
   if(WINGES.on){
     const r=e.currentTarget.getBoundingClientRect();
     if(winGestureEnd((e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height, r.height)) return;
@@ -3604,7 +3623,7 @@ $("#dogcv").addEventListener("pointerup",e=>{
   if(BALL.held) ballRelease();
   BALL.held=false; PET.down=false; SPONGE.held=false; BRUSH.held=false; clearTimeout(PET.lp);
 });
-$("#dogcv").addEventListener("pointercancel",()=>{ BALL.held=false; SLING.on=false; SLING.deck=false; PET.down=false; SPONGE.held=false; BRUSH.held=false; WINGES.on=false; clearTimeout(PET.lp); });
+$("#dogcv").addEventListener("pointercancel",()=>{ if(BAG.held) bagRelease(BAG.x,BAG.y); BALL.held=false; SLING.on=false; SLING.deck=false; PET.down=false; SPONGE.held=false; BRUSH.held=false; WINGES.on=false; clearTimeout(PET.lp); });
 $("#stClose").onclick=closeStatus;
 $("#meters").addEventListener("click",()=>{
   closeStatus();
@@ -4576,6 +4595,7 @@ function atBedSpot(){
 const BOWL = { level:0 };
 const FBOWL = { level:0 };
 const POOS=[];
+const BAGS=[];        // poo in a bag, put down somewhere that is not the bin: still unpleasant
 const TAPS={water:{t:0,combo:0},food:{t:0,combo:0}};
 // both hang high on the wall, above where BONES' head reaches, so tapping him for his
 // stats can never grab one by accident
@@ -5546,14 +5566,20 @@ function camBehavior(dt){
       BALL.z=BALL.settle.z; BALL.settle=null;
     }
     ballSyncY();
+  } else if(BIN.ball){
+    // on the rim making up its mind, or in the bin waiting for him
+    if(BIN.ball==="rim") binRimTick(dt);
+    ballSyncY();
   } else {
     /* FLIGHT. Height falls under gravity; the floor position runs on with a little drag. */
+    const px0=BALL.x, pz0=BALL.z, ph0=BALL.hz;
     BALL.vh -= BALL_G*dt;
     BALL.hz += BALL.vh*dt;
     BALL.x  += BALL.vx*dt;
     BALL.z  += BALL.vz*dt;
     const wall=ballWalls(dt);
     if(wall && FETCH.live){ FETCH.banks+=wall; trickBounce(); sfxSlingBank(); TRICK.hitWall=true; }
+    if(binFlight(px0,pz0,ph0)){ ballSyncY(); } else {
     if(BALL.hz<=0){
       BALL.hz=0;
       if(BALL.vh<-0.25){                       // a real bounce
@@ -5579,6 +5605,7 @@ function camBehavior(dt){
       if(BALL.hz<=0 && BALL.vh===0 && !BALL.vx && !BALL.vz) TRICK.live=false;
     }
     ballSyncY();
+    }
   }
   if(FETCH.labelT>0) FETCH.labelT=Math.max(0,FETCH.labelT-dt);
   if(FETCH.showLand>0) FETCH.showLand=Math.max(0,FETCH.showLand-dt);
@@ -5587,6 +5614,7 @@ function camBehavior(dt){
   if(WINFX.shards.length) winShardTick(dt);
   winHealTick(dt);
   if(MARK.showT>0) MARK.showT=Math.max(0,MARK.showT-dt);
+  binTick(dt);
   // the fly
   FLY.next-=dt;
   if(!FLY.active && FLY.next<=0 && CAM.state!=="rest" && !CAM.bedTarget){
@@ -5667,7 +5695,7 @@ function camBehavior(dt){
   /* A ball ABOVE him is a reason to leave the floor. Checked before the chase below, which only
      ever wanted a ball it could reach standing up. The plan does the deciding: with no instant
      where his muzzle and the ball can be in the same place, nothing happens here at all. */
-  if(!BALL.off && !BALL.carried && !BALL.held && !BALL.pcarried && ballLive && BALL.cool<=0 &&
+  if(!BALL.off && !BALL.carried && !BALL.held && !BALL.pcarried && !BIN.ball && ballLive && BALL.cool<=0 &&
      (CAM.leapCd||0)<=0 && !CAM.bedTarget && BALL.hz>dogBodyFloor()*0.62 && canAct &&
      hasTrick("jump")){
     const plan=dogLeapPlan();
@@ -5697,15 +5725,15 @@ function camBehavior(dt){
     /* He walks the FLOOR to the ball now, not a line. The old version compared the ball against a
        dir-dependent mouth offset and strobed whenever the two disagreed; with a real position for
        each of them the question is only "which way is it from me", which cannot oscillate. */
-    const lead=0.22;
-    const tx=clamp(BALL.x+BALL.vx*lead,0.05,0.95), tz=clamp(BALL.z+BALL.vz*lead,0.08,0.95);
+    const lead=0.22, fs=BIN.ball==="in"?binFetchSpot():null;     // in the bin: go and stand by it
+    const tx=fs?fs.x:clamp(BALL.x+BALL.vx*lead,0.05,0.95), tz=fs?fs.z:clamp(BALL.z+BALL.vz*lead,0.08,0.95);
     const d=Math.hypot(tx-CAM.x,(tz-CAM.z)*1.1);
     const near=d<0.10;
     CAM.state = (near && BALL.hz>dogBodyFloor()*0.25) ? "catch" : "chase";
     tickTodo("d_ball");
     CAM.until=99;
     camGoto(tx,tz, near?0.22:0.62, dt);
-    if(d<0.085 && BALL.hz<dogBodyFloor()*0.85){
+    if(d<0.085 && BALL.hz<dogBodyFloor()*0.85 && !binHolds()){
       BALL.held=false; BALL.vx=0; BALL.vz=0; BALL.vh=0; BALL.carried=true; BALL.settle=null;
       let bonus=0, m0=TRICK.mult, t0=TRICK.ticks;
       if(TRICK.live){
@@ -5735,7 +5763,8 @@ function camBehavior(dt){
       CAM.moving=false;
       if(CAM.t>0.9){ CAM.fetchPhase=3; CAM.t=0; }
     } else if(CAM.fetchPhase===1 || CAM.fetchPhase===5){   // go to wherever it lies
-      if(camGoto(BALL.x,BALL.z,0.62,dt)){
+      const ft = BIN.ball==="in" ? binFetchSpot() : BALL;
+      if(camGoto(ft.x,ft.z,0.62,dt) && !binHolds()){
         BALL.carried=true; BALL.off=false; BALL.vx=0; BALL.vz=0; BALL.vh=0; BALL.held=false;
         BALL.settle=null;
         fetchReturned();
@@ -5844,8 +5873,8 @@ function camBehavior(dt){
     return;
   }
   if(CAM.state==="eatgo"){
-    if(camGoto(SPOT.food.x,SPOT.food.z+0.10,0.30,dt)){
-      CAM.state="eat"; CAM.dir=-1; CAM.oct=6; CAM.t=0; CAM.until=99; CAM.fi=0; }
+    if(camGoto(SPOT.food.x,SPOT.food.z-0.115,0.30,dt)){      // from behind it: the bowls are at the front
+      CAM.state="eat"; CAM.dir=-1; CAM.oct=2; CAM.t=0; CAM.until=99; CAM.fi=0; }
     return;
   }
   if(CAM.state==="eat"){
@@ -5870,7 +5899,7 @@ function camBehavior(dt){
   }
   if(CAM.state==="beggo"){
     const sp = CAM.begKind==="water"?SPOT.water:SPOT.food;
-    if(camGoto(sp.x,sp.z+0.10,0.30,dt)){
+    if(camGoto(sp.x,sp.z-0.115,0.30,dt)){
       CAM.state="beg"; CAM.dir=-1; CAM.t=0; CAM.until=99; CAM.fi=0;
       CAM.begT=0; CAM.nextWhine=30;
       showPortrait("confused",5000);   // "the bowl is empty...?"
@@ -5890,8 +5919,8 @@ function camBehavior(dt){
     return;
   }
   if(CAM.state==="drinkgo"){
-    if(camGoto(SPOT.water.x,SPOT.water.z+0.10,0.30,dt)){
-      CAM.state="drink"; CAM.dir=-1; CAM.oct=6; CAM.t=0; CAM.until=99; CAM.fi=0; }
+    if(camGoto(SPOT.water.x,SPOT.water.z-0.115,0.30,dt)){
+      CAM.state="drink"; CAM.dir=-1; CAM.oct=2; CAM.t=0; CAM.until=99; CAM.fi=0; }
     return;
   }
   if(CAM.state==="drink"){
@@ -6176,16 +6205,16 @@ function botBowlX(kind){ return (kind==="water"?SPOT.water:SPOT.food).x; }
 function botJob(){
   if(BOWL.level<0.25) return "water";
   if(FBOWL.level<0.25 && S.kibble>0) return "food";
-  if(POOS.length) return "poo";
-  if(S.ballOwned && !BALL.off && !BALL.carried && !BALL.held && !BALL.pcarried
+  if(POOS.length||BAGS.length) return "poo";
+  if(S.ballOwned && !BALL.off && !BALL.carried && !BALL.held && !BALL.pcarried && !BIN.ball
      && S.fun<45 && ROBOT.battery>60) return "ball";
   return null;
 }
 function botJobX(j){
   // he parks to the RIGHT of a bowl rather than on top of it: every pose reaches with the
   // left arm, so this puts the bowl under his hand and keeps the pour clear of his body
-  if(j==="water"||j==="food") return botBowlX(j)+0.095;
-  if(j==="poo")  return POOS.length?POOS[0].x:ROBOT.dockX;
+  if(j==="water"||j==="food") return botBowlX(j)+0.05;
+  if(j==="poo")  return POOS.length?POOS[0].x:BAGS.length?BAGS[0].x:ROBOT.dockX;
   if(j==="ball") return BALL.x;
   return ROBOT.dockX;
 }
@@ -6210,7 +6239,7 @@ function botFinish(j){
   if(j==="water"){ BOWL.level=1; beep(880,.09); }
   else if(j==="food"){ if(S.kibble>0){ S.kibble--; FBOWL.level=1; } beep(400,.09,"square"); renderMeters(); }
   else if(j==="poo"){
-    if(POOS.length) POOS.shift();
+    if(POOS.length) POOS.shift(); else if(BAGS.length) BAGS.shift();
     beep(300,.08);
     ROBOT.pauseT=1.8; ROBOT.pauseMsg="...";          // he needs a moment after that one
   }
@@ -6628,6 +6657,10 @@ function camSolid(x,z,goalKey){
      the wall that he would have barged through. It is a rug in the middle of the floor now: he
      lies on it, walks over it, and the ball rolls across it, so treating it as solid would fence
      off the centre of the room and make his own bed the one place he could not stand. */
+  if(BIN.init){
+    const dx=x-BIN.x, dz=(z-BIN.z)*1.5, d=Math.hypot(dx,dz), r=0.082;
+    if(d<r && d>1e-5){ x=BIN.x+dx/d*r; z=BIN.z+dz/d*r/1.5; }
+  }
   for(const k of ['water','food']){
     if(k===goalKey) continue;
     const p=SPOT[k], r=0.075;
@@ -7074,40 +7107,22 @@ function ballFouled(){
   }
   return false;
 }
+/* A throw that reaches the floor without the bin scores nothing: everything worth a word happens at
+   the bin (IN, LIP, OUT). What the floor does decide is whether the round is over - an open bin
+   with a shot that never came near it gets its lid back. */
 function fetchLand(){
-  const d=markNearest(BALL.x,BALL.z).d;      // whichever of the live targets it came closest to
-  let lab, good=false;
-  if(FETCH.foul) lab="FOUL";
-  else if(FETCH.banks>=2 && d<0.34){ lab="2-BANK"; good=true; }
-  else if(FETCH.banks===1 && d<0.30){ lab="1-BANK"; good=true; }
-  else if(d<0.13){ lab="DIRECT"; good=true; }
-  else if(d<0.30){ lab="CLOSE"; good=true; }
-  else lab="MISS";
-  FETCH.label=lab; FETCH.labelT=1.6; FETCH.live=false;
-  FETCH.landX=BALL.x; FETCH.landZ=BALL.z; FETCH.showLand=2.2;
-  FETCH.good=good;
-  /* HOT. One landed shot opens the other two targets and keeps them open; the first miss shuts
-     them again. It is set here, on the hit itself, rather than off FETCH.streak - the streak only
-     moves once he has actually brought the ball back, which is a long way after the moment you
-     want the board to light up. */
-  FETCH.hot = good;
-  if(good) sfxSlingHit(); else sfxSlingMiss();
-  // ...and if it came down ON the cross rather than merely near it, that cross is finished
-  if(markStruckFloor(d)){ markPop(); markPlace(); }
+  FETCH.label=""; FETCH.labelT=0; FETCH.live=false;
+  FETCH.landX=BALL.x; FETCH.landZ=BALL.z; FETCH.showLand=0;
+  FETCH.good=false; FETCH.hot=false;
+  if(BIN.lid==="off" && !BIN.touched){
+    BIN.cleanRun=0;
+    if(Math.hypot(BALL.x-BIN.x,BALL.z-BIN.z)>BIN_FAR) BIN.endT=0.7;
+  }
+  sfxSlingMiss();
   if((S.ballThrows||0)>=BALL_LIFE) ballBurst();     // ...and this was its two-hundredth
 }
-/* THE INTERCEPT. From a streak of four he stops waiting and goes for it in the air. It is a real
-   timing beat, not a magnet: he commits to a lane, winds up, and the ball has to actually come
-   through his reach. Thread it past him and the streak lives. */
+/* THE INTERCEPT (switched off while the bin is the game - see fetchInterceptWanted). */
 const FETCH_INTER_AT=4;
-/* A streak is a throw that was worth something AND came back. Landing a beauty means nothing if
-   the ball is still sitting out there, and fetching a dud is not an achievement, so it takes both.
-   An intercept breaks it - he still brings the ball back, he just took it off you. */
-/* THE FLICK. Read off the last few points of the drag rather than the single frame of release:
-   a finger that stops dead for one frame before lifting would otherwise throw nothing at all.
-   Direction across the glass becomes direction across the floor. Movement UP the glass is both
-   distance into the room AND the arc - which is what makes a hard flick reach the back wall and a
-   flat one skid along the carpet. */
 function ballRelease(){
   BALL.trail=[];
   /* THE DECK SHOT. It leaves from the locked room spot, not from wherever the finger ended up -
@@ -7133,6 +7148,7 @@ function ballRelease(){
     TRICK.hitWall=false; TRICK.hitWin=false; TRICK.swish=0;
     FETCH.live=true; FETCH.banks=0; FETCH.foul=false; FETCH.good=false;
     FETCH.label=""; FETCH.labelT=0;
+    binOnThrow();
     return;
   }
   /* LET GO ANYWHERE ELSE AND IT JUST DROPS. However far it was dragged, however fast the finger
@@ -7157,6 +7173,7 @@ function fetchBreakStreak(){
   FETCH.streak=0; FETCH.hot=false;      // ...and the board goes back down to the one target
 }
 function fetchInterceptWanted(){
+  return false;      // the bin is the game now: a dog taking shots out of the air would end it
   return FETCH.streak>=FETCH_INTER_AT && FETCH.live && BALL.hz>0.02 &&
          !BALL.carried && !BALL.held && CAM.state!=="leap";
 }
@@ -7209,7 +7226,7 @@ function rmXof(xF,z){ const hw=rmHW(z); return clamp(0.5+(xF-0.5)/(2*hw),0,1); }
    most-occluded corner of the picture. Moving SPOT.bed here moves everything that reads it - the
    walk, the rest test, the tap target, the SUPPLIES highlight and where he fouls the carpet - so
    there is still exactly one answer to "where is his bed". */
-const SPOT={ water:{x:0.105,z:0.085}, food:{x:0.30,z:0.085}, bed:{x:0.50,z:0.42},
+const SPOT={ water:{x:0.745,z:0.82}, food:{x:0.882,z:0.82}, bed:{x:0.50,z:0.42},
              // ...and `near` is where he comes when you CALL him AND where he drops a fetched
              // ball. One spot: being called and bringing it back should land him in the same
              // place, front and centre, rather than off in a corner.
@@ -7217,9 +7234,9 @@ const SPOT={ water:{x:0.105,z:0.085}, food:{x:0.30,z:0.085}, bed:{x:0.50,z:0.42}
 /* The bowls are still drawn generously for their depth - they are the two things you most need to
    read the state of at a glance, and at true scale on the back wall they would be about twenty
    pixels across. The 2x is a legibility allowance, not a claim about where they are. */
-const BOWL_BIG=2.0;
+const BOWL_BIG=1.12;      // front-right now, so they need far less help to be read
 // where the bot parks: in front of the bowls he tends, with room for the pour to fall
-const ROBOT_Z=SPOT.food.z+0.13;
+const ROBOT_Z=SPOT.food.z-0.17;     // the bowls are at the front now: he works from behind them
 /* ==================== THE TARGET, AND WHERE IT GOES NEXT ====================
    ONE cross, and it does not stay put. Hit it and it POPS - gone on the frame the ball touches
    it - and paints itself somewhere else: another patch of carpet, the back wall, one of the side
@@ -7236,7 +7253,7 @@ const ROBOT_Z=SPOT.food.z+0.13;
 const MARK={ x:SPOT.mark.x, z:SPOT.mark.z, hz:0, wall:null, showT:0 };
 const MARKS=[ MARK ];
 function marksLive(){ return 1; }
-function marksShown(){ return (BALL.held || SLING.deck || FETCH.live || MARK.showT>0) ? 1 : 0; }
+function marksShown(){ return 0; }      // the cross is gone: the bin is the target now
 /* How far the ball is from the target, in floor units, for the LANDING score. A target up on a
    wall is not something you can land near, so it reports a distance no throw can beat - it is hit
    by striking it in flight or not at all. */
@@ -7444,6 +7461,7 @@ function markArms(m){
   return {c:markScreenPt(m), pts};
 }
 function markWallTouch(wall){
+  return;                                  // (the cross is gone; kept so the wall code reads the same)
   if(!FETCH.live || MARK.wall!==wall || MARKPOP.t>0) return;
   const along = wall==="back" ? Math.abs(BALL.x-MARK.x) : Math.abs(BALL.z-MARK.z);
   if(Math.hypot(along/MARK_WALL_RX, (BALL.hz-MARK.hz)/MARK_WALL_RH) > 1) return;
@@ -7454,6 +7472,425 @@ function markWallTouch(wall){
   sfxSlingHit();
   markPop(); markPlace();
 }
+/* ==================== THE BIN ====================
+   The white cross is gone and the room has a bin instead: a small black can with a white rim, lid
+   on, standing in the far-right corner under the window. Furniture, not a hoop.
+   HIT 1 IS THE JOKE. A ping on the closed bin knocks the lid off - it spins once and lands beside
+   it - and that throw never scores, whatever it does next: if it drops toward the mouth as the lid
+   leaves, it rolls off the tipping lid instead. Only an OPEN bin swallows a ball, and it stays open
+   until the throwing stops or a shot goes nowhere near it; then the lid hops back on, and the next
+   ping is Hit 1 again.
+   THE RIM DECIDES, AND IT TAKES ITS TIME. The mouth is a true circle on the floor plane, BIN_H up:
+   a thick rim between BIN_RI and BIN_RO and a narrower throat inside it. A ball whose centre comes
+   down inside the lip, slow enough, drops CLEAN. One that meets the rim SITS on it for BIN_HOLD -
+   and if it came in glancing, rolls round it once or twice - drifting the way it is going to go,
+   then falls in (LIP) or off (OUT) on its own side. Nothing is rolled: the contact decides.
+   TWO CLEAN IN A ROW and he trots over, bumps it, it topples toward him, he noses the ball out -
+   and the bin rights itself and drags off somewhere a little further or ruder. A lip-in never
+   moves it. */
+const BIN_H=0.13, BIN_RO=0.064, BIN_RI=0.046;
+const BIN_REST={x:0.80, z:0.10};               // the far-right corner, under the window
+const BIN_HOLD=0.42;          // seconds a ball sits on the rim before it chooses
+const BIN_IDLE=14;            // seconds of nobody throwing at an open bin before the lid goes back
+const BIN_FAR=0.34;           // a live shot landing this far off, never touching it, ends the round
+const BIN_FAST=1.15;          // ...and a ball moving this fast across the mouth clips the far rim
+const BIN_SPIN_V=0.30;        // tangential speed on contact that sets it rolling round the rim
+const BIN_LID_T=0.62, BIN_HOP_T=0.42, BIN_DRAG_T=0.9;
+const BIN={ init:false, x:BIN_REST.x, z:BIN_REST.z, lid:"on", lidT:0, lidX:0, lidZ:0, lidSide:1,
+            crack:0, flashF:0, flashRed:false, flinch:0, flinchDir:1, idle:0, endT:0, cleanRun:0,
+            lastRude:0, ball:null, rim:null, drop:0, ceremony:false, phase:"stand", phT:0, tip:0,
+            tipSide:1, from:null, to:null, dust:[], dustT:0, block:false, touched:false };
+// the poo bag: held in the finger, or left lying about
+const BAG={ held:false, x:0, y:0, t:0 };
+function binInit(){
+  if(BIN.init) return;
+  BIN.init=true;
+  if(S.bin && isFinite(S.bin.x) && isFinite(S.bin.z)){ BIN.x=clamp(S.bin.x,0.10,0.90); BIN.z=clamp(S.bin.z,0.08,0.70); }
+  BIN.lastRude=binRude(BIN.x,BIN.z);
+}
+// how far it is from where the ball comes back to, plus a little for hugging a wall
+function binRude(x,z){
+  return Math.hypot(x-SPOT.near.x, z-SPOT.near.z) + ((x<0.24||x>0.76)?0.12:0) + (z<0.18?0.05:0);
+}
+// where he stands to get a ball out of it
+function binFetchSpot(){ return {x:clamp(BIN.x,0.06,0.94), z:clamp(BIN.z+0.075,0.08,0.93)}; }
+// a new throw starts with a clean slate on the bin
+function binOnThrow(){ BIN.block=false; BIN.touched=false; BIN.idle=0; BIN.endT=0; }
+
+/* ---- the ball against the bin, once a frame of flight. px/pz/ph are where it was last frame. */
+function binFlight(px,pz,ph){
+  binInit();
+  if(BIN.phase!=="stand") return false;
+  const lidOn = BIN.lid!=="off" || BIN.block;
+  const top=BIN_H+BALL_R*0.5;
+  // coming DOWN through the plane of the rim
+  if(FETCH.live && ph>=top && BALL.hz<top && BALL.vh<0){
+    const k=(ph-top)/Math.max(1e-6,ph-BALL.hz);
+    const cx=px+(BALL.x-px)*k, cz=pz+(BALL.z-pz)*k;
+    const dx=cx-BIN.x, dz=cz-BIN.z, r=Math.hypot(dx,dz);
+    if(lidOn){
+      if(r<BIN_RO+BALL_R){ BALL.x=cx; BALL.z=cz; BALL.hz=top; binLidPing(dx,dz,r,true); return false; }
+    } else {
+      const hs=Math.hypot(BALL.vx,BALL.vz);
+      if(r<=BIN_RI-BALL_R*0.6 && hs<BIN_FAST){ BALL.x=cx; BALL.z=cz; binIn(true); return true; }
+      if(r<BIN_RO+BALL_R*0.6){ BALL.x=cx; BALL.z=cz; binRimStart(dx,dz,Math.max(r,1e-4)); return true; }
+    }
+  }
+  // the can itself: anything below the rim inside the outer wall goes back out on its own side
+  const dx=BALL.x-BIN.x, dz=BALL.z-BIN.z, r=Math.hypot(dx,dz);
+  if(BALL.hz<BIN_H && r<BIN_RO+BALL_R){
+    const ux=r>1e-5?dx/r:1, uz=r>1e-5?dz/r:0;
+    BALL.x=BIN.x+ux*(BIN_RO+BALL_R+0.002); BALL.z=BIN.z+uz*(BIN_RO+BALL_R+0.002);
+    const vr=BALL.vx*ux+BALL.vz*uz;
+    if(vr<0){ BALL.vx-=1.55*vr*ux; BALL.vz-=1.55*vr*uz; }
+    BALL.vx*=0.8; BALL.vz*=0.8;
+    if(FETCH.live){
+      if(BIN.lid==="on" && !BIN.block) binLidPing(dx,dz,r,false);
+      else binMiss(ux);
+    }
+  }
+  return false;
+}
+// HIT 1: the lid comes off, spinning, and lands beside it. Not a score - this throw is spent.
+function binLidPing(dx,dz,r,top){
+  BIN.block=true; BIN.touched=true; FETCH.live=false; FETCH.good=false; TRICK.live=false;
+  const ux=r>1e-5?dx/r:(BALL.vx>=0?1:-1), uz=r>1e-5?dz/r:0;
+  if(top){       // off the lid as it tips: a pop up and away, on the side it struck
+    BALL.vh=Math.abs(BALL.vh)*0.45+0.28;
+    BALL.vx=BALL.vx*0.45+ux*0.34; BALL.vz=BALL.vz*0.45+uz*0.34;
+  }
+  if(BIN.lid==="on"){
+    BIN.lid="fly"; BIN.lidT=0;
+    let side = BALL.vx>=0 ? 1 : -1;
+    let lx=BIN.x+side*BIN_RO*2.2;
+    if(lx<0.06||lx>0.94){ side=-side; lx=BIN.x+side*BIN_RO*2.2; }
+    BIN.lidSide=side; BIN.lidX=clamp(lx,0.06,0.94); BIN.lidZ=clamp(BIN.z+0.025,0.06,0.94);
+    BIN.cleanRun=0; BIN.idle=0;
+  }
+  BIN.flinch=0.32; BIN.flinchDir=-Math.sign(ux)||1;
+  sfxBinBonk();
+  // ...and he looks
+  if(CAM.state==="idle"||CAM.state==="walk"||CAM.state==="sniff"){
+    CAM.state="idle"; CAM.t=0; CAM.until=1.4; CAM.fi=0;
+    CAM.dir = BIN.x>CAM.x ? 1 : -1;
+    CAM.oct = dogOctant(BIN.x-CAM.x, BIN.z-CAM.z);
+  }
+}
+// MISS: the outside of an open bin. It bounces off on that side; the bin flinches; no point
+function binMiss(ux){
+  BIN.touched=true; FETCH.live=false; FETCH.good=false; TRICK.live=false;
+  BIN.flinch=0.28; BIN.flinchDir=-Math.sign(ux)||1; BIN.cleanRun=0;
+  sfxBinThump(0.7);
+}
+// the rim: it sits, and the contact has already decided which way it is going
+function binRimStart(dx,dz,r){
+  const ux=dx/r, uz=dz/r;
+  const vr=BALL.vx*ux+BALL.vz*uz, vt=-BALL.vx*uz+BALL.vz*ux;
+  const rMid=(BIN_RI+BIN_RO)/2, span=BIN_RO-BIN_RI, hs=Math.hypot(BALL.vx,BALL.vz);
+  // inside the middle of the rim it leans in; moving outward, or fast, or dropping hard, it leans out
+  const lean=(rMid-r)/span*1.4 - vr*0.9 - Math.max(0,hs-0.6)*0.5 - Math.max(0,-BALL.vh-1.2)*0.15;
+  // spin only off a glancing hit: a head-on one carries no sideways speed to keep
+  const spin=Math.abs(vt)>BIN_SPIN_V && Math.abs(vt)>Math.abs(vr)*1.2;
+  const turns=spin ? (Math.abs(vt)>0.75?2:1) : 0;
+  const w0=spin ? Math.sign(vt)*Math.max(6,Math.abs(vt)/rMid) : 0;
+  const T=BIN_HOLD+(spin ? turns*2*Math.PI/Math.abs(w0)*1.35 : 0);
+  BIN.rim={t:0, T, ang:Math.atan2(dz,dx), r0:clamp(r,BIN_RI+0.003,BIN_RO), w0, spin, out:lean<=0, turns};
+  BIN.ball="rim"; BIN.touched=true;
+  BALL.vx=0; BALL.vz=0; BALL.vh=0; BALL.hz=BIN_H+0.004;
+  BALL.hold=Math.max(BALL.hold||0, T+0.5);
+  TRICK.live=false;
+  BIN.flashF = SETTINGS.reduceMotion ? 0 : 1; BIN.flashRed = lean<=0;
+  sfxBinRim();
+}
+function binRimTick(dt){
+  const R=BIN.rim; if(!R){ BIN.ball=null; return; }
+  R.t+=dt; const k=Math.min(1,R.t/R.T);
+  if(R.spin) R.ang+=R.w0*(1-0.55*k)*dt;
+  else R.ang+=Math.sin(R.t*26)*0.6*(1-k)*dt;               // a little rock while it makes up its mind
+  // ...and it drifts the way it is dying, so you can see it coming
+  const tgt=R.out ? BIN_RO+0.004 : BIN_RI-0.003;
+  const e0=R.spin ? k : Math.max(0,(k-0.5)/0.5), e=e0*e0*(3-2*e0);
+  const rr=R.r0+(tgt-R.r0)*e;
+  BALL.x=BIN.x+Math.cos(R.ang)*rr; BALL.z=BIN.z+Math.sin(R.ang)*rr; BALL.hz=BIN_H+0.004;
+  if(R.t>=R.T) binRimResolve();
+}
+function binRimResolve(){
+  const R=BIN.rim; BIN.rim=null;
+  if(!R.out){ binIn(false); return; }
+  // OUT: off the lip, on its own side, and a rolling one keeps a little of its roll
+  const ux=Math.cos(R.ang), uz=Math.sin(R.ang), tx=-uz, tz=ux, sp=R.spin?Math.sign(R.w0)*0.14:0;
+  BIN.ball=null;
+  BALL.x=BIN.x+ux*(BIN_RO+BALL_R+0.004); BALL.z=BIN.z+uz*(BIN_RO+BALL_R+0.004); BALL.hz=BIN_H;
+  BALL.vx=ux*0.30+tx*sp; BALL.vz=uz*0.30+tz*sp; BALL.vh=0.26;
+  FETCH.live=false; FETCH.good=false; FETCH.hot=false;
+  FETCH.label="OUT"; FETCH.labelT=1.3;
+  BIN.cleanRun=0; BALL.hold=Math.max(BALL.hold||0,0.6);
+  sfxBinRim(); setTimeout(()=>beep(300,.06,"sine",.03),70);
+}
+// IN. A clean one is the perfect; a lip-in is a tick and the bin stays put
+function binIn(clean){
+  BIN.ball="in"; BIN.drop=1; BIN.dropFrom=BALL.hz;
+  BALL.vx=0; BALL.vz=0; BALL.vh=0; BALL.x=BIN.x; BALL.z=BIN.z; BALL.hz=0;
+  BALL.needsFetch=true; BALL.hold=Math.max(BALL.hold||0,0.7);
+  FETCH.live=false; FETCH.good=true; FETCH.hot=true; TRICK.live=false;
+  if(clean){
+    FETCH.label="IN"; S.fun=clamp(S.fun+5,0,100);
+    BIN.cleanRun++;
+    if(BIN.cleanRun>=2){ BIN.ceremony=true; BIN.cleanRun=0; }
+    sfxBinThump(1.25);
+  } else {
+    FETCH.label="LIP"; S.fun=clamp(S.fun+2,0,100); BIN.cleanRun=0;
+    sfxBinThump(0.85);
+  }
+  FETCH.labelT=1.3;
+  haptic(clean?[20,30,40]:18);
+}
+// he has come for it: out it comes, in front of the can, or out of its mouth if it is on its side
+function binRelease(tipped){
+  BIN.ball=null;
+  if(tipped){ BALL.x=clamp(BIN.x+BIN.tipSide*(BIN_H+0.035),0.05,0.95); BALL.z=clamp(BIN.z+0.01,0.06,0.94); }
+  else { BALL.x=clamp(BIN.x+(CAM.x-BIN.x)*0.3,0.05,0.95); BALL.z=clamp(BIN.z+BIN_RO+0.022,0.06,0.94); }
+  BALL.hz=0.01; BALL.vx=0; BALL.vz=0; BALL.vh=0; BALL.cool=0; BALL.hold=0; BALL.needsFetch=true;
+  beep(520,.03,"square",.025);
+}
+function binLidBack(){
+  if(BIN.lid!=="off") return;
+  BIN.lid="hop"; BIN.lidT=0; BIN.cleanRun=0; BIN.idle=0; BIN.endT=0;
+}
+// somewhere new, in the open: never on the rug, never by a bowl, never where he drops the ball -
+// and a little further, or ruder, than where it just was
+function binNewSpot(){
+  let best=null, bs=1e9, far=null, fd=-1;
+  for(let i=0;i<70;i++){
+    const x=0.15+Math.random()*0.70, z=0.12+Math.random()*0.48;
+    if(Math.abs(x-SPOT.bed.x)<0.24 && Math.abs(z-SPOT.bed.z)<0.13) continue;
+    if(['water','food'].some(k=>Math.hypot(x-SPOT[k].x,(z-SPOT[k].z)*1.4)<0.22)) continue;
+    if(Math.hypot(x-SPOT.near.x,z-SPOT.near.z)<0.30) continue;
+    if(Math.hypot(x-BIN.x,z-BIN.z)<0.18) continue;
+    if(Math.hypot(x-CAM.x,(z-CAM.z)*1.2)<0.14) continue;
+    if(POOS.concat(BAGS).some(p=>Math.hypot(x-p.x,z-(p.z===undefined?0.8:p.z))<0.12)) continue;
+    const rd=binRude(x,z);
+    if(rd>fd){ fd=rd; far={x,z}; }
+    if(rd<BIN.lastRude-0.04) continue;
+    const s=Math.abs(rd-(BIN.lastRude+0.06));
+    if(s<bs){ bs=s; best={x,z}; }
+  }
+  return best||far||{x:BIN_REST.x, z:BIN_REST.z};
+}
+function binTick(dt){
+  binInit();
+  BIN.flinch=Math.max(0,BIN.flinch-dt);
+  if(BIN.drop>0) BIN.drop=Math.max(0,BIN.drop-dt/0.24);
+  // the lid
+  if(BIN.lid==="fly"){ BIN.lidT+=dt; if(BIN.lidT>=BIN_LID_T){ BIN.lid="off"; sfxBinClatter(); } }
+  else if(BIN.lid==="hop"){ BIN.lidT+=dt; if(BIN.lidT>=BIN_HOP_T){ BIN.lid="on"; sfxBinClack(); } }
+  // a bag in the hand cracks the closed lid: that is the whole hint
+  const want=(BAG.held && BIN.lid==="on") ? 1 : 0;
+  BIN.crack+=(want-BIN.crack)*Math.min(1,dt*10);
+  // the round: open until the throwing stops, or a shot goes nowhere near it
+  if(BIN.lid==="off"){
+    const quiet=!FETCH.live && !BALL.held && !SLING.deck && !BIN.ball && BIN.phase==="stand" &&
+                (!BALL.needsFetch || BALL.carried);
+    BIN.idle = quiet ? BIN.idle+dt : 0;
+    if(BIN.idle>BIN_IDLE) binLidBack();
+    if(BIN.endT>0){ BIN.endT-=dt; if(BIN.endT<=0) binLidBack(); }
+  }
+  // getting it back out
+  if(BIN.ball==="in" && BIN.drop<=0){
+    const f=binFetchSpot();
+    const at=Math.hypot(CAM.x-f.x,(CAM.z-f.z)*1.1)<0.10 || Math.hypot(CAM.x-BIN.x,(CAM.z-BIN.z)*1.1)<0.12;
+    if(at){
+      if(BIN.ceremony){ if(BIN.phase==="stand"){ BIN.phase="bump"; BIN.phT=0; BIN.tipSide=CAM.x>=BIN.x?1:-1; beep(260,.05,"square",.04); } }
+      else binRelease(false);
+    }
+  }
+  // the ceremony: bump, topple, out, up again, and off to somewhere new
+  if(BIN.phase!=="stand"){
+    BIN.phT+=dt; const p=BIN.phase;
+    if(p==="bump"){ BIN.tip=Math.sin(Math.min(1,BIN.phT/0.24)*Math.PI)*0.12;
+      if(BIN.phT>=0.24){ BIN.phase="topple"; BIN.phT=0; } }
+    else if(p==="topple"){ const k=Math.min(1,BIN.phT/0.42); BIN.tip=1.38*k*k;
+      if(k>=1){ BIN.phase="down"; BIN.phT=0; binRelease(true); sfxBinThump(0.9); BIN.flinch=0.2; } }
+    else if(p==="down"){ BIN.tip=1.38;
+      if(BALL.carried || BIN.phT>6){ BIN.phase="right"; BIN.phT=0; } }
+    else if(p==="right"){ const k=Math.min(1,BIN.phT/0.55), e=1-(1-k)*(1-k);
+      BIN.tip=1.38*(1-e) + (SETTINGS.reduceMotion?0:Math.sin(k*Math.PI*3)*0.16*(1-k));
+      if(k>=1){ BIN.tip=0; BIN.phase="drag"; BIN.phT=0; BIN.from={x:BIN.x,z:BIN.z}; BIN.to=binNewSpot(); BIN.dustT=0; sfxBinScrape(); } }
+    else if(p==="drag"){ const k=Math.min(1,BIN.phT/BIN_DRAG_T), e=1-Math.pow(1-k,3);
+      BIN.x=BIN.from.x+(BIN.to.x-BIN.from.x)*e; BIN.z=BIN.from.z+(BIN.to.z-BIN.from.z)*e;
+      BIN.dustT-=dt;
+      if(BIN.dustT<=0 && k<0.85){ BIN.dustT=0.07; BIN.dust.push({x:BIN.x, z:BIN.z, f:0}); }
+      if(k>=1){ BIN.phase="stand"; BIN.ceremony=false; BIN.lastRude=binRude(BIN.x,BIN.z);
+                S.bin={x:BIN.x, z:BIN.z}; } }
+  }
+  // the scrape's dust: each puff is two frames of a grey square and gone
+  for(let i=BIN.dust.length-1;i>=0;i--){ if(++BIN.dust[i].f>2) BIN.dust.splice(i,1); }
+}
+// is the ball his to pick up yet? Not while the bin is still holding it
+function binHolds(){ return !!BIN.ball; }
+
+/* ---- the bag. Tap a pile and it is a bag in your finger; over the bin, let go and it is gone. */
+function bagRelease(fx,fy){
+  BAG.held=false;
+  if(binUnderFinger(fx,fy)){
+    S.mood=clamp(S.mood+6,0,100); S.clean=clamp(S.clean+2,0,100); addXP(2);
+    BIN.crack=0; BIN.flinch=0.18; BIN.flinchDir=1;
+    sfxBinClack(); heartsBurst(1); haptic(16);
+    return;
+  }
+  const z=clamp(rmZof(clamp(fy,ROOM.backY+0.01,0.97)),0.05,0.93), x=clamp(rmXof(clamp(fx,0.02,0.98),z),0.05,0.95);
+  BAGS.push({x,z});
+  beep(150,.05,"sine",.03);
+}
+function binUnderFinger(fx,fy){
+  binInit();
+  const w=RMW, h=RMH, u=rmUnit(BIN.z), v=(ROOM.nearY-ROOM.backY)*h;
+  const cx=rmX(BIN.x,BIN.z)*w, by=rmY(BIN.z)*h, rx=BIN_RO*u, H=BIN_H*u, pad=16;
+  const px=fx*w, py=fy*h;
+  return px>cx-rx-pad && px<cx+rx+pad && py>by-H-BIN_RO*v-pad*1.4 && py<by+BIN_RO*v+pad*0.6;
+}
+
+/* ---- the sounds: short, dry, no stings */
+function sfxBinBonk(){
+  if(SETTINGS.sound){ try{ audioInit(); noiseBurst(0.05,900,1.6,0.10,AC.currentTime); }catch(e){} }
+  beep(330,.05,"square",.045); setTimeout(()=>beep(250,.07,"square",.035),55);
+}
+function sfxBinRim(){
+  if(SETTINGS.sound){ try{ audioInit(); noiseBurst(0.02,3400,3,0.07,AC.currentTime); }catch(e){} }
+  beep(1560,.02,"square",.022);
+}
+function sfxBinThump(k){
+  if(SETTINGS.sound){ try{ audioInit(); noiseBurst(0.08,150,1.0,0.12*k,AC.currentTime); }catch(e){} }
+  beep(78,.12,"sine",.06*k);
+}
+function sfxBinClack(){
+  if(SETTINGS.sound){ try{ audioInit(); noiseBurst(0.028,1900,2.2,0.10,AC.currentTime); }catch(e){} }
+  beep(820,.018,"square",.02);
+}
+function sfxBinClatter(){
+  if(!SETTINGS.sound) return;
+  try{ audioInit(); const t0=AC.currentTime;
+    noiseBurst(0.03,1500,2,0.09,t0); noiseBurst(0.025,1200,2,0.06,t0+0.09); noiseBurst(0.02,1000,2,0.04,t0+0.15);
+  }catch(e){}
+}
+function sfxBinScrape(){
+  if(SETTINGS.sound){ try{ audioInit(); noiseBurst(0.55,260,0.7,0.07,AC.currentTime); }catch(e){} }
+}
+
+/* ---- drawing it. Base on the floor plane, radius off the projection: a circle of BIN_RO floor
+   units is BIN_RO*rmUnit across and BIN_RO of the floor's depth tall, so the mouth the ball sees and
+   the mouth you see are the same circle. */
+function binLidShape(ctx,cx,cy,rx,ry,flat){
+  ctx.fillStyle="#0e0e10";
+  ctx.beginPath(); ctx.ellipse(cx,cy,rx*1.05,ry*1.05,0,0,7); ctx.fill();
+  if(!flat){                                           // the dome, and a small white handle on it
+    ctx.beginPath(); ctx.ellipse(cx,cy-ry*0.35,rx*0.82,ry*0.9,0,Math.PI,0); ctx.fill();
+    ctx.fillStyle="#fff"; ctx.fillRect(cx-rx*0.22,cy-ry*1.35,rx*0.44,Math.max(1.5,ry*0.22));
+  }
+  ctx.strokeStyle="#fff"; ctx.lineWidth=Math.max(1.5,rx*0.08);
+  ctx.beginPath(); ctx.ellipse(cx,cy,rx*1.05,ry*1.05,0,0,7); ctx.stroke();
+}
+function drawBin(ctx,w,h,t){
+  binInit();
+  const u=rmUnit(BIN.z), v=(ROOM.nearY-ROOM.backY)*h;
+  const bx=rmX(BIN.x,BIN.z)*w, by=rmY(BIN.z)*h;
+  const rx=BIN_RO*u, ry=BIN_RO*v, H=BIN_H*u;
+  // the lid, lying where it landed
+  if(BIN.lid==="off"){
+    const lx=rmX(BIN.lidX,BIN.lidZ)*w, ly=rmY(BIN.lidZ)*h, lu=rmUnit(BIN.lidZ)/u;
+    rmShadow(ctx,w,h,BIN.lidX,BIN.lidZ,BIN_RO*1.1,0.25);
+    binLidShape(ctx,lx,ly-1,rx*lu,ry*lu,true);
+  }
+  rmShadow(ctx,w,h,BIN.x,BIN.z,BIN_RO*1.3,0.34);
+  ctx.save();
+  const fl=(BIN.flinch>0 && !SETTINGS.reduceMotion) ? Math.sin(BIN.flinch*70)*BIN.flinch*7*BIN.flinchDir : 0;
+  ctx.translate(bx+fl,by);
+  if(BIN.tip) ctx.rotate(BIN.tip*BIN.tipSide);
+  // the can: straight sides, a hair narrower at the foot
+  ctx.fillStyle="#0e0e10";
+  ctx.beginPath();
+  ctx.moveTo(-rx,-H); ctx.lineTo(-rx*0.93,0);
+  ctx.ellipse(0,0,rx*0.93,ry*0.93,0,Math.PI,0,true);
+  ctx.lineTo(rx,-H);
+  ctx.ellipse(0,-H,rx,ry,0,0,Math.PI,true);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle="#4a4a52"; ctx.lineWidth=1; ctx.stroke();
+  // one cold highlight down the side, which is what makes it a cylinder and not a slab
+  ctx.fillStyle="rgba(255,255,255,.13)"; ctx.fillRect(-rx*0.62,-H+ry*0.6,Math.max(1.5,rx*0.13),H-ry*0.9);
+  const open = BIN.lid!=="on" && BIN.lid!=="hop";
+  if(open || BIN.crack>0.02){
+    // the mouth: the rim's top surface, then the narrower throat, black all the way down
+    ctx.fillStyle="#1c1c20"; ctx.beginPath(); ctx.ellipse(0,-H,rx,ry,0,0,7); ctx.fill();
+    const ki=BIN_RI/BIN_RO;
+    ctx.fillStyle="#000"; ctx.beginPath(); ctx.ellipse(0,-H,rx*ki,ry*ki,0,0,7); ctx.fill();
+    ctx.strokeStyle="#6a6a72"; ctx.lineWidth=1; ctx.beginPath(); ctx.ellipse(0,-H,rx*ki,ry*ki,0,0,7); ctx.stroke();
+    // a ball on its way down inside
+    if(BIN.ball==="in" && BIN.drop>0){
+      ctx.save(); ctx.beginPath(); ctx.ellipse(0,-H,rx*ki,ry*ki,0,0,7); ctx.clip();
+      const br=Math.max(3,8*rmSc(BIN.z)), yy=-H-(BIN.dropFrom-BIN_H)*u*BIN.drop+(1-BIN.drop)*ry*1.8;
+      ctx.fillStyle="#f22"; ctx.beginPath(); ctx.arc(0,yy,br,0,7); ctx.fill();
+      ctx.restore();
+    }
+  }
+  // the white rim - and, for one frame when it is touched, white-hot, or red if it is spitting it out
+  let rimCol="#fff", rimW=Math.max(2,rx*0.16);
+  if(BIN.flashF>0){ rimCol=BIN.flashRed?"#f22":"#fff"; rimW*=2.2; BIN.flashF--; }
+  ctx.strokeStyle=rimCol; ctx.lineWidth=rimW;
+  ctx.beginPath(); ctx.ellipse(0,-H,rx,ry,0,0,7); ctx.stroke();
+  // the lid: on, cracked by a bag in your hand, or hopping back on
+  if(BIN.lid==="on"){
+    const c=BIN.crack;
+    ctx.save(); ctx.translate(0,-H-c*ry*1.2); ctx.rotate(-c*0.28);
+    binLidShape(ctx,0,0,rx,ry,false); ctx.restore();
+  }
+  ctx.restore();
+  // the lid in the air: off the top and spinning once to the floor beside, or hopping back on
+  if(BIN.lid==="fly" || BIN.lid==="hop"){
+    const fly=BIN.lid==="fly", k=Math.min(1,BIN.lidT/(fly?BIN_LID_T:BIN_HOP_T));
+    const e=fly?k:1-k;                                     // 0 on the can, 1 on the floor
+    const fx=BIN.x+(BIN.lidX-BIN.x)*e, fz=BIN.z+(BIN.lidZ-BIN.z)*e;
+    const arc=Math.sin(k*Math.PI)*(fly?0.13:0.09) + (1-e)*BIN_H;
+    const lu=rmUnit(fz);
+    const lx=rmX(fx,fz)*w, ly=rmY(fz)*h-arc*lu;
+    const rot=fly ? k*Math.PI*2 : 0;                      // it spins once on the way down
+    const sq=Math.max(0.12,Math.abs(Math.cos(rot)));
+    ctx.save(); ctx.translate(lx,ly); ctx.rotate(fly?Math.sin(rot)*0.6:0);
+    binLidShape(ctx,0,0,BIN_RO*lu,BIN_RO*v*sq,!fly||k>0.9);
+    ctx.restore();
+  }
+  // the scrape: two frames of dust per puff
+  for(const d of BIN.dust){
+    const px=rmX(d.x,d.z)*w, py=rmY(d.z)*h, s=(d.f===1?3:5)*rmSc(d.z);
+    ctx.fillStyle=d.f===1?"rgba(210,200,180,.75)":"rgba(210,200,180,.4)";
+    ctx.fillRect(px-rx-s,py-s,s*2,s*1.4); ctx.fillRect(px+rx-s,py-s*0.8,s*1.6,s*1.2);
+  }
+}
+// a black bag: tied neck, two creases, a white shine on the plastic
+function drawBag(ctx,x,y,s,t,held){
+  ctx.save(); ctx.translate(x,y);
+  if(held) ctx.rotate(Math.sin(t*5)*0.08);
+  ctx.fillStyle="#0c0c0e"; ctx.strokeStyle="#55555c"; ctx.lineWidth=Math.max(1,s*0.06);
+  ctx.beginPath();
+  ctx.moveTo(-s*0.18,-s*0.62);
+  ctx.quadraticCurveTo(-s*0.62,-s*0.42,-s*0.58,-s*0.02);
+  ctx.quadraticCurveTo(-s*0.56,s*0.30,0,s*0.30);
+  ctx.quadraticCurveTo(s*0.56,s*0.30,s*0.58,-s*0.02);
+  ctx.quadraticCurveTo(s*0.62,-s*0.42,s*0.18,-s*0.62);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  // the tied neck and its two ears
+  ctx.fillRect(-s*0.10,-s*0.80,s*0.20,s*0.20);
+  ctx.beginPath(); ctx.moveTo(-s*0.08,-s*0.78); ctx.lineTo(-s*0.30,-s*0.98); ctx.lineTo(-s*0.14,-s*0.72); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(s*0.08,-s*0.78); ctx.lineTo(s*0.28,-s*1.00); ctx.lineTo(s*0.14,-s*0.72); ctx.closePath(); ctx.fill(); ctx.stroke();
+  // creases
+  ctx.strokeStyle="rgba(140,140,150,.55)"; ctx.lineWidth=Math.max(1,s*0.05);
+  ctx.beginPath(); ctx.moveTo(-s*0.30,-s*0.30); ctx.quadraticCurveTo(-s*0.12,-s*0.10,-s*0.20,s*0.12); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(s*0.22,-s*0.38); ctx.quadraticCurveTo(s*0.34,-s*0.14,s*0.18,s*0.08); ctx.stroke();
+  // the shine
+  ctx.fillStyle="rgba(255,255,255,.85)";
+  ctx.beginPath(); ctx.ellipse(-s*0.30,-s*0.18,s*0.06,s*0.16,-0.4,0,7); ctx.fill();
+  ctx.restore();
+}
+
 /* ONE PLACE FOR THE FURNITURE RECTS. The draw and the tap used to derive them separately from the
    same magic numbers, which is exactly how a hit-test drifts off the thing it is testing. */
 function camFurnRects(w,h){
@@ -7564,18 +8001,19 @@ function slingDeckDraw(dt){
   }
 }
 function drawFetchHud(ctx,w,h){
+  // the bag in your finger, over everything in the room
+  if(BAG.held) drawBag(ctx,BAG.x*w,BAG.y*h-20,24,performance.now()/1000,true);
   if(!S.ballOwned) return;
   ctx.save(); ctx.textAlign="center";
   if(FETCH.labelT>0){
     const k=Math.min(1,FETCH.labelT/0.35);
-    const big=FETCH.label==="2-BANK"||FETCH.label==="1-BANK"||FETCH.label==="DIRECT";
+    const big=FETCH.label==="IN";
     ctx.globalAlpha=k;
-    ctx.fillStyle = FETCH.label==="MISS"||FETCH.label==="FOUL" ? "#f22"
-                  : FETCH.label==="INTERCEPTED" ? "#ffb454" : big ? "#4f8" : "#fff";
+    ctx.fillStyle = FETCH.label==="OUT" ? "#f22" : big ? "#4f8" : "#fff";
     ctx.font=(big?14:11)+"px 'Press Start 2P',monospace";
     ctx.fillText(FETCH.label, w/2, h*0.20);
   }
-  if(FETCH.streak>0){
+  if(false && FETCH.streak>0){        // one word at a time: IN, OUT, LIP - and nothing else
     ctx.globalAlpha=1;
     ctx.fillStyle=FETCH.streak>=FETCH_INTER_AT?"#ffb454":"#cfe6ff";
     ctx.font="8px 'Press Start 2P',monospace";
@@ -7953,7 +8391,8 @@ function drawCam(t){
      right after the floor and its markings, and the bot, the ball, the treats, the mess and the
      dog all paint over it in the order their own depths demand. It was still going in after the
      bot, left over from when it stood at the near edge and had to be on top of everything. */
-  drawRoomFurniture(ctx,w,h,t,gy,bwlX,bwlY,fbX,fbY,bwlW,bwlH,bw2,bh2);
+  const bowlsFront = CAM.z < SPOT.food.z+0.02;     // he is behind them: they paint over him
+  if(!bowlsFront) drawRoomFurniture(ctx,w,h,t,gy,bwlX,bwlY,fbX,fbY,bwlW,bwlH,bw2,bh2);
   if(S.hoopOwned){
     const hx0=HOOP.x0*w, hx1=HOOP.x1*w, hy=HOOP.y*h;
     ctx.strokeStyle="#888"; ctx.lineWidth=2;
@@ -8053,7 +8492,7 @@ function drawCam(t){
      exactly the strip of carpet the bed sits on - so a held ball and its band jump the queue and
      go over everything, which is the only way the gesture stays visible while you make it. */
   const drawBallNow=()=>{
-  if(!BALL.off && S.ballOwned){
+  if(!BALL.off && S.ballOwned && BIN.ball!=="in"){
     /* THE BALL, WITH A DEPTH. Three cues at once, which is what sells it: it moves up the glass
        as it goes back, it gets smaller, and its shadow stays behind on the floor and shrinks with
        it. A held ball is drawn bigger still - the further down you drag it the closer to you it
@@ -8066,7 +8505,7 @@ function drawCam(t){
        at about a fifth of the arc, so the whole climb and fall read the same. A reciprocal has no
        ceiling to hit: it shrinks and dims smoothly all the way up and swells all the way back
        down, which is what tells you a lob is a lob. */
-    rmShadow(ctx,w,h,BALL.x,BALL.z, 0.017/(1+BALL.hz*3.2), 0.36/(1+BALL.hz*4.0));
+    if(!BIN.ball) rmShadow(ctx,w,h,BALL.x,BALL.z, 0.017/(1+BALL.hz*3.2), 0.36/(1+BALL.hz*4.0));
     /* LOCKED. The ball itself is out on the deck and #slingcv is drawing it; all the room keeps
        is the shadow, sitting on the spot the throw will actually leave from. That shadow is the
        only thing saying where the shot starts while you aim from somewhere else entirely. */
@@ -8101,7 +8540,13 @@ function drawCam(t){
   };
   // a ball IN HIS MOUTH is drawn after him: at his own depth the painter's order is a coin toss,
   // and facing the camera his head is exactly what the ball would be hidden behind
+  // THE BIN, in depth order: behind the ball unless the ball is behind it, and in front of him
+  // only when it is nearer than he is
+  const binFront = BIN.z > CAM.z+0.005;
+  const binEarly = !binFront && (BIN.z <= BALL.z+0.005 || !!BIN.ball || BALL.held || BALL.carried || BALL.off);
+  if(binEarly) drawBin(ctx,w,h,t);
   if(!BALL.held && !BALL.carried) drawBallNow();
+  if(!binFront && !binEarly) drawBin(ctx,w,h,t);
   // the moment of contact: two rings thrown off his mouth
   for(const f of CAMFX){
     const k=1-f.life/f.max;
@@ -8192,7 +8637,11 @@ function drawCam(t){
     { const up=clamp(dogLift()/Math.max(1e-4,dogBodyFloor()*0.55),0,1);
       rmShadow(ctx,w,h,CAM.x,CAM.z, 0.055*(1-up*0.30), 0.32*(1-up*0.62)); }
   }
+  if(binFront) drawBin(ctx,w,h,t);
+  if(bowlsFront) drawRoomFurniture(ctx,w,h,t,gy,bwlX,bwlY,fbX,fbY,bwlW,bwlH,bw2,bh2);
   if(BALL.held || BALL.carried) drawBallNow();   // ...over the room rather than behind it
+  // bags put down somewhere that is not the bin
+  for(const b of BAGS){ rmShadow(ctx,w,h,b.x,b.z,0.03,0.3); drawBag(ctx,rmX(b.x,b.z)*w,rmY(b.z)*h-9*rmSc(b.z),15*rmSc(b.z),t,false); }
   // indoor accidents — drawn last of the room fixtures so a poo pile is always visible (and
   // tappable) on top of everything, even if it landed right on the bed
   for(const p of POOS){
