@@ -893,7 +893,7 @@ body.reduce-motion #hCheckout.pulse1{animation:none}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.382a</span>
+          <span id="devToggle">v0.383a</span>
         </div>
       </div>
 
@@ -2254,7 +2254,7 @@ function renderMeters(){
   $("#hudBones").textContent = S.snacks;   // the bone stock park runs bank into -- the icon says "bones", the label doesn't need to
   syncMoodMusic();   // cheap and idempotent — this is where a drifting mood/sickness gets noticed
   if(PARK_HDR) return;              // the park owns the header; don't stamp the clock over it
-  $("#clock").textContent = "DAY "+CLK.day+" "+String(Math.floor(CLK.h)).padStart(2,"0")+":00"+(atWorkNow()?" ▶▶":"");
+  $("#clock").textContent = "DAY "+CLK.day+" "+String(Math.floor(CLK.h)).padStart(2,"0")+":00"+(SHIFT.on?" ▷":"");
   $("#bests").textContent = "STREAK "+S.streak+"d";
 }
 
@@ -2264,6 +2264,37 @@ function renderMeters(){
 // would at home — so leaving him alone for a shift has a real cost.
 const WORK_CLOCK_FF=2.5, WORK_NEED_FF=1.25;
 let WORK_FF=1, NEED_FF=1;
+/* A SHIFT IS TWO HOURS. Work used to run the clock on fast-forward, and a long stint at the
+   plant, the van or the farm came home to a day that had gone - sometimes two bedtimes in a row.
+   Now the clock CRAWLS while you are at work (SHIFT_CRAWL game hours a real second), stops dead
+   at SHIFT_HOURS however long you stay, and whatever is left of the two hours is charged when you
+   clock off. A herding shift is one level: walking off mid-field keeps its hours for the resume. */
+const SHIFT_HOURS=2, SHIFT_CRAWL=1/75;
+const SHIFT={on:false, h:0, kind:""};
+function shiftOnNow(){ return atWorkNow() || (typeof HERD!=="undefined" && HERD.active); }
+// what tickStats should be handed this frame, as its own dt
+function shiftDt(dt){
+  const on=shiftOnNow();
+  if(on && !SHIFT.on){
+    SHIFT.on=true; SHIFT.kind=HERD.active?"herd":"work";
+    const sh=SHIFT.kind==="herd" && S.herd && S.herd.shift;
+    SHIFT.h = sh ? (sh.ch||0) : 0;
+  }
+  if(!on && SHIFT.on) shiftSettle();
+  if(!on) return dt;
+  const gh=Math.max(0,Math.min(SHIFT_HOURS-SHIFT.h, dt*SHIFT_CRAWL));
+  SHIFT.h+=gh;
+  return gh*10/Math.max(1e-6,WORK_FF);         // tickStats moves the clock dt*WORK_FF/10 hours
+}
+function shiftSettle(){
+  SHIFT.on=false;
+  const sh=SHIFT.kind==="herd" && S.herd && S.herd.shift;
+  if(sh){ sh.ch=SHIFT.h; return; }            // walked off mid-field: the rest waits for the resume
+  const left=Math.max(0,SHIFT_HOURS-SHIFT.h); SHIFT.h=0;
+  const ff=WORK_FF; WORK_FF=1;
+  for(let k=left*10;k>0;k-=1) tickStats(Math.min(1,k),true);
+  WORK_FF=ff;
+}
 function atWorkNow(){ return MODE==="work" || MODE==="paperboy"; }
 function tickStats(dt, force){
   // The park exists outside the day. Nothing decays and the clock does not move while a run
@@ -3368,6 +3399,15 @@ $("#dogcv").addEventListener("pointerdown",e=>{
       return;
     }
   }
+  // the lid on the floor: pick it up, and it is in your finger
+  if(BIN.lid==="off" && BIN.phase==="stand" && !BAG.held){
+    const lx=rmX(BIN.lidX,BIN.lidZ), ly=rmY(BIN.lidZ), lr=BIN_RO*rmUnit(BIN.lidZ)/r.width;
+    if(Math.abs(fx-lx)<lr+0.035 && Math.abs(fy-ly)<0.045){
+      BIN.lid="held"; LIDH.x=fx; LIDH.y=fy;
+      try{ e.currentTarget.setPointerCapture(e.pointerId); }catch(_){}
+      sfxBinClack(); haptic(10); return;
+    }
+  }
   for(let i=0;i<BAGS.length;i++){
     const b=BAGS[i], bx=rmX(b.x,b.z), by=rmY(b.z);
     if(Math.abs(fx-bx)<0.06 && fy>by-0.09 && fy<by+0.03){
@@ -3400,8 +3440,10 @@ $("#dogcv").addEventListener("pointerdown",e=>{
   const px=fx*r.width, py=fy*r.height;
   const inRect=(q,padX,padY)=>px>=q.x-padX && px<=q.x+q.w+padX &&
                               py>=q.y-q.h-padY && py<=q.y+padY;
-  if(inRect(FR.water,14,16)){ tapBowl("water"); return; }     // a bigger tap than the bowl
-  if(inRect(FR.food, 14,16)){ tapBowl("food");  return; }
+  // a bigger tap than the bowl - but hardly any below it, where the LEVEL UP tap lives
+  const inBowl=(q)=>px>=q.x-12 && px<=q.x+q.w+12 && py>=q.y-q.h-16 && py<=q.y+5;
+  if(inBowl(FR.water)){ tapBowl("water"); return; }
+  if(inBowl(FR.food)) { tapBowl("food");  return; }
   /* HIM. His sprite is drawn CENTRED on his floor spot now, not hung off its left edge, so the
      old "from CAM.x rightwards" box tested a strip beside him rather than him. */
   const dogSx=rmX(CAM.x,CAM.z), dogSy=rmY(CAM.z);
@@ -3464,6 +3506,7 @@ $("#dogcv").addEventListener("pointermove",e=>{
   const r=e.currentTarget.getBoundingClientRect();
   const fx=(e.clientX-r.left)/r.width, fy=(e.clientY-r.top)/r.height;
   if(BAG.held){ BAG.x=fx; BAG.y=fy; return; }
+  if(BIN.lid==="held"){ LIDH.x=fx; LIDH.y=fy; return; }
   if(BRUSH.held){
     BRUSH.x=fx; BRUSH.y=fy;
     if(fx>CAM.x-0.02 && fx<CAM.x+CAMDWF+0.04 && fy>0.30 && fy<0.85 && !R.active && !OUTING.active && !PK.active){
@@ -3603,6 +3646,11 @@ function dogDoRoll(dir){
   return true;
 }
 $("#dogcv").addEventListener("pointerup",e=>{
+  if(BIN.lid==="held"){
+    const r=e.currentTarget.getBoundingClientRect();
+    lidRelease((e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height);
+    return;
+  }
   if(BAG.held){
     const r=e.currentTarget.getBoundingClientRect();
     bagRelease((e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height);
@@ -3623,7 +3671,7 @@ $("#dogcv").addEventListener("pointerup",e=>{
   if(BALL.held) ballRelease();
   BALL.held=false; PET.down=false; SPONGE.held=false; BRUSH.held=false; clearTimeout(PET.lp);
 });
-$("#dogcv").addEventListener("pointercancel",()=>{ if(BAG.held) bagRelease(BAG.x,BAG.y); BALL.held=false; SLING.on=false; SLING.deck=false; PET.down=false; SPONGE.held=false; BRUSH.held=false; WINGES.on=false; clearTimeout(PET.lp); });
+$("#dogcv").addEventListener("pointercancel",()=>{ if(BIN.lid==="held") lidRelease(LIDH.x,LIDH.y); if(BAG.held) bagRelease(BAG.x,BAG.y); BALL.held=false; SLING.on=false; SLING.deck=false; PET.down=false; SPONGE.held=false; BRUSH.held=false; WINGES.on=false; clearTimeout(PET.lp); });
 $("#stClose").onclick=closeStatus;
 $("#meters").addEventListener("click",()=>{
   closeStatus();
@@ -6010,8 +6058,9 @@ function camBehavior(dt){
    AGAINST them - a `const` referenced before its own declaration line is a temporal-dead-zone
    throw at load, not a hoisted undefined, and `node --check` will not catch it. One block, in
    dependency order. */
-const MOON_RISE=19, MOON_SET=5, MOON_SPAN=(24-MOON_RISE)+MOON_SET;   // 19:00-05:00, ten hours
-const DUSK_START=16.5, DUSK_END=MOON_RISE;   // 16:30 -> 19:00, light draining out of the room
+const MOON_RISE=22, MOON_SET=5, MOON_SPAN=(24-MOON_RISE)+MOON_SET;   // 22:00-05:00, seven hours
+// the evening stays light: nothing starts to go until eight, and it takes two slow hours
+const DUSK_START=20, DUSK_END=MOON_RISE;     // 20:00 -> 22:00, light draining out of the room
 const DAWN_START=MOON_SET, DAWN_END=7.0;     // 05:00 -> 07:00, and coming back
 const NIGHT_ROOM_MAX=0.68;                   // ...the room never goes pitch black on its own
 // smoothstep, so the light eases in and out rather than ramping in a straight line
@@ -6035,7 +6084,7 @@ function nightAmount(){
    a cool early white through pale gold to deep amber as the day burns down. */
 function sunSky(){
   const hh=CLK.h+(CLK.m||0)/60;
-  const u=(hh-6)/12;                                  // 0 at 06:00, 1 at 18:00
+  const u=(hh-6)/14;                                  // 0 at 06:00, 1 at 20:00, as dusk begins
   if(u<=0||u>=1) return null;                         // out of hours: no shaft to draw
   const elev=Math.sin(Math.PI*u);                     // 0 at each end, 1 at noon
   const ang=2.90-0.92*elev-(u-0.5)*0.22;              // ...how far the beam tips over
@@ -7234,7 +7283,7 @@ function rmXof(xF,z){ const hw=rmHW(z); return clamp(0.5+(xF-0.5)/(2*hw),0,1); }
    most-occluded corner of the picture. Moving SPOT.bed here moves everything that reads it - the
    walk, the rest test, the tap target, the SUPPLIES highlight and where he fouls the carpet - so
    there is still exactly one answer to "where is his bed". */
-const SPOT={ water:{x:0.745,z:0.82}, food:{x:0.882,z:0.82}, bed:{x:0.50,z:0.42},
+const SPOT={ water:{x:0.77,z:0.63}, food:{x:0.915,z:0.63}, bed:{x:0.50,z:0.42},
              // ...and `near` is where he comes when you CALL him AND where he drops a fetched
              // ball. One spot: being called and bringing it back should land him in the same
              // place, front and centre, rather than off in a corner.
@@ -7242,7 +7291,7 @@ const SPOT={ water:{x:0.745,z:0.82}, food:{x:0.882,z:0.82}, bed:{x:0.50,z:0.42},
 /* The bowls are still drawn generously for their depth - they are the two things you most need to
    read the state of at a glance, and at true scale on the back wall they would be about twenty
    pixels across. The 2x is a legibility allowance, not a claim about where they are. */
-const BOWL_BIG=1.12;      // front-right now, so they need far less help to be read
+const BOWL_BIG=1.22;      // front-right now, so they need far less help to be read
 // where the bot parks: in front of the bowls he tends, with room for the pour to fall
 const ROBOT_Z=SPOT.food.z-0.17;     // the bowls are at the front now: he works from behind them
 /* ==================== THE TARGET, AND WHERE IT GOES NEXT ====================
@@ -7541,7 +7590,7 @@ function binOnThrow(){ BIN.block=false; BIN.touched=false; BIN.idle=0; BIN.endT=
 function binFlight(px,pz,ph){
   binInit();
   if(BIN.phase!=="stand") return false;
-  const lidOn = BIN.lid!=="off" || BIN.block, zk=binZK();
+  const lidOn = (BIN.lid!=="off" && BIN.lid!=="held") || BIN.block, zk=binZK();
   const top=BIN_H+BALL_R*0.5;
   // coming DOWN through the plane of the rim. dz is in the mouth's own round space (z over zk)
   if(FETCH.live && ph>=top && BALL.hz<top && BALL.vh<0){
@@ -7829,6 +7878,18 @@ function bagRelease(fx,fy){
   BAGS.push({x,z});
   beep(150,.05,"sine",.03);
 }
+// the lid in your finger
+const LIDH={x:0,y:0};
+function lidRelease(fx,fy){
+  if(BIN.lid!=="held") return;
+  const z=clamp(rmZof(clamp(fy,ROOM.backY+0.01,0.97)),0.06,0.92), x=clamp(rmXof(clamp(fx,0.02,0.98),z),0.06,0.94);
+  BIN.lidX=x; BIN.lidZ=z; BIN.lid="off";
+  if(binUnderFinger(fx,fy) && BIN.phase==="stand" && !BIN.ball){
+    binLidBack();                                  // hops down onto it from your finger: Hit 1 is armed again
+    BIN.lidX=BIN.x; BIN.lidZ=BIN.z;                // ...from right over it, not from the floor
+    BIN.flinch=0.14; BIN.flinchDir=1; haptic(14);
+  } else sfxBinClatter();
+}
 function binUnderFinger(fx,fy){
   binInit();
   const w=RMW, h=RMH, u=rmUnit(BIN.z), v=(ROOM.nearY-ROOM.backY)*h;
@@ -7940,6 +8001,7 @@ function drawBin(ctx,w,h,t){
     ctx.save(); ctx.globalAlpha=0.35*g; ctx.strokeStyle="#4f8"; ctx.lineWidth=rimW*2.6;
     ctx.beginPath(); ctx.ellipse(0,-H,rx,ry,0,0,7); ctx.stroke(); ctx.restore();
   }
+  if(BIN.lid==="held") rimW*=1.3+0.5*Math.abs(Math.sin(t*5));   // a lid in your hand: put it here
   if(BIN.flashF>0){ rimCol=BIN.flashRed?"#f22":"#fff"; rimW*=2.2; BIN.flashF--; }
   ctx.strokeStyle=rimCol; ctx.lineWidth=rimW;
   ctx.beginPath(); ctx.ellipse(0,-H,rx,ry,0,0,7); ctx.stroke();
@@ -8123,6 +8185,11 @@ function slingDeckDraw(dt){
 function drawFetchHud(ctx,w,h){
   // the bag in your finger, over everything in the room
   if(BAG.held) drawBag(ctx,BAG.x*w,BAG.y*h-20,24,performance.now()/1000,true);
+  if(BIN.lid==="held"){
+    const lr=BIN_RO*rmUnit(BIN.z)*1.15, tt=performance.now()/1000;
+    ctx.save(); ctx.translate(LIDH.x*w,LIDH.y*h-18); ctx.rotate(Math.sin(tt*4)*0.06);
+    binLidShape(ctx,0,0,lr,lr*BIN_OVAL,false); ctx.restore();
+  }
   if(!S.ballOwned) return;
   ctx.save(); ctx.textAlign="center";
   if(FETCH.labelT>0){
@@ -8286,97 +8353,91 @@ function drawFloorKit(ctx,w,h,t){
    uses, one shape lit from above.
    Footprint is unchanged (same x/y/w/h out of camFurnRects), so every tap still lands. */
 function bowlShape(cx, gy, halfW, bodyH){
-  const rimRX=halfW, rimRY=halfW*0.34;          // the mouth, in perspective
-  const baseRX=halfW*0.74, baseRY=rimRY*0.74;   // ...tapering in toward the foot
-  return { rimRX, rimRY, baseRX, baseRY, rimY:gy-bodyH, baseY:gy-baseRY*0.35 };
+  const rimRX=halfW, rimRY=halfW*0.34;          // the mouth, in perspective - the bin's oval too
+  const baseRX=halfW*0.72, baseRY=rimRY*0.72;   // ...tapering in toward the foot
+  return { rimRX, rimRY, baseRX, baseRY, rimY:gy-bodyH, baseY:gy };
 }
+/* A BOWL STANDS ON THE FLOOR. The wall used to be traced as a bow-tie - front of the rim, then a
+   line straight across to the far side of the foot - so it filled almost nothing, and what it did
+   fill was nearly the carpet's colour: two lit rims hanging over their own shadows. It is one
+   closed band now, rim front to foot front, shaded like a turned dish (dark at both edges, lit
+   left of centre, dimmer toward the floor), outlined in the room's white, with a dark contact
+   shadow right under the foot. Steel for water, glazed clay for kibble. */
 function drawOvalBowl(ctx, cx, gy, halfW, bodyH, level, kind, alert){
-  const S9=bowlShape(cx,gy,halfW,bodyH);
-  const {rimRX,rimRY,baseRX,baseRY,rimY,baseY}=S9;
+  const {rimRX,rimRY,baseRX,baseRY,rimY,baseY}=bowlShape(cx,gy,halfW,bodyH);
   const warm = kind==="food";
-  // ---- the wall between foot and rim, as one closed band, darkening downward ----
-  ctx.beginPath();
-  ctx.ellipse(cx,rimY,rimRX,rimRY,0,0,Math.PI);          // front half of the rim
-  ctx.lineTo(cx+baseRX,baseY);
-  ctx.ellipse(cx,baseY,baseRX,baseRY,0,0,Math.PI,true);  // back along the foot
-  ctx.closePath();
-  const g=ctx.createLinearGradient(0,rimY,0,baseY+baseRY);
-  g.addColorStop(0, warm?"#6b5342":"#4d5668");
-  g.addColorStop(0.55, warm?"#48372b":"#333c4c");
-  g.addColorStop(1, warm?"#241a13":"#191d26");        // darkest where it meets its own shadow
-  ctx.fillStyle=g; ctx.fill();
-  // ---- the rim itself, a lit ring ----
+  const C = warm ? {edge:"#3e2618", mid:"#8f5d37", hi:"#d39a66", lip:"#e2b07e", lipD:"#9b6a42", in0:"#2a1a10", in1:"#5a3a22"}
+                 : {edge:"#2e3546", mid:"#69768e", hi:"#b9c5da", lip:"#d6dfec", lipD:"#7d8aa2", in0:"#1b202b", in1:"#46506a"};
+  // ---- where it meets the carpet
+  ctx.save(); ctx.globalAlpha=0.55; ctx.fillStyle="#000";
+  ctx.beginPath(); ctx.ellipse(cx,baseY+baseRY*0.15,baseRX*1.22,baseRY*1.25,0,0,7); ctx.fill(); ctx.restore();
+  // ---- the wall: rim front edge down to foot front edge, one closed band
+  const wall=()=>{ ctx.beginPath();
+    ctx.moveTo(cx+rimRX,rimY);
+    ctx.lineTo(cx+baseRX,baseY);
+    ctx.ellipse(cx,baseY,baseRX,baseRY,0,0,Math.PI);           // the foot's front, right to left
+    ctx.lineTo(cx-rimRX,rimY);
+    ctx.ellipse(cx,rimY,rimRX,rimRY,0,Math.PI,0,true);         // the rim's front, left to right
+    ctx.closePath(); };
+  wall();
+  const gx=ctx.createLinearGradient(cx-rimRX,0,cx+rimRX,0);
+  gx.addColorStop(0,C.edge); gx.addColorStop(0.30,C.hi); gx.addColorStop(0.55,C.mid); gx.addColorStop(1,C.edge);
+  ctx.fillStyle=gx; ctx.fill();
+  const gv=ctx.createLinearGradient(0,rimY,0,baseY+baseRY);
+  gv.addColorStop(0,"rgba(0,0,0,0)"); gv.addColorStop(1,"rgba(0,0,0,0.45)");
+  ctx.fillStyle=gv; ctx.fill();
+  // a turned band just under the lip - the one detail that says "dog bowl"
+  ctx.save(); wall(); ctx.clip();
+  ctx.strokeStyle= warm?"rgba(255,226,180,0.35)":"rgba(240,248,255,0.35)"; ctx.lineWidth=Math.max(1,bodyH*0.10);
+  ctx.beginPath(); ctx.ellipse(cx,rimY+bodyH*0.32,rimRX*0.93,rimRY*0.93,0,0.15,Math.PI-0.15); ctx.stroke();
+  ctx.restore();
+  ctx.strokeStyle="#fff"; ctx.lineWidth=1.5; wall(); ctx.stroke();
+  // ---- the lip: a thick lit ring
   ctx.beginPath(); ctx.ellipse(cx,rimY,rimRX,rimRY,0,0,7);
-  ctx.fillStyle = warm?"#7d6047":"#5b667c"; ctx.fill();
-  /* ---- the well, with a METAL BOTTOM in it ----
-     It used to be a flat near-black disc, which against a dark carpet read as a hole cut through
-     the bowl rather than as the inside of one - you could see "through" it. A steel pan bottom
-     fixes that by being genuinely opaque and genuinely lit: a cross-bowl gradient that is bright
-     where the light falls and dark where the far wall shades it, a soft sheen up the near side,
-     and a turned-metal ring. Warm bowls get brass, cold ones get steel. */
-  const wRX=rimRX*0.78, wRY=rimRY*0.72;
-  const wy=rimY+rimRY*0.10;
+  const gl=ctx.createLinearGradient(0,rimY-rimRY,0,rimY+rimRY);
+  gl.addColorStop(0,C.lipD); gl.addColorStop(1,C.lip);
+  ctx.fillStyle=gl; ctx.fill();
+  // ---- the inside: the far wall in shade at the top, the floor of the bowl lit below it
+  const wRX=rimRX*0.80, wRY=rimRY*0.74, wy=rimY+rimRY*0.06;
   ctx.beginPath(); ctx.ellipse(cx,wy,wRX,wRY,0,0,7);
-  const gm=ctx.createLinearGradient(cx-wRX,wy-wRY,cx+wRX,wy+wRY);
-  if(warm){ gm.addColorStop(0,"#8c7448"); gm.addColorStop(0.42,"#5a4a2c");
-            gm.addColorStop(0.75,"#3a2f1c"); gm.addColorStop(1,"#6b5936"); }
-  else    { gm.addColorStop(0,"#7e8798"); gm.addColorStop(0.42,"#4a515e");
-            gm.addColorStop(0.75,"#2c313b"); gm.addColorStop(1,"#616a79"); }
-  ctx.fillStyle=gm; ctx.fill();
-  // the shading the rim throws across the back of the pan
-  ctx.beginPath(); ctx.ellipse(cx,wy-wRY*0.34,wRX*0.98,wRY*0.62,0,Math.PI,2*Math.PI);
-  ctx.fillStyle="rgba(0,0,0,0.34)"; ctx.fill();
-  // a turned ring, and a sheen on the near side
-  ctx.strokeStyle= warm?"rgba(216,186,120,0.34)":"rgba(206,220,244,0.30)";
-  ctx.lineWidth=1;
-  ctx.beginPath(); ctx.ellipse(cx,wy,wRX*0.56,wRY*0.56,0,0,7); ctx.stroke();
-  ctx.beginPath(); ctx.ellipse(cx-wRX*0.18,wy+wRY*0.26,wRX*0.42,wRY*0.26,0,0,7);
-  ctx.fillStyle= warm?"rgba(230,200,140,0.20)":"rgba(220,232,255,0.18)"; ctx.fill();
-  // ---- what is in it ----
+  const gi=ctx.createLinearGradient(0,wy-wRY,0,wy+wRY);
+  gi.addColorStop(0,C.in0); gi.addColorStop(1,C.in1);
+  ctx.fillStyle=gi; ctx.fill();
+  // ---- what is in it
   if(level>0.03){
     const L=clamp(level,0,1);
+    ctx.save(); ctx.beginPath(); ctx.ellipse(cx,wy,wRX,wRY,0,0,7); ctx.clip();
     if(warm){
-      // kibble: chunks heaped inside the well, denser as it fills
-      const n=Math.max(3,Math.round(L*11));
+      const n=Math.max(4,Math.round(L*14));
       for(let i=0;i<n;i++){
-        const a=(i*2.399);                                   // golden angle — an even scatter
-        const rr=Math.sqrt((i+0.5)/n);
-        const px=cx+Math.cos(a)*wRX*0.80*rr;
-        const py=rimY+rimRY*0.10+Math.sin(a)*wRY*0.80*rr - L*rimRY*0.30;
-        const s=Math.max(2,halfW*0.115);
-        ctx.fillStyle = (i%3===0)?"#a8703a":"#8a5a2b";
-        ctx.fillRect(Math.round(px-s/2),Math.round(py-s/2),Math.round(s),Math.round(s));
-        ctx.fillStyle="rgba(0,0,0,0.30)";
-        ctx.fillRect(Math.round(px-s/2),Math.round(py+s/2-1),Math.round(s),1);
+        const a=(i*2.399), rr=Math.sqrt((i+0.5)/n);
+        const px=cx+Math.cos(a)*wRX*0.82*rr, py=wy+wRY*0.25+Math.sin(a)*wRY*0.70*rr-L*wRY*0.35;
+        const sz=Math.max(2,halfW*0.12);
+        ctx.fillStyle=(i%3===0)?"#b67a40":(i%3===1)?"#94602e":"#7a4c22";
+        ctx.fillRect(Math.round(px-sz/2),Math.round(py-sz/2),Math.round(sz),Math.round(sz*0.8));
+        ctx.fillStyle="rgba(255,220,170,0.35)"; ctx.fillRect(Math.round(px-sz/2),Math.round(py-sz/2),Math.round(sz),1);
       }
     } else {
-      // water: a disc that rises up the well, with a bright meniscus where it meets the wall
-      const sRX=wRX*(0.55+0.45*L), sRY=wRY*(0.55+0.45*L);
-      const sy=rimY+rimRY*0.10+wRY*0.30*(1-L);
-      ctx.beginPath(); ctx.ellipse(cx,sy,sRX,sRY,0,0,7);
-      ctx.fillStyle="#2f6fd0"; ctx.fill();
-      ctx.beginPath(); ctx.ellipse(cx,sy-sRY*0.14,sRX*0.90,sRY*0.72,0,0,7);
-      ctx.fillStyle="#4b93f0"; ctx.fill();
-      ctx.beginPath(); ctx.ellipse(cx-sRX*0.22,sy-sRY*0.30,sRX*0.34,sRY*0.30,0,0,7);
-      ctx.fillStyle="rgba(190,225,255,0.75)"; ctx.fill();   // the catch-light
+      const sy=wy+wRY*0.35*(1-L), sRX=wRX*(0.70+0.30*L), sRY=wRY*(0.62+0.38*L);
+      ctx.beginPath(); ctx.ellipse(cx,sy,sRX,sRY,0,0,7); ctx.fillStyle="#2a66c4"; ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx,sy+sRY*0.12,sRX*0.86,sRY*0.70,0,0,7); ctx.fillStyle="#3f8ae8"; ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx-sRX*0.28,sy-sRY*0.10,sRX*0.30,sRY*0.22,0,0,7);
+      ctx.fillStyle="rgba(205,232,255,0.80)"; ctx.fill();                  // the catch-light
     }
+    ctx.restore();
   }
-  // ---- and the outline the whole room is drawn in, which is also the alert ----
+  // the inner edge of the lip, and the outer one, which is also the alert
+  ctx.strokeStyle="rgba(0,0,0,0.35)"; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.ellipse(cx,wy,wRX,wRY,0,0,7); ctx.stroke();
   ctx.strokeStyle = alert ? "#f22" : "#fff";
   ctx.lineWidth=2;
   ctx.beginPath(); ctx.ellipse(cx,rimY,rimRX,rimRY,0,0,7); ctx.stroke();
-  /* ...and NOT a second ring around the foot. It was drawn there and read as a hoop lying on the
-     carpet a little way under the bowl rather than as the bowl's own base - the dark bottom of the
-     wall and the shadow already say where it stands. */
-  ctx.strokeStyle="#fff"; ctx.lineWidth=3;
 }
 function drawRoomFurniture(ctx,w,h,t,gy,bwlX,bwlY,fbX,fbY,bwlW,bwlH,bw2,bh2){
   const FR=camFurnRects(w,h);   // the same table the caller and the hit-test read
-  const bodyH=bwlH*1.15;
-  rmShadow(ctx,w,h,SPOT.water.x,SPOT.water.z,0.035,0.30);
+  const bodyH=bwlH*0.62;                 // a dog bowl is low and wide; its own shadow is drawn in it
   drawOvalBowl(ctx, bwlX+bwlW/2, bwlY, bwlW/2, bodyH, BOWL.level, "water",
     (BOWL.level<=0.05 && (S.thirst<40 || !S.firstWater)) && Math.floor(t*2)%2===0);
-  rmShadow(ctx,w,h,SPOT.food.x,SPOT.food.z,0.035,0.30);
   drawOvalBowl(ctx, fbX+bwlW/2, fbY, bwlW/2, bodyH, FBOWL.level, "food",
     (FBOWL.level<=0.05 && (S.hunger<40 || !S.firstFood)) && Math.floor(t*2+1)%2===0);
   ctx.strokeStyle="#fff";
@@ -10097,9 +10158,11 @@ const DOGPARK_UNLEASHED_COST=5000;   // bones needed to unlock DOGPARK UNLEASHED
    The window is read straight off MOON_RISE/MOON_SET — the same pair the dusk fade ends on and
    the moon starts climbing at — so the sky outside and the door on the home screen can never
    disagree about whether it is night. REGULAR is untouched and open at every hour. */
-function unleashedHoursOk(){ return CLK.h>=MOON_RISE || CLK.h<MOON_SET; }
+// (the door kept its 19:00 opening when the evening was lengthened - the room is dimming by then)
+const UNLEASH_RISE=19;
+function unleashedHoursOk(){ return CLK.h>=UNLEASH_RISE || CLK.h<MOON_SET; }
 function unleashedHoursTxt(){
-  return String(MOON_RISE).padStart(2,"0")+":00 \u2014 0"+MOON_SET+":00";
+  return String(UNLEASH_RISE).padStart(2,"0")+":00 \u2014 0"+MOON_SET+":00";
 }
 function unleashedHoursDeny(){
   beep(160,.15,"sawtooth",.05);
@@ -11472,7 +11535,7 @@ function loop(now){
      robot, treats rotting — so the ceremony played over a room that was still living its life.
      Nothing ticks now until he is finished changing. */
   if(!EVO.active){
-    tickStats(dt);
+    tickStats(shiftDt(dt), SHIFT.on);           // at work the clock crawls - see A SHIFT IS TWO HOURS
     attrTick(dt);
   }
   syncMusicMuffle();   // a panel over a live run muffles it the same frame — see MUFFLE
@@ -28158,13 +28221,12 @@ function herdEndShift(kind){
     });
     if(lostN===0){ S.fun=clamp(S.fun+8,0,100); S.mood=clamp(S.mood+4,0,100); }
     addXP(Math.max(1,Math.round(sh.penned*0.5)));        // small — the wage is the point
-    tickStats(5,true);                                    // a shift is half an hour of the day
+    // (no flat charge here any more: the shift clock bills its two hours as the field closes)
     headPre="CHECKED OUT — +"; head=headPre+herdCash(pay);
     pic = lostN===0 ? "happy" : "content";
     beep(660,.08); setTimeout(()=>beep(990,.12),100);
     haptic([20,40,20]);
   } else {
-    tickStats(kind==="exit"?1.5:3.3,true);
     head = kind==="wipe" ? "SHIFT OVER — NOTHING BANKED" : "WALKED OFF — NOTHING BANKED";
     if(kind==="wipe"){
       const why=["hole","road","wolf","off","rock","eagle","mtn"].reduce((a,k)=>(sh.lost[k]||0)>(sh.lost[a]||0)?k:a,"none");
