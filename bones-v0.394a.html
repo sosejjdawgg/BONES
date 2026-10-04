@@ -974,7 +974,7 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.393a</span>
+          <span id="devToggle">v0.394a</span>
         </div>
       </div>
 
@@ -4655,6 +4655,7 @@ function mystHitWindow(fx,fy){
 /* His stock. Every one of these is a placeholder: the price is real and the flavour is real, but
    nothing is wired to an effect yet, so buying takes no bones — he simply refuses the sale. That
    way the shelf can be browsed and priced without anyone paying 999 bones for nothing. */
+const WOOF_TRANS_PRICE=799;
 const MYST_GOODS=[
   {n:"THE LONG NIGHT",  d:"HE SAYS IT KEEPS THE DARK OFF YOU"},
   {n:"SECOND WIND",     d:"FOR THE RUN THAT SHOULD HAVE ENDED"},
@@ -4672,7 +4673,11 @@ function renderMystShop(){
       +'<span class="mn">THE CURE<span class="md">"I KNOW WHAT BIT HIM. I KNOW WHAT UNBITES HIM."</span></span>'
       +'<span class="mc">'+VAMP_CURE_COST+' \u25c6</span></div>'
     : "";
-  $("#mystList").innerHTML = cure + MYST_GOODS.map((g,i)=>
+  // THE WOOF TRANSLATOR: real, and priced in money - the one thing on the shelf he wants cash for
+  const tr = S.translator
+    ? '<div class="mrow2" data-trans="1"><span class="mn">THE WOOF TRANSLATOR<span class="md">YOURS. NOW YOU KNOW WHAT HE MEANS.</span></span><span class="mc">OWNED</span></div>'
+    : '<div class="mrow2'+(S.money<WOOF_TRANS_PRICE?" poor":"")+'" data-trans="1"><span class="mn">THE WOOF TRANSLATOR<span class="md">"EVERY WOOF HAS A MEANING. THIS FINDS IT."</span></span><span class="mc">\u00A3'+WOOF_TRANS_PRICE+'</span></div>';
+  $("#mystList").innerHTML = cure + tr + MYST_GOODS.map((g,i)=>
     '<div class="mrow2'+(S.snacks<MYST_PRICE?" poor":"")+'" data-myst="'+i+'">'
     +'<span class="mn">'+g.n+'<span class="md">'+g.d+'</span></span>'
     +'<span class="mc">'+MYST_PRICE+' ◆</span></div>').join("");
@@ -5989,7 +5994,7 @@ function camBehavior(dt){
         toast("BONES DROPS THE BALL! +FUN"); beep(880,.07); setTimeout(()=>beep(1100,.07),90);
         bark(1); setTimeout(()=>bark(0.9),150);
         CAM.state="bark"; CAM.woof=1.8; CAM.t=0; CAM.until=1.8; CAM.fi=0; CAM.fetchPhase=0;
-        dogSay("WOOF!");
+        dogSay("WOOF!",1.8,["AGAIN! AGAIN!","THROW IT AGAIN!","DID YOU SEE THAT?"][Math.floor(Math.random()*3)]);
         if(Math.random()<0.45) CAM.loungeNext="ball";              // a run like that: a lie-down by his ball
       }
     }
@@ -6146,7 +6151,8 @@ function camBehavior(dt){
     CAM.moving=false;
     CAM.fi = CAM.t<LNG_DOWN ? Math.min(3,Math.floor(CAM.t/LNG_DOWN*4)) : LNG_SEQ[Math.floor((CAM.t-LNG_DOWN)*4.5)%LNG_SEQ.length];
     // waiting for you: now and then a woof, to say so
-    if(!G.woofed && CAM.t>3.5+(G.woofAt||0)){ G.woofed=true; if(Math.random()<0.5){ dogSay("WOOF"); bark(0.45); } }
+    if(!G.woofed && CAM.t>3.5+(G.woofAt||0)){ G.woofed=true; if(Math.random()<0.5){
+      dogSay("WOOF",2.2,["READY WHEN YOU ARE.","THROW SOMETHING?","I'M JUST RESTING MY EYES.","WHAT ARE WE DOING NEXT?"][Math.floor(Math.random()*4)]); bark(0.45); } }
     // up again when the time is up, or when something needs him
     const need = S.thirst<45 || S.hunger<45 || TREATS.some(tr=>tr.settled);
     if(CAM.t>=G.dur || need){ CAM.state="loungeup"; CAM.t=0; CAM.until=99; }
@@ -6725,7 +6731,7 @@ function inspThink(txt,col,life,q){
   const say = q ? "WOOF?" : (col && col!=="#1b140c" && col!=="#2f7a2a") ? "WOOF!" : "WOOF";
   CAM.thought={txt:say, real:txt, col:col||"#1b140c", t:0, life:life||3, q:!!q, alt:0};
 }
-function dogSay(txt,life){ CAM.thought={txt, real:txt, col:"#1b140c", t:0, life:life||1.8, q:false, alt:0}; }
+function dogSay(txt,life,real){ CAM.thought={txt, real:real||txt, col:"#1b140c", t:0, life:life||1.8, q:false, alt:0}; }
 const DOG_LANG=["YOU CAN'T UNDERSTAND","THIS LANGUAGE, YET."];
 function dogBubbleTap(fx,fy,w,h){
   const T=CAM.thought, B=CAM.thoughtBox;
@@ -6815,7 +6821,10 @@ function drawCamThought(ctx,w,h,t){
   ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="center";
   const showAlt = T.alt>0;
   if(showAlt){ T.altT=(T.altT||0)+1/60; if(T.altT>=T.alt){ T.alt=0; } }
-  const lines = showAlt ? DOG_LANG : [T.txt];
+  // with the translator: what he means, and a tap gives you the woof back; without: the woof,
+  // and a tap tells you that you can't understand it
+  const said = S.translator ? T.real : T.txt;
+  const lines = showAlt ? (S.translator ? [T.txt] : DOG_LANG) : [said];
   const tw=Math.max(...lines.map(l=>ctx.measureText(l).width)), bw=tw+14, bh=lines.length>1?24:15;
   const bx=clamp(hx+CAM.dir*10,bw/2+4,w-bw/2-4), by=Math.max(bh/2+22,hy-22);
   const bob=SETTINGS.reduceMotion?0:Math.sin(t*2.4)*1.2;
@@ -6836,8 +6845,9 @@ function drawCamThought(ctx,w,h,t){
   if(showAlt){
     const fa=Math.min(1,T.altT/0.15,(T.alt-T.altT)/0.3);
     ctx.globalAlpha=a*clamp(fa,0,1); ctx.fillStyle="#5a5a62";
-    ctx.fillText(lines[0],bx,y0+10); ctx.fillText(lines[1],bx,y0+19);
-  } else { ctx.fillStyle=T.col; ctx.fillText(T.txt,bx,y0+bh/2+3); }
+    if(lines.length>1){ ctx.fillText(lines[0],bx,y0+10); ctx.fillText(lines[1],bx,y0+19); }
+    else ctx.fillText(lines[0],bx,y0+bh/2+3);
+  } else { ctx.fillStyle=T.col; ctx.fillText(said,bx,y0+bh/2+3); }
   ctx.restore();
   CAM.thoughtBox={x0, y0, x1:x0+bw, y1:y0+bh};
 }
@@ -10992,6 +11002,24 @@ $("#mystList").addEventListener("click",e=>{
     dogLog("THE MYSTERIOUS DOG CURED HIS VAMPIRISM");
     beep(520,.09); setTimeout(()=>beep(700,.09),110); setTimeout(()=>beep(980,.16),230);
     heartsBurst(3);
+    return;
+  }
+  if(e.target.closest("[data-trans]")){
+    if(S.translator){ beep(440,.06,"sine",.03); return toast("“IT'S ALREADY YOURS. LISTEN TO HIM.”"); }
+    if(S.money<WOOF_TRANS_PRICE){
+      beep(160,.12,"sawtooth",.04); toast("“\u00A3"+WOOF_TRANS_PRICE+". YOU'RE SHORT.” HE DOESN'T HAGGLE.",1); return;
+    }
+    openChoice("THE WOOF TRANSLATOR",
+      "EVERY BUBBLE OVER HIS HEAD, IN WORDS.<br>TAP ONE TO HEAR THE WOOF AGAIN.<br><br>\u00A3"+WOOF_TRANS_PRICE,
+      "BUY IT", ()=>{
+        if(S.money<WOOF_TRANS_PRICE) return toast("NOT ENOUGH MONEY",1);
+        S.money-=WOOF_TRANS_PRICE; S.translator=true;
+        renderMystShop(); renderMeters();
+        toast("THE WOOF TRANSLATOR IS YOURS. NOW YOU CAN UNDERSTAND HIM.");
+        dogLog("BOUGHT THE WOOF TRANSLATOR FROM THE MYSTERIOUS DOG.");
+        beep(520,.09); setTimeout(()=>beep(700,.09),110); setTimeout(()=>beep(980,.16),230);
+        heartsBurst(2);
+      }, "NOT NOW", null);
     return;
   }
   const row=e.target.closest("[data-myst]"); if(!row) return;
