@@ -974,7 +974,7 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.394a</span>
+          <span id="devToggle">v0.395a</span>
         </div>
       </div>
 
@@ -8666,8 +8666,11 @@ function drawLamp(ctx,w,h,t){
     glow.addColorStop(0.45,"rgba(255,196,120,"+(0.10*vis).toFixed(3)+")");
     glow.addColorStop(1,"rgba(255,190,110,0)");
     ctx.fillStyle=glow; ctx.fillRect(0,0,w,h);
-    // the cone, down the line of the cord to the carpet
+    ctx.restore();
+    const LA=lampLayer(0,ctx), LB=lampLayer(1,ctx);
     const yF=rmY(LAMP_Z+0.08)*h, Lb=(yF-g.ay)/Math.max(0.4,g.c), Rp=w*0.20;
+    { const ctx=LB;
+    // the cone, down the line of the cord to the carpet
     ctx.save(); ctx.translate(g.ax,g.ay); ctx.rotate(LAMP.th);
     const y0=g.Lc+g.sh;
     const cg=ctx.createLinearGradient(0,y0,0,Lb);
@@ -8686,6 +8689,8 @@ function drawLamp(ctx,w,h,t){
       ctx.fillStyle="rgba(255,240,205,"+Math.max(0,a).toFixed(3)+")"; ctx.fillRect(xx-0.8,yy-0.8,1.6,1.6);
     }
     ctx.restore();
+    }
+    { const ctx=LA;
     // the pool on the carpet, where the cone lands - it slides with the swing
     const P=g.at(0,Lb);
     const pg=ctx.createRadialGradient(P.x,P.y,2,P.x,P.y,Rp*1.25);
@@ -8694,9 +8699,15 @@ function drawLamp(ctx,w,h,t){
     pg.addColorStop(1,"rgba(255,200,130,0)");
     ctx.fillStyle=pg; ctx.save(); ctx.translate(P.x,P.y); ctx.scale(1,0.34); ctx.translate(-P.x,-P.y);
     ctx.beginPath(); ctx.arc(P.x,P.y,Rp*1.25,0,7); ctx.fill(); ctx.restore();
-    ctx.restore();
+    }
+    // he stands on the carpet, so the pool never lands on him; the beam does only while he is
+    // further back than the lamp hangs - in front of it, he is in front of it
+    lampEraseDog(LA,1); lampEraseDog(LB,lampFrontK());
+    lampBlit(ctx,LA,"screen"); lampBlit(ctx,LB,"screen");
   }
   // the fixture: cord, fitting, shade - swinging as one from the ceiling
+  const LC=lampLayer(2,ctx);
+  { const ctx=LC;
   ctx.save(); ctx.translate(g.ax,g.ay); ctx.rotate(LAMP.th);
   const day=1-night*0.55;
   ctx.strokeStyle="rgba(20,20,24,.95)"; ctx.lineWidth=2;
@@ -8736,6 +8747,8 @@ function drawLamp(ctx,w,h,t){
     ctx.beginPath(); ctx.arc(0,y1+br*0.6,br,0,Math.PI); ctx.fill();
   }
   ctx.restore();
+  }
+  lampEraseDog(LC,lampFrontK()); lampBlit(ctx,LC,"source-over");
   // the pop of the bulb going, then glass and sparks
   if(LAMP.pop>0){
     const pr=w*0.22*(1.2-LAMP.pop*0.4);
@@ -8743,6 +8756,8 @@ function drawLamp(ctx,w,h,t){
     pg.addColorStop(0,"rgba(255,255,255,"+(0.85*LAMP.pop).toFixed(3)+")"); pg.addColorStop(1,"rgba(255,240,200,0)");
     ctx.fillStyle=pg; ctx.fillRect(g.rim.x-pr,g.rim.y-pr,pr*2,pr*2);
   }
+  const LD=lampLayer(3,ctx);
+  { const ctx=LD;
   for(const p of LAMP.sparks){ ctx.fillStyle="rgba(255,220,140,"+clamp(p.life*3,0,1).toFixed(3)+")"; ctx.fillRect(p.x-1,p.y-1,2,2); }
   for(const p of LAMP.shards){
     ctx.save(); ctx.globalAlpha=clamp(p.life/1.2,0,1); ctx.translate(p.x,p.y); ctx.rotate(p.rot);
@@ -8751,6 +8766,33 @@ function drawLamp(ctx,w,h,t){
     ctx.strokeStyle = p.glass ? "rgba(255,255,255,.9)" : "rgba(255,255,255,.6)"; ctx.lineWidth=0.8; ctx.stroke();
     ctx.restore();
   }
+  }
+  if(LAMP.shards.length || LAMP.sparks.length){ lampEraseDog(LD,1); lampBlit(ctx,LD,"source-over"); }
+}
+/* THE LAMP AND HIM, IN DEPTH. Everything the lamp draws goes into a layer of its own, and his own
+   silhouette is cut out of it before it lands: always for what lies on the carpet (the pool, the
+   glass), and for the beam and the fixture only as far as he stands nearer than it hangs. */
+let DOGMASK=null;
+function lampFrontK(){ return clamp(((CAM.z||0.6)-(LAMP_Z+0.01))/0.07,0,1); }
+function lampLayer(i,ctx){
+  const L=LAMP.layers||(LAMP.layers=[]);
+  const c=L[i]||(L[i]=document.createElement("canvas"));
+  if(c.width!==ctx.canvas.width || c.height!==ctx.canvas.height){ c.width=ctx.canvas.width; c.height=ctx.canvas.height; }
+  const o=c.getContext("2d");
+  o.setTransform(1,0,0,1,0,0); o.globalCompositeOperation="source-over"; o.globalAlpha=1; o.clearRect(0,0,c.width,c.height);
+  o.setTransform(ctx.getTransform());
+  return o;
+}
+function lampEraseDog(o,k){
+  const M=DOGMASK; if(!M || !(k>0.01)) return;
+  o.save(); o.globalCompositeOperation="destination-out"; o.globalAlpha=k; o.imageSmoothingEnabled=false;
+  if(M.dir) dogDirDraw(o,M.w,M.h,M.x,M.z,M.oct,M.fi);
+  else { if(M.flip){ o.translate(M.cx*2,0); o.scale(-1,1); } o.drawImage(M.img,M.x0,M.y0,M.dw,M.dh); }
+  o.restore();
+}
+function lampBlit(ctx,o,mode){
+  ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.globalCompositeOperation=mode; ctx.globalAlpha=1;
+  ctx.drawImage(o.canvas,0,0); ctx.restore();
 }
 /* ONE PLACE FOR THE FURNITURE RECTS. The draw and the tap used to derive them separately from the
    same magic numbers, which is exactly how a hit-test drifts off the thing it is testing. */
@@ -9233,6 +9275,7 @@ function rmShadow(ctx,w,h,x,z,r,a){
 function drawCam(t){
   const [ctx,w,h]=fit($("#dogcv"));
   RMW=w; RMH=h;                    // the projection's idea of the canvas, refreshed once a frame
+  DOGMASK=null;
   drawRoom(ctx,w,h);
   /* gy is kept because a dozen bits of HUD still hang off it, but nothing on the FLOOR uses it any
      more - the floor is a plane now and everything standing on it is placed through rmX/rmY. */
@@ -9482,6 +9525,7 @@ function drawCam(t){
     const up=clamp(dogLift()/Math.max(1e-4,dogBodyFloor()*0.55),0,1);
     rmShadow(ctx,w,h,CAM.x,CAM.z, 0.055*(1-up*0.30), 0.32*(1-up*0.62));
     dogDirDraw(ctx,w,h,CAM.x,CAM.z,CAM.oct|0,CAM.walkPh|0);
+    DOGMASK={dir:true, w, h, x:CAM.x, z:CAM.z, oct:CAM.oct|0, fi:CAM.walkPh|0};
     const D=DOGDIR[DOGDIR_MAP[((CAM.oct|0)%8+8)%8].k];
     CAMDWF = D.w*(dogBodyF()/D.body*h)/w;
   } else if(!EVO.active && img.complete && img.naturalWidth){
@@ -9502,6 +9546,7 @@ function drawCam(t){
     if(flip){ ctx.translate(dx*2,0); ctx.scale(-1,1); }
     ctx.drawImage(img, dx-dw/2, rmY(CAM.z)*h-anchor+bob-lz+kDrop, dw, dh);
     ctx.restore();
+    DOGMASK={dir:false, img, flip, cx:dx, x0:dx-dw/2, y0:rmY(CAM.z)*h-anchor+bob-lz+kDrop, dw, dh};
     // his shadow, from the same {x,z} - it is what stops him floating when he is up the room
     { const up=clamp(dogLift()/Math.max(1e-4,dogBodyFloor()*0.55),0,1);
       rmShadow(ctx,w,h,CAM.x,CAM.z, 0.055*(1-up*0.30), 0.32*(1-up*0.62)); }
