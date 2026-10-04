@@ -994,7 +994,7 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.397a</span>
+          <span id="devToggle">v0.398a</span>
         </div>
       </div>
 
@@ -1151,9 +1151,9 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
           <span class="gh">WALKS & THE DOGPARK</span><br>
           TAP GO OUT FOR WORK, TRAINING OR THE BEACH — OR HEAD TO THE DOGPARK ONCE HE HITS LV.5. BARK AT SQUIRRELS, BIRDS & CATS TO SCARE THEM OFF — HE DOESN'T HURT ANYONE, THEY JUST DROP A BONE AND SCUTTLE AWAY. SURVIVE THE WAVES AND REACH THE RED EXIT TO BANK REAL XP BEFORE HE GETS OVERRUN.<br><br>
           <span class="gh">BARK &amp; DASH</span><br>
-          IN THE DOGPARK HE BARKS WHEN YOU SAY SO. TAP <b>BARK</b> (OR SPACE) TO THROW A SHOUT DOWN THE CONE IN FRONT OF HIM — THE BUTTON GLOWS GOLD WHEN SOMETHING'S STANDING IN IT. TAP <b>DASH</b> (OR SHIFT) TO BOLT A FEW STRIDES WHICHEVER WAY YOU'RE PUSHING. BUY <b>AUTO BARK</b> IN THE BETWEEN-WAVE SHOP AND HE BARKS BY HIMSELF FOR THE REST OF THE RUN (THE ZOOMIES ALWAYS DO). THE BARK UPGRADES WIDEN THE CONE, AND THE LAST ONE, OMNI BARK, MAKES IT A FULL CIRCLE.<br><br>
+          IN THE DOGPARK HE BARKS WHEN YOU SAY SO. TAP <b>BARK</b> (OR SPACE) TO THROW A SHOUT DOWN THE CONE IN FRONT OF HIM — THE BUTTON GLOWS GOLD WHEN SOMETHING'S STANDING IN IT. TAP <b>DASH</b> (OR SHIFT) TO BOLT A FEW STRIDES WHICHEVER WAY YOU'RE PUSHING — THE DASH UPGRADES MAKE IT LONGER AND QUICKER TO COME BACK, AND THE FOURTH, <b>FIRE DASH</b>, LEAVES A TRAIL OF FLAME THAT BURNS CRITTERS, TREES AND GRASS. GET HIT AND HE'S KNOCKED BACK, FLASHES RED, AND CAN'T BE HURT AGAIN FOR A MOMENT WHILE HE FLICKERS. BUY <b>AUTO BARK</b> IN THE BETWEEN-WAVE SHOP AND HE BARKS BY HIMSELF FOR THE REST OF THE RUN (THE ZOOMIES ALWAYS DO). THE BARK UPGRADES WIDEN THE CONE, AND THE LAST ONE, OMNI BARK, MAKES IT A FULL CIRCLE.<br><br>
           <span class="gh">THE DOGPARK ECONOMY</span><br>
-          EVERY SCARED-OFF CRITTER DROPS ONE BONE. SPEND THEM BETWEEN WAVES ON UPGRADES OR RARE CHARMS — OR TAP THE BONES COUNTER ANY TIME TO TRADE SOME FOR XP, MONEY OR A BONE TREAT. CLEAR A WAVE INSIDE 60 SECONDS AND A BONUS CHARM UNLOCKS IN THE SHOP. KEEP AN EYE OUT FOR THE GOLDEN BIRD — CATCH IT FOR A BIG BONES PAYOUT.<br><br>
+          EVERY SCARED-OFF CRITTER DROPS ONE BONE. SPEND THEM BETWEEN WAVES ON UPGRADES OR RARE CHARMS (THE SHOP DEALS THREE RANDOM PICKS — ANYTHING YOU UPGRADED RECENTLY IS FAR MORE LIKELY TO OFFER ITS NEXT RANK) — OR TAP THE BONES COUNTER ANY TIME TO TRADE SOME FOR XP, MONEY OR A BONE TREAT. CLEAR A WAVE INSIDE 60 SECONDS AND A BONUS CHARM UNLOCKS IN THE SHOP. KEEP AN EYE OUT FOR THE GOLDEN BIRD — CATCH IT FOR A BIG BONES PAYOUT.<br><br>
           <span class="gh">THE PARK OPENS UP</span><br>
           FROM THE SECOND WAVE ON, EVERY CLEAR PULLS THE CAMERA BACK A STEP AND HANDS THAT SPACE TO THE VIEW — THE PARK GETS WIDER AND THE CONTROLS GET TIGHTER. IT ALL HAPPENS DURING THE SLOW-MOTION FINAL KILL, SO YOU SEE IT SETTLE. IT FINISHES OPENING UP AT WAVE 10 AND STAYS PUT FROM THERE, HOWEVER DEEP THE RUN GOES.<br><br>
           <span class="gh">DOGPARK UNLEASHED</span><br>
@@ -12429,6 +12429,30 @@ function pkHurt(n){
     PK.dmgTaken=(PK.dmgTaken||0)+n;   // and it is what HEALTH is trained by
   }
 }
+/* STRUCK. Every enemy hit on BONES comes through here: the damage, then a proper Minecraft-style
+   reaction - he is thrown back away from whatever hit him with a little hop, flashes red, fizzes,
+   and is untouchable for PK_HIT_INV afterwards (blinking once he has landed). A hit also stops a
+   dash dead. Environmental burns (the hell gates) still use pkHurt alone: nothing to be thrown from. */
+const PK_KB_T=0.26, PK_KB_V=360, PK_KB_HOP=8, PK_HIT_INV=1.1;
+function pkStruck(dmg,src,inv){
+  pkHurt(dmg);
+  PK.inv=Math.max(PK.inv||0, inv||0, PK_HIT_INV);
+  PK.hurtT=HURT_TIME;
+  let ux=src ? wd(PK.x-src.x,PK.WW) : 0, uy=src ? wd(PK.y-src.y,PK.WH) : 0;
+  let l=Math.hypot(ux,uy);
+  if(l<0.01){ const a=(PK.faceAng||0)+Math.PI; ux=Math.cos(a); uy=Math.sin(a); l=1; }
+  PK.kbVx=ux/l*PK_KB_V; PK.kbVy=uy/l*PK_KB_V; PK.kbT=PK_KB_T;
+  PK.dashT=0;
+  PK.shake=Math.max(PK.shake||0,0.25);
+  // the fizz: red and white pops off him, mostly upward
+  for(let i=0;i<14;i++){
+    const a=-Math.PI/2+(Math.random()-0.5)*2.6, sp=50+Math.random()*80;
+    SPARKS.push({x:PK.x+(Math.random()-0.5)*14, y:PK.y-6-Math.random()*10, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp,
+      life:0.25+Math.random()*0.3, red:i%3!==0});
+  }
+  if(SETTINGS.sound){ try{ audioInit(); const t0=AC.currentTime; noiseBurst(0.16,3200,1.1,0.07,t0); noiseBurst(0.09,1300,2,0.05,t0+0.03); }catch(_){} }
+  haptic(30);
+}
 // the golden bone (zoomies + untouchable), and altitude: above WING_CLEAR_Z nothing on the
 // ground can reach him. Every damage site in the park already asks this one question, so the
 // leap's immunity lands on all of them at once.
@@ -13060,6 +13084,8 @@ function startPark(plus){
   PK.acts=[{k:"hoop",x:.15,y:.125,cd:0},{k:"tunnel",x:.35,y:.36,cd:0},{k:"ramp",x:.11,y:.39,cd:0},{k:"tunnel",x:.62,y:.70,cd:0},{k:"hoop",x:.85,y:.20,cd:0}];
   PK.waveBanner=null; pkTickerClear(); pkTick("WAVE 1 \u00B7 "+pkWaveName(1), "wave", 2.8, 2);
   PK.autoBark=false; PK.dashT=0; PK.dashCd=0; PK.barkQ=0; PK.barkHot=false;
+  PK.dashLvl=0; PK.dashFire=[]; PK.dashHits=null; PK.dashLay=null;
+  PK.kbT=0; PK.shopN=0; PK.upRecent={};
   // the first few runs say where his bark went - after that the buttons speak for themselves
   if((S.pkCtrlTips||0)<3){ S.pkCtrlTips=(S.pkCtrlTips||0)+1; pkTick("TAP BARK TO SHOUT \u00B7 DASH TO BOLT", "info", 3.2); }
   SPARKS.length=0; HITFX.length=0;
@@ -14335,7 +14361,7 @@ function pkBirdPeck(e,dt,WW,WH,dmg){
       // him already invulnerable leaves anyway rather than waiting on his centre for the frames
       // to run out, which is what used to turn a dive into a hover.
       if(d<BIRD_PECK_R && PK.inv<=0 && !pkInvuln()){
-        pkHurt(dmg); PK.inv=0.6;
+        pkStruck(dmg, e, 0.6);
         beep(110,.12,"sawtooth");
         if(PK.hp<=0) return true;
       }
@@ -16641,7 +16667,20 @@ function pkHitR(e){
    were - only the trigger moved: you press it, the way you do on the farm. AUTO BARK (a shop item)
    puts the old automatic trigger back on top, and the zoomies still fire it for you. DASH is the
    farm's too: a burst along the stick, on a short cooldown, with nothing to pay but the wait. */
-const PK_DASH_T=0.32, PK_DASH_MUL=2.4, PK_DASH_CD=1.1;
+/* THE DASH LADDER. Rank 0 is the farm's dash held back - a shorter burst on a longer leash - so
+   the shop has somewhere to take it. Ranks 1-3 each trim the cooldown and stretch the burst; rank 4
+   keeps rank 3's numbers and sets the ground alight behind him (see pkDashFireTick). */
+const PK_DASH_MUL=2.4;
+const DASH_T_LV =[0.20,0.25,0.30,0.36,0.36];   // seconds of burst, by rank
+const DASH_CD_LV=[1.80,1.50,1.20,0.90,0.90];   // seconds between dashes, by rank
+const DASH_LVL_CAP=4;
+const DASH_ROW=["QUICK FEET","QUICKER FEET","LIGHTNING FEET","FIRE DASH"];
+const DASH_FX =["-0.3s DASH COOLDOWN, LONGER DASH","-0.3s DASH COOLDOWN, LONGER DASH",
+                "-0.3s DASH COOLDOWN, LONGER DASH","LEAVES A TRAIL OF FIRE - BURNS FOES, TREES AND GRASS"];
+function pkDashLv(){ return clamp(PK.dashLvl||0,0,DASH_LVL_CAP); }
+function pkDashDur(){ return DASH_T_LV[pkDashLv()]; }
+function pkDashCdMax(){ return DASH_CD_LV[pkDashLv()]; }
+function pkDashFireOn(){ return pkDashLv()>=DASH_LVL_CAP; }
 const PK_BARK_BUF=0.15;   // a press this close to ready is held and fires the moment it can, not lost
 // the park is listening: no panel up, no cinematic running, no wave send-off holding the frame
 function pkCanAct(){
@@ -16669,10 +16708,98 @@ function pkDashPress(){
   if((PK.dashCd||0)>0 || PK.wingSlowT>0) return pkCtrlNo("#pkDashBtn");
   const j=PK.joy, l=j?Math.hypot(j.dx,j.dy):0;
   PK.dashAng = l>JOY_DEAD ? Math.atan2(j.dy,j.dx) : (PK.faceAng||0);
-  PK.dashT=PK_DASH_T; PK.dashCd=PK_DASH_CD;
+  PK.dashDur=pkDashDur(); PK.dashT=PK.dashDur; PK.dashCd=pkDashCdMax();
+  PK.dashHits=null; PK.dashLay=null;                 // a fresh dash: nobody singed yet, no trail yet
   beep(420,.04,"triangle",.03); setTimeout(()=>beep(620,.05,"triangle",.025),40); haptic(14);
+  if(pkDashFireOn()) pkFireWhoosh();
   for(let i=0;i<8;i++){ const a=PK.dashAng+Math.PI+(Math.random()-0.5)*1.4, v=40+Math.random()*50;
     SPARKS.push({x:PK.x, y:PK.y, vx:Math.cos(a)*v, vy:Math.sin(a)*v-12, life:0.35+Math.random()*0.2}); }
+}
+/* FIRE DASH (dash rank 4). While he dashes he drops a patch of flame every few pixels; anything he
+   runs THROUGH takes a big singe once per dash, and the patches stay lit for a few seconds,
+   burning whatever stands in them. Squirrels and cats catch (pkIgniteAnimal - they panic and carry
+   it on), trees go up (pkIgniteTree, under the usual FIRE_CAP) and the grass is left scorched. */
+const DFIRE_STEP=9, DFIRE_R=13, DFIRE_LIFE=2.8, DFIRE_TICK=0.3, DFIRE_MAX=70;
+const DFIRE_SINGE_R=30;   // the blaze he carries while dashing - wide enough to catch a bird holding off him
+function pkDashSingeDmg(){ return 3*pkBarkDmg()+2; }   // running straight through: the big hit
+function pkDashBurnDmg(){ return pkBarkDmg()+1; }      // standing in the trail, every DFIRE_TICK
+function pkFireHit(e,dmg){
+  if(e.fleeing || e.love) return;
+  const dx=wd(e.x-PK.x,PK.WW), dy=wd(e.y-PK.y,PK.WH), d=Math.hypot(dx,dy)||1;
+  e.hp-=dmg; e.hitT=0.22;
+  if(e.hp<=0){ pkDownEnemy(e,dx/d,dy/d); pkHitMark(e.x,e.y,true); }
+  else pkIgniteAnimal(e);                 // only squirrels and cats can catch; the rest just burn
+}
+function pkFireWhoosh(){
+  if(!SETTINGS.sound) return;
+  try{ audioInit(); const t0=AC.currentTime; noiseBurst(0.32, 700, 0.8, 0.09, t0); noiseBurst(0.18, 1900, 1.4, 0.04, t0+0.05); }catch(_){}
+}
+function pkDashFireTick(dt){
+  const F=PK.dashFire||(PK.dashFire=[]);
+  if(PK.dashT>0 && pkDashFireOn()){
+    // lay the trail
+    const L=PK.dashLay;
+    if(!L || Math.hypot(wd(PK.x-L.x,PK.WW),wd(PK.y-L.y,PK.WH))>=DFIRE_STEP){
+      PK.dashLay={x:PK.x,y:PK.y};
+      F.push({x:PK.x, y:PK.y+6, life:DFIRE_LIFE, tick:Math.random()*DFIRE_TICK, seed:Math.random()*6.283});
+      if(Math.random()<0.5) PK.scorch.push({x:PK.x+(Math.random()-0.5)*6, y:PK.y+7, r:8+Math.random()*5});
+      if(F.length>DFIRE_MAX) F.splice(0,F.length-DFIRE_MAX);
+    }
+    // the singe: everything he runs through, once per dash
+    const hits=PK.dashHits||(PK.dashHits=new Set());
+    pkEnemiesNear(PK.x,PK.y,DFIRE_SINGE_R+10,e=>{
+      if(hits.has(e) || e.fleeing || e.love) return;
+      if(Math.hypot(wd(e.x-PK.x,PK.WW),wd(e.y-PK.y,PK.WH))>DFIRE_SINGE_R) return;
+      hits.add(e); pkFireHit(e,pkDashSingeDmg());
+    });
+  }
+  // the trail burns on without him
+  for(let i=F.length-1;i>=0;i--){
+    const f=F[i];
+    f.life-=dt;
+    if(f.life<=0){ F.splice(i,1); continue; }
+    f.tick-=dt;
+    if(f.tick>0) continue;
+    f.tick+=DFIRE_TICK;
+    pkEnemiesNear(f.x,f.y,DFIRE_R+10,e=>{
+      if(Math.hypot(wd(e.x-f.x,PK.WW),wd(e.y-f.y,PK.WH))<DFIRE_R+4) pkFireHit(e,pkDashBurnDmg());
+    });
+    pkTreesNear(f.x,f.y,DFIRE_R+TREE_R,tr=>{
+      if(tr.state==="ok" && Math.hypot(wd(tr.x-f.x,PK.WW),wd(tr.y-f.y,PK.WH))<DFIRE_R+TREE_R) pkIgniteTree(tr,true);
+    });
+    if(Math.random()<0.35) PK.embers.push({x:f.x+(Math.random()-0.5)*10, y:f.y-4, vx:(Math.random()-0.5)*30, vy:-30-Math.random()*40, life:0.5+Math.random()*0.4, fire:true});
+  }
+}
+// the flames: a warm pool on the grass, and two or three tongues licking up out of it
+function pkDrawDashFire(ctx,DX,DY,WW,WH,w,h,t){
+  if(PK.dashT>0 && pkDashFireOn()){   // the blaze he carries while the dash lasts
+    ctx.save(); ctx.globalCompositeOperation="lighter";
+    const g=ctx.createRadialGradient(DX,DY,4,DX,DY,DFIRE_SINGE_R);
+    g.addColorStop(0,"rgba(255,190,80,.5)"); g.addColorStop(1,"rgba(255,70,10,0)");
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(DX,DY,DFIRE_SINGE_R,0,7); ctx.fill(); ctx.restore();
+  }
+  const F=PK.dashFire; if(!F || !F.length) return;
+  ctx.save();
+  for(const f of F){
+    const x=DX+wd(f.x-PK.x,WW), y=DY+wd(f.y-PK.y,WH);
+    if(x<-30||x>w+30||y<-30||y>h+30) continue;
+    const a=Math.min(1,f.life/0.7), fl=0.75+0.25*Math.sin(t*17+f.seed*3);
+    ctx.globalCompositeOperation="lighter";
+    const g=ctx.createRadialGradient(x,y,1,x,y,DFIRE_R*1.5);
+    g.addColorStop(0,"rgba(255,170,60,"+(0.55*a*fl).toFixed(3)+")"); g.addColorStop(1,"rgba(255,60,10,0)");
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,DFIRE_R*1.5,0,7); ctx.fill();
+    ctx.globalCompositeOperation="source-over";
+    // outer red-orange tongues first, the hot yellow core over them
+    for(const [k,col,wid,tall] of [[0,"#e8401a",4.5,1],[2,"#e8401a",4.5,0.9],[1,"#ff8a1f",5,1.25],[1,"#ffd84a",2.6,0.8]]){
+      const ox=(k-1)*6+Math.sin(t*9+f.seed+k)*1.6;
+      const hh=(10+5*Math.sin(t*13+f.seed*2+k*2))*(0.45+0.55*a)*tall;
+      ctx.globalAlpha=a*0.95; ctx.fillStyle=col;
+      ctx.beginPath(); ctx.moveTo(x+ox-wid,y); ctx.quadraticCurveTo(x+ox-wid*0.4,y-hh*0.6,x+ox+Math.sin(t*11+f.seed+k)*1.5,y-hh);
+      ctx.quadraticCurveTo(x+ox+wid*0.4,y-hh*0.6,x+ox+wid,y); ctx.closePath(); ctx.fill();
+    }
+    ctx.globalAlpha=1;
+  }
+  ctx.restore();
 }
 // the buttons' faces: the cooldown filling across, gold when one's in the cone, AUTO when it's his
 function pkCtrlSync(){
@@ -16688,7 +16815,7 @@ function pkCtrlSync(){
     b.classList.toggle("cooling",v>0.001); };
   const bb=$("#pkBarkBtn");
   set(bb, PK.zoomT>0 ? 0 : clamp(PK.barkCd/Math.max(0.01,PK.barkMax),0,1));
-  set($("#pkDashBtn"), clamp((PK.dashCd||0)/PK_DASH_CD,0,1));
+  set($("#pkDashBtn"), clamp((PK.dashCd||0)/pkDashCdMax(),0,1));
   // something is standing in the cone and the shout is loaded: the button says NOW
   const hot=!!PK.barkHot && !PK.autoBark;
   if(bb._hot!==hot){ bb._hot=hot; bb.classList.toggle("hot",hot); }
@@ -17929,71 +18056,102 @@ function pkPalDamage(dt,WW,WH){
     }
   }
 }
-function pkShopOpen(){
-  const statAll=[
-    // the wedge is the upgrade now: +10 radius on a cone that only faces one way was a much
-    // smaller thing than it looked, and the last rank is what the whole ladder is for
+/* THE BETWEEN-WAVE SHOP: three picks, rolled the way Vampire Survivors rolls a level-up. Every
+   upgrade that still has a rank to give goes into one weighted bag (pkShopCatalog); three are
+   drawn without replacement. Anything with ranks that was bought in the last few shops is far,
+   far more likely to come back with its next rank (SHOP_RECENT_BOOST), so a build you have started
+   keeps offering itself. Armour and the compass are fixed slots and never in the bag. */
+const SHOP_PICKS=3;
+const SHOP_RECENT_BOOST=[1,40,16,6];   // by shops since you last bought it: 1, 2 or 3 ago
+function pkShopCatalog(){
+  const L=(k)=>PK[k]||0;
+  const all=[
     // the wedge IS the upgrade, and each rank says which half of it is moving
-    {n:BARK_ROW[Math.min(BARK_ROW.length-1,PK.barkBigLvl||0)],
-     ic:"bark", fx:BARK_FX[Math.min(BARK_FX.length-1,PK.barkBigLvl||0)], c:12, capKey:"barkBigLvl",
+    {id:"barkBig", n:BARK_ROW[Math.min(BARK_ROW.length-1,L("barkBigLvl"))], ic:"bark",
+     fx:BARK_FX[Math.min(BARK_FX.length-1,L("barkBigLvl"))], c:12, capKey:"barkBigLvl",
      f:()=>{ PK.barkBigLvl++; if(PK.barkBigLvl>=BARK_CONE.length-1) toast("OMNI BARK \u2014 FULL CIRCLE",1); }},
+    {id:"dash", n:DASH_ROW[Math.min(DASH_ROW.length-1,L("dashLvl"))], ic:L("dashLvl")>=DASH_LVL_CAP-1?"firedash":"dash",
+     fx:DASH_FX[Math.min(DASH_FX.length-1,L("dashLvl"))], c:L("dashLvl")>=DASH_LVL_CAP-1?18:12, capKey:"dashLvl", capMax:DASH_LVL_CAP,
+     f:()=>{ PK.dashLvl=L("dashLvl")+1; if(pkDashFireOn()) toast("FIRE DASH \u2014 THE GRASS BURNS BEHIND HIM",1); }},
     // AUTO BARK: the bark as it used to be - he fires it himself whenever one is in the cone. A
     // one-off for the run (uniq): its own colour and icon, and never marked down with the rest
-    {n:"AUTO BARK", ic:"autobark", fx:"UNIQUE \u2014 HE BARKS BY HIMSELF WHEN ONE'S IN THE CONE", c:20, once:"autoBark", uniq:true,
+    {id:"autoBark", n:"AUTO BARK", ic:"autobark", fx:"UNIQUE \u2014 HE BARKS BY HIMSELF WHEN ONE'S IN THE CONE", c:20, once:"autoBark", uniq:true,
      f:()=>{ PK.autoBark=true; toast("AUTO BARK \u2014 HE'LL SHOUT FOR HIMSELF NOW",1); }},
-    {n:"FASTER BARK", ic:"fast",  fx:"-0.35s COOLDOWN",     c:14, capKey:"barkFastLvl",f:()=>{PK.barkMax=Math.max(0.8,PK.barkMax-0.35); PK.barkFastLvl++;}},
-    {n:"MIGHTY KNOCKBACK", ic:"knock", fx:"+70 KNOCKBACK", c:10, f:()=>PK.knock+=70},
-    {n:"SNACK", ic:"heal",        fx:"HEAL 30 HP",          c:8,  f:()=>PK.hp=Math.min(PK.maxhp,PK.hp+30)},
-    {n:"ZOOMIES", ic:"speed",     fx:"+10% SPEED",          c:12, f:()=>PK.spd*=1.1},
-    {n:"TOUGH COAT", ic:"hp",     fx:"+15 MAX HP",          c:15, f:()=>{PK.maxhp+=15;PK.hp+=15;}},
-    {n:"KEEN NOSE", ic:"nose",    fx:"WIDER BONE PICKUP",   c:11, capKey:"sniffLvl", capMax:SNIFF_LVL_CAP, f:()=>{PK.sniffLvl=(PK.sniffLvl||0)+1;}},
-    {n:"AGILITY TRAINING", ic:"agility", fx:"COURSE HEALS +3%, RESETS 4s SOONER", c:13,
-     capKey:"agiLvl", capMax:AGI_LVL_CAP, f:()=>{PK.agiLvl=(PK.agiLvl||0)+1;}}
+    {id:"barkFast", n:"FASTER BARK", ic:"fast", fx:"-0.35s BARK COOLDOWN", c:14, capKey:"barkFastLvl",
+     f:()=>{ PK.barkMax=Math.max(0.8,PK.barkMax-0.35); PK.barkFastLvl++; }},
+    {id:"knock", n:"MIGHTY KNOCKBACK", ic:"knock", fx:"+70 KNOCKBACK", c:10, f:()=>PK.knock+=70},
+    {id:"snack", n:"SNACK", ic:"heal", fx:"HEAL 30 HP", c:8, f:()=>PK.hp=Math.min(PK.maxhp,PK.hp+30)},
+    {id:"speed", n:"ZOOMIES", ic:"speed", fx:"+10% SPEED", c:12, f:()=>PK.spd*=1.1},
+    {id:"coat", n:"TOUGH COAT", ic:"hp", fx:"+15 MAX HP", c:15, f:()=>{ PK.maxhp+=15; PK.hp+=15; }},
+    {id:"nose", n:"KEEN NOSE", ic:"nose", fx:"WIDER BONE PICKUP", c:11, capKey:"sniffLvl", capMax:SNIFF_LVL_CAP,
+     f:()=>{ PK.sniffLvl=L("sniffLvl")+1; }},
+    {id:"agi", n:"AGILITY TRAINING", ic:"agility", fx:"COURSE HEALS +3%, RESETS 4s SOONER", c:13, capKey:"agiLvl", capMax:AGI_LVL_CAP,
+     f:()=>{ PK.agiLvl=L("agiLvl")+1; }}
   ];
-  // only once the wings are actually his — three ways to lean into the leap
-  if(pkHasWings()) statAll.push(
-    {n:"DEEP LUNGS", ic:"wing", fx:"+40 WING STAMINA", c:16,
-     capKey:"wingCapLvl", capMax:WING_CAP_LVL_CAP, f:()=>{PK.wingCapLvl++; PK.wingStam=pkWingStamMax();}},
-    {n:"FAST FEATHERS", ic:"wing", fx:"+4 STAMINA/SEC REGEN", c:14,
-     capKey:"wingRegenLvl", capMax:WING_REGEN_LVL_CAP, f:()=>{PK.wingRegenLvl++;}},
-    {n:"HEAVIER STOMP", ic:"wing", fx:"+7 STOMP DAMAGE, WIDER", c:18,
-     capKey:"wingStompLvl", capMax:WING_STOMP_LVL_CAP, f:()=>{PK.wingStompLvl++;}}
+  // only once the wings are actually his - three ways to lean into the leap
+  if(pkHasWings()) all.push(
+    {id:"wingCap", n:"DEEP LUNGS", ic:"wing", fx:"+40 WING STAMINA", c:16, capKey:"wingCapLvl", capMax:WING_CAP_LVL_CAP,
+     f:()=>{ PK.wingCapLvl++; PK.wingStam=pkWingStamMax(); }},
+    {id:"wingRegen", n:"FAST FEATHERS", ic:"wing", fx:"+4 STAMINA/SEC REGEN", c:14, capKey:"wingRegenLvl", capMax:WING_REGEN_LVL_CAP,
+     f:()=>{ PK.wingRegenLvl++; }},
+    {id:"wingStomp", n:"HEAVIER STOMP", ic:"wing", fx:"+7 STOMP DAMAGE, WIDER", c:18, capKey:"wingStompLvl", capMax:WING_STOMP_LVL_CAP,
+     f:()=>{ PK.wingStompLvl++; }}
   );
-  // capped upgrades stop appearing once they're maxed out
-  const pool=statAll.filter(o=>(!o.capKey || PK[o.capKey]<(o.capMax||BARK_LVL_CAP)) && !(o.once && PK[o.once]))
-    .map(o=>o.capKey ? {...o, fx:o.fx+" (LV "+((PK[o.capKey]||0)+1)+"/"+(o.capMax||BARK_LVL_CAP)+")"} : o);
-  // rare chance of a big relic offer alongside the usual upgrades \u2014 never the one already equipped
-  const candidates=PK_CHARMS.filter(c=>c.id!==PK.relic);
-  if(candidates.length && Math.random()<0.4){
-    const pick=candidates[Math.floor(Math.random()*candidates.length)];
-    pool.push({n:"\u2b25 "+pick.name, ic:"relic", fx:pick.fx, c:pick.cost, relic:true,
-      f:()=>{ pick.apply(); PK.relic=pick.id; tickTodo("j_collar"); }});
-  }
-  // the park is no longer something you buy your way into a bigger version of \u2014 it opens up on
-  // its own now, a step further back with every wave cleared (see PK_ZOOM_STEP / pkWaveZoomStep)
-  // the compass and Full Armour aren't in this rolled pool at all any more \u2014 see pkShopRows,
-  // where they're two fixed slots flanking SKIP, visible in every shop from wave 1 on
-  // wave 1's shop is everyone's first taste of it \u2014 a flat, cheap price on everything so a new
-  // run always has enough bones banked to actually buy something after the very first clear
-  if(PK.wave===2) pool.forEach(o=>{ if(!o.uniq) o.c=10; });
-  const shuffled=pool.sort(()=>Math.random()-0.5);
-  // sharpening the blade, and (DOGPARK UNLEASHED) upgrading the whirlwind spin, are offered at the top of
-  // every single wave while there are tiers left — never rolled for, never priced down with the
-  // rest, so both upgrade paths are always available whenever they're actually relevant
-  const forced=[];
+  // the blade and (UNLEASHED) the whirlwind: rolled like everything else now, but weighted up -
+  // they are what an UNLEASHED run is built around - and never priced down with the rest
   if(PK.sword && PK.sword.state==="held" && PK.sword.tier<SWORD_MAX_TIER){
     const nt=PK.sword.tier+1;
-    forced.push({n:"SHARPEN THE BLADE", ic:"sword",
-      fx:"TIER "+nt+"/"+SWORD_MAX_TIER+" — BIGGER, "+SWORD_DMG_T[nt-1]+" DMG",
-      c:SWORD_UP_COST, f:()=>pkSwordUpgrade()});
+    all.push({id:"sword", n:"SHARPEN THE BLADE", ic:"sword", fx:"BIGGER, "+SWORD_DMG_T[nt-1]+" DMG",
+      lv:PK.sword.tier, max:SWORD_MAX_TIER, c:SWORD_UP_COST, w:3, fixed:true, f:()=>pkSwordUpgrade()});
   }
   if(PK.plusMode && PK.sword && PK.sword.state==="held" && pkSpinTier()<SWORD_SPIN_MAXTIER){
     const nst=pkSpinTier()+1;
-    forced.push({n:"WHIRLWIND MASTERY", ic:"spin",
-      fx:"TIER "+nst+"/"+SWORD_SPIN_MAXTIER+" — +"+SWORD_SPIN_R_BONUS_T[nst-1]+" RADIUS, +"+SWORD_SPIN_DMG_BONUS_T[nst-1]+" DMG",
-      c:SWORD_SPIN_UP_COST, f:()=>pkSpinUpgrade()});
+    all.push({id:"spin", n:"WHIRLWIND MASTERY", ic:"spin", fx:"+"+SWORD_SPIN_R_BONUS_T[nst-1]+" RADIUS, +"+SWORD_SPIN_DMG_BONUS_T[nst-1]+" DMG",
+      lv:pkSpinTier(), max:SWORD_SPIN_MAXTIER, c:SWORD_SPIN_UP_COST, w:3, fixed:true, f:()=>pkSpinUpgrade()});
   }
-  PK.shop = forced.concat(shuffled).slice(0,3);
+  // a relic, sometimes - never the one already equipped
+  const candidates=PK_CHARMS.filter(c=>c.id!==PK.relic);
+  if(candidates.length && Math.random()<0.4){
+    const pick=candidates[Math.floor(Math.random()*candidates.length)];
+    all.push({id:"relic", n:"\u2b25 "+pick.name, ic:"relic", fx:pick.fx, c:pick.cost, relic:true,
+      f:()=>{ pick.apply(); PK.relic=pick.id; tickTodo("j_collar"); }});
+  }
+  const pool=[];
+  for(const o of all){
+    if(o.once && PK[o.once]) continue;                          // one-offs already owned
+    if(o.capKey){
+      o.max=o.capMax||BARK_LVL_CAP; o.lv=L(o.capKey);
+      if(o.lv>=o.max) continue;                                // maxed ladders stop appearing
+    }
+    pool.push(o);
+  }
+  // wave 1's shop is everyone's first taste of it - a flat, cheap price so a new run can always
+  // afford something after the very first clear (one-offs and the blade keep their own price)
+  if(PK.wave===2) pool.forEach(o=>{ if(!o.uniq && !o.fixed) o.c=10; });
+  return pool;
+}
+function pkShopWeight(o){
+  let w=o.w||1;
+  if(o.lv!=null && PK.upRecent && PK.upRecent[o.id]!=null){
+    const ago=(PK.shopN||0)-PK.upRecent[o.id];
+    if(ago>=1 && ago<SHOP_RECENT_BOOST.length){ w*=SHOP_RECENT_BOOST[ago]; o.hot=true; }
+  }
+  return w;
+}
+// n distinct picks, each drawn in proportion to its weight
+function pkShopRoll(pool,n){
+  const bag=pool.map(o=>({o, w:pkShopWeight(o)})), out=[];
+  while(out.length<n && bag.length){
+    let tot=0; for(const b of bag) tot+=b.w;
+    let r=Math.random()*tot, i=0;
+    for(;i<bag.length-1;i++){ r-=bag[i].w; if(r<=0) break; }
+    out.push(bag[i].o); bag.splice(i,1);
+  }
+  return out;
+}
+function pkShopOpen(){
+  PK.shopN=(PK.shopN||0)+1;
+  PK.shop=pkShopRoll(pkShopCatalog(),SHOP_PICKS);
   PK.shopSel = null;      // nothing is bought until it has been confirmed
   PK.joy=null;
 }
@@ -22702,26 +22860,34 @@ function parkUpdate(dt){
     // walks him and a full one runs, which is the distinction the two gaits were written for
     const l=Math.hypot(mx,my), thr=pkJoyThrottle(l);
     if(thr>0){
-      const sp2=PK.spd*thr*(PK.over>0?OVER_SPEED:1)*(PK.wingSlowT>0?0.45:1);
+      const sp2=PK.spd*thr*(PK.over>0?OVER_SPEED:1)*(PK.wingSlowT>0?0.45:1)*(PK.kbT>0?1-PK.kbT/PK_KB_T:1);
       PK.vx=mx/l*sp2; PK.vy=my/l*sp2;
     } else { PK.vx*=0.8; PK.vy*=0.8; }
     // DASH: a burst along the stick (or the way he faces), easing off at the end of it
     if(PK.dashT>0){
       PK.dashT=Math.max(0,PK.dashT-dt);
       if(l>JOY_DEAD) PK.dashAng=Math.atan2(my,mx);
-      const k=PK.dashT/PK_DASH_T, sp=PK.spd*(PK.over>0?OVER_SPEED:1)*(1+(PK_DASH_MUL-1)*Math.min(1,k*1.6));
+      const k=PK.dashT/(PK.dashDur||pkDashDur()), sp=PK.spd*(PK.over>0?OVER_SPEED:1)*(1+(PK_DASH_MUL-1)*Math.min(1,k*1.6));
       PK.vx=Math.cos(PK.dashAng)*sp; PK.vy=Math.sin(PK.dashAng)*sp;
       if(Math.random()<0.6) SPARKS.push({x:PK.x-Math.cos(PK.dashAng)*12+(Math.random()-0.5)*8, y:PK.y-Math.sin(PK.dashAng)*12+(Math.random()-0.5)*6,
         vx:-Math.cos(PK.dashAng)*30, vy:-Math.sin(PK.dashAng)*30-10, life:0.3});
     }
   }
   PK.dashCd=Math.max(0,(PK.dashCd||0)-dt);
+  pkDashFireTick(dt);
   PK.faceI=pkFaceUpdate(PK.vx,PK.vy,PK.faceI);   // which of the eight ways he is pointing
   // ...and the exact angle he is pointing, for the bark cone. Same hold-when-stopped rule as the
   // sprite facing, so letting go of the stick keeps the shout aimed where he last looked.
   if(Math.hypot(PK.vx,PK.vy)>PKDIR_MOVE) PK.faceAng=Math.atan2(PK.vy,PK.vx);
   PK.x=(PK.x+PK.vx*dt+WW)%WW;
   PK.y=(PK.y+PK.vy*dt+WH)%WH;
+  // thrown by a hit: a shove that eases out over PK_KB_T, separate from his own velocity so he
+  // keeps facing whatever he was facing - he is knocked back, he does not turn and run
+  if(PK.kbT>0){
+    const k=PK.kbT/PK_KB_T;
+    PK.x=(PK.x+PK.kbVx*k*dt+WW)%WW; PK.y=(PK.y+PK.kbVy*k*dt+WH)%WH;
+    PK.kbT=Math.max(0,PK.kbT-dt);
+  }
   if(PK.z<=0) [PK.x,PK.y]=pkTreeCollide(PK.x,PK.y);   // he clears the canopy
   pkTickTrees(dt);
   pkTickFog(dt);
@@ -22874,7 +23040,7 @@ function parkUpdate(dt){
       }
       e.ft+=dt; if(e.ft>0.1){ e.ft=0; e.fi++; }
       if(d<14 && PK.inv<=0 && !pkInvuln()){
-        pkHurt(8); PK.inv=0.6; e.kx=-dxw/d*220; e.ky=-dyw/d*220;
+        pkStruck(8, e, 0.6); e.kx=-dxw/d*220; e.ky=-dyw/d*220;
         beep(110,.12,"sawtooth",.04,{prio:2}); if(PK.hp<=0) return pkDeath();
       }
       continue;
@@ -22918,7 +23084,7 @@ function parkUpdate(dt){
       }
       e.ft+=dt; if(e.ft>0.12){ e.ft=0; e.fi++; }
       if(d<14 && PK.inv<=0 && !pkInvuln()){
-        pkHurt(6); PK.inv=0.6; e.kx=-dxw/d*200; e.ky=-dyw/d*200;
+        pkStruck(6, e, 0.6); e.kx=-dxw/d*200; e.ky=-dyw/d*200;
         beep(110,.12,"sawtooth",.04,{prio:2}); if(PK.hp<=0) return pkDeath();
       }
       continue;
@@ -22938,7 +23104,7 @@ function parkUpdate(dt){
           e.laserState="charge"; e.chargeT=0; e.aimAng=Math.atan2(dyw,dxw);
         }
         if(d<14 && PK.inv<=0 && !pkInvuln()){
-          pkHurt(8); PK.inv=0.6; e.kx=-dxw/d*220; e.ky=-dyw/d*220;
+          pkStruck(8, e, 0.6); e.kx=-dxw/d*220; e.ky=-dyw/d*220;
           beep(110,.12,"sawtooth",.04,{prio:2}); if(PK.hp<=0) return pkDeath();
         }
       } else if(e.laserState==="charge"){
@@ -22982,7 +23148,7 @@ function parkUpdate(dt){
           if(Math.random()<0.25) PK.embers.push({x:e.x+ux*blk.dist, y:e.y+uy*blk.dist, vx:(Math.random()-0.5)*40, vy:-30-Math.random()*50, life:0.9+Math.random()*0.6, fire:true});
         }
         if(along>0 && along<=stopDist+0.5 && perp<MADSQ_WIDTH && PK.inv<=0 && !pkInvuln()){
-          pkHurt(MADSQ_DMG); PK.inv=0.55;
+          pkStruck(MADSQ_DMG, e, 0.55);
           PK.x=(PK.x+ux*MADSQ_KNOCK*dt*6+WW)%WW; PK.y=(PK.y+uy*MADSQ_KNOCK*dt*6+WH)%WH;
           PK.vx=ux*90; PK.vy=uy*90;
           PK.shake=0.5;
@@ -23040,7 +23206,7 @@ function parkUpdate(dt){
         e.dir = e.lvx<0 ? -1 : 1;
         if(e.leapActT<=0){ e.leapState=null; e.leapCd=ALPHA_LEAP_CD; }
         if(d<20 && PK.inv<=0 && !pkInvuln()){
-          pkHurt(ALPHA_LEAP_DMG); PK.inv=0.7; e.kx=-dxw/d*260; e.ky=-dyw/d*260;
+          pkStruck(ALPHA_LEAP_DMG, e, 0.7); e.kx=-dxw/d*260; e.ky=-dyw/d*260;
           beep(140,.3,"sawtooth",.04,{prio:2}); if(PK.hp<=0) return pkDeath();
         }
       } else {
@@ -23050,7 +23216,7 @@ function parkUpdate(dt){
         e.leapCd-=dt;
         if(e.leapCd<=0 && d<ALPHA_LEAP_R){ e.leapState="windup"; e.leapWindT=0.6; e.leapAng=Math.atan2(dyw,dxw); }
         if(d<16 && PK.inv<=0 && !pkInvuln()){
-          pkHurt(14); PK.inv=0.6; e.kx=-dxw/d*220; e.ky=-dyw/d*220;
+          pkStruck(14, e, 0.6); e.kx=-dxw/d*220; e.ky=-dyw/d*220;
           beep(110,.12,"sawtooth",.04,{prio:2}); if(PK.hp<=0) return pkDeath();
         }
       }
@@ -23097,8 +23263,7 @@ function parkUpdate(dt){
           beep(65,.35,"sawtooth",.1,{prio:2});
           const ldx=wd(PK.x-e.x,WW), ldy=wd(PK.y-e.y,WH), ld=Math.hypot(ldx,ldy)||1;
           if(ld<APE_SLAM_R && PK.inv<=0 && !pkInvuln()){
-            pkHurt(APE_SLAM_DMG); PK.inv=0.9; PK.shake=0.8;
-            PK.vx=ldx/ld*220; PK.vy=ldy/ld*220;
+            pkStruck(APE_SLAM_DMG, e, 0.9); PK.shake=0.8;
             beep(120,.3,"sawtooth",.04,{prio:2}); if(PK.hp<=0) return pkDeath();
           }
           // destructive landing: anything with cover in the slam radius gets launched
@@ -23150,7 +23315,7 @@ function parkUpdate(dt){
         // regardless of exactly how far away BONES is (long range is the point)
         if(e.leapCd<=0 && d>APE_LEAP_MINR){ e.leapState="windup"; e.leapWindT=APE_WINDUP; }
         if(d<20 && PK.inv<=0 && !pkInvuln()){
-          pkHurt(APE_TOUCH_DMG); PK.inv=0.6; e.kx=-dxw/d*220; e.ky=-dyw/d*220;
+          pkStruck(APE_TOUCH_DMG, e, 0.6); e.kx=-dxw/d*220; e.ky=-dyw/d*220;
           beep(110,.12,"sawtooth",.04,{prio:2}); if(PK.hp<=0) return pkDeath();
         }
       }
@@ -23225,7 +23390,7 @@ function parkUpdate(dt){
       e.peckT=(e.peckT||0)+dt;
       const landed = d2<BIRD_PECK_R && PK.inv<=0 && !pkInvuln();
       if(landed){
-        pkHurt(10); PK.inv=0.6;
+        pkStruck(10, e, 0.6);
         e.kx=-dxw2/d2*350; e.ky=-dyw2/d2*350;   // a hard shove — he flinches and bolts from the dive
         beep(130,.14,"sawtooth"); toast("A BIRD DIVES — BONES BOLTS!",1);
         if(PK.hp<=0) return pkDeath();
@@ -23272,7 +23437,7 @@ function parkUpdate(dt){
     e.x=(e.x+(sx+e.kx)*dt+WW)%WW;
     e.y=(e.y+(sy+e.ky)*dt+WH)%WH;
     if(d<14 && PK.inv<=0 && !pkInvuln()){
-      pkHurt(e.t==="bird"?10:8); PK.inv=0.6;   // birds hit 25% harder than the shared baseline
+      pkStruck(e.t==="bird"?10:8, e, 0.6);   // birds hit 25% harder than the shared baseline
       e.kx=-dxw/d*220; e.ky=-dyw/d*220;
       beep(110,.12,"sawtooth");
       if(PK.hp<=0) return pkDeath();
@@ -23341,7 +23506,7 @@ function parkUpdate(dt){
       continue;
     }
     if(Math.hypot(wd(n.x-PK.x,WW),wd(n.y-PK.y,WH))<12 && PK.inv<=0 && !pkInvuln()){
-      pkHurt(10); PK.inv=0.6; beep(140,.15,"sawtooth");
+      pkStruck(10, n, 0.6); beep(140,.15,"sawtooth");
       PK.nuts.splice(i,1);
       if(PK.hp<=0) return pkDeath();
       continue;
@@ -24654,6 +24819,7 @@ function parkDraw(t){
     for(let i=i0;i<=i1;i++) for(let j=j0;j<=j1;j++) ctx.drawImage(PKBG,-ox+i*WW,-oy+j*WH);
   } else { ctx.fillStyle="#20261f"; ctx.fillRect(0,0,w,h); }
   pkDrawScorch(ctx,DX,DY,WW,WH,w,h);
+  pkDrawDashFire(ctx,DX,DY,WW,WH,w,h,t);
   pkDrawSwordSite(ctx,SC,w,h,t);
   pkDrawAmbient(ctx,SC,t,WW,WH);
   pkDrawDust(ctx,SC);
@@ -25088,7 +25254,9 @@ function parkDraw(t){
   pkDrawWingFx(ctx,SC,w,h);
   // altitude. DYz is where he actually is; DY stays the ground, and the shadow stays with it —
   // shrinking and paling as he climbs, with a dashed tether so the height is never ambiguous.
-  const HZ=PK.z||0, hk=clamp(HZ/WING_APEX,0,1), DYz=DY-HZ;
+  const HZ=PK.z||0, hk=clamp(HZ/WING_APEX,0,1);
+  const kbHop=PK.kbT>0 ? Math.sin((1-PK.kbT/PK_KB_T)*Math.PI)*PK_KB_HOP : 0;   // the knockback's little hop
+  const DYz=DY-HZ-kbHop;
   if(hk>0.02){
     pkDrawHolyShaft(ctx, DX, -20, DYz+14, 46+26*hk, 20, 0.38*hk);
     ctx.save(); ctx.globalCompositeOperation="lighter";
@@ -25132,7 +25300,11 @@ function parkDraw(t){
     ctx.beginPath(); ctx.arc(DX,DYz,21,0,7); ctx.stroke(); ctx.restore();
   }
   if(!bossUp) pkDrawBonesHp(ctx,DX,DYz,hz,buzz);
-  if(!bossUp && img.complete && !(PK.inv>0&&!PK.jump&&Math.floor(t*12)%2)){
+  // untouchable after a hit: once he has landed from the throw he flickers see-through until
+  // PK.inv runs out - he never vanishes outright, so you always know where he is
+  const iBlink = PK.inv>0 && !(PK.kbT>0) && !PK.jump && Math.floor(t*12)%2;
+  if(!bossUp && img.complete){
+    ctx.save(); if(iBlink) ctx.globalAlpha=0.32;
     if(PK.zoomT>0){   // star power: bones flashes gold and shiny with a pulsing aura
       const rglow=0.5+0.5*Math.sin(t*8);
       ctx.save(); ctx.globalAlpha=rglow*0.35; ctx.fillStyle="#ffd94a";
@@ -25173,7 +25345,8 @@ function parkDraw(t){
     }
     ctx.save(); ctx.imageSmoothingEnabled=false;
     if(PK.zoomT>0) ctx.filter="sepia(1) saturate(6) hue-rotate(-15deg) brightness(1.35)";
-    else if(hz>0) ctx.filter="brightness(0.5) sepia(1) saturate(14) hue-rotate(-35deg)";
+    // struck: he is flooded red (a tint, below - a filter cannot turn a black dog red)
+    const hitRed = hz>0 && PK.zoomT<=0;
     // the rim rides on THIS draw - the shadow renders behind whatever the pass puts down, so the
     // outline costs nothing beyond setting three properties
     { const rim=pkDogRim();
@@ -25186,12 +25359,13 @@ function parkDraw(t){
     const gaitW=pkGaitWalk(gspd);
     if(!pkDirDraw(ctx, DX, DYz+PKDIR_FOOT*dogSc, PKDIR_DRAW*dogSc, PK.faceI,
                   Math.floor(t*pkGaitFps(gspd)), buzz,
-                  (PK.zoomT>0||hz>0) ? null : lovePink, 0.62, gaitW)){
+                  PK.zoomT>0 ? null : hitRed ? "#ff2a2a" : lovePink, hitRed ? 0.5+0.4*hz : 0.62, gaitW)){
       if(dFace.f){ ctx.translate(DX*2,0); ctx.scale(-1,1); }
       ctx.drawImage(img,DX-20*dogSc+(dFace.f?-buzz:buzz),DYz-16*dogSc,40*dogSc,34*dogSc);
     }
     ctx.restore();
     pkDrawHeldSword(ctx,DX,DYz,t);
+    ctx.restore();
   }
   pkDrawWingsClaim(ctx,DX,DY,t);
 
@@ -25288,7 +25462,16 @@ const PK_UNIQ_COL="#7fd46a";   // the one-per-run items (AUTO BARK): the same gr
 function pkShopIcon(ctx,x,y,s2,key,col){
   ctx.save(); ctx.translate(x,y); ctx.scale(s2,s2);
   ctx.strokeStyle=col; ctx.fillStyle=col; ctx.lineWidth=1.6; ctx.lineJoin="miter";
-  if(key==="autobark"){
+  if(key==="dash"){
+    // a chevron with speed lines trailing it
+    ctx.beginPath(); ctx.moveTo(1,-7); ctx.lineTo(8,0); ctx.lineTo(1,7); ctx.stroke();
+    for(let i=0;i<3;i++) ctx.fillRect(-8+i*2,-4+i*3.5,7-i*2,1.8); }
+  else if(key==="firedash"){
+    // a flame
+    ctx.beginPath(); ctx.moveTo(0,-9); ctx.quadraticCurveTo(7,-1,5,4); ctx.quadraticCurveTo(3,9,0,9);
+    ctx.quadraticCurveTo(-3,9,-5,4); ctx.quadraticCurveTo(-6,-1,-1,-4); ctx.quadraticCurveTo(1,-6,0,-9); ctx.closePath(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.quadraticCurveTo(3,3,1.5,6); ctx.lineTo(-1.5,6); ctx.quadraticCurveTo(-2.5,3,0,0); ctx.fill(); }
+  else if(key==="autobark"){
     // the bark's arcs, with a little loop going round over the top: it goes off by itself
     for(let i=1;i<=3;i++){ ctx.beginPath(); ctx.arc(-3,2,i*3,-0.9,0.9); ctx.stroke(); } ctx.fillRect(-6,0,3,4);
     ctx.beginPath(); ctx.arc(-4,-5,3,0.4,4.9); ctx.stroke();
@@ -25368,9 +25551,10 @@ function pkFitText(ctx,text,x,y,maxW,size){
 const ARMOR_COST=40, COMPASS_COST=10;
 function pkShopRows(w,h){
   const rows=[];
-  const cardH=h*0.125, step=h*0.135, top0=h*0.225;
-  for(let i=0;i<3;i++) rows.push({x:w*0.07, y:top0+i*step, w:w*0.86, h:cardH, kind:"offer", idx:i});
-  rows.push({x:w*0.07, y:h*0.635, w:w*0.86, h:cardH, kind:"charm", idx:0});
+  // the three picks stand side by side as tall cards, so each has room to say what it does
+  const mx=w*0.05, gap=w*0.025, cw=(w-mx*2-gap*(SHOP_PICKS-1))/SHOP_PICKS, top0=h*0.225, ch=h*0.37;
+  for(let i=0;i<SHOP_PICKS;i++) rows.push({x:mx+i*(cw+gap), y:top0, w:cw, h:ch, kind:"offer", idx:i});
+  rows.push({x:w*0.07, y:h*0.625, w:w*0.86, h:h*0.11, kind:"charm", idx:0});
   rows.push({x:w*0.32, y:h*0.80,  w:w*0.36, h:h*0.10, kind:"skip", idx:0});
   // two fixed slots, never rolled and never replaced by the pool above — armour on the left,
   // compass on the right, visible in every shop from wave 1 on
@@ -25392,6 +25576,58 @@ function pkShopCard(ctx,r,o,col,dim,afford){
   ctx.textAlign="right"; ctx.font="8px 'Press Start 2P',monospace";
   ctx.fillStyle = afford ? col : "#f22";
   ctx.fillText(o.c+"◆", r.x+r.w-8, r.y+r.h*0.60);
+  ctx.restore();
+}
+// centred, word-wrapped, shrinking a touch before it will ever run past maxLines; returns the y
+// under the last line drawn
+function pkWrapText(ctx,text,cx,y,maxW,size,lineH,maxLines){
+  let sz=size, lines;
+  for(;;){
+    ctx.font=sz.toFixed(1)+"px 'Press Start 2P',monospace";
+    lines=[]; let cur="";
+    for(const wd2 of String(text).split(" ")){
+      const tr=cur?cur+" "+wd2:wd2;
+      if(ctx.measureText(tr).width>maxW && cur){ lines.push(cur); cur=wd2; } else cur=tr;
+    }
+    if(cur) lines.push(cur);
+    if(lines.length<=maxLines && lines.every(l=>ctx.measureText(l).width<=maxW) || sz<=4.6) break;
+    sz-=0.4;
+  }
+  const lh=lineH*sz/size;
+  lines.slice(0,maxLines).forEach((l,i)=>ctx.fillText(l,cx,y+i*lh));
+  return y+Math.min(lines.length,maxLines)*lh;
+}
+// one pick: icon, name, its rank as pips (next rank lit), what it does, and the price at the foot
+function pkShopColumn(ctx,r,o,col,dim,afford,t){
+  ctx.save();
+  ctx.fillStyle="rgba(0,0,0,.94)"; ctx.fillRect(r.x,r.y,r.w,r.h);
+  ctx.globalAlpha=dim;
+  ctx.strokeStyle=col; ctx.lineWidth=2; ctx.strokeRect(r.x,r.y,r.w,r.h);
+  const cx=r.x+r.w/2, maxW=r.w*0.84;
+  if(o.hot){   // it came back because you bought into it last time: a small NEXT tag on the corner
+    ctx.fillStyle=col; ctx.fillRect(r.x,r.y,26,10);
+    ctx.fillStyle="#000"; ctx.font="5px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText("NEXT",r.x+13,r.y+7.5);
+  }
+  pkShopIcon(ctx, cx, r.y+r.h*0.17, Math.min(1.6,r.w/70), o.ic, col);
+  ctx.textAlign="center"; ctx.fillStyle=col;
+  let y=pkWrapText(ctx, o.n, cx, r.y+r.h*0.38, maxW, 8, 11, 2);
+  if(o.max){
+    const n=o.max, bw=Math.min(9,(maxW-(n-1)*3)/n), tot=n*bw+(n-1)*3;
+    let px=cx-tot/2; const py=y-2;
+    for(let i=0;i<n;i++){
+      ctx.lineWidth=1.2;
+      if(i<o.lv){ ctx.fillStyle=col; ctx.fillRect(px,py,bw,5); }
+      else if(i===o.lv){ ctx.globalAlpha=dim*(0.55+0.45*Math.sin(t*6)); ctx.strokeStyle=col; ctx.strokeRect(px+0.5,py+0.5,bw-1,4); ctx.globalAlpha=dim; }
+      else { ctx.strokeStyle="#555"; ctx.strokeRect(px+0.5,py+0.5,bw-1,4); }
+      px+=bw+3;
+    }
+    y+=9;
+  }
+  ctx.fillStyle="#b4b4b4";
+  pkWrapText(ctx, o.fx, cx, y+7, maxW, 6.5, 10, 5);
+  ctx.font="8px 'Press Start 2P',monospace"; ctx.fillStyle=afford?col:"#f22";
+  ctx.fillText(o.c+"\u25c6", cx, r.y+r.h-8);
   ctx.restore();
 }
 function pkDrawShop(ctx,w,h,t){
@@ -25422,8 +25658,8 @@ function pkDrawShop(ctx,w,h,t){
     pkShopIcon(ctx, bx+bw2/2, by+bh2*0.26, 1.15, o.ic, col);
     ctx.textAlign="center"; ctx.font="9px 'Press Start 2P',monospace"; ctx.fillStyle=col;
     ctx.fillText(o.n, w/2, by+bh2*0.58);
-    ctx.font="6px 'Press Start 2P',monospace"; ctx.fillStyle="#9a9a9a";
-    ctx.fillText(o.fx, w/2, by+bh2*0.76);
+    ctx.fillStyle="#9a9a9a";
+    pkWrapText(ctx, o.fx+(o.max?" \u2014 RANK "+(o.lv+1)+" OF "+o.max:""), w/2, by+bh2*0.72, bw2*0.88, 6, 9, 2);
     ctx.font="8px 'Press Start 2P',monospace"; ctx.fillStyle=afford?"#e8c14a":"#f22";
     ctx.fillText(o.c+"◆  —  YOU HAVE "+PK.bones+"◆", w/2, by+bh2*0.94);
     const cy=h*0.58, ch2=h*0.13;
@@ -25439,7 +25675,7 @@ function pkDrawShop(ctx,w,h,t){
   PK.shop.forEach((o,i)=>{
     const col = o.relic?"#e8c14a" : o.uniq?PK_UNIQ_COL : "#fff";
     const glow = o.relic ? 0.72+0.28*Math.sin(t*5) : o.uniq ? 0.86+0.14*Math.sin(t*5) : 1;
-    pkShopCard(ctx, rows[i], o, col, glow, PK.bones>=o.c);
+    pkShopColumn(ctx, rows[i], o, col, glow, PK.bones>=o.c, t);
   });
 
   // ---- the 60s clear bonus, deliberately the loudest thing on the panel
@@ -25519,7 +25755,10 @@ function pkDrawFixedSlot(ctx,r,ic,label,owned,cost,col){
         if(sel.kind==="charm"){
           o.apply(); PK.relic=o.id; tickTodo("j_collar");
           PK.speedBonus.charm=null; pkFanfare(o.name,true);
-        } else { o.f(); pkFanfare(o.n.replace(/^⬥ /,""),!!(o.relic||o.uniq)); }
+        } else {
+          o.f(); pkFanfare(o.n.replace(/^⬥ /,""),!!(o.relic||o.uniq));
+          if(o.id) (PK.upRecent||(PK.upRecent={}))[o.id]=PK.shopN||0;
+        }
         PK.shopSel=null; PK.shop=null;
       }
       return;
