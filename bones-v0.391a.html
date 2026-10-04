@@ -974,7 +974,7 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.390a</span>
+          <span id="devToggle">v0.391a</span>
         </div>
       </div>
 
@@ -8289,7 +8289,7 @@ function drawBag(ctx,x,y,s,t,held){
 const LAMP_Z=0.35;             // the floor depth it hangs over - where a full-power lob passes at its height
 const LAMP_G=8.2;              // g/L: about a 2.2s swing
 const LAMP_DAMP=0.13;          // ...and how slowly a full swing dies
-const LAMP_PRICE=8;
+const LAMP_PRICE=60;
 const LAMP={th:0, w:0, k:0, flick:0, pop:0, shards:[], sparks:[], cd:0, motes:null, toastNight:-1};
 function lampState(){ if(!S.lamp) S.lamp={on:false, broken:false, dark:null}; return S.lamp; }
 function lampLit(){ const L=lampState(); return L.on && !L.broken; }
@@ -9354,7 +9354,8 @@ function drawCam(t){
      given a fraction of the tint on its own, enough to seat it in the room without putting the
      night out. */
   const night = nightAmount();
-  const tint = SLEEP.active ? night : night*NIGHT_ROOM_MAX;
+  // the lamp on lifts the whole room a little - the beam and pool still do the real lighting
+  const tint = SLEEP.active ? night : night*NIGHT_ROOM_MAX*(1-0.34*clamp(LAMP.k,0,1));
   if(tint>0){
     const wx=w*WIN_X, wy=h*WIN_Y, ww=w*WIN_W, wh=h*WIN_H;
     ctx.fillStyle="rgba(6,10,28,"+tint.toFixed(3)+")";
