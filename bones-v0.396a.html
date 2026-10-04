@@ -974,7 +974,7 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.395a</span>
+          <span id="devToggle">v0.396a</span>
         </div>
       </div>
 
@@ -8524,8 +8524,12 @@ function lampGeo(w,h){
   return {ax, ay, Lc, sh, rb, rt, at, mid:at(0,Lc+sh*0.55), rim:at(0,Lc+sh), s, c};
 }
 // a knock: angular velocity, toward a side (or either)
-function lampKnock(imp,dir){
+// the room's own bumps - bounces, thumps, landings - only stir it: 30% of what they used to, so it
+// hangs still unless something actually hits it (the ball, a tap, the smash pass full=true)
+const LAMP_AMBIENT=0.3;
+function lampKnock(imp,dir,full){
   if(!(imp>0)) return;
+  if(!full) imp*=LAMP_AMBIENT;
   LAMP.w += imp*(dir ? Math.sign(dir) : (Math.random()<0.5?-1:1));
   LAMP.w = clamp(LAMP.w,-3.2,3.2);
   if(imp>0.5) LAMP.flick=Math.max(LAMP.flick,Math.min(0.8,imp*0.35));
@@ -8584,7 +8588,7 @@ function lampBallCheck(){
   const side = Math.abs(BALL.vx)>0.15 ? BALL.vx : -dx;
   // square on = coming at it straight, not clipping an edge; full power = still near flat-out up here
   if(hs>=0.86 && Math.abs(dx)<R*0.45){ lampSmash(side); }
-  else { lampKnock(clamp(0.7+hs*1.1,0.7,2.4), side); sfxLampClang(hs); }
+  else { lampKnock(clamp(0.7+hs*1.1,0.7,2.4), side, true); sfxLampClang(hs); }
   // and the ball comes off it: knocked back and down
   BALL.vz=-BALL.vz*0.3; BALL.vx=BALL.vx*0.45+(dx>0?0.18:-0.18); BALL.vh=Math.min(BALL.vh,0.15);
   ballSquash(0.8);
@@ -8595,7 +8599,7 @@ function lampSmash(side){
   const L=lampState();
   L.broken=true; L.on=false;
   LAMP.k=0; LAMP.pop=1; LAMP.fizz=2.6;
-  lampKnock(2.6, side);
+  lampKnock(2.6, side, true);
   const g=lampGeo(RMW,RMH), gy0=rmY(LAMP_Z)*RMH;
   for(let i=0;i<26;i++){
     const a=Math.PI*(0.15+Math.random()*0.7), v=60+Math.random()*170;
@@ -8623,14 +8627,14 @@ function lampTapAt(fx,fy,w,h){
       "REPLACE", ()=>{
         if(S.money<LAMP_PRICE){ beep(150,.1); return toast("NOT ENOUGH MONEY FOR A NEW LIGHT"); }
         S.money-=LAMP_PRICE; L.broken=false; LAMP.shards.length=0; LAMP.fizz=0;
-        L.on=nightAmount()>0.22; LAMP.flick=L.on?0.6:0; lampKnock(0.6);
+        L.on=nightAmount()>0.22; LAMP.flick=L.on?0.6:0; lampKnock(0.6,0,true);
         renderMeters(); sfxLampClick(true); toast("NEW LIGHT UP — £"+LAMP_PRICE);
       }, "NOT NOW", null);
     return true;
   }
   L.on=!L.on;
   if(L.on) LAMP.flick=0.45;
-  lampKnock(0.35, px-g.mid.x);
+  lampKnock(0.35, px-g.mid.x, true);
   sfxLampClick(L.on); haptic(10);
   return true;
 }
