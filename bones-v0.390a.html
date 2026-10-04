@@ -974,7 +974,7 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.389a</span>
+          <span id="devToggle">v0.390a</span>
         </div>
       </div>
 
@@ -2464,6 +2464,9 @@ function tickStats(dt, force){
   S.outTimer += dt;
   if(S.clean<70) SPONGE.rew=false;
   if(S.groom<70) BRUSH.rew=false;
+  // a dark room with no light on: it gets him down, slowly
+  if(nightAmount()>0.5 && !lampLit() && !SLEEP.active && MODE==="home" && CAM.state!=="bedsleep" && CAM.state!=="rest")
+    S.mood=clamp(S.mood-0.06*dt,0,100);
   { const mess=POOS.length+BAGS.length;
     if(mess){ S.mood=clamp(S.mood-0.025*mess*dt,0,100); S.clean=clamp(S.clean-0.01*mess*dt,0,100); } }
   if(S.outTimer>150 && POOS.length<3 && !R.active && !OUTING.active){
@@ -3565,6 +3568,8 @@ $("#dogcv").addEventListener("pointerdown",e=>{
     try{ e.currentTarget.setPointerCapture(e.pointerId); }catch(_){}
     return;
   }
+  // the light: a switch on a cord - or a broken one to replace
+  if(lampTapAt(fx,fy,r.width,r.height)) return;
   /* Bowls and bed, hit-tested off the SAME rects the draw uses. They used to be recomputed here
      from the same magic numbers, which held together only for as long as nothing moved - and then
      the furniture moved. */
@@ -5473,7 +5478,7 @@ function dogLeapTick(dt){
       CAM.z=clamp(CAM.z+clamp(dz,-leapRun()*dt,leapRun()*dt),0.06,0.97);
       CAM.oct=dogOctant(dx,dz);
     }
-    if(L.t>=LEAP_AIR){ L.ph="land"; L.t=0; CAM.lz=0; if(!L.caught) L.miss=true; }
+    if(L.t>=LEAP_AIR){ L.ph="land"; L.t=0; CAM.lz=0; if(!L.caught) L.miss=true; lampKnock(0.22, CAM.x-0.5); }
   } else {
     CAM.lz=0;
     if(L.t>=LEAP_LAND){
@@ -5766,11 +5771,13 @@ function camBehavior(dt){
     BALL.z  += BALL.vz*dt;
     const wall=ballWalls(dt);
     if(wall && FETCH.live){ FETCH.banks+=wall; trickBounce(); sfxSlingBank(); TRICK.hitWall=true; }
+    if(wall) lampKnock(0.2, BALL.vx);                            // a bang on the wall sets the light going
+    lampBallCheck();                                             // ...and so, rather more, does the ball
     if(binFlight(px0,pz0,ph0)){ ballSyncY(); } else {
     if(BALL.hz<=0){
       BALL.hz=0;
       if(BALL.vh<-0.25){                       // a real bounce
-        ballSquash(Math.min(0.9,-BALL.vh*0.45));
+        ballSquash(Math.min(0.9,-BALL.vh*0.45)); lampKnock(Math.min(0.3,-BALL.vh*0.1), BALL.vx);
         BALL.vh=-BALL.vh*BALL_BOUNCE; trickBounce(); TRICK.floorB++;
         if(TRICK.floorB>=3 && TRICK.live){ TRICK.live=false; beep(160,.12,"sawtooth",.03); }
       } else {
@@ -5803,6 +5810,7 @@ function camBehavior(dt){
   winHealTick(dt);
   if(MARK.showT>0) MARK.showT=Math.max(0,MARK.showT-dt);
   binTick(dt);
+  lampTick(dt);
   // the fly
   FLY.next-=dt;
   if(!FLY.active && FLY.next<=0 && CAM.state!=="rest" && !CAM.bedTarget){
@@ -8058,6 +8066,7 @@ function binUnderFinger(fx,fy){
 
 /* ---- the sounds: short, dry, no stings */
 function sfxBinBonk(){
+  lampKnock(0.18);
   if(SETTINGS.sound){ try{ audioInit(); noiseBurst(0.05,900,1.6,0.10,AC.currentTime); }catch(e){} }
   beep(330,.05,"square",.045); setTimeout(()=>beep(250,.07,"square",.035),55);
 }
@@ -8067,6 +8076,7 @@ function sfxBinRim(k){
   beep(1300+300*k,.02,"square",.022*k);
 }
 function sfxBinThump(k){
+  lampKnock(0.16*(k||1));
   if(SETTINGS.sound){ try{ audioInit(); noiseBurst(0.08,150,1.0,0.12*k,AC.currentTime); }catch(e){} }
   beep(78,.12,"sine",.06*k);
 }
@@ -8101,6 +8111,7 @@ function sfxBinClack(){
   beep(820,.018,"square",.02);
 }
 function sfxBinClatter(){
+  lampKnock(0.28);
   if(!SETTINGS.sound) return;
   try{ audioInit(); const t0=AC.currentTime;
     noiseBurst(0.03,1500,2,0.09,t0); noiseBurst(0.025,1200,2,0.06,t0+0.09); noiseBurst(0.02,1000,2,0.04,t0+0.15);
@@ -8263,6 +8274,261 @@ function drawBag(ctx,x,y,s,t,held){
   ctx.restore();
 }
 
+/* ==================== THE LAMP ====================
+   A pendant hanging from the middle of the ceiling: a black shade on a cord, outlined white like
+   everything else in the room. When the sun goes down it comes on by itself and throws a warm cone
+   down onto the carpet, a soft pool where it lands, a glow out into the room and a few motes of
+   dust turning in the beam - the room's light at night, where the moon is only the window's.
+   It HANGS, so it swings: a real pendulum (gravity and a little air), still until something
+   knocks it. A thump in the room - the bin landing a ball, the lid clattering, a hard bounce, the
+   ball off a wall, him landing a leap - sets it going a little; the ball hitting the shade sends it
+   right across, left to right, and the swing dies away slowly. The beam and the pool go with it.
+   Tap it to switch it on or off. A ball that takes it square on at full power smashes it: shards on
+   the carpet, the bulb out, and it stays out until it is replaced (tap the broken one).
+   And a dark room with no light in it gets him down. */
+const LAMP_Z=0.35;             // the floor depth it hangs over - where a full-power lob passes at its height
+const LAMP_G=8.2;              // g/L: about a 2.2s swing
+const LAMP_DAMP=0.13;          // ...and how slowly a full swing dies
+const LAMP_PRICE=8;
+const LAMP={th:0, w:0, k:0, flick:0, pop:0, shards:[], sparks:[], cd:0, motes:null, toastNight:-1};
+function lampState(){ if(!S.lamp) S.lamp={on:false, broken:false, dark:null}; return S.lamp; }
+function lampLit(){ const L=lampState(); return L.on && !L.broken; }
+// where it is on the glass, in canvas px, for the current swing
+function lampGeo(w,h){
+  const ax=w*0.5, ay=-4, Lc=h*0.165, sh=h*0.046, rb=w*0.066, rt=w*0.022;
+  const s=Math.sin(LAMP.th), c=Math.cos(LAMP.th);
+  const at=(x,y)=>({x:ax+x*c-y*s, y:ay+x*s+y*c});
+  return {ax, ay, Lc, sh, rb, rt, at, mid:at(0,Lc+sh*0.55), rim:at(0,Lc+sh), s, c};
+}
+// a knock: angular velocity, toward a side (or either)
+function lampKnock(imp,dir){
+  if(!(imp>0)) return;
+  LAMP.w += imp*(dir ? Math.sign(dir) : (Math.random()<0.5?-1:1));
+  LAMP.w = clamp(LAMP.w,-3.2,3.2);
+  if(imp>0.5) LAMP.flick=Math.max(LAMP.flick,Math.min(0.8,imp*0.35));
+}
+function lampTick(dt){
+  const L=lampState();
+  // on by itself at dusk, off by itself in the morning; a tap in between overrides until the next one
+  const dark=nightAmount()>0.22;
+  if(L.dark===null){ L.dark=dark; if(!L.broken) L.on=dark; }      // first night in the house: it is simply on
+  if(dark!==L.dark){
+    L.dark=dark;
+    if(!L.broken){ L.on=dark; if(dark){ LAMP.flick=0.6; sfxLampClick(true); } }
+  }
+  // the pendulum
+  LAMP.w += (-LAMP_G*Math.sin(LAMP.th) - LAMP_DAMP*LAMP.w)*dt;
+  LAMP.th += LAMP.w*dt;
+  if(Math.abs(LAMP.th)>1.15){ LAMP.th=Math.sign(LAMP.th)*1.15; LAMP.w*=-0.4; }
+  if(Math.abs(LAMP.th)<0.0015 && Math.abs(LAMP.w)<0.004){ LAMP.th=0; LAMP.w=0; }
+  // the light fades up and down rather than snapping
+  const want = lampLit() ? 1 : 0;
+  LAMP.k += (want-LAMP.k)*Math.min(1,dt*(want?5:9));
+  LAMP.flick=Math.max(0,LAMP.flick-dt*1.6);
+  LAMP.pop=Math.max(0,LAMP.pop-dt*3);
+  LAMP.cd=Math.max(0,LAMP.cd-dt);
+  // glass on the carpet, and a fizzing filament for a few seconds after
+  for(let i=LAMP.shards.length-1;i>=0;i--){
+    const p=LAMP.shards[i]; p.life-=dt;
+    if(!p.rest){
+      p.vy+=900*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.rot+=p.vr*dt;
+      if(p.y>=p.gy){ p.y=p.gy; if(Math.abs(p.vy)>90){ p.vy*=-0.28; p.vx*=0.5; p.vr*=0.5; if(Math.random()<0.25) sfxLampTink(); } else { p.rest=true; } }
+    }
+    if(p.life<=0) LAMP.shards.splice(i,1);
+  }
+  for(let i=LAMP.sparks.length-1;i>=0;i--){ const p=LAMP.sparks[i]; p.life-=dt; p.vy+=400*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; if(p.life<=0) LAMP.sparks.splice(i,1); }
+  if(L.broken && LAMP.fizz>0){
+    LAMP.fizz-=dt;
+    if(Math.random()<dt*7){ const g=lampGeo(RMW,RMH);
+      for(let k=0;k<3;k++) LAMP.sparks.push({x:g.rim.x+(Math.random()-0.5)*6, y:g.rim.y, vx:(Math.random()-0.5)*80, vy:-20-Math.random()*60, life:0.35}); }
+  }
+  // no light in a dark room: it gets him down, slowly - and he lets you know, once a night
+  if(nightAmount()>0.5 && !lampLit() && !SLEEP.active && MODE==="home"){
+    if(LAMP.toastNight!==CLK.day && CLK.h>=20){ LAMP.toastNight=CLK.day;
+      dogLog(L.broken ? "IT'S DARK AND THE LIGHT IS BROKEN. BONES DOESN'T LIKE IT." : "IT'S DARK IN HERE. BONES WOULD LIKE THE LIGHT ON.", true); }
+  }
+}
+// the ball and the shade: a knock, or - square on, flat out - glass everywhere
+function lampBallCheck(){
+  const L=lampState();
+  if(L.broken || LAMP.cd>0 || Math.abs(BALL.z-LAMP_Z)>0.11) return false;
+  const g=lampGeo(RMW,RMH), p=ballScreen();
+  const bx=p.x*RMW, by=p.y*RMH, br=Math.max(3,8*p.sc);
+  const dx=bx-g.mid.x, dy=by-g.mid.y, d=Math.hypot(dx,dy*1.3), R=g.rb*0.95;
+  if(d>R+br) return false;
+  LAMP.cd=0.5;
+  const hs=Math.hypot(BALL.vx,BALL.vz);
+  const side = Math.abs(BALL.vx)>0.15 ? BALL.vx : -dx;
+  // square on = coming at it straight, not clipping an edge; full power = still near flat-out up here
+  if(hs>=0.86 && Math.abs(dx)<R*0.45){ lampSmash(side); }
+  else { lampKnock(clamp(0.7+hs*1.1,0.7,2.4), side); sfxLampClang(hs); }
+  // and the ball comes off it: knocked back and down
+  BALL.vz=-BALL.vz*0.3; BALL.vx=BALL.vx*0.45+(dx>0?0.18:-0.18); BALL.vh=Math.min(BALL.vh,0.15);
+  ballSquash(0.8);
+  if(FETCH.live){ FETCH.live=false; FETCH.good=false; }
+  return true;
+}
+function lampSmash(side){
+  const L=lampState();
+  L.broken=true; L.on=false;
+  LAMP.k=0; LAMP.pop=1; LAMP.fizz=2.6;
+  lampKnock(2.6, side);
+  const g=lampGeo(RMW,RMH), gy0=rmY(LAMP_Z)*RMH;
+  for(let i=0;i<26;i++){
+    const a=Math.PI*(0.15+Math.random()*0.7), v=60+Math.random()*170;
+    LAMP.shards.push({x:g.rim.x+(Math.random()-0.5)*g.rb*1.6, y:g.rim.y-Math.random()*g.sh*0.6,
+      vx:Math.cos(a)*v*(Math.random()<0.5?-1:1), vy:-Math.sin(a)*v*0.6, rot:Math.random()*6, vr:(Math.random()-0.5)*18,
+      gy:gy0+(Math.random()-0.35)*RMH*0.16, s:1.6+Math.random()*3, life:40+Math.random()*10, rest:false,
+      glass:i%3!==0});
+  }
+  sfxLampSmash(); haptic([30,20,50]);
+  S.mood=clamp(S.mood-3,0,100);
+  dogLog("SMASH! THE LIGHT'S IN BITS. TAP IT TO REPLACE IT (£"+LAMP_PRICE+").", true);
+  // he flinches and looks
+  if(CAM.state==="idle"||CAM.state==="walk"||CAM.state==="sniff"){ CAM.state="idle"; CAM.t=0; CAM.until=1.2; CAM.fi=0; }
+}
+// a tap on the lamp: the switch - or, when it is in bits, the offer of a new one
+function lampTapAt(fx,fy,w,h){
+  const g=lampGeo(w,h), px=fx*w, py=fy*h;
+  const onShade=Math.hypot(px-g.mid.x,(py-g.mid.y)*1.2)<g.rb+16;
+  const onCord=py<g.mid.y && py>14 && Math.abs(px-(g.ax+(g.mid.x-g.ax)*(py/Math.max(1,g.mid.y))))<12;
+  if(!onShade && !onCord) return false;
+  const L=lampState();
+  if(L.broken){
+    openChoice("THE LIGHT IS SMASHED",
+      "A NEW SHADE AND BULB, HUNG BACK UP.<br><br>£"+LAMP_PRICE+(S.money<LAMP_PRICE?"<br><br>NOT ENOUGH MONEY YET.":""),
+      "REPLACE", ()=>{
+        if(S.money<LAMP_PRICE){ beep(150,.1); return toast("NOT ENOUGH MONEY FOR A NEW LIGHT"); }
+        S.money-=LAMP_PRICE; L.broken=false; LAMP.shards.length=0; LAMP.fizz=0;
+        L.on=nightAmount()>0.22; LAMP.flick=L.on?0.6:0; lampKnock(0.6);
+        renderMeters(); sfxLampClick(true); toast("NEW LIGHT UP — £"+LAMP_PRICE);
+      }, "NOT NOW", null);
+    return true;
+  }
+  L.on=!L.on;
+  if(L.on) LAMP.flick=0.45;
+  lampKnock(0.35, px-g.mid.x);
+  sfxLampClick(L.on); haptic(10);
+  return true;
+}
+/* ---- the sounds: a switch, a dull clang off the shade, glass */
+function sfxLampClick(on){
+  beep(on?1900:1500,.012,"square",.02);
+  setTimeout(()=>beep(on?1200:900,.015,"square",.016),28);
+}
+function sfxLampClang(hs){
+  const k=clamp(hs,0.2,1.6);
+  beep(330+k*60,.14,"triangle",.035*k); setTimeout(()=>beep(495+k*80,.18,"sine",.022*k),8);
+  if(SETTINGS.sound){ try{ audioInit(); noiseBurst(0.04,1800,2,0.06*k,AC.currentTime); }catch(e){} }
+}
+function sfxLampTink(){ beep(3000+Math.random()*2200,.03,"sine",.01); }
+function sfxLampSmash(){
+  if(SETTINGS.sound){ try{ audioInit(); const t0=AC.currentTime;
+    noiseBurst(0.18,4200,0.9,0.22,t0); noiseBurst(0.12,7000,1.4,0.12,t0+0.03); noiseBurst(0.25,2600,0.8,0.10,t0+0.06);
+  }catch(e){} }
+  beep(140,.12,"square",.04);
+  for(let i=0;i<7;i++) setTimeout(sfxLampTink, 60+i*55+Math.random()*40);
+}
+/* ---- drawing: the light first (it falls on the room), then the fixture over it */
+function drawLamp(ctx,w,h,t){
+  const L=lampState(), g=lampGeo(w,h), RM=!!SETTINGS.reduceMotion;
+  const night=nightAmount();
+  const flk = LAMP.flick>0 ? 1-LAMP.flick*(0.5+0.5*Math.sin(t*61)*Math.sin(t*23)) : 1;
+  const vis = LAMP.k*flk*(0.35+0.65*night)*(SLEEP.active?0:1);
+  if(vis>0.01){
+    ctx.save(); ctx.globalCompositeOperation="screen";
+    // out into the room
+    const glow=ctx.createRadialGradient(g.rim.x,g.rim.y,4,g.rim.x,g.rim.y,w*0.62);
+    glow.addColorStop(0,"rgba(255,214,150,"+(0.30*vis).toFixed(3)+")");
+    glow.addColorStop(0.45,"rgba(255,196,120,"+(0.10*vis).toFixed(3)+")");
+    glow.addColorStop(1,"rgba(255,190,110,0)");
+    ctx.fillStyle=glow; ctx.fillRect(0,0,w,h);
+    // the cone, down the line of the cord to the carpet
+    const yF=rmY(LAMP_Z+0.08)*h, Lb=(yF-g.ay)/Math.max(0.4,g.c), Rp=w*0.20;
+    ctx.save(); ctx.translate(g.ax,g.ay); ctx.rotate(LAMP.th);
+    const y0=g.Lc+g.sh;
+    const cg=ctx.createLinearGradient(0,y0,0,Lb);
+    cg.addColorStop(0,"rgba(255,226,170,"+(0.30*vis).toFixed(3)+")");
+    cg.addColorStop(0.6,"rgba(255,214,150,"+(0.12*vis).toFixed(3)+")");
+    cg.addColorStop(1,"rgba(255,206,140,"+(0.04*vis).toFixed(3)+")");
+    ctx.fillStyle=cg;
+    ctx.beginPath(); ctx.moveTo(-g.rb*0.92,y0); ctx.lineTo(g.rb*0.92,y0); ctx.lineTo(Rp,Lb); ctx.lineTo(-Rp,Lb); ctx.closePath(); ctx.fill();
+    // dust turning in it
+    if(!LAMP.motes){ LAMP.motes=[]; for(let i=0;i<14;i++) LAMP.motes.push({u:Math.random(), v:Math.random()*2-1, sp:0.02+Math.random()*0.04, ph:Math.random()*6}); }
+    for(const m of LAMP.motes){
+      const u = RM ? m.u : (m.u+t*m.sp)%1, yy=y0+(Lb-y0)*(0.08+u*0.85);
+      const half=g.rb+(Rp-g.rb)*((yy-y0)/(Lb-y0));
+      const xx=(m.v+(RM?0:Math.sin(t*0.6+m.ph)*0.12))*half*0.85;
+      const a=vis*0.55*Math.sin(u*Math.PI)*(0.6+0.4*Math.sin(t*2+m.ph));
+      ctx.fillStyle="rgba(255,240,205,"+Math.max(0,a).toFixed(3)+")"; ctx.fillRect(xx-0.8,yy-0.8,1.6,1.6);
+    }
+    ctx.restore();
+    // the pool on the carpet, where the cone lands - it slides with the swing
+    const P=g.at(0,Lb);
+    const pg=ctx.createRadialGradient(P.x,P.y,2,P.x,P.y,Rp*1.25);
+    pg.addColorStop(0,"rgba(255,222,160,"+(0.34*vis).toFixed(3)+")");
+    pg.addColorStop(0.6,"rgba(255,206,140,"+(0.12*vis).toFixed(3)+")");
+    pg.addColorStop(1,"rgba(255,200,130,0)");
+    ctx.fillStyle=pg; ctx.save(); ctx.translate(P.x,P.y); ctx.scale(1,0.34); ctx.translate(-P.x,-P.y);
+    ctx.beginPath(); ctx.arc(P.x,P.y,Rp*1.25,0,7); ctx.fill(); ctx.restore();
+    ctx.restore();
+  }
+  // the fixture: cord, fitting, shade - swinging as one from the ceiling
+  ctx.save(); ctx.translate(g.ax,g.ay); ctx.rotate(LAMP.th);
+  const day=1-night*0.55;
+  ctx.strokeStyle="rgba(20,20,24,.95)"; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,g.Lc); ctx.stroke();
+  ctx.strokeStyle="rgba(255,255,255,"+(0.22*day).toFixed(3)+")"; ctx.lineWidth=0.8;
+  ctx.beginPath(); ctx.moveTo(1,0); ctx.lineTo(1,g.Lc); ctx.stroke();
+  ctx.fillStyle="#1a1a1f"; ctx.fillRect(-g.rt*0.45,g.Lc-5,g.rt*0.9,6);
+  const y0=g.Lc, y1=g.Lc+g.sh;
+  if(L.broken){
+    // what is left: the top of the shade, a jagged edge where the rest was
+    ctx.fillStyle="#121216"; ctx.beginPath();
+    ctx.moveTo(-g.rt,y0); ctx.lineTo(g.rt,y0); ctx.lineTo(g.rt+(g.rb-g.rt)*0.55,y0+g.sh*0.55);
+    for(let i=0;i<=6;i++){ const x=(g.rt+(g.rb-g.rt)*0.55)*(1-2*i/6); ctx.lineTo(x, y0+g.sh*(0.40+((i%2)?0.22:0))); }
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle="rgba(255,255,255,"+(0.75*day+0.15).toFixed(3)+")"; ctx.lineWidth=1.4; ctx.stroke();
+    ctx.fillStyle="#3a3a40"; ctx.fillRect(-2,y0+g.sh*0.5,4,5);           // the bare socket
+  } else {
+    // the shade: a black cone, a white edge, one cold highlight down its side
+    ctx.fillStyle="#121216"; ctx.beginPath();
+    ctx.moveTo(-g.rt,y0); ctx.lineTo(g.rt,y0); ctx.lineTo(g.rb,y1); ctx.lineTo(-g.rb,y1); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle="rgba(255,255,255,"+(0.75*day+0.15).toFixed(3)+")"; ctx.lineWidth=1.5; ctx.stroke();
+    ctx.fillStyle="rgba(255,255,255,"+(0.12*day).toFixed(3)+")";
+    ctx.beginPath(); ctx.moveTo(-g.rt*0.55,y0+2); ctx.lineTo(-g.rt*0.2,y0+2); ctx.lineTo(-g.rb*0.55,y1-1); ctx.lineTo(-g.rb*0.8,y1-1); ctx.closePath(); ctx.fill();
+    // the rim seen from below, and the bulb in it - warm when it is on
+    const lit=LAMP.k*flk;
+    ctx.fillStyle = lit>0.05 ? "rgba(255,226,160,"+(0.35+0.6*lit).toFixed(3)+")" : "#0a0a0c";
+    ctx.beginPath(); ctx.ellipse(0,y1,g.rb,g.rb*0.26,0,0,Math.PI); ctx.fill();
+    ctx.strokeStyle="rgba(255,255,255,"+(0.6*day+0.2).toFixed(3)+")"; ctx.lineWidth=1.2;
+    ctx.beginPath(); ctx.ellipse(0,y1,g.rb,g.rb*0.26,0,0,7); ctx.stroke();
+    const br=w*0.016;
+    if(lit>0.05){
+      const bg=ctx.createRadialGradient(0,y1+br*0.6,0,0,y1+br*0.6,br*4);
+      bg.addColorStop(0,"rgba(255,248,225,"+(0.95*lit).toFixed(3)+")"); bg.addColorStop(1,"rgba(255,220,150,0)");
+      ctx.fillStyle=bg; ctx.beginPath(); ctx.arc(0,y1+br*0.6,br*4,0,7); ctx.fill();
+    }
+    ctx.fillStyle = lit>0.05 ? "#fff8e6" : "#5a5a60";
+    ctx.beginPath(); ctx.arc(0,y1+br*0.6,br,0,Math.PI); ctx.fill();
+  }
+  ctx.restore();
+  // the pop of the bulb going, then glass and sparks
+  if(LAMP.pop>0){
+    const pr=w*0.22*(1.2-LAMP.pop*0.4);
+    const pg=ctx.createRadialGradient(g.rim.x,g.rim.y,0,g.rim.x,g.rim.y,pr);
+    pg.addColorStop(0,"rgba(255,255,255,"+(0.85*LAMP.pop).toFixed(3)+")"); pg.addColorStop(1,"rgba(255,240,200,0)");
+    ctx.fillStyle=pg; ctx.fillRect(g.rim.x-pr,g.rim.y-pr,pr*2,pr*2);
+  }
+  for(const p of LAMP.sparks){ ctx.fillStyle="rgba(255,220,140,"+clamp(p.life*3,0,1).toFixed(3)+")"; ctx.fillRect(p.x-1,p.y-1,2,2); }
+  for(const p of LAMP.shards){
+    ctx.save(); ctx.globalAlpha=clamp(p.life/1.2,0,1); ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+    ctx.fillStyle = p.glass ? "rgba(214,232,255,.85)" : "#1a1a1f";
+    ctx.beginPath(); ctx.moveTo(-p.s,p.s*0.5); ctx.lineTo(p.s*0.2,-p.s*0.7); ctx.lineTo(p.s,p.s*0.6); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = p.glass ? "rgba(255,255,255,.9)" : "rgba(255,255,255,.6)"; ctx.lineWidth=0.8; ctx.stroke();
+    ctx.restore();
+  }
+}
 /* ONE PLACE FOR THE FURNITURE RECTS. The draw and the tap used to derive them separately from the
    same magic numbers, which is exactly how a hit-test drifts off the thing it is testing. */
 function camFurnRects(w,h){
@@ -9121,6 +9387,7 @@ function drawCam(t){
       ctx.fillStyle=mg; ctx.fillRect(0,0,w,h);
     }
   }
+  drawLamp(ctx,w,h,t);           // the room's own light, and the fixture it hangs from - see THE LAMP
   if(S.sick){ ctx.fillStyle="rgba(90,10,10,"+(0.16+0.05*Math.sin(t*3))+")"; ctx.fillRect(0,0,w,h); }
   if(CAM.workBlockT > 0){
     const shk = Math.round(Math.sin(t*38)*5*Math.min(1,CAM.workBlockT));
