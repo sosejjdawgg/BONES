@@ -626,6 +626,28 @@ body.reduce-motion .screen.screen-in{animation:none}
 body.reduce-motion .overpanel{transition:opacity .12s linear,visibility 0s linear .12s;transform:none}
 body.reduce-motion .overpanel.show{transition:opacity .12s linear,visibility 0s linear 0s;transform:none}
 .overpanel h2{font-size:15px;letter-spacing:2px}
+/* THE LEGACY pick and THE WALL's portraits: gold for the line, the house black-and-white for the rest */
+#legacyPanel,#memPanel{z-index:56;gap:10px}
+.lg-kick{color:#e8c14a;font-size:9px;letter-spacing:3px}
+.lg-blood{font-size:8px;line-height:1.7;color:#ddd}
+.lg-blood b{color:#e8c14a;font-weight:normal}
+.lg-sub{font-size:7px;line-height:1.8;color:#999;max-width:88%}
+.lg-list{display:flex;flex-direction:column;gap:6px;width:88%;max-height:68%;overflow-y:auto}
+.lg-perk,.lg-go{display:flex;flex-direction:column;gap:5px;align-items:flex-start;text-align:left;padding:8px 12px;
+  border:3px solid #fff;background:#000;color:#fff;font-family:inherit;cursor:pointer}
+.lg-perk b{font-size:10px;font-weight:normal;color:#e8c14a}
+.lg-perk span{font-size:7px;color:#bbb;line-height:1.6}
+.lg-perk:active{background:#e8c14a}
+.lg-perk:active b,.lg-perk:active span{color:#000}
+.lg-perk.had{border-color:#444;opacity:.55;cursor:default}
+.lg-perk.had b{color:#888}
+.lg-go{align-items:center;font-size:10px}
+.lg-all{font-size:8px;color:#e8c14a;line-height:1.8}
+#memImg{width:42%;max-width:170px;aspect-ratio:4/5;object-fit:cover;border:3px solid #fff;outline:3px solid #e8c14a;outline-offset:3px;filter:sepia(.25)}
+.mem-perks{display:flex;flex-direction:column;gap:5px;font-size:8px;line-height:1.6}
+.mem-h{color:#e8c14a;font-size:7px;letter-spacing:2px;margin-top:6px}
+.mem-l{color:#fff}
+.mem-l.dim{color:#777}
 /* #start (the title/cold-open screen) sits at z-index:50, above every ordinary overpanel — but
    NEW GAME on the title's own CONTINUE/NEW GAME choice opens this same confirm dialog while
    #start is still showing. Without this override the dialog opened correctly but painted behind
@@ -1054,7 +1076,7 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.407a</span>
+          <span id="devToggle">v0.408a</span>
         </div>
       </div>
 
@@ -1165,6 +1187,21 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
       </div>
 
       <!-- GO OUT -->
+      <div id="legacyPanel" class="overpanel" role="dialog" aria-label="The legacy">
+        <div class="lg-kick">THE LEGACY</div>
+        <h2 id="lgHead"></h2>
+        <div id="lgBlood" class="lg-blood"></div>
+        <div id="lgSub" class="lg-sub"></div>
+        <div id="lgList" class="lg-list"></div>
+      </div>
+      <div id="memPanel" class="overpanel" role="dialog" aria-label="In loving memory">
+        <button class="tiny pclose" id="memClose">&#10005; CLOSE</button>
+        <div class="lg-kick">IN LOVING MEMORY</div>
+        <img id="memImg" alt="">
+        <h2 id="memName"></h2>
+        <div id="memSub" class="lg-sub"></div>
+        <div id="memPerks" class="mem-perks"></div>
+      </div>
       <div id="goout" class="overpanel">
         <button class="tiny pclose" id="gooutClose">&#10005; CLOSE</button>
         <h2>GO OUT</h2>
@@ -2393,6 +2430,9 @@ const S = {
   hoopOwned:false, ballOwned:false, ballStock:0, ballThrows:0, brushOwned:false, shampooOwned:false, shampooPct:0, firstWater:false, firstFood:false, bedHinted:false, pbTutorialDone:false, mail:[],
   bedTier:0, tricks:{}, todoWork:false, todoLvl5:false, todoBed:false, todoPark:false, todoBall:true, todoBowls:false, twW:false, twF:false, todoHide:false, outTimer:0,
   lvl:1, xp:0, gen:1, senior:false, seniorDays:0, lifePathChosen:false, litter:false, memorialSrc:null, pendingStage:[],
+  // THE LINE: who came before (the wall), what the blood carries (legacy), and a name the pup
+  // brought with him when he took over (dogFull - null means the usual BONES + numeral)
+  memorial:[], legacy:{perks:[]}, legacyPick:false, dogFull:null,
   hollowBeaten:false,   // WOLFIE has been put down at least once — this is what opens burial
                       // (the save key keeps its old name; only the display name changed)
   // trained attributes — see TRAINED ATTRIBUTES. Start at 10: a puppy is not made of nothing.
@@ -3132,7 +3172,10 @@ function startEvo(label,from,to,lines,after){
                    setTimeout(()=>beep(1568,.34,"sine",.05),390); }, rS*1000);
   haptic([30,60,30,60,140]);
 }
-function NAME(){ return (S.dogName||"BONES")+(S.gen>1?[" II"," III"," IV"," V"," VI"][Math.min(S.gen-2,4)]:""); }
+// numerals all the way down the line - the old list stopped at VI and every dog after that was VI too
+const ROMAN=["I","II","III","IV","V","VI","VII","VIII","IX","X","XI","XII","XIII","XIV","XV"];
+function genRoman(g){ return ROMAN[(g|0)-1]||String(g|0); }
+function NAME(){ return S.dogFull || ((S.dogName||"BONES")+(S.gen>1?" "+genRoman(S.gen):"")); }
 function DN(s){ return (S.dogName && S.dogName!=="BONES") ? String(s).replace(/BONES/g,S.dogName) : s; }
 function stageName(l){ const v=l===undefined?S.lvl:l; return v<10?"PUPPY":v<25?"JUNIOR":(S.senior?"SENIOR":"PRIME"); }
 function stageScale(l){ const v=l===undefined?S.lvl:l; return v<10?0.5:v<25?0.82:(S.senior?0.9:1); }
@@ -3327,21 +3370,212 @@ function openLifeChoice(){
 }
 function startGoodbye(){
   sfxGoodbye(); haptic([80,100,80,100,150]);
-  openChoice("GOODBYE, BONES",
-    "AFTER A GOOD, LONG LIFE, BONES PASSED<br>PEACEFULLY IN HIS SLEEP.<br><br>HIS PHOTO NOW HANGS ON THE WALL.<br>HE LEAVES A LEGACY TAG"+(S.litter?"<br>\u2014 AND A PUP WHO'S BEEN WAITING.":"<br>FOR THE PUPPY WHO COMES NEXT."),
+  const heir = S.pup.owned ? "<br>"+"— AND "+S.pup.name+" STEPS UP."
+             : S.litter ? "<br>— AND A PUP WHO'S BEEN WAITING."
+             : "<br>FOR THE PUPPY WHO COMES NEXT.";
+  openChoice("GOODBYE, "+NAME(),
+    "AFTER A GOOD, LONG LIFE, "+NAME()+" PASSED<br>PEACEFULLY IN HIS SLEEP.<br><br>HIS PORTRAIT NOW HANGS ON THE WALL.<br>HE LEAVES A LEGACY"+heir,
     "CONTINUE", successor);
 }
-function successor(){
-  S.memorialSrc=PORTRAITS.happy; MEMIMG=new Image(); MEMIMG.src=S.memorialSrc;
-  S.owned.legacy=1; S.equipped="legacy";
-  S.gen++; S.lvl=1; S.xp=0; S.senior=false; S.seniorDays=0; S.lifePathChosen=false; S.litter=false;
-  S.str=ATTR_START; S.stam=ATTR_START; S.vit=ATTR_START; S.pts=0; S.trainAcc={};
-  S.sick=false; S.sickTimer=0; S.wellTimer=0;
-  Object.assign(S,{hunger:70,thirst:70,energy:85,clean:85,fun:75,mood:75});
-  BOWL.level=1; FBOWL.level=1;
-  toast(NAME()+" HAS BEEN ADOPTED. THE LEGACY CONTINUES.");
-  renderMeters(); renderShop();
+/* ==================== THE LINE ====================
+   Every dog who comes after gets two things from the ones before him, and both are permanent.
+   THE BLOOD: +25% attack and cooldowns 25% quicker, per generation, stacking - GEN III is +50%.
+     It is read in the park wherever damage and recharge are worked out (pkBarkDmg, pkSwordDmg,
+     pkWingStompDmg, the knockback, pkBarkCdMax, pkDashCdMax, the wings) and nowhere else.
+   THE GIFT: at each passing you choose one DOGPARK ladder he is BORN WITH, fully upgraded, from
+     the first second of every run. It passes down the line for good, so the choices accumulate:
+     there are five ladders, and the fifth successor (GEN VI) has every one of them maxed.
+   Only the ladders qualify - the things with ranks to climb. A one-off, a heal or a flat stat has
+   no "fully upgraded" to be born with. */
+const LEGACY_STEP=0.25;
+function legacyBoost(g){ return 1+LEGACY_STEP*Math.max(0,((g===undefined?S.gen:g)||1)-1); }
+function legacyPct(g){ return Math.round((legacyBoost(g)-1)*100); }
+const LEGACY_PERKS=[
+  {id:"barkBig",  n:"OMNI BARK",            fx:"THE FULL-CIRCLE BARK, FROM THE FIRST SECOND",
+   apply:()=>{ PK.barkBigLvl=BARK_LVL_CAP; }},
+  {id:"barkFast", n:"FASTER BARK IV",       fx:"EVERY BARK-COOLDOWN RANK, ALREADY BOUGHT",
+   apply:()=>{ for(let i=PK.barkFastLvl||0;i<BARK_LVL_CAP;i++) PK.barkMax=Math.min(PK.barkMax,Math.max(0.8,PK.barkMax-0.35));
+               PK.barkFastLvl=BARK_LVL_CAP; }},
+  {id:"dash",     n:"FIRE DASH",            fx:"THE QUICKEST DASH — AND THE GRASS BURNS",
+   apply:()=>{ PK.dashLvl=DASH_LVL_CAP; }},
+  {id:"nose",     n:"KEEN NOSE III",        fx:"THE WIDEST BONE PICKUP THERE IS",
+   apply:()=>{ PK.sniffLvl=SNIFF_LVL_CAP; }},
+  {id:"agi",      n:"AGILITY TRAINING III", fx:"THE COURSE HEALS MOST AND RESETS SOONEST",
+   apply:()=>{ PK.agiLvl=AGI_LVL_CAP; }}
+];
+function legacyPerk(id){ return LEGACY_PERKS.find(p=>p.id===id)||null; }
+function legacyHas(id){ return !!(S.legacy && S.legacy.perks && S.legacy.perks.includes(id)); }
+// a run starts with the line already in it - the maxed ladders simply never come up in the shop
+function pkLegacyApply(){
+  const got=[];
+  for(const id of (S.legacy&&S.legacy.perks)||[]){ const p=legacyPerk(id); if(p){ p.apply(); got.push(p.n); } }
+  if(got.length || S.gen>1)
+    pkTick("THE LINE · +"+legacyPct()+"% ATTACK"+(got.length?" · "+got.join(" · "):""), "info", 3.4);
 }
+function successor(){
+  const prevName=NAME();
+  // HIS PORTRAIT GOES UP. What he was born with, what he passes on (filled in by the pick below)
+  S.memorial=S.memorial||[];
+  const gone={name:prevName, gen:S.gen, lvl:S.lvl, stage:stageName(), pic:"happy",
+              born:((S.legacy&&S.legacy.perks)||[]).slice(), day:CLK.day, passed:null};
+  S.memorial.push(gone);
+  S.memorialSrc=null; MEMIMG=null;           // the one old photo is the gallery now
+  S.owned.legacy=1; S.equipped="legacy";
+  /* THE HEIR. A pup who has been growing up in the room takes over as he is - his name, his
+     level, his growth - and from here on he IS the dog: every system that reads S reads him.
+     With no pup in the house it is the litter's pup, or simply the next puppy, from LV.1. */
+  const heir = S.pup.owned ? Object.assign({},S.pup) : null;
+  S.gen++; S.xp=0; S.senior=false; S.seniorDays=0; S.lifePathChosen=false;
+  S.str=ATTR_START; S.stam=ATTR_START; S.vit=ATTR_START; S.trainAcc={};
+  S.sick=false; S.sickTimer=0; S.wellTimer=0;
+  S.pendingStage=[];
+  if(heir){
+    S.lvl=clamp(heir.lvl||1,1,PUP_LVL_CAP);
+    S.pts=S.lvl-1;                           // one per level, exactly what a dog raised to it has had
+    S.dogFull=null;
+    if(heir.name && heir.name!==NAME()) S.dogFull=heir.name;
+    Object.assign(S,{hunger:heir.hunger,thirst:heir.thirst,energy:85,clean:85,fun:75,mood:heir.mood});
+    // he is standing where the pup was standing, because he IS the pup
+    CAM.x=PUP.x; CAM.z=PUP.z; CAM.px=CAM.x; CAM.pz=CAM.z; CAM.dir=PUP.dir;
+    S.pup.owned=false; BALL.pcarried=false;
+    if(S.litter){
+      // ...and the litter's pup moves into the room he left
+      S.pup=Object.assign(S.pup,{owned:true, name:(S.dogName||"BONES")+" "+genRoman(S.gen+1),
+                                 hunger:70, thirst:70, mood:80, xp:0, lvl:1});
+      Object.assign(PUP,{x:0.30,z:0.74,st:"idle",t:0,until:2,px:null,pz:null});
+    }
+  } else {
+    S.lvl=1; S.pts=0; S.dogFull=null;
+    Object.assign(S,{hunger:70,thirst:70,energy:85,clean:85,fun:75,mood:75});
+  }
+  S.litter=false;
+  Object.assign(XPANIM,{lvl:S.lvl, frac:0, ready:false, pauseT:0, danceOwed:false});
+  CAM.state="idle"; CAM.t=0; CAM.until=1.5; CAM.fi=0;
+  S.sel="bones";
+  BOWL.level=1; FBOWL.level=1;
+  toast(NAME()+(heir?" TAKES OVER.":" HAS BEEN ADOPTED.")+" THE LEGACY CONTINUES.");
+  renderMeters(); renderShop(); renderDogSel();
+  S.legacyPick=true;
+  setTimeout(openLegacyPick, 700);
+}
+/* THE GIFT, CHOSEN. No way out but a choice: this is the one moment it can be made. A pick left
+   unmade by closing the tab is offered again when the save is next opened (S.legacyPick). */
+function openLegacyPick(){
+  if(!S.legacyPick) return;
+  const left=LEGACY_PERKS.filter(p=>!legacyHas(p.id));
+  const gone=(S.memorial||[])[S.memorial.length-1];
+  $("#lgHead").textContent=NAME()+" CARRIES IT ON";
+  $("#lgBlood").innerHTML="GEN "+genRoman(S.gen)+" — <b>+"+legacyPct()+"% ATTACK</b> · <b>COOLDOWNS "+legacyPct()+"% QUICKER</b>";
+  const list=$("#lgList");
+  if(!left.length){
+    list.innerHTML='<div class="lg-all">EVERY DOGPARK LADDER IS ALREADY IN THE BLOOD.</div><button class="lg-go" data-lg="">CARRY ON</button>';
+  } else {
+    list.innerHTML=LEGACY_PERKS.map(p=>{
+      const had=legacyHas(p.id);
+      return '<button class="lg-perk'+(had?" had":"")+'" '+(had?"disabled":'data-lg="'+p.id+'"')+'><b>'+p.n+'</b><span>'+
+             (had?"ALREADY IN THE BLOOD":p.fx)+'</span></button>';
+    }).join("");
+  }
+  $("#lgSub").textContent = left.length
+    ? "CHOOSE ONE DOGPARK PERK HE IS BORN WITH, FULLY UPGRADED. IT PASSES DOWN THE LINE FOR GOOD."
+    : (gone ? gone.name+" PASSED ON EVERYTHING HE HAD." : "");
+  $("#legacyPanel").classList.add("show");
+  beep(520,.08); setTimeout(()=>beep(780,.1),120);
+}
+$("#lgList").addEventListener("click",e=>{
+  const b=e.target.closest("[data-lg]"); if(!b || b.disabled) return;
+  const id=b.dataset.lg, p=legacyPerk(id);
+  if(p && !legacyHas(id)){
+    S.legacy.perks.push(id);
+    const gone=S.memorial[S.memorial.length-1]; if(gone) gone.passed=id;
+    toast(NAME()+" IS BORN WITH "+p.n,1);
+    heartsBurst(4);
+  }
+  S.legacyPick=false;
+  $("#legacyPanel").classList.remove("show");
+  beep(880,.08); setTimeout(()=>beep(1175,.12),110);
+  performSave();
+});
+/* ==================== THE WALL ====================
+   Every dog who has passed hangs on the far right of the back wall, oldest at the top, a little
+   numeral plate under each. Tapping one opens him: his picture, his name, what he was born with
+   and what he passed on. MEMBOX is where each was drawn this frame, which is the tap target. */
+const MEMPIC={};
+function memPic(k){
+  if(!MEMPIC[k]){ const i=new Image(); i.src=PORTRAITS[k]||PORTRAITS.happy; MEMPIC[k]=i; }
+  return MEMPIC[k];
+}
+/* The portraits are full-size JPEGs; scaling one down onto the wall every frame is a lot of
+   pixels to throw away sixty times a second. Each is cropped, washed and shrunk ONCE per size. */
+const MEMTHUMB=new Map();
+function memThumb(img,tw,th){
+  if(!img.complete || !img.naturalWidth || tw<2 || th<2) return null;
+  const key=img.src.length+":"+img.src.slice(-24)+":"+tw+"x"+th;
+  let c=MEMTHUMB.get(key); if(c) return c;
+  c=document.createElement("canvas"); c.width=tw*2; c.height=th*2;
+  const x=c.getContext("2d");
+  const iw=img.naturalWidth, ih=img.naturalHeight, want=tw/th;
+  let sw=iw, sh=iw/want; if(sh>ih){ sh=ih; sw=ih*want; }
+  x.drawImage(img,(iw-sw)/2,(ih-sh)*0.35,sw,sh, 0,0,c.width,c.height);
+  x.fillStyle="rgba(150,104,40,.22)"; x.fillRect(0,0,c.width,c.height);   // so it reads as a photograph
+  MEMTHUMB.set(key,c);
+  return c;
+}
+let MEMBOX=[];
+function memLayout(n,w,h){
+  // the strip of back wall right of the window, and down past it: two columns, three if crowded
+  const cols = n<=4 ? 2 : 3;
+  let fw = (cols===2 ? 0.072 : 0.05)*w;
+  const x0=0.775*w, x1=0.985*w, y0=0.115*h, y1=0.405*h, plate=Math.max(7,h*0.028);
+  const rows=Math.ceil(n/cols);
+  const cellH=()=>fw*1.25+plate+h*0.012;
+  while(rows*cellH()>(y1-y0) && fw>10) fw*=0.9;
+  const gapX=((x1-x0)-cols*fw)/(cols+1);
+  const out=[];
+  for(let i=0;i<n;i++){
+    const c=i%cols, r=Math.floor(i/cols);
+    out.push({x:x0+gapX+c*(fw+gapX), y:y0+r*cellH(), w:fw, h:fw*1.25, plate});
+  }
+  return out;
+}
+function memDraw(ctx,w,h){
+  MEMBOX=[];
+  const M=S.memorial||[]; if(!M.length) return;
+  const L=memLayout(M.length,w,h);
+  ctx.save();
+  for(let i=0;i<M.length;i++){
+    const r=L[i], m=M[i], img=memPic(m.pic);
+    // the frame: a black mat, the photo, a warm wash so it reads as a photograph, a white edge
+    ctx.fillStyle="#000"; ctx.fillRect(r.x-3,r.y-3,r.w+6,r.h+6);
+    const th=memThumb(img, Math.round(r.w), Math.round(r.h));
+    if(th) ctx.drawImage(th, r.x, r.y, r.w, r.h);
+    ctx.strokeStyle="#e8c14a"; ctx.lineWidth=2; ctx.strokeRect(r.x-2,r.y-2,r.w+4,r.h+4);
+    // the numeral plate
+    ctx.fillStyle="#e8c14a"; ctx.fillRect(r.x+r.w*0.18, r.y+r.h+4, r.w*0.64, r.plate);
+    ctx.fillStyle="#1a1206"; ctx.font=Math.round(r.plate*0.72)+"px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillText(genRoman(m.gen), r.x+r.w/2, r.y+r.h+4+r.plate*0.82);
+    MEMBOX.push({x0:(r.x-4)/w, x1:(r.x+r.w+4)/w, y0:(r.y-4)/h, y1:(r.y+r.h+4+r.plate)/h, i});
+  }
+  ctx.restore(); ctx.textAlign="left";
+}
+function memHit(fx,fy){ for(const b of MEMBOX) if(fx>=b.x0&&fx<=b.x1&&fy>=b.y0&&fy<=b.y1) return b.i; return -1; }
+function openMemorial(i){
+  const m=(S.memorial||[])[i]; if(!m) return;
+  $("#memImg").src=PORTRAITS[m.pic]||PORTRAITS.happy;
+  $("#memName").textContent=m.name;
+  $("#memSub").textContent="GEN "+genRoman(m.gen)+" · "+m.stage+" LV."+m.lvl+(m.day?" · PASSED ON DAY "+m.day:"");
+  const born=(m.born||[]).map(legacyPerk).filter(Boolean);
+  let html='<div class="mem-h">BORN WITH</div>';
+  html+= m.gen>1 ? '<div class="mem-l">+'+legacyPct(m.gen)+'% ATTACK · COOLDOWNS '+legacyPct(m.gen)+'% QUICKER</div>'
+                 : '<div class="mem-l dim">THE FIRST OF THE LINE</div>';
+  html+= born.length ? born.map(p=>'<div class="mem-l">★ '+p.n+'</div>').join("") : (m.gen>1?'<div class="mem-l dim">NO DOGPARK PERKS YET</div>':"");
+  const pass=legacyPerk(m.passed);
+  html+='<div class="mem-h">PASSED ON</div><div class="mem-l">'+(pass?"★ "+pass.n:"THE LEGACY TAG")+'</div>';
+  $("#memPerks").innerHTML=html;
+  $("#memPanel").classList.add("show");
+  beep(420,.1); setTimeout(()=>beep(560,.12),140);
+}
+$("#memClose").onclick=()=>{ $("#memPanel").classList.remove("show"); beep(400,.05); };
 function triggerDeath(){
   beep(60,.9,"sawtooth",.04);
   haptic([100,50,100,50,200]);
@@ -3684,15 +3918,7 @@ $("#dogcv").addEventListener("pointerdown",e=>{
     try{ e.currentTarget.setPointerCapture(e.pointerId); }catch(_){}
     return;
   }
-  if(S.memorialSrc && fx>0.12 && fx<0.28 && fy>0.12 && fy<0.34){ // the photo on the wall
-    $("#portraitImg").src=S.memorialSrc;
-    const lb=$("#portraitLb"); lb.textContent="IN LOVING MEMORY"; lb.className="";
-    $("#portrait").classList.toggle("savage",false);
-    $("#portrait").style.right="auto"; $("#portrait").style.left="8px";
-    $("#portrait").classList.add("show");
-    clearTimeout(portraitT); portraitT=setTimeout(hidePortrait,3200);
-    beep(420,.1); return;
-  }
+  { const mi=memHit(fx,fy); if(mi>=0){ openMemorial(mi); return; } }   // a portrait on THE WALL
   // righting the bot is allowed even from work — he IS the remote-care mechanism, so leaving
   // him face-down and untappable during a shift would strand BONES with nobody able to help
   if(S.owned.robot && ROBOT.state==="down" && Math.abs(fx-rmX(ROBOT.x,ROBOT_Z))<0.10 &&
@@ -3785,7 +4011,7 @@ $("#dogcv").addEventListener("pointerdown",e=>{
   const dogSx=rmX(CAM.x,CAM.z), dogSy=rmY(CAM.z);
   const onDog = Math.abs(fx-dogSx) < Math.max(0.06,CAMDWF*0.55) &&
                 fy > dogSy - dogBodyF()*1.25 && fy < dogSy + 0.03;
-  if(S.pup.owned && fx>PUP.x-0.02 && fx<PUP.x+PUP.w+0.04 && fy>0.55){
+  if(S.pup.owned && PUPBOX && fx>PUPBOX.x0 && fx<PUPBOX.x1 && fy>PUPBOX.y0 && fy<PUPBOX.y1 && !(onDog && CAM.z>PUP.z)){
     S.sel="pup"; renderDogSel(); flashDogSel();
     S.pup.mood=clamp(S.pup.mood+2,0,100); tickTodo("p_pet");
     heartsBurst(1); beep(720,.05);
@@ -5138,7 +5364,17 @@ function giveBone(){
 }
 const PULSE={k:null,t:0};
 function setPulse(k){ PULSE.k=k; PULSE.t=3; }
-const PUP={x:0.72,dir:-1,st:"idle",t:0,until:2,fi:0,ft:0,w:0.1,hF:0.12,tx:0,next:"idle"};
+/* THE PUP STANDS ON THE SAME FLOOR AS HE DOES. He used to be a strip of the DOGPARK walk cycle
+   slid along one flat line at the front of the room: x on the glass, no depth, no shadow, the
+   frames hung off their bottom edge. That strip is the park's deliberately near-black silhouette
+   (drawn for a small dog on bright grass with a rim light), which is why he went solid black
+   whenever he walked, and its feet are not where DOGCAM's posed sets keep theirs, which is why he
+   hopped between walking and standing. He is now {x,z} on the floor exactly like BONES: the same
+   eight walk sheets chosen by the way he is actually heading, the same posed sets hung from their
+   floor line, the same shadow, the same depth order - only smaller while he is young. */
+const PUP={x:0.30,z:0.74,dir:1,oct:0,st:"idle",t:0,until:2,fi:0,ft:0,tx:0.30,tz:0.74,next:"idle",
+           walkPh:0,px:null,pz:null,moving:false,walkHold:0};
+let PUPBOX=null;          // where he was last drawn, in canvas fractions: the tap target
 const STAY={bones:0,pup:0};
 const TRICK={live:false, mult:1, ticks:0, airT:0, floorB:0, hitWall:false, hitWin:false, swish:0};
 const HOOP={x0:0.585,x1:0.685,y:0.44};
@@ -5148,14 +5384,18 @@ function trickBounce(){
   beep(260+TRICK.mult*110,.05,"square",.04);
 }
 const CAMZ=()=>S.pup.owned?0.8:1;
+// short of the crossroads: that choice belongs to whoever is head of the house, not to the pup
+const PUP_LVL_CAP=98;
 function pupAddXP(n){
   if(!S.pup.owned) return;
   S.pup.xp=(S.pup.xp||0)+n;
   let need=15+S.pup.lvl*6;
-  while(S.pup.xp>=need && S.pup.lvl<50){
+  while(S.pup.xp>=need && S.pup.lvl<PUP_LVL_CAP){
     S.pup.xp-=need; S.pup.lvl++;
     need=15+S.pup.lvl*6;
-    toast(S.pup.name+" REACHED LV."+S.pup.lvl+"!");
+    // he grows on BONES' schedule, and is told so the same way
+    const grew = S.pup.lvl===10 ? " \u2014 A JUNIOR NOW!" : S.pup.lvl===25 ? " \u2014 IN HIS PRIME!" : "!";
+    toast(S.pup.name+" REACHED LV."+S.pup.lvl+grew);
     heartsBurst(3); beep(880,.08); setTimeout(()=>beep(1170,.1),110);
   }
   renderDogSel();
@@ -5173,6 +5413,75 @@ function doStay(id){
   beep(500,.06); setTimeout(()=>beep(500,.06),140);
   renderDogSel();
 }
+/* HOW BIG, HOW OLD. His stages are BONES' stages - a pup at LV.10 is a junior, at LV.25 he is in
+   his prime - so the day he takes over (see successor) nothing about him has to change. While he
+   is still growing he is drawn a size down from the house rule, because a puppy beside a grown
+   dog has to READ as a puppy, and the house rule's own puppy size is set by a floor (DOG_BODY_MIN)
+   that exists so a lone dog never vanishes up the room. */
+const PUP_YOUNG=[0.70,0.85,1];           // puppy, junior, prime: share of the house size
+function pupStageI(l){ const v=l===undefined?(S.pup.lvl||1):l; return v<10?0:v<25?1:2; }
+function pupStageName(l){ return ["PUPPY","JUNIOR","PRIME"][pupStageI(l)]; }
+function pupStageScale(l){ return [0.5,0.82,1][pupStageI(l)]; }
+function pupYoung(){ return PUP_YOUNG[pupStageI()]; }
+// dogBodyF's rule, read off HIS depth and HIS stage
+function pupBodyF(){
+  const t=clamp((rmSc(PUP.z)-rmSc(0))/(rmSc(1)-rmSc(0)),0,1);
+  const grow=1+(DOG_GROW-1)*clamp((pupStageScale()-0.5)/0.5,0,1);
+  return DOG_BODY_MIN*(1+(DOG_DEPTH-1)*t)*grow*CAMZ()*pupYoung();
+}
+function pupBodyFloor(){ return pupBodyF()*RMH/rmUnit(1)*rmSc(1); }
+// the furniture is as solid for him as it is for BONES - the bowls and the bin, never the rug
+function pupSolid(x,z,goalKey){
+  if(BIN.init){
+    const dx=x-BIN.x, dz=(z-BIN.z)*1.5, d=Math.hypot(dx,dz), r=0.075;
+    if(d<r && d>1e-5){ x=BIN.x+dx/d*r; z=BIN.z+dz/d*r/1.5; }
+  }
+  for(const k of ['water','food']){
+    if(k===goalKey) continue;
+    const p=SPOT[k], r=0.07;
+    const dx=x-p.x, dz=(z-p.z)*1.5, d=Math.hypot(dx,dz);
+    if(d<r && d>1e-5){ x=p.x+dx/d*r; z=p.z+dz/d*r/1.5; }
+  }
+  return [x,z];
+}
+// camGoto, for him: a step toward a floor spot, true once he is there
+function pupGoto(x,z,spd,dt){
+  const dx=x-PUP.x, dz=z-PUP.z, d=Math.hypot(dx,dz);
+  if(d<0.012) return true;
+  const k=Math.min(1, spd*dt/d);
+  let nx=clamp(PUP.x+dx*k,0.04,0.96), nz=clamp(PUP.z+dz*k,0.06,0.97);
+  let goal=null;
+  for(const key of ['water','food']) if(Math.hypot(x-SPOT[key].x,(z-SPOT[key].z)*1.5)<0.14) goal=key;
+  [nx,nz]=pupSolid(nx,nz,goal);
+  PUP.x=nx; PUP.z=nz;
+  PUP.oct=dogOctant(dx,dz);
+  PUP.dir = (PUP.oct<=1||PUP.oct>=7) ? 1 : (PUP.oct>=3&&PUP.oct<=5) ? -1 : PUP.dir;
+  return false;
+}
+// somewhere to potter to: anywhere on the open floor, away from wherever BONES is standing
+function pupWanderSpot(){
+  for(let i=0;i<12;i++){
+    const x=0.12+Math.random()*0.76, z=0.22+Math.random()*0.62;
+    if(Math.hypot(x-CAM.x,(z-(CAM.z||0.6))*1.5)>0.22) return {x,z};
+  }
+  return {x:CAM.x<0.5?0.80:0.20, z:0.70};
+}
+// where his mouth is: a little ahead of his centre the way he is facing, at muzzle height
+function pupMouth(){
+  const B=pupBodyFloor(), a=(PUP.oct|0)*Math.PI/4;
+  // heading into the room puts his head further up the floor, and toward you nearer - not on his back
+  const side = PUP.moving ? Math.cos(a) : (PUP.dir>0?1:-1), deep = PUP.moving ? Math.sin(a) : 0;
+  return { dx:side*B*0.42, dz:deep*B*0.30, hz:B*0.62 };
+}
+function pupDropBall(){
+  if(!BALL.pcarried) return;
+  const m=pupMouth();
+  BALL.pcarried=false;
+  BALL.x=clamp(PUP.x+m.dx,0.03,0.97); BALL.z=clamp(PUP.z+0.03,0.06,0.97); BALL.hz=0;
+  BALL.vx=0; BALL.vz=0; BALL.vh=0; BALL.cool=1.5; ballSyncY();
+}
+// where he comes to when you call him or bring the ball: beside BONES' spot, never on it
+function pupNear(){ return {x:SPOT.near.x-0.14, z:SPOT.near.z-0.02}; }   // SPOT is declared further down
 function pupTick(dt){
   if(!S.pup.owned) return;
   const P2=S.pup;
@@ -5180,28 +5489,44 @@ function pupTick(dt){
   P2.thirst=clamp(P2.thirst-0.036*dt*1.5,0,100);
   P2.mood=clamp(P2.mood-0.012*dt*1.5,0,100);
   PUP.t+=dt; PUP.ft+=dt;
-  if(PUP.ft>0.3){ PUP.ft=0; PUP.fi++; }
+  const fd = PUP.st==="nap" ? 0.5 : PUP.st==="yip" ? 0.16 : 0.24;     // BONES' own pose rates
+  if(PUP.ft>=fd){ PUP.ft=0; PUP.fi++; }
+  pupAct(dt);
+  /* THE STRIDE, MEASURED - the same rule as his: the walk sheet advances by how far he was SEEN to
+     move, so his legs keep up with the floor in every direction. His legs are shorter, so the same
+     floor costs him more strides. */
+  { const px=PUP.px===null?PUP.x:PUP.px, pz=PUP.pz===null?PUP.z:PUP.pz;
+    const step=Math.hypot(PUP.x-px,PUP.z-pz);
+    const sdx=(rmX(PUP.x,PUP.z)-rmX(px,pz))*RMW, sdy=(rmY(PUP.z)-rmY(pz))*RMH;
+    const seen=Math.hypot(sdx,sdy)/Math.max(1e-6,rmUnit(PUP.z));
+    PUP.walkPh+=Math.min(0.6,seen/(WALK_STRIDE*pupYoung()))*DOGDIR_N;
+    PUP.walkHold = step>2e-4 ? WALK_HOLD : Math.max(0,PUP.walkHold-dt);
+    PUP.px=PUP.x; PUP.pz=PUP.z;
+    PUP.moving=PUP.walkHold>0; }
+}
+function pupAct(dt){
+  const P2=S.pup;
   if(PUP.st==="stay"){
     if(STAY.pup<=Date.now()){ PUP.st="idle"; PUP.t=0; PUP.until=1; renderDogSel(); }
     return;
   }
   if(PUP.st==="fetchgo"){
-    PUP.tx = clamp(BALL.x-0.02,0.03,0.92);
-    PUP.dir = PUP.tx>PUP.x?1:-1;
-    PUP.x += PUP.dir*0.09*dt;
-    if(Math.abs(PUP.x-PUP.tx)<0.025){
-      BALL.pcarried=true; BALL.held=false; BALL.vx=0; BALL.vy=0; BALL.off=false; TRICK.live=false;
-      PUP.st="fetchret"; PUP.tx=0.42; beep(320,.06);
+    // the ball has to actually be on the floor and free: chasing one in the air, in a hand, in
+    // BONES' mouth or out of the room is a pup running in circles
+    if(BALL.carried || BALL.held || BALL.off || BIN.ball){ PUP.st="idle"; PUP.t=0; PUP.until=1; return; }
+    const got=pupGoto(BALL.x,BALL.z,0.50,dt) || Math.hypot(BALL.x-PUP.x,(BALL.z-PUP.z)*1.5)<0.05;
+    if(got && BALL.hz<0.06){
+      BALL.pcarried=true; BALL.held=false; BALL.vx=0; BALL.vz=0; BALL.vh=0; BALL.off=false; TRICK.live=false;
+      PUP.st="fetchret"; beep(320,.06);
     }
+    if(PUP.t>12){ PUP.st="idle"; PUP.t=0; PUP.until=1; }     // he gives up rather than orbit forever
     return;
   }
   if(PUP.st==="fetchret"){
-    PUP.dir = PUP.tx>PUP.x?1:-1;
-    PUP.x += PUP.dir*0.08*dt;
-    if(Math.abs(PUP.x-PUP.tx)<0.02){
-      BALL.pcarried=false;
-      BALL.x=clamp(PUP.x+PUP.w*0.8,0.03,0.95); BALL.y=0.795; BALL.vx=0; BALL.vy=0; BALL.cool=1.5;
-      PUP.st="yip"; PUP.t=0; PUP.until=1.2;
+    const nr=pupNear();
+    if(pupGoto(nr.x,nr.z,0.42,dt)){
+      PUP.dir=1; pupDropBall();
+      PUP.st="yip"; PUP.t=0; PUP.until=1.2; PUP.fi=0;
       heartsBurst(2); beep(900,.06); setTimeout(()=>beep(1050,.07),120);
       pupAddXP(6); tickTodo("p_play");
       toast(S.pup.name+" BRINGS IT BACK! GOOD PUP!");
@@ -5218,6 +5543,7 @@ function pupTick(dt){
     return;
   }
   if(PUP.st==="drink"||PUP.st==="eat"){
+    if(CAM.state===PUP.st+"go" || CAM.state===PUP.st){ PUP.st="idle"; PUP.t=0; PUP.until=2.5; return; }   // his turn
     if(PUP.st==="drink"){ P2.thirst=clamp(P2.thirst+10*dt,0,100); BOWL.level=Math.max(0,BOWL.level-0.05*dt); }
     else { P2.hunger=clamp(P2.hunger+9*dt,0,100); FBOWL.level=Math.max(0,FBOWL.level-0.05*dt); }
     if(PUP.t>4 || (PUP.st==="drink"?P2.thirst:P2.hunger)>=90 || (PUP.st==="drink"?BOWL:FBOWL).level<=0){
@@ -5226,29 +5552,71 @@ function pupTick(dt){
     return;
   }
   if(PUP.st==="go"){
-    PUP.dir = PUP.tx>PUP.x?1:-1;
-    PUP.x += PUP.dir*0.06*dt;
-    if(Math.abs(PUP.x-PUP.tx)<0.02){ PUP.st=PUP.next; PUP.dir=-1; PUP.t=0; if(PUP.next==="idle") PUP.until=1.5; }
+    if(pupGoto(PUP.tx,PUP.tz,0.30,dt) || PUP.t>9){
+      PUP.st=PUP.next; PUP.t=0; PUP.fi=0;
+      if(PUP.next==="drink"||PUP.next==="eat") PUP.dir=-1;    // side-on at the bowl, as BONES stands
+      if(PUP.next==="idle") PUP.until=1.5;
+    }
     return;
   }
-  if((PUP.st==="idle"||PUP.st==="walk") && Math.abs((PUP.x+PUP.w/2)-(CAM.x+CAMDWF/2))<0.14){
-    PUP.st="walk";
-    PUP.dir = (PUP.x+PUP.w/2)<(CAM.x+CAMDWF/2) ? -1 : 1;
-    PUP.until=Math.max(PUP.until,0.8);
+  // he keeps out from under BONES' feet: too close and he trots off somewhere else
+  if((PUP.st==="idle"||PUP.st==="walk") && Math.hypot(PUP.x-CAM.x,(PUP.z-(CAM.z||0.6))*1.5)<0.13){
+    const w=pupWanderSpot(); PUP.st="walk"; PUP.tx=w.x; PUP.tz=w.z; PUP.t=0; PUP.until=4;
   }
   if(PUP.st==="walk"){
-    PUP.x=clamp(PUP.x+PUP.dir*0.045*dt,0.05,0.9);
-    if(PUP.x<=0.05||PUP.x>=0.9) PUP.dir*=-1;
+    if(pupGoto(PUP.tx,PUP.tz,0.15,dt) || PUP.t>=PUP.until){ PUP.st="idle"; PUP.t=0; PUP.until=1.2+Math.random()*2; }
+    return;
   }
   if(PUP.t>=PUP.until){
     PUP.t=0;
-    if(P2.thirst<48 && BOWL.level>0.05){ PUP.st="go"; PUP.tx=0.06; PUP.next="drink"; PUP.until=99; return; }
-    if(P2.hunger<48 && FBOWL.level>0.05){ PUP.st="go"; PUP.tx=0.14; PUP.next="eat"; PUP.until=99; return; }
-    // the same bed BONES has, wherever it is — this used to be hard-typed at the old back-wall x
-    if((CLK.h>=22||CLK.h<6) && S.bedTier>0){ PUP.st="go"; PUP.tx=SPOT.bed.x+0.05; PUP.next="nap"; PUP.until=99; return; }
-    PUP.st = Math.random()<0.5 ? "walk" : "idle";
-    PUP.dir = Math.random()<0.5?-1:1;
-    PUP.until = 1.5+Math.random()*2.5;
+    /* The bowls are where they really are now (front-right), approached from behind as BONES does -
+       but from a little to the left of where HE stands, and never while he is at that bowl: two
+       dogs drawn on one spot is one dog with eight legs. He waits his turn. */
+    const bonesAt = k => (CAM.state===k+"go"||CAM.state===k) ;
+    if(P2.thirst<48 && BOWL.level>0.05 && !bonesAt("drink")){ PUP.st="go"; PUP.tx=SPOT.water.x-0.045; PUP.tz=SPOT.water.z-0.13; PUP.next="drink"; return; }
+    if(P2.hunger<48 && FBOWL.level>0.05 && !bonesAt("eat")){ PUP.st="go"; PUP.tx=SPOT.food.x-0.045; PUP.tz=SPOT.food.z-0.13; PUP.next="eat"; return; }
+    // the same bed BONES has: the rug, curled up at one end of it
+    if((CLK.h>=22||CLK.h<6) && S.bedTier>0){ PUP.st="go"; PUP.tx=SPOT.bed.x+0.11; PUP.tz=SPOT.bed.z+0.03; PUP.next="nap"; return; }
+    if(Math.random()<0.6){ const w=pupWanderSpot(); PUP.st="walk"; PUP.tx=w.x; PUP.tz=w.z; PUP.until=6; }
+    else { PUP.st="idle"; PUP.dir=Math.random()<0.5?-1:1; PUP.until=1.5+Math.random()*2.5; }
+  }
+}
+// which posed set he wears standing still - BONES' table, for the handful of things a pup does
+function pupPose(){
+  const st=PUP.st;
+  return st==="nap" ? "rest" : (st==="drink"||st==="eat") ? "sniff" : st==="stay" ? "sit"
+       : st==="yip" ? "beg" : "idle";
+}
+/* Drawn by the same two routines that draw BONES - dogDirDraw for the walk sheets and the
+   floor-line anchored posed sets for everything else - so the two of them can never look like
+   they came from different games again. */
+function pupDraw(ctx,w,h,t){
+  if(!S.pup.owned) return;
+  const bf=pupBodyF(), cx=rmX(PUP.x,PUP.z)*w, fy=rmY(PUP.z)*h;
+  rmShadow(ctx,w,h,PUP.x,PUP.z,0.055*pupYoung(),0.32);
+  const dirReady = DOGDIRIMG.E && DOGDIRIMG.E.complete && DOGDIRIMG.E.naturalWidth;
+  let bw=0, top=fy;
+  if(PUP.moving && dirReady && dogDirDraw(ctx,w,h,PUP.x,PUP.z,PUP.oct|0,PUP.walkPh|0,bf)){
+    const D=DOGDIR[DOGDIR_MAP[((PUP.oct|0)%8+8)%8].k], sc=bf/D.body*h;
+    bw=D.w*sc; top=fy-D.body*sc*1.15;
+  } else {
+    const frames=DOGIMG[pupPose()]||DOGIMG.idle, art=frames.__art;
+    const img=frames[PUP.fi%frames.length];
+    if(art && img && img.complete && img.naturalWidth){
+      const dh=h*bf*(art.h/art.body), dw=dh*img.naturalWidth/img.naturalHeight;
+      const anchor=dh*(art.foot/art.h);
+      ctx.save(); ctx.imageSmoothingEnabled=false;
+      if(PUP.dir<0){ ctx.translate(cx*2,0); ctx.scale(-1,1); }
+      ctx.drawImage(img, cx-dw/2, fy-anchor, dw, dh);
+      ctx.restore();
+      bw=dw; top=fy-anchor;
+    }
+  }
+  if(bw) PUPBOX={x0:(cx-bw*0.55)/w, x1:(cx+bw*0.55)/w, y0:top/h-0.02, y1:fy/h+0.03};
+  if(PUP.st==="nap"){
+    const zz=(t*0.6)%1;
+    ctx.save(); ctx.globalAlpha=1-zz; ctx.fillStyle="#ccc"; ctx.font="8px 'Press Start 2P',monospace";
+    ctx.fillText("z", cx+bw*0.25, top-6-zz*14); ctx.restore();
   }
 }
 const PET = { left:6, timer:0, lp:0, px:0, py:0, stroked:false, heat:0, down:false };
@@ -5810,11 +6178,7 @@ function heartsBurst(n){
   for(let i=0;i<n;i++) HP.push({x:CAM.x+0.10+(Math.random()-0.5)*0.10, rise:Math.random()*12, life:1.6, i:Math.floor(Math.random()*HEARTIMG.length)});
 }
 function dropBallHere(){
-  if(BALL.pcarried){
-    BALL.pcarried=false;
-    BALL.x=clamp(PUP.x+PUP.w*0.7,0.03,0.95); BALL.y=0.795;
-    BALL.vx=0; BALL.vy=0; BALL.cool=1.5;
-  }
+  pupDropBall();
   if(!BALL.carried) return;
   BALL.carried=false; BALL.off=false;
   BALL.x=clamp(CAM.x+CAMDWF*0.8,0.03,0.95); BALL.y=0.795;
@@ -5921,8 +6285,8 @@ function camBehavior(dt){
   burstTick(dt);
   const FLOOR=0.795;      // kept: the old glass-space floor line, still read by a few HUD bits
   if(BALL.pcarried){
-    BALL.x = clamp(PUP.x + (PUP.dir>0? PUP.w*0.75 : PUP.w*0.05),0.03,0.97);
-    BALL.z = 0.78; BALL.hz = 0.05; ballSyncY();
+    const m=pupMouth();        // in HIS mouth, at his depth - see pupMouth
+    BALL.x = clamp(PUP.x+m.dx,0.02,0.98); BALL.z = clamp(PUP.z+m.dz,0.04,0.98); BALL.hz = m.hz; ballSyncY();
   } else if(BALL.carried){
     // IN HIS MOUTH, and that now means his mouth: the measured muzzle of the frame on screen,
     // sideways offset and all, rather than his floor centre at a guessed height
@@ -6768,7 +7132,7 @@ function robotTick(dt){
       if(Math.random()<0.22)                  // grit kicked up behind the tracks
         SUDS.push({x:B.x-B.dir*0.035, y:0.795, r:1.4+Math.random()*2.2, life:0.32});
       // he pauses under the photo of the BONES who came before. once per trip.
-      if(S.memorialSrc && !B.sawPhoto && B.x>0.15 && B.x<0.25){
+      if((S.memorial||[]).length && !B.sawPhoto && B.x>0.80){      // under THE WALL
         B.sawPhoto=true;
         if(Math.random()<0.5){ B.pauseT=1.7; B.pauseMsg="..."; }
       }
@@ -7115,14 +7479,14 @@ function dogDirFeet(k){
   DOGDIR_FEET[k]=out;
   return out;
 }
-function dogDirDraw(ctx,w,h,x,z,oct,fi){
+function dogDirDraw(ctx,w,h,x,z,oct,fi,bodyF){
   const D=DOGDIR_MAP[((oct|0)%8+8)%8], a=DOGDIR[D.k], img=DOGDIRIMG[D.k];
   if(!a||!img||!img.complete||!img.naturalWidth) return false;
   const n=a.n, f=(((fi|0)%n)+n)%n;
   /* ONE size rule, shared with the standing sets. dogBodyF() ALREADY carries his depth, so the
      rmSc(z) that used to be multiplied in here was the depth counted twice: he swelled by a third
      the moment he started walking at the near edge and shrank by nearly half up at the wall. */
-  const sc=dogBodyF()/a.body*h;
+  const sc=(bodyF||dogBodyF())/a.body*h;      // bodyF: the pup's own size; BONES passes none
   const dw=a.w*sc, dh=a.h*sc;
   const cx=rmX(x,z)*w, fy=rmY(z)*h;
   const feet=dogDirFeet(D.k);
@@ -9492,6 +9856,11 @@ function drawCam(t){
      dog all paint over it in the order their own depths demand. It was still going in after the
      bot, left over from when it stood at the near edge and had to be on top of everything. */
   const bowlsFront = CAM.z < SPOT.food.z+0.02;     // he is behind them: they paint over him
+  /* THE PUP GOES IN BY DEPTH TOO: behind the bowls, behind BONES, or in front of the pair of them.
+     Four slots, so whichever of the three is nearest is always the one painted last. */
+  const pupBack = S.pup.owned && PUP.z < (CAM.z||0.6), pupBehindBowls = S.pup.owned && PUP.z < SPOT.food.z+0.02;
+  let pupDone = !S.pup.owned;
+  if(!pupDone && pupBack && !bowlsFront && pupBehindBowls){ pupDraw(ctx,w,h,t); pupDone=true; }
   if(!bowlsFront) drawRoomFurniture(ctx,w,h,t,gy,bwlX,bwlY,fbX,fbY,bwlW,bwlH,bw2,bh2);
   if(S.hoopOwned){
     const hx0=HOOP.x0*w, hx1=HOOP.x1*w, hy=HOOP.y*h;
@@ -9507,23 +9876,7 @@ function drawCam(t){
     }
     ctx.strokeStyle="#fff"; ctx.lineWidth=3;
   }
-  // memorial photo of the previous BONES (tappable)
-  if(S.memorialSrc && MEMIMG && MEMIMG.complete){
-    const mw2=w*0.11, mh2=mw2*1.25;
-    ctx.strokeStyle="#fff"; ctx.lineWidth=3;
-    ctx.strokeRect(w*0.14-3, h*0.15-3, mw2+6, mh2+6);
-    ctx.drawImage(MEMIMG, w*0.14, h*0.15, mw2, mh2);
-  }
-  if(S.bedTier>0 && S.pup.owned){
-    const bx3=w*0.83, bw3=w*0.13, bh3=h*0.05;
-    ctx.strokeRect(bx3,gy-bh3,bw3,bh3);
-    ctx.strokeRect(bx3+4,gy-bh3+4,bw3-8,bh3-4);
-    if(PUP.st==="nap"){
-      ctx.fillStyle="#888"; ctx.font="7px 'Press Start 2P',monospace";
-      ctx.fillText("z", bx3+bw3*0.7, gy-bh3-6);
-      ctx.fillStyle="#fff";
-    }
-  }
+  memDraw(ctx,w,h);          // THE WALL - everyone who came before, far right of the back wall
   // wall sponge (drag onto BONES to scrub) — yellow, chamfered sponge silhouette with pore dimples
   {
     const sx=(SPONGE.held?SPONGE.x:SPONGE_X)*w, sy=(SPONGE.held?SPONGE.y:SPONGE_Y)*h;
@@ -9706,6 +10059,7 @@ function drawCam(t){
     rmShadow(ctx,w,h,ROBOT.x,ROBOT_Z,0.05,0.28);
     drawRobot(ctx,w,h,rmY(ROBOT_Z)*h,t);
   }
+  if(!pupDone && pupBack){ pupDraw(ctx,w,h,t); pupDone=true; }
   /* HE STANDS ON THE FLOOR PLANE. Position and size both come out of his depth, so walking toward
      you makes him bigger and walking to the back wall smaller, with no separate rule for either. */
   let dx=rmX(CAM.x,CAM.z)*w;
@@ -9742,8 +10096,10 @@ function drawCam(t){
     { const up=clamp(dogLift()/Math.max(1e-4,dogBodyFloor()*0.55),0,1);
       rmShadow(ctx,w,h,CAM.x,CAM.z, 0.055*(1-up*0.30), 0.32*(1-up*0.62)); }
   }
+  if(!pupDone && (!bowlsFront || pupBehindBowls)){ pupDraw(ctx,w,h,t); pupDone=true; }
   if(binFront) drawBin(ctx,w,h,t);
   if(bowlsFront) drawRoomFurniture(ctx,w,h,t,gy,bwlX,bwlY,fbX,fbY,bwlW,bwlH,bw2,bh2);
+  if(!pupDone) pupDraw(ctx,w,h,t);
   if(BALL.held || BALL.carried) drawBallNow();   // ...over the room rather than behind it
   // bags put down somewhere that is not the bin
   for(const b of BAGS){ rmShadow(ctx,w,h,b.x,b.z,0.03,0.3); drawBag(ctx,rmX(b.x,b.z)*w,rmY(b.z)*h-9*rmSc(b.z),15*rmSc(b.z),t,false); }
@@ -9859,21 +10215,6 @@ function drawCam(t){
     ctx.canvas.style.transform="";
   }
   // XP bar (crystal style): pulses near level-up
-  if(S.pup.owned){
-    const pk2 = PUP.st==="walk"||PUP.st==="go" ? "walk" : (PUP.st==="drink"||PUP.st==="eat") ? "sniff" : "idle";
-    const pfr = DOGIMG[pk2]||DOGIMG.idle;
-    const pim = pfr[PUP.fi%pfr.length];
-    if(pim.complete && pim.naturalWidth){
-      const ph2=h*0.44*0.42*CAMZ(), pw2=ph2*pim.naturalWidth/pim.naturalHeight;
-      PUP.hF=ph2/h;
-      PUP.w=pw2/w;
-      const px2=PUP.x*w;
-      ctx.save(); ctx.imageSmoothingEnabled=false;
-      if(PUP.dir<0){ ctx.translate(px2*2+pw2,0); ctx.scale(-1,1); }
-      ctx.drawImage(pim, px2, gy-ph2, pw2, ph2);
-      ctx.restore();
-    }
-  }
   const need=xpNeed(S.lvl), tFrac=clamp(S.xp/need,0,1);
   if(S.lvl<XPANIM.lvl){ XPANIM.lvl=S.lvl; XPANIM.frac=tFrac; XPANIM.pauseT=0; } // successor reset
   if(XPANIM.pauseT>0){
@@ -9916,7 +10257,7 @@ function drawCam(t){
   ctx.globalAlpha=1;
   ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="left";
   const dl=Math.min(XPANIM.lvl,S.lvl);
-  ctx.fillText(showPup ? S.pup.name+" \u2014 PUPPY LV."+S.pup.lvl : NAME()+" \u2014 "+stageName(dl)+" LV."+dl, xbX, xbY-5);
+  ctx.fillText(showPup ? S.pup.name+" \u2014 "+pupStageName()+" LV."+S.pup.lvl : NAME()+" \u2014 "+stageName(dl)+" LV."+dl, xbX, xbY-5);
   ctx.textAlign="right";
   if(XPANIM.ready){ ctx.fillStyle=Math.floor(t*3)%2?"#fff":"#f22"; ctx.fillText("TAP \u25B2 LEVEL UP!", xbX+xbW, xbY-5); ctx.fillStyle="#fff"; }
   else if(!showPup && XPANIM.pauseT<=0 && (S.pts||0)>0) xpRemindDraw(ctx,t,xbX,xbY,xbW,xbH);
@@ -11376,7 +11717,7 @@ $("#gooutList").addEventListener("click",e=>{
         if(S.pup.owned) return toast("ONE PUPPY IS PLENTY OF CHAOS.",1);
         if(S.money<500) return toast("A PUPPY COSTS £500. KEEP WORKING.",1);
         S.money-=500;
-        const suf=[" II"," III"," IV"," V"," VI"][Math.min(S.gen-1,4)];
+        const suf=" "+genRoman(S.gen+1);      // the generation after this one
         const nm=(prompt("NAME THE PUPPY", (S.dogName||"BONES")+suf)||"").trim().toUpperCase().slice(0,10);
         S.pup.owned=true; S.pup.name=nm||((S.dogName||"BONES")+suf);
         S.pup.hunger=70; S.pup.thirst=70; S.pup.mood=80; S.pup.xp=0; S.pup.lvl=1;
@@ -11431,7 +11772,7 @@ function renderDogSel(){
   const stayLbl=id=> STAY[id]>Date.now() ? "STAYING" : "STAY";
   const btn=(id,nm,stage,act)=>'<div class="dogbtn'+(act?" active":"")+'" data-dog="'+id+'"><img src="'+PORTRAITS.happy+'"><span>'+nm+'<br><span class="tiny" style="color:#999">'+stage+'</span></span><button class="staybtn" data-stay="'+id+'">'+stayLbl(id)+'</button></div>';
   el.innerHTML = btn("bones", NAME(), stageName(Math.min(XPANIM.lvl,S.lvl))+" LV."+Math.min(XPANIM.lvl,S.lvl), S.sel==="bones")
-    + btn("pup", S.pup.name, "PUPPY LV."+S.pup.lvl+" \u2014 GEN "+["II","III","IV","V","VI","VII"][Math.min(S.gen-1,5)], S.sel==="pup");
+    + btn("pup", S.pup.name, pupStageName()+" LV."+S.pup.lvl+" \u2014 GEN "+genRoman(S.gen+1), S.sel==="pup");
 }
 function flashDogSel(){
   const el=document.querySelector('#dogSel .dogbtn[data-dog="'+S.sel+'"]');
@@ -11455,7 +11796,7 @@ $("#bFetch").onclick=()=>{
     if(BALL.carried) return toast(NAME()+" HAS THE BALL \u2014 CALL HIM OFF.",1);
     if(BALL.off) return toast("THE BALL ROLLED OUT OF SIGHT.",1);
     STAY.pup=0;
-    PUP.st="fetchgo"; PUP.tx=clamp(BALL.x-0.02,0.03,0.92); PUP.until=99; PUP.t=0;
+    PUP.st="fetchgo"; PUP.until=99; PUP.t=0;
     beep(660,.07); toast(S.pup.name+": FETCH!");
     return;
   }
@@ -11727,7 +12068,7 @@ $("#bCall").onclick=()=>{
   if(R.active||OUTING.active) return toast("BONES ISN'T HOME",1);
   if(S.pup.owned && S.sel==="pup"){
     STAY.pup=0;
-    PUP.st="go"; PUP.tx=0.42; PUP.next="idle"; PUP.until=99; PUP.t=0;
+    PUP.st="go"; PUP.tx=pupNear().x; PUP.tz=pupNear().z; PUP.next="idle"; PUP.until=99; PUP.t=0;
     heartsBurst(1); beep(880,.06); setTimeout(()=>beep(880,.06),140);
     toast(S.pup.name+" COMES RUNNING!");
     return;
@@ -12187,6 +12528,15 @@ function loadGame(){
     const data=JSON.parse(raw);
     if(!data || !data.S) return false;
     deepAssign(S,data.S); deepAssign(PUP,data.PUP); deepAssign(BALL,data.BALL);
+    /* THE WALL, from before it existed: a save with the one old memorial photo has had exactly the
+       dogs before this one, and all that is known about them is their number. They go up anyway. */
+    S.memorial=Array.isArray(S.memorial)?S.memorial:[];
+    S.legacy=S.legacy&&Array.isArray(S.legacy.perks)?S.legacy:{perks:[]};
+    if(!S.memorial.length && (S.gen||1)>1)
+      for(let g=1; g<S.gen; g++) S.memorial.push({name:(S.dogName||"BONES")+(g>1?" "+genRoman(g):""), gen:g,
+        lvl:99, stage:"SENIOR", pic:"happy", born:[], day:0, passed:null});
+    S.memorialSrc=null;
+    if(typeof PUP.z!=="number") PUP.z=0.74;      // a pup saved before he had a depth
     if(data.BOWL) BOWL.level=data.BOWL.level;
     if(data.FBOWL) FBOWL.level=data.FBOWL.level;
     deepAssign(STAY,data.STAY); deepAssign(CLK,data.CLK);
@@ -12390,6 +12740,7 @@ function runTitleSequence(onDone){
 // done at boot so the title is never cut short by the game screen appearing underneath it.
 function enterLoadedGame(){
   $("#start").classList.add("hidden"); $("#game").classList.remove("hidden");
+  if(S.legacyPick) setTimeout(openLegacyPick, 900);   // a gift left unchosen when the tab closed
   syncMoodMusic();
   const gapMs = S.lastSaveAt ? Date.now()-S.lastSaveAt : 0;
   if(gapMs>=WELCOME_BACK_MS) setTimeout(()=>showWelcomeBack(gapMs),450);
@@ -13322,7 +13673,7 @@ function startPark(plus){
     spd:95*(0.75+0.5*S.energy/100)*(S.senior?0.85:1)*lvlMul*moodMul*(1+0.18*fStam),   // STAMINA
     barkMax:Math.max(0.6, Math.max(1.2,3-0.06*S.lvl)*(1-0.22*attrF15("stam"))), barkCd:1, pulse:0,
     barkR:21*(0.8+0.4*S.hunger/100)*(1+0.10*fStr),                // STRENGTH — slightly wider
-    knock:150*(0.85+0.3*S.mood/100)*(1+0.5*fStr),                 // STRENGTH
+    knock:150*(0.85+0.3*S.mood/100)*(1+0.5*fStr)*legacyBoost(),   // STRENGTH, and THE LINE
     bones:carryTake(plus), kills:0, sideDone:0, dmgTaken:0, relic:null, waveBanner:null, shopFlash:null, apeKills:0, apeWaveT:0, idleT:0,
     worldMult:4, groves:1, groveCenters:[], woodsDir:null, woodsOff:0, leaves:[], barkBigLvl:0, barkFastLvl:0, agiLvl:0, speedBonus:null, shopSel:null,
     inv:0, fx:[],
@@ -13357,6 +13708,7 @@ function startPark(plus){
   PK.autoBark=false; PK.dashT=0; PK.dashCd=0; PK.barkQ=0; PK.barkHot=false;
   PK.dashLvl=0; PK.dashFire=[]; PK.dashHits=null; PK.dashLay=null;
   PK.kbT=0; PK.shopN=0; PK.upRecent={};
+  pkLegacyApply();         // THE LINE: the ladders he was born with, maxed before the first wave
   PK.starTrail=[]; PK.starFlash=0; PK.starBanner=0; PK.starWarnN=0;
   PK.tripT=0; PK.walkTrees=[]; PK.mush={plan:pkMushPlanned(), list:null};
   pkRoundStart();          // the round's clock and sheet, if this visit has one
@@ -16108,7 +16460,7 @@ const SWORD_IMG_DX=-16.67, SWORD_IMG_DY=-8.49, SWORD_IMG_DW=60.93, SWORD_IMG_DH=
 const SWORD_IMG_BLADE_X=6.2;   // where the blade begins, in the same shape-space — clips the gleam to the blade only
 function pkSwordTier(){ return PK.sword && PK.sword.state==="held" ? PK.sword.tier : 0; }
 function pkSwordScale(){ return SWORD_SCALE_T[clamp(pkSwordTier()-1,0,SWORD_MAX_TIER-1)]||1; }
-function pkSwordDmg(){ return Math.round((SWORD_DMG_T[clamp(pkSwordTier()-1,0,SWORD_MAX_TIER-1)]||0)*(1+0.35*attrF("str"))); }
+function pkSwordDmg(){ return Math.round((SWORD_DMG_T[clamp(pkSwordTier()-1,0,SWORD_MAX_TIER-1)]||0)*(1+0.35*attrF("str"))*legacyBoost()); }
 // somewhere BONES can actually see it land, and genuinely clear of trunks so it isn't swallowed
 // by a canopy the moment it sticks
 function pkSwordSite(){
@@ -16964,7 +17316,7 @@ const WING_CAP_LVL_CAP=4, WING_REGEN_LVL_CAP=4, WING_STOMP_LVL_CAP=4;
 function pkHasWings(){ return !!(PK.wings && PK.wings.state==="held"); }
 function pkWingStamMax(){ return WING_STAM_MAX + 40*(PK.wingCapLvl||0); }
 function pkWingRegen(){ return WING_REGEN + 4*(PK.wingRegenLvl||0); }
-function pkWingStompDmg(){ return Math.round((WING_STOMP_DMG + 7*(PK.wingStompLvl||0))*(1+0.35*attrF("str"))); }
+function pkWingStompDmg(){ return Math.round((WING_STOMP_DMG + 7*(PK.wingStompLvl||0))*(1+0.35*attrF("str"))*legacyBoost()); }
 function pkWingStompR(){ return WING_STOMP_R + 16*(PK.wingStompLvl||0); }
 // which frame of the unfurl to show. 0 is folded, 6 is fully spread; 4,5,6,5 is the beat loop.
 function pkWingFrame(t){
@@ -17154,7 +17506,7 @@ function pkWingLand(){
     beep(150,.1,"sawtooth");
     return;
   }
-  PK.wingCd=WING_CD*(1-0.22*attrF15("stam"));   // STAMINA — back in the air sooner
+  PK.wingCd=WING_CD*(1-0.22*attrF15("stam"))/legacyBoost();   // STAMINA — back in the air sooner, and THE LINE
   PK.shake=Math.max(PK.shake||0,1);
   const R=pkWingStompR(), DMG=pkWingStompDmg();
   pkWingRing(PK.x,PK.y,R*0.85,0.16,"#fff",true);
@@ -17508,7 +17860,7 @@ function pkInBarkCone(dx,dy,d,e){
    reach stays capped. This is the main lever that keeps a dense screen clearable rather than
    simply overwhelming — one bark should still meaningfully thin a crowd at wave 12. */
 // 1, then +1 every 3 waves from 4 — plus whatever STRENGTH has been trained into him
-function pkBarkDmg(){ return 1+Math.floor(Math.max(0,(PK.wave||1)-3)/3)+Math.floor(attrF("str")*2); }
+function pkBarkDmg(){ return (1+Math.floor(Math.max(0,(PK.wave||1)-3)/3)+Math.floor(attrF("str")*2))*legacyBoost(); }   // THE LINE
 /* The wave goal is now one number and one number only: how many enemies BONES has put down this
    wave (PK.waveKills, incremented in the single pkDownEnemy path). The old model tried to derive
    it from "quota still to spawn + qualifying enemies still alive", with a separate list of types
@@ -17597,7 +17949,9 @@ const DASH_FX =["-0.3s DASH COOLDOWN, LONGER DASH","-0.3s DASH COOLDOWN, LONGER 
                 "-0.3s DASH COOLDOWN, LONGER DASH","LEAVES A TRAIL OF FIRE - BURNS FOES, TREES AND GRASS"];
 function pkDashLv(){ return clamp(PK.dashLvl||0,0,DASH_LVL_CAP); }
 function pkDashDur(){ return DASH_T_LV[pkDashLv()]; }
-function pkDashCdMax(){ return DASH_CD_LV[pkDashLv()]; }
+function pkDashCdMax(){ return DASH_CD_LV[pkDashLv()]/legacyBoost(); }
+// the bark's real recharge: whatever the run has bought it down to, quickened by THE LINE
+function pkBarkCdMax(){ return PK.barkMax/legacyBoost(); }
 function pkDashFireOn(){ return pkDashLv()>=DASH_LVL_CAP; }
 const PK_BARK_BUF=0.15;   // a press this close to ready is held and fires the moment it can, not lost
 // the park is listening: no panel up, no cinematic running, no wave send-off holding the frame
@@ -17738,7 +18092,7 @@ function pkCtrlSync(){
   const set=(b,v)=>{ const k=v.toFixed(2); if(b._cd===k) return; b._cd=k; b.style.setProperty("--cd",k);
     b.classList.toggle("cooling",v>0.001); };
   const bb=$("#pkBarkBtn");
-  set(bb, clamp(PK.barkCd/Math.max(0.01,PK.barkMax),0,1));
+  set(bb, clamp(PK.barkCd/Math.max(0.01,pkBarkCdMax()),0,1));
   const star=pkStar();
   if(el._star!==star){ el._star=star; el.classList.toggle("star",star); }
   set($("#pkDashBtn"), clamp((PK.dashCd||0)/pkDashCdMax(),0,1));
@@ -17752,7 +18106,7 @@ function pkCtrlSync(){
   if(tag.textContent!==want) tag.textContent=want;
 }
 function pkBark(){
-  PK.barkCd = PK.barkMax;
+  PK.barkCd = pkBarkCdMax();
   PK.pulse=0.35;
   PK.pulseAng=pkBarkFace();   // the wave keeps the heading it was thrown on, even if he turns
   bark(0.82);
@@ -26131,7 +26485,7 @@ function parkDraw(t){
   pkDrawLoveTrail(ctx,SC,w,h,t);
   if(!bossHidesDog()){            // his bark belongs to him, and he is in the box
     /* THE CHARGE: the two SIDES of the cone, and nothing else. See BARK_SIDE_MIN. */
-    const frac2=1-clamp(PK.barkCd/PK.barkMax,0,1);
+    const frac2=1-clamp(PK.barkCd/pkBarkCdMax(),0,1);
     const omni=pkBarkOmni();
     const half=omni ? Math.PI : pkBarkArc()*Math.PI/360;
     const a0=pkBarkFace();
