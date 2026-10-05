@@ -131,6 +131,62 @@ button.red:active{background:#f22;color:#000}
 #pkTicker.warn{--c:#ff7a3d;--t:#ffb08a}
 #pkTicker.good{--c:#7fd46a}
 #pkTicker.info{--c:#d8d8d8}
+/* THE ROUND. The clock rides the header's right end, above the ticker, so news never hides the
+   time; the sheet is a tiny card top-left of the view. Both belong to the park and are hidden
+   everywhere else (see pkRoundSyncUI / restoreCamHeader). */
+#pkClock{position:absolute;top:3px;right:6px;z-index:6;display:none;align-items:center;gap:5px;
+  padding:3px 6px 3px 4px;font-size:8px;line-height:1;color:#fff;background:rgba(0,0,0,.62);border:2px solid #fff;
+  text-shadow:1px 1px 0 #000;pointer-events:none;transform-origin:50% 0;transition:color .3s ease,border-color .3s ease}
+#pkClock.on{display:flex}
+#pkClock i{position:relative;width:9px;height:9px;border:1.5px solid currentColor;border-radius:50%;box-sizing:border-box;flex:none}
+#pkClock i::before{content:"";position:absolute;left:3px;top:1px;width:1px;height:3px;background:currentColor}
+#pkClock i::after{content:"";position:absolute;left:3px;top:3px;width:3px;height:1px;background:currentColor}
+#pkClock.low{border-color:#ff3b3b;color:#ff6262;animation:pkClkBreath 1s ease-in-out infinite}
+@keyframes pkClkBreath{50%{transform:scale(1.13)}}
+#pkClock.hop,#pkClock.low.hop{animation:pkClkHop .45s cubic-bezier(.2,1.6,.4,1)}
+@keyframes pkClkHop{35%{transform:translateY(-6px) scale(1.12)}100%{transform:none}}
+#pkTicker.clk{padding-right:78px}
+#pkSheet{position:absolute;left:6px;top:30px;z-index:3;display:none;pointer-events:none;min-width:132px;
+  font-size:6px;line-height:1;color:#fff;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.3);
+  padding:5px 7px 5px;text-shadow:1px 1px 0 #000;transition:opacity .5s ease}
+#pkSheet.on{display:block}
+#pkSheet .ps-h{color:#e8c14a;letter-spacing:1px;margin-bottom:4px}
+#pkSheet .ps-r{position:relative;display:flex;align-items:center;gap:5px;padding:2px 0;white-space:nowrap;transition:color .4s ease}
+#pkSheet .ps-b{width:5px;height:5px;border:1px solid currentColor;flex:none;box-sizing:border-box;transition:background .3s ease}
+#pkSheet .ps-c{margin-left:auto;padding-left:8px;color:#c8c8cc}
+#pkSheet .ps-r::after{content:"";position:absolute;left:10px;right:0;top:50%;height:1px;background:#fff;
+  transform:scaleX(0);transform-origin:0 50%;transition:transform .3s ease}
+#pkSheet .ps-r.done{color:#7c7c84}
+#pkSheet .ps-r.done::after{transform:scaleX(1)}
+#pkSheet .ps-r.done .ps-b{background:#7fd46a;border-color:#7fd46a}
+#pkSheet .ps-cat{width:9px;height:7px;flex:none;opacity:.25;transition:opacity .3s ease}
+#pkSheet .ps-r.here .ps-cat{opacity:1}
+#pkSheet .ps-pop{position:absolute;right:-7px;top:0;color:#ff5d92;pointer-events:none;animation:pkHeartPop .7s ease-out forwards}
+@keyframes pkHeartPop{0%{transform:scale(.3);opacity:0}30%{transform:scale(1.5);opacity:1}100%{transform:translateY(-9px) scale(.9);opacity:0}}
+#pkSheet .ps-stamp{display:none;position:absolute;right:4px;top:-5px;border:2px solid #f4d23c;color:#f4d23c;font-size:7px;
+  padding:2px 3px;background:rgba(0,0,0,.6);transform:rotate(-10deg)}
+#pkSheet.clear .ps-stamp{display:block;animation:pkStamp .42s cubic-bezier(.2,1.6,.4,1)}
+@keyframes pkStamp{0%{transform:rotate(-10deg) scale(2.6);opacity:0}100%{transform:rotate(-10deg) scale(1);opacity:1}}
+#pkSheet.failed{opacity:.38}
+#resSheet{width:92%;margin:4px auto 8px;font-family:'Press Start 2P',monospace;background:#101014;border:1px solid #2a2a30;
+  padding:7px 9px;text-align:left;transition:opacity .4s ease}
+#resSheet.dim{opacity:.42}
+#resSheet .rs-h{display:flex;justify-content:space-between;font-size:7px;color:#e8c14a;margin-bottom:6px;letter-spacing:1px}
+#resSheet .rs-s{color:#8a8a92}
+#resSheet .rs-r{position:relative;display:flex;gap:6px;align-items:center;font-size:6px;line-height:1;color:#d8d8d8;padding:3px 0;
+  max-height:16px;overflow:hidden;transition:opacity .35s ease,max-height .35s ease,padding .35s ease,color .3s ease}
+#resSheet .rs-b{width:5px;height:5px;border:1px solid currentColor;flex:none;box-sizing:border-box}
+#resSheet .rs-r::after{content:"";position:absolute;left:11px;right:0;top:50%;height:1px;background:#fff;
+  transform:scaleX(0);transform-origin:0 50%;transition:transform .22s ease}
+#resSheet .rs-r.done{color:#6a6a72}
+#resSheet .rs-r.done::after{transform:scaleX(1)}
+#resSheet .rs-r.done .rs-b{background:#7fd46a;border-color:#7fd46a}
+#resSheet .rs-r.fade{opacity:0;max-height:0;padding:0}
+#resSheet .rs-r.in{animation:rsIn .35s ease both}
+#resSheet .rs-r.slot{color:#4a4a52}
+#resSheet .rs-r.in:nth-child(2){animation-delay:.07s} #resSheet .rs-r.in:nth-child(3){animation-delay:.14s}
+#resSheet .rs-r.in:nth-child(4){animation-delay:.21s} #resSheet .rs-r.in:nth-child(5){animation-delay:.28s}
+@keyframes rsIn{from{opacity:0;transform:translateY(6px)}}
 body.reduce-motion #pkTicker{transition:opacity .18s ease;transform:none}
 #camhead>*{transition:opacity .2s ease}
 #camhead.tk>*{opacity:0}                     /* the ticker has the line: the header steps aside */
@@ -903,6 +959,9 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
     <div id="cam">
       <div id="camhead"><span id="camlabel"><span class="rec">&#9679;</span> DOGCAM</span><span id="clock"></span><span id="camright"><span id="needAlert" class="hidden">!</span><span id="camstate">LIVE</span></span></div>
       <div id="pkTicker" aria-live="polite"><span class="pt-chip"></span><span class="pt-txt"></span><span class="pt-more"></span></div>
+      <!-- the round: its clock on the header, its sheet top-left (DOGPARK only) -->
+      <div id="pkClock" aria-live="off"><i></i><span id="pkClockT">2:00</span></div>
+      <div id="pkSheet"></div>
       <canvas id="dogcv"></canvas>
       <div id="camActions">
         <button id="rSnack" class="hidden">&#129460; BONE £3</button>
@@ -994,7 +1053,7 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.398a</span>
+          <span id="devToggle">v0.399a</span>
         </div>
       </div>
 
@@ -1150,6 +1209,8 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
           OWN A BALL? DRAG IT DOWN INTO THE CONTROL DECK AND LET GO — THAT'S <b>SLINGTOSS</b>. AIM FOR THE BIN UNDER THE WINDOW. HE'LL CHASE IT DOWN AND BRING IT BACK EITHER WAY. OR TAP PLAY FETCH FROM HOME AND HE'LL START THE GAME HIMSELF.<br><br>
           <span class="gh">WALKS & THE DOGPARK</span><br>
           TAP GO OUT FOR WORK, TRAINING OR THE BEACH — OR HEAD TO THE DOGPARK ONCE HE HITS LV.5. BARK AT SQUIRRELS, BIRDS & CATS TO SCARE THEM OFF — HE DOESN'T HURT ANYONE, THEY JUST DROP A BONE AND SCUTTLE AWAY. SURVIVE THE WAVES AND REACH THE RED EXIT TO BANK REAL XP BEFORE HE GETS OVERRUN.<br><br>
+          <span class="gh">ROUNDS &amp; THE SHEET</span><br>
+          FROM YOUR SECOND SHEET ON, EVERY VISIT IS A ROUND: A 2:00 CLOCK ON THE HEADER AND FIVE GOALS TOP-LEFT. GRAB THE <b>+30</b> CLOCKS LYING ON THE GRASS FOR MORE TIME (UP TO 3:30). TICK ALL FIVE AND THE SHEET STAMPS CLEAR — THEN WALK OUT OF THE RED EXIT ALIVE TO BANK IT AND THE NEXT VISIT BRINGS THE NEXT SHEET. RUN OUT OF TIME AND HE WALKS HIMSELF OUT: EVERYTHING ELSE STILL BANKS, THE SHEET WAITS FOR NEXT TIME. EVERY BONE ON THE GROUND IS WORTH EXACTLY ONE.<br><br>
           <span class="gh">BARK &amp; DASH</span><br>
           IN THE DOGPARK HE BARKS WHEN YOU SAY SO. TAP <b>BARK</b> (OR SPACE) TO THROW A SHOUT DOWN THE CONE IN FRONT OF HIM — THE BUTTON GLOWS GOLD WHEN SOMETHING'S STANDING IN IT. TAP <b>DASH</b> (OR SHIFT) TO BOLT A FEW STRIDES WHICHEVER WAY YOU'RE PUSHING — THE DASH UPGRADES MAKE IT LONGER AND QUICKER TO COME BACK, AND THE FOURTH, <b>FIRE DASH</b>, LEAVES A TRAIL OF FLAME THAT BURNS CRITTERS, TREES AND GRASS. GET HIT AND HE'S KNOCKED BACK, FLASHES RED, AND CAN'T BE HURT AGAIN FOR A MOMENT WHILE HE FLICKERS. BUY <b>AUTO BARK</b> IN THE BETWEEN-WAVE SHOP AND HE BARKS BY HIMSELF FOR THE REST OF THE RUN (THE ZOOMIES ALWAYS DO). THE BARK UPGRADES WIDEN THE CONE, AND THE LAST ONE, OMNI BARK, MAKES IT A FULL CIRCLE.<br><br>
           <span class="gh">THE DOGPARK ECONOMY</span><br>
@@ -1315,6 +1376,8 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
           </div>
         </div>
         <div class="lines" id="resLines"></div>
+        <!-- the round's sheet: struck and rolled to the next one on a safe checkout, dimmed otherwise -->
+        <div id="resSheet" class="hidden"></div>
         <!-- THE GOALS LIST, paid out one at a time. Hidden unless the run actually finished
              something; a card that shows an empty checklist is a card that says "you failed". -->
         <div id="resQuests" class="hidden">
@@ -2385,12 +2448,15 @@ function pkTickerClear(){
 function syncParkHeader(){
   $("#camhead").classList.toggle("parkhdr", !bossOn());
   $("#camlabel").textContent = PK.plusMode ? "DOGPARK UNLEASHED" : "DOGPARK";
-  $("#clock").textContent    = "WAVE "+PK.wave;
-  $("#camstate").textContent = pkLeftCount()+pkLeftLabel();
+  const left=pkLeftCount()+pkLeftLabel();
+  $("#clock").textContent    = "WAVE "+PK.wave+(PK.round ? " \u00b7 "+left : "");
+  $("#camstate").textContent = PK.round ? "" : left;
+  pkRoundSyncUI();
   $("#needAlert").classList.add("hidden");     // home needs are not the park's business
 }
 function restoreCamHeader(){
   $("#camhead").classList.remove("parkhdr");
+  pkRoundHideUI();
   $("#camlabel").innerHTML='<span class="rec">&#9679;</span> DOGCAM';
 }
 function renderMeters(){
@@ -13054,7 +13120,7 @@ function startPark(plus){
     knock:150*(0.85+0.3*S.mood/100)*(1+0.5*fStr),                 // STRENGTH
     bones:carryTake(plus), kills:0, sideDone:0, dmgTaken:0, relic:null, waveBanner:null, shopFlash:null, apeKills:0, apeWaveT:0, idleT:0,
     worldMult:4, groves:1, groveCenters:[], woodsDir:null, woodsOff:0, leaves:[], barkBigLvl:0, barkFastLvl:0, agiLvl:0, speedBonus:null, shopSel:null,
-    chain:0, chainT:0, inv:0, fx:[],
+    inv:0, fx:[],
     x:0,y:0,vx:0,vy:0, joy:null,
     en:[], fr:[], gate:{}, gateArm:true, gateAsk:false, started:false, shop:null, biscuits:[], drops:[], nuts:[],
     powerups:[], zoomT:0, over:0, regenT:0, regenAcc:0, hurtT:0, hpSeen:0, zoom:1, sniffLvl:0, w2Stage:0,
@@ -13086,6 +13152,7 @@ function startPark(plus){
   PK.autoBark=false; PK.dashT=0; PK.dashCd=0; PK.barkQ=0; PK.barkHot=false;
   PK.dashLvl=0; PK.dashFire=[]; PK.dashHits=null; PK.dashLay=null;
   PK.kbT=0; PK.shopN=0; PK.upRecent={};
+  pkRoundStart();          // the round's clock and sheet, if this visit has one
   // the first few runs say where his bark went - after that the buttons speak for themselves
   if((S.pkCtrlTips||0)<3){ S.pkCtrlTips=(S.pkCtrlTips||0)+1; pkTick("TAP BARK TO SHOUT \u00B7 DASH TO BOLT", "info", 3.2); }
   SPARKS.length=0; HITFX.length=0;
@@ -13096,6 +13163,430 @@ function startPark(plus){
   $("#camstate").textContent = plus ? "DOGPARK UNLEASHED" : "DOGPARK";
   toast("SURVIVE. COLLECT BONES, BANK XP AT THE RED EXIT.");
   beep(660,.08); setTimeout(()=>beep(880,.08),120);
+}
+
+/* ==================== ROUNDS: THE CLOCK AND THE SHEET =========================================
+   A round is two minutes and a sheet of goals laid on top of the run. The waves, the shop,
+   UNLEASHED and WOLFIE carry on underneath exactly as they were, and nothing here stops a spawn.
+   Clearing the sheet does not end the park: he still has to walk out of the red exit alive, and
+   only then is it banked and the next sheet rolled for the next visit. The clock running out
+   fails THIS sheet only - he is walked to the exit and everything else banks as it always has.
+   Sheet 1 is the park he already has, so it lays nothing on the run; sheet 2 is the first real
+   one; sheet 3 is a slot not written yet, and with nothing in it the park runs exactly as before. */
+const ROUND_T=120, ROUND_CAP=210, ROUND_LOW=20;
+const P30_ADD=30, P30_LIFE=20, P30_WARN=4, P30_BACK=5, P30_NEXT=12, P30_FIRST=6, P30_R=18;
+const FLOWER_N=4, FLOWER_R=24, FLOWER_REST=3, FLOWER_HEAL_EVERY=0.4, FLOWER_HEAL=2;
+const GBONE_R=16, GBONE_GLINT=4, BUDDY_R=170, LOVE_SHEET_GOAL=20;
+const SHEETS=[
+  null,                                     // 1: the park he already has
+  {n:"SHEET 2", lines:[
+    {id:"toys",    n:"USE EVERY TOY"},
+    {id:"flowers", n:"LIE IN THE FLOWERS"},
+    {id:"buddy",   n:"ONE BUDDY"},
+    {id:"gbone",   n:"THE GOLDEN BONE"},
+    {id:"love",    n:"LOVEY DOVEY", goal:LOVE_SHEET_GOAL}
+  ]},
+  null                                      // 3: the slot
+];
+// a cat's face for the ONE BUDDY line: white, with the card showing through for its eyes
+const PK_CAT_FACE='<svg class="ps-cat" viewBox="0 0 9 7" shape-rendering="crispEdges">'+
+  ["#.......#","##.....##","#########","##.###.##","####p####",".#######.","..#####.."].map((r,y)=>
+    r.split("").map((c,x)=>c==="."?"":'<rect x="'+x+'" y="'+y+'" width="1" height="1" fill="'+(c==="p"?"#ff8ec6":"#fff")+'"/>').join("")).join("")+'</svg>';
+function pkSheetNo(){ return Math.max(2, S.pkSheet|0); }      // sheet 1 he already has
+function pkRoundHas(id){ const R=PK.round; return !!(R && R.def.lines.some(l=>l.id===id)); }
+function pkRoundOpen(id){ const R=PK.round; return pkRoundHas(id) && !R.over && !R.done[id]; }
+function pkRoundAllDone(){ const R=PK.round; return !!R && R.def.lines.every(l=>R.done[l.id]); }
+function pkRoundStart(){
+  const no=pkSheetNo(), def=SHEETS[no-1]||null;
+  PK.walkOut=null;
+  PK.round = def ? {no, def, t:ROUND_T, shown:ROUND_T, done:{}, over:null, clear:false, pipT:0,
+    love:0, toys:new Set(), buddyHere:false, loveSpawned:false,
+    p30:{st:"wait", t:P30_FIRST}, flowers:null, rest:0, restP:null, healAcc:0, hearts:[], gbone:null} : null;
+  pkSheetBuild();
+}
+function pkRoundTick(dt){
+  const R=PK.round; if(!R || R.over) return;
+  R.t=Math.max(0,R.t-dt);
+  // the digits ease after a +30 rather than snapping to the new time
+  R.shown = Math.abs(R.t-R.shown)>1.2 ? R.shown+(R.t-R.shown)*Math.min(1,dt*5) : R.t;
+  R.pipT=Math.max(0,R.pipT-dt);
+  if(R.t<=0){ pkRoundTimeUp(); return; }
+  pkP30Tick(dt);
+  if(pkRoundHas("flowers")) pkFlowersTick(dt);
+  if(pkRoundHas("gbone")) pkGboneTick();
+  if(pkRoundHas("buddy")) pkBuddyTick();
+  pkRoundCheckClear();
+}
+function pkRoundHit(id){
+  const R=PK.round; if(!R || R.over || R.done[id]) return;
+  R.done[id]=true;
+  beep(1320,.03,"square",.02,{prio:0}); setTimeout(()=>beep(1760,.03,"square",.016,{prio:0}),40);   // a soft click
+  pkSheetSync(); pkRoundCheckClear();
+}
+function pkRoundCheckClear(){
+  const R=PK.round; if(!R || R.over) return;
+  const all=pkRoundAllDone();
+  if(all===R.clear) return;
+  R.clear=all;
+  if(all){
+    R.pipT=0.9;                              // the exit's pip pulses once, then idles
+    pkTick("SHEET CLEAR \u2014 OUT BY THE RED EXIT TO BANK IT","gold",2.6,1);
+    beep(988,.07,"triangle",.04); setTimeout(()=>beep(1319,.08,"triangle",.04),90); setTimeout(()=>beep(1976,.12,"triangle",.035),190);
+  }
+  pkSheetSync();
+}
+function pkRoundAddTime(n){
+  const R=PK.round; if(!R) return;
+  R.t=Math.min(ROUND_CAP, R.t+n);           // past 3:30 the rest is simply ignored
+  const c=$("#pkClock");
+  if(c){ c.classList.remove("hop"); void c.offsetWidth; c.classList.add("hop"); clearTimeout(c._hopT); c._hopT=setTimeout(()=>c.classList.remove("hop"),460); }
+}
+// 0:00. This sheet fails; nothing else does. He is walked out like the end of a wipe - no sting.
+function pkRoundTimeUp(){
+  const R=PK.round; R.t=0; R.shown=0; R.over="time"; R.clear=false;
+  PK.joy=null; PK.dashT=0; PK.barkQ=0; PK.kbT=0;
+  PK.walkOut={t:0};
+  pkSheetSync();
+  pkTick("TIME'S UP \u2014 HEADING FOR THE EXIT","info",2.6,2);
+  beep(523,.09,"triangle",.035); setTimeout(()=>beep(392,.14,"triangle",.035),130);
+}
+function pkWalkOutTick(dt){
+  const W=PK.walkOut; W.t+=dt;
+  const dx=wd(PK.gate.x-PK.x,PK.WW), dy=wd(PK.gate.y-PK.y,PK.WH), d=Math.hypot(dx,dy);
+  if(W.t<0.7){ PK.vx*=0.85; PK.vy*=0.85; return; }        // a beat to read the clock
+  if(d<10 || W.t>5){ PK.walkOut=null; pkBank({timeUp:true}); return; }
+  const sp=Math.max(230, d/1.7), st=Math.min(d, sp*dt);
+  PK.vx=dx/d*sp; PK.vy=dy/d*sp;
+  PK.x=(PK.x+dx/d*st+PK.WW)%PK.WW; PK.y=(PK.y+dy/d*st+PK.WH)%PK.WH;
+  PK.faceI=pkFaceUpdate(PK.vx,PK.vy,PK.faceI); PK.faceAng=Math.atan2(PK.vy,PK.vx);
+}
+
+/* ---- where a pickup may land: grass he can walk to. Never on him, never in a mob, never in the
+   bandana dog's wood, never on the exit or a toy, never under a tree, never in fog he has not opened. */
+function pkFogOpen(x,y){
+  if(!PK.plusMode || !SETTINGS.nightMode || !PK.fog) return true;
+  const gx=Math.floor((((x%PK.WW)+PK.WW)%PK.WW)/FOG_CELL)%PK.fogCols, gy=Math.floor((((y%PK.WH)+PK.WH)%PK.WH)/FOG_CELL)%PK.fogRows;
+  return pkFogAlpha(PK.fog[gy*PK.fogCols+gx])<0.25;
+}
+function pkRoundSpotOk(x,y,o){
+  const D=(ax,ay)=>Math.hypot(wd(x-ax,PK.WW),wd(y-ay,PK.WH));
+  if(D(PK.x,PK.y)<(o.him||70)) return false;
+  if(PK.gate && PK.gate.x!=null && D(PK.gate.x,PK.gate.y)<(o.gate||100)) return false;
+  if(pkInGrove(x,y)) return false;
+  if(PK.hole && PK.hole.x!=null && D(PK.hole.x,PK.hole.y)<90) return false;
+  if(PK.swordSite && D(PK.swordSite.x,PK.swordSite.y)<110) return false;
+  if(o.not && D(o.not.x,o.not.y)<o.not.r) return false;
+  for(const a of PK.acts||[]) if(D(a.x*PK.WW,a.y*PK.WH)<44) return false;
+  const tr=o.tree||34; let blocked=false;
+  pkTreesNear(x,y,tr,t=>{ if(!blocked && t.state!=="ash" && D(t.x,t.y)<tr) blocked=true; });
+  if(blocked) return false;
+  if(o.mob){ let n=0; pkEnemiesNear(x,y,o.mob,e=>{ if(!e.fleeing && !e.love && D(e.x,e.y)<o.mob) n++; }); if(n) return false; }
+  return pkFogOpen(x,y);
+}
+function pkRoundSpotNear(rMin,rMax,o){
+  for(let k=0;k<40;k++){
+    const a=Math.random()*6.283, r=rMin+Math.random()*(rMax-rMin);
+    const x=(PK.x+Math.cos(a)*r+PK.WW)%PK.WW, y=(PK.y+Math.sin(a)*r+PK.WH)%PK.WH;
+    if(pkRoundSpotOk(x,y,o)) return {x,y};
+  }
+  return null;
+}
+
+/* ---- +30. One on the field at a time; it lives 20s and spends its last 4 rattling, flashing and
+   blanking before it steps out of time with a small pop. Missed: back 5s later somewhere else.
+   Taken: +30 (never past 3:30), a tick and a hop of the clock, and the next one waits 12s. */
+function pkP30Tick(dt){
+  const P=PK.round.p30;
+  if(P.st==="wait"){
+    P.t-=dt;
+    if(P.t>0) return;
+    const sp=pkRoundSpotNear(110,320,{him:80, gate:110, tree:30, mob:90, not:P.x!=null?{x:P.x,y:P.y,r:140}:null});
+    if(sp){ P.st="live"; P.x=sp.x; P.y=sp.y; P.life=P30_LIFE; P.ph=Math.random()*6.283; }
+    else P.t=0.5;                           // nowhere safe this instant - ask again shortly
+    return;
+  }
+  P.life-=dt;
+  if(PK.z<WING_CLEAR_Z && !PK.walkOut && Math.hypot(wd(P.x-PK.x,PK.WW),wd(P.y-PK.y,PK.WH))<P30_R){
+    pkRoundAddTime(P30_ADD);                // the collect always plays, even when it is all overflow
+    PK.fx.push({x:P.x, y:P.y-14, txt:"+30", life:0.9});
+    pkWingRing(P.x,P.y,30,0.32,"#fff");
+    for(let i=0;i<9;i++){ const a=Math.random()*6.283, v=40+Math.random()*50;
+      SPARKS.push({x:P.x, y:P.y-6, vx:Math.cos(a)*v, vy:Math.sin(a)*v-30, life:0.35+Math.random()*0.25}); }
+    beep(1568,.04,"square",.03); setTimeout(()=>beep(2093,.05,"square",.025),60);   // tick-tick
+    P.st="wait"; P.t=P30_NEXT;
+    return;
+  }
+  if(P.life<=0){                            // it stepped out of time: a small pop, no explosion
+    pkPuff(P.x,P.y,6,"#e8e8e8",34,0.35,2.2);
+    beep(760,.035,"sine",.03);
+    P.st="wait"; P.t=P30_BACK;
+  }
+}
+function pkDrawP30(ctx,DX,DY,WW,WH,w,h,t){
+  const P=PK.round && PK.round.p30; if(!P || P.st!=="live") return;
+  const RM=!!SETTINGS.reduceMotion;
+  let x=DX+wd(P.x-PK.x,WW), y=DY+wd(P.y-PK.y,WH);
+  if(x<-30||x>w+30||y<-30||y>h+30) return;
+  const k = P.life<P30_WARN ? 1-P.life/P30_WARN : 0;          // 0..1 through the last four seconds
+  if(k>0.68 && Math.floor(t*14)%2) return;                    // blank
+  const flash = k>0.3 && Math.floor(t*10)%2;                   // flash
+  if(k>0 && !RM) x+=Math.sin(t*70)*(0.8+2.2*k);                // rattle
+  const born=P30_LIFE-P.life, pop=born<0.25 ? 0.4+0.6*(born/0.25)*1.15 : 1;
+  const by=y-6+(RM?0:Math.sin(t*3+P.ph)*2);
+  ctx.save();
+  ctx.fillStyle="rgba(0,0,0,.25)"; ctx.beginPath(); ctx.ellipse(x,y+5,8,2.6,0,0,7); ctx.fill();
+  ctx.translate(x,by); ctx.scale(pop,pop);
+  ctx.fillStyle=flash?"#fff7c8":"#fff"; ctx.strokeStyle="#1b140c"; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.arc(0,0,7.5,0,7); ctx.fill(); ctx.stroke();
+  ctx.fillRect(-2,-11,4,2.5); ctx.strokeRect(-2,-11,4,2.5);    // the crown
+  ctx.strokeStyle="#1b140c"; ctx.lineWidth=1.5;
+  const a=-Math.PI/2+born*1.4;                                 // the hand goes round
+  ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(Math.cos(a)*5,Math.sin(a)*5); ctx.moveTo(0,0); ctx.lineTo(0,-3.5); ctx.stroke();
+  ctx.font="6px 'Press Start 2P',monospace"; ctx.textAlign="center";
+  pkOutlineText(ctx,"+30",0,18,"#fff");
+  ctx.restore(); ctx.textAlign="left";
+}
+
+/* ---- LIE IN THE FLOWERS. Four small pink patches, out of the way. Standing still in one heals
+   him; pink hearts drift up only while a heal is actually landing. Three seconds of stillness
+   ticks the line, and a patch he has rested in keeps its flowers. */
+function pkFlowersPlace(){
+  const R=PK.round, out=[];
+  for(let k=0;k<400 && out.length<FLOWER_N;k++){
+    const x=Math.random()*PK.WW, y=Math.random()*PK.WH;
+    if(out.some(f=>Math.hypot(wd(x-f.x,PK.WW),wd(y-f.y,PK.WH))<300)) continue;
+    if(!pkRoundSpotOk(x,y,{him:260, gate:170, tree:40})) continue;
+    const pts=[]; for(let i=0;i<8;i++){ const a=i*2.4+Math.random()*0.6, r=4+Math.random()*13; pts.push({x:Math.cos(a)*r, y:Math.sin(a)*r*0.55, s:0.8+Math.random()*0.5, ph:Math.random()*6.283}); }
+    out.push({x,y,pts,rest:0,done:false});
+  }
+  R.flowers=out;
+}
+function pkFlowersTick(dt){
+  const R=PK.round;
+  if(!R.flowers){ if(PK.trees.length) pkFlowersPlace(); return; }
+  const still = Math.hypot(PK.vx,PK.vy)<6 && !(PK.joy && Math.hypot(PK.joy.dx,PK.joy.dy)>JOY_DEAD) && !PK.jump && !(PK.dashT>0) && !(PK.kbT>0);
+  let inP=null;
+  for(const f of R.flowers) if(Math.hypot(wd(f.x-PK.x,PK.WW),wd(f.y-PK.y,PK.WH))<FLOWER_R){ inP=f; break; }
+  if(inP && still){
+    if(R.restP!==inP){ R.restP=inP; R.rest=0; R.healAcc=0; }
+    R.rest+=dt; R.healAcc+=dt;
+    while(R.healAcc>=FLOWER_HEAL_EVERY){
+      R.healAcc-=FLOWER_HEAL_EVERY;
+      if(PK.hp>0 && PK.hp<PK.maxhp){
+        PK.hp=Math.min(PK.maxhp,PK.hp+FLOWER_HEAL);
+        R.hearts.push({x:PK.x+(Math.random()-0.5)*12, y:PK.y-14, t:0, sw:Math.random()*6.283});
+      }
+    }
+    if(R.rest>=FLOWER_REST && !inP.done){ inP.done=true; pkRoundHit("flowers"); }
+  } else { R.restP=null; R.rest=0; R.healAcc=0; }
+  for(const f of R.flowers) f.rest = f===R.restP ? Math.min(1,f.rest+dt*2) : Math.max(0,f.rest-dt*2);
+  for(let i=R.hearts.length-1;i>=0;i--){ R.hearts[i].t+=dt; if(R.hearts[i].t>1.1) R.hearts.splice(i,1); }
+}
+function pkDrawFlowers(ctx,DX,DY,WW,WH,w,h,t){
+  const R=PK.round; if(!R || !R.flowers) return;
+  const RM=!!SETTINGS.reduceMotion;
+  for(const f of R.flowers){
+    const x=DX+wd(f.x-PK.x,WW), y=DY+wd(f.y-PK.y,WH);
+    if(x<-40||x>w+40||y<-40||y>h+40) continue;
+    const br = RM ? 1 : 1+0.08*f.rest*Math.sin(t*2.6);      // the patch breathes while he rests
+    ctx.save(); ctx.translate(x,y); ctx.scale(br,br);
+    ctx.fillStyle="rgba(255,142,198,.13)"; ctx.beginPath(); ctx.ellipse(0,0,FLOWER_R,FLOWER_R*0.55,0,0,7); ctx.fill();
+    for(const q of f.pts){
+      const sway=RM?0:Math.sin(t*1.8+q.ph)*0.8;
+      ctx.strokeStyle="#3e7a2c"; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(q.x,q.y+3); ctx.lineTo(q.x+sway,q.y-1); ctx.stroke();
+      const r=1.5*q.s;
+      ctx.fillStyle="#ff8ec6";
+      for(let k=0;k<4;k++){ const a=k*1.571+0.4; ctx.beginPath(); ctx.arc(q.x+sway+Math.cos(a)*r,q.y-1+Math.sin(a)*r,r*0.85,0,7); ctx.fill(); }
+      ctx.fillStyle="#ffe27a"; ctx.beginPath(); ctx.arc(q.x+sway,q.y-1,r*0.6,0,7); ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+// the hearts drift up and sway as they go, Mario-style; they never pile up in one place
+function pkDrawRoundHearts(ctx,SC){
+  const R=PK.round; if(!R || !R.hearts.length) return;
+  for(const hh of R.hearts){
+    const [sx,sy]=SC(hh.x,hh.y), k=hh.t/1.1;
+    ctx.globalAlpha=Math.max(0,1-k*k);
+    drawLoveHeart(ctx, sx+Math.sin(hh.t*5+hh.sw)*4, sy-hh.t*30, 3.4, "#ff5d92");
+  }
+  ctx.globalAlpha=1;
+}
+
+/* ---- THE GOLDEN BONE. Hidden on the winding path into the bandana dog's wood, under its fog. A
+   glint every four seconds is all it gives away. Finding it ticks the line; it pays nothing. */
+function pkGboneTick(){
+  const R=PK.round;
+  if(!R.gbone){
+    if(!PK.groveCenters.length || !PK.npc) return;
+    let g=PK.groveCenters[0], best=1e9;
+    for(const c of PK.groveCenters){ const d=Math.hypot(wd(c.x-PK.npc.x,PK.WW),wd(c.y-PK.npc.y,PK.WH)); if(d<best){ best=d; g=c; } }
+    const outerR=g.r, innerR=outerR*0.35, tt=0.3;
+    const ang=g.entryAngle+tt*GROVE_SWEEP, r=outerR+(innerR*0.22-outerR)*Math.min(1,tt/GROVE_COLLAPSE);
+    R.gbone={x:(g.x+Math.cos(ang)*r+PK.WW)%PK.WW, y:(g.y+Math.sin(ang)*r+PK.WH)%PK.WH, got:false};
+    return;
+  }
+  const B=R.gbone;
+  if(B.got || PK.z>=WING_CLEAR_Z) return;
+  if(Math.hypot(wd(B.x-PK.x,PK.WW),wd(B.y-PK.y,PK.WH))<GBONE_R){
+    B.got=true;
+    for(let i=0;i<12;i++){ const a=Math.random()*6.283, v=30+Math.random()*50;
+      SPARKS.push({x:B.x, y:B.y-4, vx:Math.cos(a)*v, vy:Math.sin(a)*v-30, life:0.4+Math.random()*0.3, gold:true}); }
+    beep(1319,.06,"sine",.04); setTimeout(()=>beep(1760,.07,"sine",.035),70); setTimeout(()=>beep(2637,.1,"sine",.03),150);
+    pkRoundHit("gbone");
+  }
+}
+function pkDrawGbone(ctx,DX,DY,WW,WH,w,h,t){
+  const B=PK.round && PK.round.gbone; if(!B || B.got) return;
+  const x=DX+wd(B.x-PK.x,WW), y=DY+wd(B.y-PK.y,WH);
+  if(x<-20||x>w+20||y<-20||y>h+20) return;
+  ctx.save();
+  ctx.fillStyle="rgba(0,0,0,.28)"; ctx.beginPath(); ctx.ellipse(x,y+3,6,1.8,0,0,7); ctx.fill();
+  drawBone(ctx,x,y,0.62,"#b8902a"); drawBone(ctx,x-0.5,y-0.5,0.55,"#e8c14a");
+  const g=(t%GBONE_GLINT)/0.4;                                 // the glint: once every four seconds
+  if(g<1){
+    const s=Math.sin(g*Math.PI)*6;
+    ctx.globalAlpha=Math.sin(g*Math.PI); ctx.fillStyle="#fff";
+    ctx.beginPath(); ctx.moveTo(x+3,y-2-s); ctx.lineTo(x+3.8,y-2.8); ctx.lineTo(x+3+s,y-2); ctx.lineTo(x+3.8,y-1.2);
+    ctx.lineTo(x+3,y-2+s); ctx.lineTo(x+2.2,y-1.2); ctx.lineTo(x+3-s,y-2); ctx.lineTo(x+2.2,y-2.8); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+
+/* ---- ONE BUDDY: a charmed cat, alive, close by. It is a state, not a moment - the line holds
+   while she is with him and lets go if she is lost, so what counts is that she is there at the exit. */
+function pkBuddyTick(){
+  const R=PK.round; let here=false;
+  for(const e of PK.en){
+    if(e.t==="cat" && e.love && !e.fleeing && e.hp>0 && Math.hypot(wd(e.x-PK.x,PK.WW),wd(e.y-PK.y,PK.WH))<BUDDY_R){ here=true; break; }
+  }
+  if(here===R.buddyHere) return;
+  R.buddyHere=here; R.done.buddy=here;
+  if(here) beep(1320,.03,"square",.02,{prio:0});
+  pkSheetSync();
+}
+// LOVEY DOVEY: every enemy the existing charm turns counts, alive or not
+function pkRoundCharm(){
+  const R=PK.round; if(!R || R.over || !pkRoundHas("love")) return;
+  R.love++;
+  if(R.done.love) return;
+  pkSheetHeartPop();
+  if(R.love>=LOVE_SHEET_GOAL) pkRoundHit("love"); else pkSheetSync();
+}
+// USE EVERY TOY: each obstacle pings white and puffs the first time he goes through it
+function pkRoundToy(a){
+  const R=PK.round; if(!R || R.over || !pkRoundHas("toys") || R.toys.has(a)) return;
+  R.toys.add(a);
+  const x=a.x*PK.WW, y=a.y*PK.WH;
+  pkWingRing(x,y,46,0.42,"#fff");
+  pkPuff(x,y,8,"#ffffff",50,0.45,2.6);
+  beep(1568,.05,"sine",.04); setTimeout(()=>beep(2093,.06,"sine",.03),55);
+  if(R.toys.size>=PK.acts.length) pkRoundHit("toys"); else pkSheetSync();
+}
+function pkRoundDrawGround(ctx,DX,DY,WW,WH,w,h,t){
+  if(!PK.round) return;
+  pkDrawFlowers(ctx,DX,DY,WW,WH,w,h,t);
+  pkDrawGbone(ctx,DX,DY,WW,WH,w,h,t);
+  pkDrawP30(ctx,DX,DY,WW,WH,w,h,t);
+}
+// the exit's gold pip: there while the sheet is clear, one pulse when it first clears
+function pkDrawExitPip(ctx,gx,gy,t){
+  const R=PK.round; if(!R || !R.clear || R.over) return;
+  const k=R.pipT>0 ? Math.sin((1-R.pipT/0.9)*Math.PI) : 0;
+  const px=gx+30, py=gy-17, r=4+k*4;
+  ctx.save();
+  if(k>0){ ctx.globalAlpha=0.5*k; ctx.fillStyle="#f4d23c"; ctx.beginPath(); ctx.arc(px,py,r*2.2,0,7); ctx.fill(); ctx.globalAlpha=1; }
+  ctx.fillStyle="#1b140c"; ctx.beginPath(); ctx.arc(px,py,r+1.5,0,7); ctx.fill();
+  ctx.fillStyle="#f4d23c"; ctx.beginPath(); ctx.arc(px,py,r,0,7); ctx.fill();
+  ctx.fillStyle="#fff6c0"; ctx.fillRect(px-r*0.45,py-r*0.45,r*0.5,r*0.5);
+  ctx.restore();
+}
+
+/* ---- the card on the view */
+function pkSheetBuild(){
+  const el=$("#pkSheet"); if(!el) return;
+  const R=PK.round;
+  if(!R){ el.className=""; el.innerHTML=""; return; }
+  el.className="";
+  el.innerHTML='<div class="ps-h">'+R.def.n+'</div>'+R.def.lines.map(l=>
+    '<div class="ps-r" data-id="'+l.id+'"><span class="ps-b"></span><span class="ps-n">'+l.n+'</span>'+
+    (l.id==="buddy"?PK_CAT_FACE:'')+'<span class="ps-c"></span></div>').join("")+'<div class="ps-stamp">CLEAR</div>';
+  pkSheetSync();
+}
+function pkSheetSync(){
+  const el=$("#pkSheet"), R=PK.round; if(!el || !R) return;
+  for(const l of R.def.lines){
+    const row=el.querySelector('.ps-r[data-id="'+l.id+'"]'); if(!row) continue;
+    row.classList.toggle("done",!!R.done[l.id]);
+    let c="";
+    if(l.id==="toys") c=Math.min(R.toys.size,(PK.acts||[]).length)+"/"+(PK.acts||[]).length;
+    else if(l.goal) c=Math.min(R.love,l.goal)+"/"+l.goal;
+    const ce=row.querySelector(".ps-c"); if(ce && ce.textContent!==c) ce.textContent=c;
+    if(l.id==="buddy") row.classList.toggle("here",!!R.buddyHere);
+  }
+  el.classList.toggle("clear", !!R.clear && !R.over);
+  el.classList.toggle("failed", R.over==="time" || R.over==="wipe" || R.over==="out");
+}
+function pkSheetHeartPop(){
+  const row=document.querySelector('#pkSheet .ps-r[data-id="love"]'); if(!row) return;
+  if(row.querySelectorAll(".ps-pop").length>=3) return;     // a big burst pops a few, not twenty
+  const h=document.createElement("span"); h.className="ps-pop"; h.textContent="\u2665";
+  row.appendChild(h); setTimeout(()=>h.remove(),720);
+}
+// header clock + card visibility, once a frame from syncParkHeader
+function pkRoundSyncUI(){
+  const c=$("#pkClock"), sh=$("#pkSheet"), tk=$("#pkTicker"), R=PK.round;
+  const on=!!R && PK.active && !bossOn();
+  if(c.classList.contains("on")!==on) c.classList.toggle("on",on);
+  if(tk && tk.classList.contains("clk")!==on) tk.classList.toggle("clk",on);
+  const cardOn = on && !PK.shop && !PK.friendsOpen && !PK.convertOpen;
+  if(sh.classList.contains("on")!==cardOn) sh.classList.toggle("on",cardOn);
+  if(!on) return;
+  const secs=Math.max(0,Math.ceil(R.shown-0.001));
+  const txt=Math.floor(secs/60)+":"+String(secs%60).padStart(2,"0");
+  const te=$("#pkClockT"); if(te.textContent!==txt) te.textContent=txt;
+  const low=R.t<=ROUND_LOW;
+  if(c.classList.contains("low")!==low) c.classList.toggle("low",low);
+}
+function pkRoundHideUI(){
+  for(const id of ["#pkClock","#pkSheet"]){ const e=$(id); if(e) e.classList.remove("on"); }
+  const tk=$("#pkTicker"); if(tk) tk.classList.remove("clk");
+}
+/* ---- the end of the run. A safe checkout with every line done banks the sheet: each line strikes,
+   the card rolls like the to-do list, and the next visit already has the next sheet. Anything
+   else leaves the same sheet waiting, shown dimmed - never flashed red at him. */
+function pkSheetSettle(how){
+  const R=PK.round, el=$("#resSheet");
+  if(!R){ if(el){ el.className="hidden"; el.innerHTML=""; } return false; }
+  const banked = how==="bank" && !R.over && pkRoundAllDone();
+  if(!R.over) R.over=how;
+  if(banked){ S.pkSheet=R.no+1; saveGame(true); }
+  if(!el) return banked;
+  el.className = banked ? "" : "dim";
+  const head=(a,b)=>'<div class="rs-h"><span>'+a+'</span><span class="rs-s">'+b+'</span></div>';
+  const sub = banked ? "CLEAR" : how==="time" ? "OUT OF TIME" : how==="bank" ? "NOT CLEARED" : "UNFINISHED";
+  el.innerHTML=head(R.def.n,sub)+'<div class="rs-rows">'+R.def.lines.map(l=>
+    '<div class="rs-r'+(!banked && R.done[l.id]?' done':'')+'"><span class="rs-b"></span><span>'+l.n+'</span></div>').join("")+'</div>';
+  if(!banked) return false;
+  const rows=[...el.querySelectorAll(".rs-r")];
+  let i=0;
+  const roll=()=>{
+    rows.forEach((r,k)=>setTimeout(()=>r.classList.add("fade"),k*60));
+    setTimeout(()=>{
+      const next=SHEETS[R.no]||null;
+      el.innerHTML=head("SHEET "+(R.no+1),"NEXT VISIT")+'<div class="rs-rows">'+(next
+        ? next.lines.map(l=>'<div class="rs-r in"><span class="rs-b"></span><span>'+l.n+'</span></div>').join("")
+        : '<div class="rs-r in slot"><span class="rs-b"></span><span>\u2026</span></div>'.repeat(3))+'</div>';
+      beep(880,.06,"triangle",.03); setTimeout(()=>beep(1175,.08,"triangle",.03),80);
+    }, rows.length*60+420);
+  };
+  const strike=()=>{
+    if(i<rows.length){ rows[i++].classList.add("done"); beep(1250+i*70,.035,"square",.02,{prio:0}); setTimeout(strike,230); }
+    else setTimeout(roll,480);
+  };
+  setTimeout(strike,700);
+  return true;
 }
 
 /* ===================== THE BURIAL =====================
@@ -13778,7 +14269,12 @@ const LOVE_SCUFFLE_CAP=6;         // impact bursts drawn per frame, so a big bra
 const LOVE_TUNE=[523,587,659,784,880,988,1175];   // C D E G A B D — rises the whole way up
 function pkLoveTrySpawn(){
   if(PK.loveTrail || PK.loveMode) return;
-  if(Math.random()>=LOVE_WAVE_CHANCE) return;
+  /* A sheet that asks for charms (or a charmed cat) needs the hearts to actually turn up inside
+     two minutes: while either line is open they come every other wave, and the cats' own wave
+     always brings a line if this round has not had one yet. */
+  const R=PK.round, want=!!R && (pkRoundOpen("love") || pkRoundOpen("buddy"));
+  const chance = !want ? LOVE_WAVE_CHANCE : (PK.wave>=3 && !R.loveSpawned) ? 1 : 0.5;
+  if(Math.random()>=chance) return;
   pkLoveSpawn();
 }
 function pkLoveSpawn(){
@@ -13806,6 +14302,7 @@ function pkLoveSpawn(){
     nodes.push({x,y,got:false,ph:Math.random()*6.283});
   }
   PK.loveTrail={active:true, nodes, next:0, life:LOVE_LIFE, t:0, fail:0};
+  if(PK.round) PK.round.loveSpawned=true;
   toast("♥ A TRAIL OF HEARTS — FOLLOW IT IN ORDER",1);
   beep(880,.07,"sine",.05); setTimeout(()=>beep(1175,.09,"sine",.045),100);
 }
@@ -13914,6 +14411,7 @@ function pkLoveTake(e){
     e.hp=e.hpMax;
   }
   pkLoveConvertFX(e);
+  pkRoundCharm();
   return true;
 }
 function pkLoveConvertFX(e){
@@ -14192,12 +14690,13 @@ function drawLoveHeart(ctx,x,y,r,col){
   ctx.bezierCurveTo(x+r*0.5, y-r*1.15, x+r*1.35, y-r*0.25, x, y+r*0.85);
   ctx.closePath(); ctx.fill();
 }
+/* BONES ARE BONES. A bone on the ground is one bone and picking it up adds one - no chain, no
+   streak, no wave rank, nothing that scales it. Only things that are named payouts (the golden
+   bird, a shop trade) ever hand over more than one, and they say so with a real number. A loose
+   bone's +1 is a small white pip, not a shout. */
 function pkGain(n,x,y){
-  PK.chain = PK.chainT>0 ? Math.min(3,PK.chain+1) : 1;   // capped lower — chain bonus was inflating bones well past shop costs
-  PK.chainT=3;
-  const g=Math.round(n+(PK.chain-1));
-  PK.bones+=g;
-  PK.fx.push({x,y,txt:"+"+g,life:0.9});
+  PK.bones+=n;
+  PK.fx.push(n===1 ? {x,y,txt:"+1",life:0.6,pip:true} : {x,y,txt:"+"+n,life:0.9});
   pkGainChime();
   /* A BONE IS A MEAL TO SOMETHING CURSED. This is the other half of the burn: daylight takes him
      apart and picking up drops puts him back together, so the run becomes a chase rather than a
@@ -16684,7 +17183,7 @@ function pkDashFireOn(){ return pkDashLv()>=DASH_LVL_CAP; }
 const PK_BARK_BUF=0.15;   // a press this close to ready is held and fires the moment it can, not lost
 // the park is listening: no panel up, no cinematic running, no wave send-off holding the frame
 function pkCanAct(){
-  return PK.active && !PK.shop && !PK.friendsOpen && !PK.convertOpen && !PK.gateAsk && !PK.endRunAsk && !PK.settingsOpen
+  return PK.active && !PK.walkOut && !PK.shop && !PK.friendsOpen && !PK.convertOpen && !PK.gateAsk && !PK.endRunAsk && !PK.settingsOpen
     && !bossOn() && !PK.holeCine && !PK.swordCine && !PK.wingsCine && !BURY.on && !(PK.waveOutro && PK.waveOutro.t<WAVE_OUTRO_DUR);
 }
 // not now: a dull blip and a little shake of the button, never a toast
@@ -17312,7 +17811,7 @@ function pkDownEnemy(e,ux,uy,o){
   e.shockT = o.shockT!=null ? o.shockT : 0.35;
   e.hitT=0.3;
   e.fleeVx=(ux||0)*fs; e.fleeVy=(uy||0)*fs;
-  PK.drops.push({x:e.x, y:e.y, v:e.boss?8:1, gold:!!e.alpha||!!e.boss, life:25});
+  PK.drops.push({x:e.x, y:e.y, v:1, life:25});   // one bone, whoever dropped it
   if(Math.random()<MAGNET_DROP_CHANCE) PK.powerups.push({type:"magnet", x:e.x, y:e.y+10, life:18});
   // at most two green pickups on the field at a time — a third is just noise, and a run that
   // banks them up stops having to choose when to go and get one
@@ -22550,6 +23049,7 @@ function parkUpdate(dt){
   // BURY.on belongs in this list: the burial is a full-screen takeover, and leaving the park
   // simulating underneath it kept waves advancing and enemies attacking a dog nobody could move
   if(PK.shop || PK.convertOpen || PK.friendsOpen || PK.gateAsk || PK.endRunAsk || PK.settingsOpen || BURY.on) return;   // world pauses while a panel is up
+  if(PK.walkOut){ pkWalkOutTick(dt); return; }                  // time's up: he is taken to the exit
   // the boss is queued when wave 9 is cleared and fires once the shop that follows it is done,
   // so the run's last purchase is made before the fight rather than during it
   /* THE WAY IN. The hole is armed by clearing wave 9 and opens the moment the shop that follows
@@ -22569,6 +23069,8 @@ function parkUpdate(dt){
   if(PK.wingsCine){ pkWingsCineUpdate(dt); return; }
   // the wave-ending send-off runs its own real-time clock while the world it is showing slows —
   // the park's own pull-back rides that same real clock, so it lands with the slow-mo, not after
+  pkRoundTick(dt);         // real time: fog and fighting do not stop the clock, panels do
+  if(PK.walkOut) return;
   if(PK.waveOutro){ PK.waveOutro.t+=dt; pkWaveZoomAdvance(); dt*=pkOutroSlow(); }
   if(PK.judgment){ pkJudgmentAdvance(dt); dt*=pkJudgmentSlow(); }
   // exercise costs him something: DOGPARK deliberately sits outside the day/night clock
@@ -22620,7 +23122,6 @@ function parkUpdate(dt){
     if(PK.hp>=PK.maxhp) PK.regenAcc=0;
     PK.hpSeen=PK.hp;   // healing is not a hit
   }
-  PK.chainT=Math.max(0,PK.chainT-dt); if(PK.chainT<=0) PK.chain=0;
   PK.inv=Math.max(0,PK.inv-dt); PK.pulse=Math.max(0,PK.pulse-dt);
   PK.zoomT=Math.max(0,PK.zoomT-dt);
   if(PK.waveBanner){ PK.waveBanner.life-=dt; if(PK.waveBanner.life<=0) PK.waveBanner=null; }
@@ -23474,7 +23975,6 @@ function parkUpdate(dt){
       else {
         // she doesn't patch you up, she puts you right back together
         PK.hp=PK.maxhp;
-        pkGain(9,f.x,f.y);
         S.mood=clamp(S.mood+2,0,100);
         toast("A FRIEND! FULLY HEALED ♥",1);
         beep(660,.07); setTimeout(()=>beep(880,.07),80); setTimeout(()=>beep(1040,.1),160);
@@ -23544,6 +24044,7 @@ function parkUpdate(dt){
     a.cd=Math.max(0,a.cd-dt);
     if(a.cd<=0 && Math.hypot(wd(a.x*WW-PK.x,WW),wd(a.y*WH-PK.y,WH))<22){
       a.cd=pkAgiCd(); PK.sideDone++;
+      pkRoundToy(a);
       const heal=Math.max(1,Math.round(PK.maxhp*pkAgiHeal()));
       const before=PK.hp; PK.hp=Math.min(PK.maxhp,PK.hp+heal);
       let got=Math.round(PK.hp-before), over=0, arm=0;
@@ -23599,7 +24100,7 @@ function parkUpdate(dt){
       dr.y=(dr.y+sdy/sdd*pull+WH)%WH;
     }
     if(PK.z<WING_CLEAR_Z && Math.hypot(wd(dr.x-PK.x,WW),wd(dr.y-PK.y,WH))<pickR){
-      pkGain(dr.v, dr.x, dr.y);            // chain ticks per pickup — route efficiency pays
+      pkGain(1, dr.x, dr.y);               // a bone is a bone
       beep(dr.gold?900:640,.06);
       PK.drops.splice(i,1);
     }
@@ -23667,6 +24168,7 @@ function pkDeath(){
   const leftBehind = lost>0 ? "<br>YOU LEFT YOUR BONES BEHIND." : "";
   const treatNote = kept>0 ? "<br>+"+kept+" BONE TREATS SAVED FROM THE WRECKAGE." : "";
   const trainNote=pkTrainFromRun(0.5);   // he still did the work, even if it ended badly
+  pkSheetSettle("wipe");
   $("#resLines").innerHTML="90% OF HIS BONES ("+lost+") LIE WHERE HE FELL.<br>"+PK.kills+" DOWNED, "+questN+"/"+PK_QUESTS.length+" SIDE OBJECTIVES \u2014 "+earned+" XP MADE IT HOME."+treatNote+trainNote+"<br>NEXT VISIT: GO CLAIM THE REST \u2014 IF YOU DARE."+leftBehind;
   $("#result").classList.add("show");
   beep(140,.3,"sawtooth");
@@ -23687,6 +24189,7 @@ function pkForfeitRun(){
   $("#resTitle").textContent="LEFT EARLY"; $("#resTitle").style.color="#f22";
   $("#resPortrait").src=PORTRAITS.sad; $("#resPortraitWrap").classList.add("show");
   $("#resScore").textContent="0 BONES";
+  pkSheetSettle("out");
   $("#resLines").innerHTML="YOU WALKED OUT WITH NOTHING"+(lost>0?" — "+lost+" BONES LEFT ON THE GROUND":"")+".<br>"+PK.kills+" DOWNED, "+(PK.quest?PK.quest.order.length:0)+" SIDE OBJECTIVES — NONE OF IT COUNTED.<br>NEXT VISIT: SEE IT THROUGH.";
   $("#result").classList.add("show");
   beep(120,.3,"sawtooth");
@@ -23791,7 +24294,8 @@ function pkQuestPayout(){
   };
 }
 
-function pkBank(){
+function pkBank(opt){
+  opt=opt||{};
   PK.active=false; syncMoodMusic();
   pkResetUISplit();   // hand the screen back before the result card goes up
   const g=PK.bones;
@@ -23805,19 +24309,20 @@ function pkBank(){
   const earned=pkAwardXP(base);
   LVLFX = (earned>0||questXP>0) ? 1.2 : 0;
   pkExitCosts(); S.fun=clamp(S.fun+20,0,100); S.mood=clamp(S.mood+8,0,100);
-  $("#resTitle").textContent="XP BANKED"; $("#resTitle").style.color="#fff";
+  $("#resTitle").textContent=opt.timeUp ? "TIME'S UP" : "XP BANKED"; $("#resTitle").style.color="#fff";
   $("#resPortrait").src = PORTRAITS.content;   // pkReveal takes it from here, building to HAPPY as the pile grows
   $("#resPortraitWrap").classList.add("show");
   $("#resScore").textContent=g+" BONES";
   const treatNote = g>0 ? "<br>+"+g+" BONE TREATS FROM THE BONES HE BROUGHT HOME." : "";
   const trainNote=pkTrainFromRun(1);
-  $("#resLines").innerHTML="WAVE "+PK.wave+" REACHED.<br>"+PK.kills+" DOWNED, "+questN+"/"+PK_QUESTS.length+" SIDE OBJECTIVES."+treatNote+trainNote+"<br>A GOOD DAY AT THE PARK.";
+  $("#resLines").innerHTML=(opt.timeUp?"THE CLOCK RAN OUT, SO HE WALKED HIMSELF OUT.<br>":"")+"WAVE "+PK.wave+" REACHED.<br>"+PK.kills+" DOWNED, "+questN+"/"+PK_QUESTS.length+" SIDE OBJECTIVES."+treatNote+trainNote+"<br>A GOOD DAY AT THE PARK.";
+  const sheetRolled=pkSheetSettle(opt.timeUp?"time":"bank");
   $("#result").classList.add("show");
   beep(660,.1); setTimeout(()=>beep(880,.1),100); setTimeout(()=>beep(1170,.14),200);
   setTimeout(()=>pkReveal(g,earned,"bank"),500);
   // ...and the list starts once the pile has finished dropping, so the two never talk over
   // each other. pkReveal's own run is ~1.2s of bones plus 1s of XP counter.
-  setTimeout(pkQuestPayout, 2600);
+  setTimeout(pkQuestPayout, sheetRolled ? 3700 : 2600);   // the sheet's roll goes first
 }
 function drawEnemyVector(ctx,e,ex,ey){
   ctx.strokeStyle="#fff"; ctx.fillStyle="#000"; ctx.lineWidth=2;
@@ -24580,10 +25085,10 @@ function pkDrawBonesHp(ctx,DX,DY,hz,buzz){
    - a bone pickup chimes, and the chime climbs with the chain
    - the control deck is the park at dusk rather than a black box, with softer cards, a goal bar
      with a shine on it and a joystick with a knob you can see */
-const PFX={parts:[], dustT:0, chainSeen:0, chainPop:0, boneFx:0, bonesSeen:0, deck:null};
+const PFX={parts:[], dustT:0, boneFx:0, bonesSeen:0, deck:null};
 const PFX_MAX=160;
 function pkFxReset(){
-  PFX.parts.length=0; PFX.dustT=0; PFX.chainSeen=0; PFX.chainPop=0; PFX.boneFx=0; PFX.bonesSeen=PK.bones||0;
+  PFX.parts.length=0; PFX.dustT=0; PFX.boneFx=0; PFX.bonesSeen=PK.bones||0;
   PFX.wasJump=false;
 }
 function pkPuff(x,y,n,col,spd,life,size){
@@ -24601,10 +25106,7 @@ function pkFxTick(dt){
     if(p.life<=0){ PFX.parts.splice(i,1); continue; }
     const k=Math.max(0,1-3*dt); p.vx*=k; p.vy*=k; p.x+=p.vx*dt; p.y+=p.vy*dt;
   }
-  PFX.chainPop=Math.max(0,PFX.chainPop-dt);
   PFX.boneFx=Math.max(0,PFX.boneFx-dt);
-  if((PK.chain||0)>PFX.chainSeen) PFX.chainPop=0.28;
-  PFX.chainSeen=PK.chain||0;
   if((PK.bones||0)>PFX.bonesSeen) PFX.boneFx=0.45;
   PFX.bonesSeen=PK.bones||0;
   if(bossOn()) return;
@@ -24664,26 +25166,16 @@ function pkDrawFloaters(ctx,SC){
     const [px,py]=SC(f.x,f.y), life=Math.max(0,f.life);
     const g=clamp(0.9-life,0,0.9), pop = g<0.12 ? 1+(0.12-g)*4 : 1;
     ctx.globalAlpha=Math.min(1,life/0.3);
-    ctx.save(); ctx.translate(px,py-g*26); ctx.scale(pop,pop);
-    ctx.font="9px 'Press Start 2P',monospace";
+    ctx.save(); ctx.translate(px,py-g*(f.pip?16:26)); ctx.scale(pop,pop);
+    ctx.font=f.pip?"6px 'Press Start 2P',monospace":"9px 'Press Start 2P',monospace";
     pkOutlineText(ctx,f.txt,0,0,f.col||"#fff");
     ctx.restore();
   }
   ctx.globalAlpha=1; ctx.textAlign="left";
 }
-function pkDrawChain(ctx,DX,DY){
-  if(!(PK.chain>1)) return;
-  const f3=clamp(PK.chainT/3,0,1), pop=1+PFX.chainPop*1.6;
-  const col = PK.chain>=3 ? "#e8c14a" : "#fff";
-  ctx.save(); ctx.globalAlpha=0.55+0.45*f3; ctx.translate(DX,DY-42); ctx.scale(pop,pop);
-  ctx.font="9px 'Press Start 2P',monospace"; ctx.textAlign="center";
-  pkOutlineText(ctx,"x"+PK.chain,0,0,col);
-  ctx.restore(); ctx.textAlign="left";
-}
-// a pickup chimes, and the chime climbs with the chain
+// a pickup chimes - the same small note every time, because every bone is the same bone
 function pkGainChime(){
-  const notes=[988,1175,1319,1568];
-  const n=notes[Math.min(notes.length-1,Math.max(0,(PK.chain||1)-1))];
+  const n=988;
   beep(n,.05,"square",.028,{key:"pkgain"});
   setTimeout(()=>beep(n*1.5,.05,"sine",.022,{key:"pkgain2"}),45);
 }
@@ -24820,6 +25312,7 @@ function parkDraw(t){
   } else { ctx.fillStyle="#20261f"; ctx.fillRect(0,0,w,h); }
   pkDrawScorch(ctx,DX,DY,WW,WH,w,h);
   pkDrawDashFire(ctx,DX,DY,WW,WH,w,h,t);
+  pkRoundDrawGround(ctx,DX,DY,WW,WH,w,h,t);
   pkDrawSwordSite(ctx,SC,w,h,t);
   pkDrawAmbient(ctx,SC,t,WW,WH);
   pkDrawDust(ctx,SC);
@@ -24897,6 +25390,7 @@ function parkDraw(t){
       ctx.font="11px 'Press Start 2P',monospace"; ctx.textAlign="center";
       ctx.fillText("EXIT",gx,gy2+4);
       ctx.textAlign="left"; ctx.globalAlpha=1;
+      pkDrawExitPip(ctx,gx,gy2,t);
     }
   }
   if(PARKGHOST){
@@ -25409,7 +25903,6 @@ function parkDraw(t){
     ctx.fillRect(sx-2,sy-2,4,4);
     ctx.globalAlpha=1;
   }
-  pkDrawChain(ctx,DX,DY);
   pkDrawFloatingSword(ctx,SC,DX,DY,t);
   pkDrawGroveFog(ctx,SC,w,h);
   ctx.restore();   // exit the world zoom transform before any fixed-to-screen overlay
@@ -25425,6 +25918,7 @@ function parkDraw(t){
   ctx.save(); ctx.translate(DX,DY); ctx.scale(PK.zoom||1,PK.zoom||1); ctx.translate(-DX,-DY);
   // most of these are the white bone count; a `col` marks the ones that mean something else
   pkDrawFloaters(ctx,SC);
+  pkDrawRoundHearts(ctx,SC);
   ctx.fillStyle="#fff";
   pkDrawJudgmentBolts(ctx,SC,w,h);
   ctx.restore();   // back to screen space for the fixed HUD (banners, flashes, health bar)
