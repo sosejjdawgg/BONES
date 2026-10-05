@@ -1053,7 +1053,7 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.399a</span>
+          <span id="devToggle">v0.400a</span>
         </div>
       </div>
 
@@ -1210,7 +1210,7 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
           <span class="gh">WALKS & THE DOGPARK</span><br>
           TAP GO OUT FOR WORK, TRAINING OR THE BEACH — OR HEAD TO THE DOGPARK ONCE HE HITS LV.5. BARK AT SQUIRRELS, BIRDS & CATS TO SCARE THEM OFF — HE DOESN'T HURT ANYONE, THEY JUST DROP A BONE AND SCUTTLE AWAY. SURVIVE THE WAVES AND REACH THE RED EXIT TO BANK REAL XP BEFORE HE GETS OVERRUN.<br><br>
           <span class="gh">ROUNDS &amp; THE SHEET</span><br>
-          FROM YOUR SECOND SHEET ON, EVERY VISIT IS A ROUND: A 2:00 CLOCK ON THE HEADER AND FIVE GOALS TOP-LEFT. GRAB THE <b>+30</b> CLOCKS LYING ON THE GRASS FOR MORE TIME (UP TO 3:30). TICK ALL FIVE AND THE SHEET STAMPS CLEAR — THEN WALK OUT OF THE RED EXIT ALIVE TO BANK IT AND THE NEXT VISIT BRINGS THE NEXT SHEET. RUN OUT OF TIME AND HE WALKS HIMSELF OUT: EVERYTHING ELSE STILL BANKS, THE SHEET WAITS FOR NEXT TIME. EVERY BONE ON THE GROUND IS WORTH EXACTLY ONE.<br><br>
+          YOUR FIRST SHEET IS THE SIX SIDE OBJECTIVES. FINISH ALL SIX IN ONE RUN AND GET OUT OF THE RED EXIT ALIVE TO UNLOCK SHEET 2 — FROM THEN ON EVERY VISIT IS A ROUND: A 2:00 CLOCK ON THE HEADER AND FIVE GOALS TOP-LEFT. GRAB THE <b>+30</b> CLOCKS LYING ON THE GRASS FOR MORE TIME (UP TO 3:30). TICK ALL FIVE AND THE SHEET STAMPS CLEAR — THEN WALK OUT OF THE RED EXIT ALIVE TO BANK IT AND THE NEXT VISIT BRINGS THE NEXT SHEET. RUN OUT OF TIME AND HE WALKS HIMSELF OUT: EVERYTHING ELSE STILL BANKS, THE SHEET WAITS FOR NEXT TIME. EVERY BONE ON THE GROUND IS WORTH EXACTLY ONE.<br><br>
           <span class="gh">BARK &amp; DASH</span><br>
           IN THE DOGPARK HE BARKS WHEN YOU SAY SO. TAP <b>BARK</b> (OR SPACE) TO THROW A SHOUT DOWN THE CONE IN FRONT OF HIM — THE BUTTON GLOWS GOLD WHEN SOMETHING'S STANDING IN IT. TAP <b>DASH</b> (OR SHIFT) TO BOLT A FEW STRIDES WHICHEVER WAY YOU'RE PUSHING — THE DASH UPGRADES MAKE IT LONGER AND QUICKER TO COME BACK, AND THE FOURTH, <b>FIRE DASH</b>, LEAVES A TRAIL OF FLAME THAT BURNS CRITTERS, TREES AND GRASS. GET HIT AND HE'S KNOCKED BACK, FLASHES RED, AND CAN'T BE HURT AGAIN FOR A MOMENT WHILE HE FLICKERS. BUY <b>AUTO BARK</b> IN THE BETWEEN-WAVE SHOP AND HE BARKS BY HIMSELF FOR THE REST OF THE RUN (THE ZOOMIES ALWAYS DO). THE BARK UPGRADES WIDEN THE CONE, AND THE LAST ONE, OMNI BARK, MAKES IT A FULL CIRCLE.<br><br>
           <span class="gh">THE DOGPARK ECONOMY</span><br>
@@ -13192,7 +13192,9 @@ const SHEETS=[
 const PK_CAT_FACE='<svg class="ps-cat" viewBox="0 0 9 7" shape-rendering="crispEdges">'+
   ["#.......#","##.....##","#########","##.###.##","####p####",".#######.","..#####.."].map((r,y)=>
     r.split("").map((c,x)=>c==="."?"":'<rect x="'+x+'" y="'+y+'" width="1" height="1" fill="'+(c==="p"?"#ff8ec6":"#fff")+'"/>').join("")).join("")+'</svg>';
-function pkSheetNo(){ return Math.max(2, S.pkSheet|0); }      // sheet 1 he already has
+/* Sheet 1 IS the park's own six side objectives, untouched - no clock, no card, nothing laid on
+   top. Sheet 2 only unlocks once all six are done in one run AND he gets out by the red exit alive. */
+function pkSheetNo(){ return Math.max(1, S.pkSheet|0); }
 function pkRoundHas(id){ const R=PK.round; return !!(R && R.def.lines.some(l=>l.id===id)); }
 function pkRoundOpen(id){ const R=PK.round; return pkRoundHas(id) && !R.over && !R.done[id]; }
 function pkRoundAllDone(){ const R=PK.round; return !!R && R.def.lines.every(l=>R.done[l.id]); }
@@ -13557,9 +13559,13 @@ function pkRoundHideUI(){
    the card rolls like the to-do list, and the next visit already has the next sheet. Anything
    else leaves the same sheet waiting, shown dimmed - never flashed red at him. */
 function pkSheetSettle(how){
-  const R=PK.round, el=$("#resSheet");
+  let R=PK.round; const el=$("#resSheet");
+  // sheet 1: the side objectives. Only a safe checkout with all six done rolls it - anything less
+  // shows nothing extra here, the side objectives list below already says where he got to
+  if(!R && pkSheetNo()===1 && how==="bank" && PK.quest && pkQuestAllDone())
+    R={no:1, def:{n:"SHEET 1", lines:PK_QUESTS.map(q=>({id:q.id, n:q.n}))}, done:Object.assign({},PK.quest.done), over:null};
   if(!R){ if(el){ el.className="hidden"; el.innerHTML=""; } return false; }
-  const banked = how==="bank" && !R.over && pkRoundAllDone();
+  const banked = how==="bank" && !R.over && R.def.lines.every(l=>R.done[l.id]);
   if(!R.over) R.over=how;
   if(banked){ S.pkSheet=R.no+1; saveGame(true); }
   if(!el) return banked;
