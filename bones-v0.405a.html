@@ -1054,7 +1054,7 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.404a</span>
+          <span id="devToggle">v0.405a</span>
         </div>
       </div>
 
@@ -1212,6 +1212,8 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
           TAP GO OUT FOR WORK, TRAINING OR THE BEACH — OR HEAD TO THE DOGPARK ONCE HE HITS LV.5. BARK AT SQUIRRELS, BIRDS & CATS TO SCARE THEM OFF — HE DOESN'T HURT ANYONE, THEY JUST DROP A BONE AND SCUTTLE AWAY. SURVIVE THE WAVES AND REACH THE RED EXIT TO BANK REAL XP BEFORE HE GETS OVERRUN.<br><br>
           <span class="gh">ROUNDS &amp; THE SHEET</span><br>
           YOUR FIRST SHEET IS THE SIX SIDE OBJECTIVES. FINISH ALL SIX IN ONE RUN AND GET OUT OF THE RED EXIT ALIVE TO UNLOCK SHEET 2 — FROM THEN ON EVERY VISIT IS A ROUND: A 1:00 CLOCK ON THE HEADER AND FIVE GOALS TOP-LEFT. GRAB THE <b>+30</b> CLOCKS LYING ON THE GRASS FOR MORE TIME (UP TO 3:30). TICK ALL FIVE AND THE SHEET STAMPS CLEAR — THEN WALK OUT OF THE RED EXIT ALIVE TO BANK IT AND THE NEXT VISIT BRINGS THE NEXT SHEET. RUN OUT OF TIME AND HE WALKS HIMSELF OUT: EVERYTHING ELSE STILL BANKS, THE SHEET WAITS FOR NEXT TIME. EVERY BONE ON THE GROUND IS WORTH EXACTLY ONE.<br><br>
+          <span class="gh">SHEET 3 &amp; THE MUSHROOM</span><br>
+          SHEET 3 ASKS FOR FOUR THINGS, AND ITS PROGRESS CARRIES OVER BETWEEN VISITS: HAVE A NICE TRIP, DEFEAT 5 TREES, MIDAS TOUCH (CLEAR 100 CRITTERS AS GOLDEN BOY) AND FULLY UPGRADE A GORILLA. ON SHEET 3 A RED-AND-WHITE MUSHROOM ALWAYS GROWS ON THE INSIDE EDGE OF THE BANDANA DOG'S GROVE (AFTERWARDS, ONE VISIT IN TWENTY). EAT IT AND FOR 15 SECONDS EVERYTHING SWIMS: THE CRITTERS BACK OFF AND WATCH, AND THE TREES WALK AT YOU INSTEAD. ONE BARK BLOWS A TREE AWAY AND IT SPILLS 20 BONES.<br><br>
           <span class="gh">BARK &amp; DASH</span><br>
           IN THE DOGPARK HE BARKS WHEN YOU SAY SO. TAP <b>BARK</b> (OR SPACE) TO THROW A SHOUT DOWN THE CONE IN FRONT OF HIM — THE BUTTON GLOWS GOLD WHEN SOMETHING'S STANDING IN IT. TAP <b>DASH</b> (OR SHIFT) TO BOLT A FEW STRIDES WHICHEVER WAY YOU'RE PUSHING — THE DASH UPGRADES MAKE IT LONGER AND QUICKER TO COME BACK, AND THE FOURTH, <b>FIRE DASH</b>, LEAVES A TRAIL OF FLAME THAT BURNS CRITTERS, TREES AND GRASS. GET HIT AND HE'S KNOCKED BACK, FLASHES RED, AND CAN'T BE HURT AGAIN FOR A MOMENT WHILE HE FLICKERS. BUY <b>AUTO BARK</b> IN THE BETWEEN-WAVE SHOP AND HE BARKS BY HIMSELF FOR THE REST OF THE RUN (THE ZOOMIES ALWAYS DO). THE BARK UPGRADES WIDEN THE CONE, AND THE LAST ONE, OMNI BARK, MAKES IT A FULL CIRCLE.<br><br>
           <span class="gh">THE DOGPARK ECONOMY</span><br>
@@ -2458,6 +2460,7 @@ function syncParkHeader(){
 }
 function restoreCamHeader(){
   $("#camhead").classList.remove("parkhdr");
+  $("#dogcv").style.filter="";        // a trip never follows him home
   pkRoundHideUI();
   $("#camlabel").innerHTML='<span class="rec">&#9679;</span> DOGCAM';
 }
@@ -12482,7 +12485,7 @@ function loop(now){
       robotTick(dt);
     }
     if(MODE==="park" && PK.active){
-      parkUpdate(dt); parkDraw(t); PARK_HDR=true; syncParkHeader();
+      parkUpdate(dt); parkDraw(t); pkTripPost(t); PARK_HDR=true; syncParkHeader();
       if(bossOn()) pkTickerClear(); else pkTickerTick(dt);
     }
     else if(!HERD.shown){ if(PARK_HDR){ PARK_HDR=false; restoreCamHeader(); pkTickerClear(); } drawCam(t); }
@@ -13043,6 +13046,7 @@ function pkZoomies(){
 function pkStarCan(e){ return !e.fleeing && !e.love && !e.decor && !e.heroOutro; }
 // he did not attack it - he walked through it. Same pop, same single bone, same scare-off.
 function pkStarPop(e){
+  if(!e.fleeing) pkRoundBump("midas",1);
   const dx=wd(e.x-PK.x,PK.WW), dy=wd(e.y-PK.y,PK.WH), d=Math.hypot(dx,dy)||1;
   e.hp=0;
   pkDownEnemy(e,dx/d,dy/d);
@@ -13313,6 +13317,7 @@ function startPark(plus){
   PK.dashLvl=0; PK.dashFire=[]; PK.dashHits=null; PK.dashLay=null;
   PK.kbT=0; PK.shopN=0; PK.upRecent={};
   PK.starTrail=[]; PK.starFlash=0; PK.starBanner=0; PK.starWarnN=0;
+  PK.tripT=0; PK.walkTrees=[]; PK.mush={plan:pkMushPlanned(), list:null};
   pkRoundStart();          // the round's clock and sheet, if this visit has one
   // the first few runs say where his bark went - after that the buttons speak for themselves
   if((S.pkCtrlTips||0)<3){ S.pkCtrlTips=(S.pkCtrlTips||0)+1; pkTick("TAP BARK TO SHOUT \u00B7 DASH TO BOLT", "info", 3.2); }
@@ -13347,7 +13352,15 @@ const SHEETS=[
     {id:"gbone",   n:"THE GOLDEN BONE"},
     {id:"love",    n:"LOVEY DOVEY", goal:LOVE_SHEET_GOAL}
   ]},
-  null                                      // 3: the slot
+  // 3: the trip. Its progress carries from visit to visit (keep) - a hundred golden-boy clears and
+  // a maxed gorilla are not two-minute jobs - but banking it still takes a safe exit with all four
+  {n:"SHEET 3", keep:true, lines:[
+    {id:"trip",  n:"HAVE A NICE TRIP"},
+    {id:"trees", n:"DEFEAT 5 TREES", goal:5},
+    {id:"midas", n:"MIDAS TOUCH", goal:100},
+    {id:"ape",   n:"FULLY UPGRADE A GORILLA"}
+  ]},
+  null                                      // 4: the slot
 ];
 // a cat's face for the ONE BUDDY line: white, with the card showing through for its eyes
 const PK_CAT_FACE='<svg class="ps-cat" viewBox="0 0 9 7" shape-rendering="crispEdges">'+
@@ -13362,9 +13375,11 @@ function pkRoundAllDone(){ const R=PK.round; return !!R && R.def.lines.every(l=>
 function pkRoundStart(){
   const no=pkSheetNo(), def=SHEETS[no-1]||null;
   PK.walkOut=null;
+  const kept = def && def.keep && S.pkSheetProg && S.pkSheetProg[no];
   PK.round = def ? {no, def, t:ROUND_T, shown:ROUND_T, done:{}, over:null, clear:false, pipT:0,
-    love:0, toys:new Set(), buddyHere:false, loveSpawned:false,
+    love:0, cnt:{}, toys:new Set(), buddyHere:false, loveSpawned:false,
     p30:{st:"wait", t:P30_FIRST}, flowers:null, rest:0, restP:null, healAcc:0, hearts:[], gbone:null} : null;
+  if(kept && PK.round){ Object.assign(PK.round.done, kept.done||{}); Object.assign(PK.round.cnt, kept.cnt||{}); }
   pkSheetBuild();
 }
 function pkRoundTick(dt){
@@ -13378,11 +13393,25 @@ function pkRoundTick(dt){
   if(pkRoundHas("flowers")) pkFlowersTick(dt);
   if(pkRoundHas("gbone")) pkGboneTick();
   if(pkRoundHas("buddy")) pkBuddyTick();
+  if(pkRoundOpen("ape") && pkPalTier("ape")>=PAL_MAXTIER.ape) pkRoundHit("ape");
   pkRoundCheckClear();
+}
+// a sheet marked keep remembers what was done and counted, visit to visit, until it is banked
+function pkRoundSave(){
+  const R=PK.round; if(!R || !R.def.keep) return;
+  S.pkSheetProg=S.pkSheetProg||{};
+  S.pkSheetProg[R.no]={done:Object.assign({},R.done), cnt:Object.assign({},R.cnt)};
+}
+function pkRoundCount(id){ const R=PK.round; return !R ? 0 : id==="love" ? R.love : (R.cnt[id]||0); }
+function pkRoundBump(id,n){
+  const R=PK.round; if(!R || R.over || !pkRoundHas(id) || R.done[id]) return;
+  const l=R.def.lines.find(q=>q.id===id);
+  R.cnt[id]=(R.cnt[id]||0)+(n||1);
+  if(l.goal && R.cnt[id]>=l.goal) pkRoundHit(id); else { pkRoundSave(); pkSheetSync(); }
 }
 function pkRoundHit(id){
   const R=PK.round; if(!R || R.over || R.done[id]) return;
-  R.done[id]=true;
+  R.done[id]=true; pkRoundSave();
   beep(1320,.03,"square",.02,{prio:0}); setTimeout(()=>beep(1760,.03,"square",.016,{prio:0}),40);   // a soft click
   pkSheetSync(); pkRoundCheckClear();
 }
@@ -13684,7 +13713,7 @@ function pkSheetSync(){
     row.classList.toggle("done",!!R.done[l.id]);
     let c="";
     if(l.id==="toys") c=Math.min(R.toys.size,(PK.acts||[]).length)+"/"+(PK.acts||[]).length;
-    else if(l.goal) c=Math.min(R.love,l.goal)+"/"+l.goal;
+    else if(l.goal) c=Math.min(pkRoundCount(l.id),l.goal)+"/"+l.goal;
     const ce=row.querySelector(".ps-c"); if(ce && ce.textContent!==c) ce.textContent=c;
     if(l.id==="buddy") row.classList.toggle("here",!!R.buddyHere);
   }
@@ -13728,7 +13757,7 @@ function pkSheetSettle(how){
   if(!R){ if(el){ el.className="hidden"; el.innerHTML=""; } return false; }
   const banked = how==="bank" && !R.over && R.def.lines.every(l=>R.done[l.id]);
   if(!R.over) R.over=how;
-  if(banked){ S.pkSheet=R.no+1; saveGame(true); }
+  if(banked){ S.pkSheet=R.no+1; if(S.pkSheetProg) delete S.pkSheetProg[R.no]; saveGame(true); }
   if(!el) return banked;
   el.className = banked ? "" : "dim";
   const head=(a,b)=>'<div class="rs-h"><span>'+a+'</span><span class="rs-s">'+b+'</span></div>';
@@ -13754,6 +13783,178 @@ function pkSheetSettle(how){
   };
   setTimeout(strike,700);
   return true;
+}
+
+/* ==================== THE MUSHROOM =======================================================
+   A red cap with white spots, growing in ones and twos on the inside edge of the bandana dog's
+   grove. On sheet 3 it is always there; once sheet 3 is behind him it turns up one match in
+   twenty. Eating one is a TRIP for TRIP_T seconds (another one adds TRIP_T more, up to TRIP_MAX):
+   the view swims and shifts colour, every critter backs off into a loose ring round him and just
+   watches, and the TREES come for him instead. A tree takes one bark: it is blown backwards end
+   over end and off the screen, and twenty bones spill out of it as it goes. */
+const TRIP_T=15, TRIP_MAX=30, TRIP_RING=165, TRIP_TREE_N=6, TRIP_TREE_R=430, TRIP_TREE_SPD=34;
+const TRIP_TREE_HIT=24, TRIP_FLING_T=1.25, TRIP_FLING_D=560, TRIP_FLING_ARC=95, TRIP_TREE_BONES=20;
+const MUSH_R=14;
+function pkMushPlanned(){ const no=pkSheetNo(); return no===3 ? true : no>3 ? Math.random()<0.05 : false; }
+function pkMushPlace(){
+  const M=PK.mush; M.list=[];
+  let g=PK.groveCenters[0], best=1e9;
+  for(const c of PK.groveCenters){ const d=Math.hypot(wd(c.x-PK.npc.x,PK.WW),wd(c.y-PK.npc.y,PK.WH)); if(d<best){ best=d; g=c; } }
+  const innerR=g.r*0.35, n=Math.random()<0.5?1:2;
+  for(let k=0;k<60 && !M.list.length;k++){
+    const a=Math.random()*6.283, r=innerR*(0.9+Math.random()*0.25);
+    const x=(g.x+Math.cos(a)*r+PK.WW)%PK.WW, y=(g.y+Math.sin(a)*r+PK.WH)%PK.WH;
+    let blocked=false; pkTreesNear(x,y,16,t=>{ if(Math.hypot(wd(t.x-x,PK.WW),wd(t.y-y,PK.WH))<16) blocked=true; });
+    if(blocked || Math.hypot(wd(x-PK.npc.x,PK.WW),wd(y-PK.npc.y,PK.WH))<NPC_TALK_R+14) continue;
+    M.list.push({x,y,ph:Math.random()*6.283});
+    if(n===2){ const b=a+(Math.random()<0.5?1:-1)*(0.12+Math.random()*0.1);
+      M.list.push({x:(g.x+Math.cos(b)*r+PK.WW)%PK.WW, y:(g.y+Math.sin(b)*r+5+PK.WH)%PK.WH, ph:Math.random()*6.283, small:true}); }
+  }
+}
+function pkMushTick(){
+  const M=PK.mush; if(!M || !M.plan) return;
+  if(!M.list){ if(PK.groveCenters.length && PK.npc && PK.trees.length) pkMushPlace(); return; }
+  if(PK.z>=WING_CLEAR_Z) return;
+  for(let i=M.list.length-1;i>=0;i--){
+    const m=M.list[i];
+    if(Math.hypot(wd(m.x-PK.x,PK.WW),wd(m.y-PK.y,PK.WH))<MUSH_R){ M.list.splice(i,1); pkTripStart(m.x,m.y); }
+  }
+}
+function pkDrawMush(ctx,DX,DY,WW,WH,w,h,t){
+  const M=PK.mush; if(!M || !M.list) return;
+  for(const m of M.list){
+    const x=DX+wd(m.x-PK.x,WW), y=DY+wd(m.y-PK.y,WH);
+    if(x<-20||x>w+20||y<-20||y>h+20) continue;
+    const s=m.small?0.8:1, sw=SETTINGS.reduceMotion?0:Math.sin(t*2+m.ph)*0.6;
+    ctx.save(); ctx.translate(x,y); ctx.scale(s,s);
+    ctx.fillStyle="rgba(0,0,0,.25)"; ctx.beginPath(); ctx.ellipse(0,1,5,1.6,0,0,7); ctx.fill();
+    ctx.fillStyle="#f1e6cf"; ctx.strokeStyle="#2a1a10"; ctx.lineWidth=1;
+    ctx.fillRect(-1.8,-6,3.6,6.5); ctx.strokeRect(-1.8,-6,3.6,6.5);
+    ctx.translate(sw,0);
+    ctx.fillStyle="#d8261c"; ctx.beginPath(); ctx.ellipse(0,-6,6.5,5,0,Math.PI,0); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle="#fff";
+    for(const [px,py,r] of [[-3,-8,1.2],[1.5,-9.5,1],[3.5,-7,0.9],[-0.5,-6.8,0.8]]){ ctx.beginPath(); ctx.arc(px,py,r,0,7); ctx.fill(); }
+    ctx.restore();
+  }
+}
+function pkTripStart(x,y){
+  const was=PK.tripT>0;
+  PK.tripT=Math.min(TRIP_MAX,(PK.tripT||0)+TRIP_T);
+  pkRoundHit("trip");
+  for(let i=0;i<14;i++){ const a=Math.random()*6.283, v=30+Math.random()*60;
+    SPARKS.push({x, y:y-6, vx:Math.cos(a)*v, vy:Math.sin(a)*v-30, life:0.5+Math.random()*0.4, love:i%2===0}); }
+  // a woozy little run of notes, bending down then up
+  [784,698,622,587,622,698,784,932].forEach((f,i)=>setTimeout(()=>beep(f,.09,"sine",.035,{prio:0}), i*70));
+  if(!was){
+    pkTick("WHOA\u2026 THE TREES ARE COMING FOR YOU","gold",2.6,1);
+    for(const e of PK.en) e.tripAng=undefined;
+  }
+}
+// trees join the walk: the nearest ones out in the open, never the bandana dog's wood
+function pkTripRecruit(){
+  const W=PK.walkTrees||(PK.walkTrees=[]);
+  let live=W.filter(t=>t.walk).length;
+  if(live>=TRIP_TREE_N) return;
+  const cand=[];
+  pkTreesNear(PK.x,PK.y,TRIP_TREE_R,tr=>{
+    if(tr.walk || tr.state!=="ok" || tr.knockT>0 || tr.quakeT>0 || tr.wood) return;
+    const d=Math.hypot(wd(tr.x-PK.x,PK.WW),wd(tr.y-PK.y,PK.WH));
+    if(d<TRIP_TREE_R && d>90 && !pkInGrove(tr.x,tr.y)) cand.push({tr,d});
+  });
+  cand.sort((a,b)=>a.d-b.d);
+  for(const c of cand){ if(live>=TRIP_TREE_N) break; c.tr.walk=true; c.tr.walkPh=Math.random()*6.283; W.push(c.tr); live++; }
+}
+function pkTripTick(dt){
+  const W=PK.walkTrees||(PK.walkTrees=[]);
+  // the flung ones lay their trail of bones on the way out, whether or not the trip is still on
+  for(let i=W.length-1;i>=0;i--){
+    const tr=W[i];
+    if(tr.flingBones>0){
+      if(!(tr.knockT>0)){ W.splice(i,1); continue; }
+      const p=1-tr.knockT/tr.knockMax, want=Math.round((TRIP_TREE_BONES-8)*Math.min(1,p/0.35));
+      while(tr.flingLaid<want){ tr.flingLaid++; tr.flingBones--;
+        pkScatterBone(tr.knockX0+tr.knockDX*p*0.75, tr.knockY0+tr.knockDY*p*0.75, 30+Math.random()*50); }
+    } else if(!tr.walk){ W.splice(i,1); }
+  }
+  if(!(PK.tripT>0)) return;
+  PK.tripT=Math.max(0,PK.tripT-dt);
+  if(PK.tripT<=0){                              // the trip ends where it stands
+    for(const tr of W) tr.walk=false;
+    for(const e of PK.en) e.tripAng=undefined;
+    beep(330,.16,"sine",.04);
+    return;
+  }
+  pkTripRecruit();
+  let moved=false;
+  for(const tr of W){
+    if(!tr.walk) continue;
+    const dx=wd(PK.x-tr.x,PK.WW), dy=wd(PK.y-tr.y,PK.WH), d=Math.hypot(dx,dy)||1;
+    if(d>TRIP_TREE_R*1.7){ tr.walk=false; continue; }   // left far behind: it roots again, a nearer one takes over
+    tr.sway+=dt*7;
+    if(d>TRIP_TREE_HIT-4){
+      const sp=TRIP_TREE_SPD*(0.8+0.4*Math.sin(PK.t*3+tr.walkPh));   // a shuffling, lurching walk
+      tr.x=(tr.x+dx/d*sp*dt+PK.WW)%PK.WW; tr.y=(tr.y+dy/d*sp*dt+PK.WH)%PK.WH; moved=true;
+    }
+    if(d<TRIP_TREE_HIT && PK.inv<=0 && !pkInvuln()) pkStruck(8,tr,0.6);
+  }
+  if(moved) PK.treeGridDirty=true;
+}
+// a critter on a trip backs off to a ring round him and just watches - no attacks at all
+function pkTripEnemyTick(e,dt,WW,WH){
+  if(e.tripAng===undefined) e.tripAng=Math.atan2(wd(e.y-PK.y,WH),wd(e.x-PK.x,WW));
+  e.tripAng+=dt*0.12;
+  const tx=PK.x+Math.cos(e.tripAng)*TRIP_RING, ty=PK.y+Math.sin(e.tripAng)*TRIP_RING*0.8;
+  const dx=wd(tx-e.x,WW), dy=wd(ty-e.y,WH), d=Math.hypot(dx,dy);
+  if(d>4){ const sp=Math.min(d*3,(e.sp||60)*0.9); e.x=(e.x+dx/d*sp*dt+WW)%WW; e.y=(e.y+dy/d*sp*dt+WH)%WH; }
+  e.x=(e.x+e.kx*dt+WW)%WW; e.y=(e.y+e.ky*dt+WH)%WH;
+  e.dir = wd(PK.x-e.x,WW)<0 ? -1 : 1;           // always facing him
+  e.ft+=dt; if(e.ft>0.14){ e.ft=0; e.fi++; }
+}
+function pkScatterBone(x,y,sp){
+  const a=Math.random()*6.283;
+  PK.drops.push({x, y, v:1, life:25, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp*0.6, h:2, vh:110+Math.random()*90});
+}
+// one bark, one tree: blown backwards end over end and off the screen
+function pkTreeFling(tr){
+  tr.walk=false;
+  const dx=wd(tr.x-PK.x,PK.WW), dy=wd(tr.y-PK.y,PK.WH), d=Math.hypot(dx,dy)||1;
+  tr.knockT=TRIP_FLING_T; tr.knockMax=TRIP_FLING_T; tr.knockX0=tr.x; tr.knockY0=tr.y;
+  tr.knockDX=dx/d*TRIP_FLING_D; tr.knockDY=dy/d*TRIP_FLING_D; tr.knockArc=TRIP_FLING_ARC;
+  tr.knockRot=0; tr.knockRotV=(dx<0?-1:1)*11;
+  tr.flingBones=TRIP_TREE_BONES-8; tr.flingLaid=0;
+  for(let i=0;i<8;i++) pkScatterBone(tr.x,tr.y,60+Math.random()*90);   // the first burst, out of the trunk
+  pkHitMark(tr.x,tr.y-10,true);
+  PK.shake=Math.max(PK.shake||0,0.35);
+  beep(140,.12,"sawtooth",.06); setTimeout(()=>beep(520,.18,"triangle",.04),60);
+  pkRoundBump("trees",1);
+}
+function pkTripBark(){
+  const W=PK.walkTrees; if(!W || !W.length) return;
+  for(const tr of W.slice()){
+    if(!tr.walk) continue;
+    const dx=wd(tr.x-PK.x,PK.WW), dy=wd(tr.y-PK.y,PK.WH);
+    if(pkInBarkCone(dx,dy,Math.hypot(dx,dy)||1,{boss:true})) pkTreeFling(tr);
+  }
+}
+// the swim: the whole view's colours turn over, and (motion allowed) it ripples sideways in bands
+let TRIPBUF=null;
+function pkTripPost(t){
+  const cv=$("#dogcv");
+  const k = PK.active && PK.tripT>0 ? Math.min(1, PK.tripT/1.5) : 0;
+  if(k<=0){ if(cv.style.filter) cv.style.filter=""; return; }
+  const hue=SETTINGS.reduceMotion ? 40*k : ((t*70)%360)*Math.min(1,k*1.5);
+  cv.style.filter="hue-rotate("+hue.toFixed(1)+"deg) saturate("+(1+0.9*k).toFixed(2)+")";
+  if(SETTINGS.reduceMotion || bossOn()) return;
+  if(!TRIPBUF) TRIPBUF=document.createElement("canvas");
+  if(TRIPBUF.width!==cv.width || TRIPBUF.height!==cv.height){ TRIPBUF.width=cv.width; TRIPBUF.height=cv.height; }
+  const b=TRIPBUF.getContext("2d"); b.clearRect(0,0,cv.width,cv.height); b.drawImage(cv,0,0);
+  const c=cv.getContext("2d"), W=cv.width, H=cv.height, band=Math.max(4,Math.round(H/70)), amp=W*0.014*k;
+  c.save(); c.setTransform(1,0,0,1,0,0);
+  for(let y=0;y<H;y+=band){
+    const off=Math.sin(y*0.018+t*3.1)*amp+Math.sin(y*0.006-t*1.6)*amp*0.6;
+    c.drawImage(TRIPBUF,0,y,W,band,off,y,W,band);
+  }
+  c.restore();
 }
 
 /* ===================== THE BURIAL =====================
@@ -17548,6 +17749,7 @@ function pkBark(){
       }
     }
   }
+  pkTripBark();                       // ...and on a trip, the trees in the cone go flying
   if(hits>0) beep(300,.05);
 }
 /* BARK_LVL_CAP must stay equal to BARK_CONE.length-1: the shop hides a capped row at
@@ -23250,6 +23452,7 @@ function parkUpdate(dt){
   // the wave-ending send-off runs its own real-time clock while the world it is showing slows —
   // the park's own pull-back rides that same real clock, so it lands with the slow-mo, not after
   pkRoundTick(dt);         // real time: fog and fighting do not stop the clock, panels do
+  pkMushTick(); pkTripTick(dt);
   if(PK.walkOut) return;
   if(PK.waveOutro){ PK.waveOutro.t+=dt; pkWaveZoomAdvance(); dt*=pkOutroSlow(); }
   if(PK.judgment){ pkJudgmentAdvance(dt); dt*=pkJudgmentSlow(); }
@@ -23614,6 +23817,11 @@ function parkUpdate(dt){
     // below are ever reached — see LOVEHEARTS
     if(e.love && !e.fleeing){
       pkLoveEnemyTick(e,dt,WW,WH);
+      continue;
+    }
+    // on a trip nobody attacks him: they back off to a ring and watch the trees do it
+    if(PK.tripT>0 && !e.fleeing){
+      pkTripEnemyTick(e,dt,WW,WH);
       continue;
     }
     if(e.fleeing){
@@ -24269,6 +24477,14 @@ function parkUpdate(dt){
   for(let i=PK.drops.length-1;i>=0;i--){
     const dr=PK.drops[i];
     dr.life-=dt;
+    // a bone spilled out of something skids out and bounces before it settles
+    if(dr.vx || dr.vy || dr.vh){
+      dr.x=(dr.x+(dr.vx||0)*dt+WW)%WW; dr.y=(dr.y+(dr.vy||0)*dt+WH)%WH;
+      const k=Math.pow(0.05,dt); dr.vx=(dr.vx||0)*k; dr.vy=(dr.vy||0)*k;
+      if(Math.abs(dr.vx)<2 && Math.abs(dr.vy)<2){ dr.vx=0; dr.vy=0; }
+      dr.vh=(dr.vh||0)-560*dt; dr.h=Math.max(0,(dr.h||0)+dr.vh*dt);
+      if(dr.h<=0 && dr.vh<0){ dr.vh=-dr.vh*0.32; if(dr.vh<35) dr.vh=0; }
+    }
     if(dr.life<=0){ PK.drops.splice(i,1); continue; }
     if(dr.magnet){   // homes toward the player once the magnet powerup has been picked up
       const mdx=wd(PK.x-dr.x,WW), mdy=wd(PK.y-dr.y,WH), mdd=Math.hypot(mdx,mdy)||1;
@@ -24731,7 +24947,12 @@ function pkDrawTree(ctx,tr,x,y,t){
     // the fast path: a plain standing tree, blitted from cache instead of hand-drawn
     const sprites=pkTreeSprites(), phase=clamp(Math.round((Math.sin(tr.sway)*1.4+1.4)/2.8*(TREE_SPRITE_PHASES-1)),0,TREE_SPRITE_PHASES-1);
     const img=sprites[tr.wood?1:0][phase];
+    if(tr.walk) y-=Math.abs(Math.sin(t*7+(tr.walkPh||0)))*3;
     ctx.drawImage(img, x-TREE_SPRITE_AX, y-TREE_SPRITE_AY);
+    if(tr.walk){
+      const ex=wd(PK.x-tr.x,PK.WW)>0?1:-1;
+      for(const sx of [-4,4]){ ctx.fillStyle="#fff"; ctx.fillRect(x+sx-2,y-15,4,4); ctx.fillStyle="#111"; ctx.fillRect(x+sx-1+ex,y-14,2,2); }
+    }
     return;
   }
   const flying=tr.knockT>0;
@@ -24740,7 +24961,7 @@ function pkDrawTree(ctx,tr,x,y,t){
     // launched by an ape's landing: arcs outward while tumbling end over end, fading out
     // just before it comes down for good
     flyP=clamp(1-tr.knockT/tr.knockMax,0,1);
-    const arcH=Math.sin(flyP*Math.PI)*TREE_KNOCK_ARC;
+    const arcH=Math.sin(flyP*Math.PI)*(tr.knockArc||TREE_KNOCK_ARC);
     x+=tr.knockDX*flyP; y+=tr.knockDY*flyP-arcH;
   }
   if(quaking){
@@ -25502,6 +25723,7 @@ function parkDraw(t){
   pkDrawScorch(ctx,DX,DY,WW,WH,w,h);
   pkDrawDashFire(ctx,DX,DY,WW,WH,w,h,t);
   pkRoundDrawGround(ctx,DX,DY,WW,WH,w,h,t);
+  pkDrawMush(ctx,DX,DY,WW,WH,w,h,t);
   pkDrawSwordSite(ctx,SC,w,h,t);
   pkDrawAmbient(ctx,SC,t,WW,WH);
   pkDrawDust(ctx,SC);
@@ -25730,7 +25952,7 @@ function parkDraw(t){
     const bob=SETTINGS.reduceMotion ? 0 : Math.sin(t*3.2+dr.x*0.37+dr.y*0.11)*1.6;
     ctx.save(); ctx.translate(dx2,dy2);
     ctx.fillStyle="rgba(0,0,0,.22)"; ctx.beginPath(); ctx.ellipse(0,3.2,4.8,1.3,0,0,7); ctx.fill();
-    ctx.translate(0,bob-1);
+    ctx.translate(0,bob-1-(dr.h||0));
     for(const [ox,oy] of [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,1],[-1,1],[1,-1]]) drawBone(ctx, ox, oy, BONE_PICK_SC, "#14100c");
     drawBone(ctx, 0, 0, BONE_PICK_SC, "#fff");
     ctx.restore();
@@ -26070,6 +26292,11 @@ function parkDraw(t){
       const n=Math.ceil(PK.zoomT), warn=PK.zoomT<STAR_WARN;
       ctx.save(); ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
       pkOutlineText(ctx,"\u2605 "+n, DX, DYz-34, warn && Math.floor(t*10)%2 ? "#fff" : "#ffd23c");
+      ctx.restore(); ctx.textAlign="left";
+    }
+    if(PK.tripT>0){
+      ctx.save(); ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign="center";
+      pkOutlineText(ctx,"TRIP "+Math.ceil(PK.tripT), DX, DYz-(pkStar()?46:34), "#ff8ec6");
       ctx.restore(); ctx.textAlign="left";
     }
     ctx.restore();
