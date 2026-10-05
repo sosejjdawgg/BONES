@@ -1053,7 +1053,7 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.401a</span>
+          <span id="devToggle">v0.402a</span>
         </div>
       </div>
 
@@ -3927,7 +3927,7 @@ $("#money1").onclick=openMoneyPick;
 $("#money2").onclick=openMoneyPick;
 $("#money3").onclick=openMoneyPick;
 $("#mpCancel").onclick=()=>$("#moneyPick").classList.remove("show");
-$("#mpWork").onclick=()=>{ $("#moneyPick").classList.remove("show"); enterPaperboy(); };
+$("#mpWork").onclick=()=>{ $("#moneyPick").classList.remove("show"); jobGate("license",enterPaperboy); };
 $("#mpShop").onclick=()=>{
   $("#moneyPick").classList.remove("show");
   const openShop=()=>{ renderShop(); $("#shopPanel").classList.add("show"); };
@@ -10498,7 +10498,7 @@ function skipToMorning(){
     if(!S.neglectNight){ beep(660,.1); setTimeout(()=>beep(880,.1),120); }
   }
 }
-$("#bBedWork").onclick=()=>{ closeBedtime(); enterPaperboy(); };
+$("#bBedWork").onclick=()=>{ closeBedtime(); jobGate("license",enterPaperboy); };
 $("#bBedSkip").onclick=()=>{ closeBedtime(); skipToMorning(); };
 function drawSym(ctx,sym,cx,cy,r,col){
   ctx.strokeStyle=col; ctx.fillStyle=col; ctx.lineWidth=3;
@@ -11202,11 +11202,33 @@ function shelvedRow(key,req){
   return {req:1000+req, html:'<div class="prow locked"><span class="nm">'+GOOUT_SHELVED[key]+
     '<br><span class="tiny">COMING LATER</span></span><button data-go="shelved">LOCKED</button></div>'};
 }
+const BONE_PICK_SC=0.8;   // the park's loose bones, a size down from the HUD bone
+/* THE TWO JOBS ARE EARNED. Delivery needs a driving licence and the stamping plant needs training;
+   each is a one-off purchase asked for at the door, and once bought the job opens straight away. */
+const LICENSE_COST=200, FACTORY_TRAIN_COST=2000;
+function jobGate(kind,go){
+  const lic = kind==="license";
+  if(lic ? S.license : S.factoryTrained) return go();
+  const cost = lic ? LICENSE_COST : FACTORY_TRAIN_COST;
+  beep(420,.05);
+  openChoice(lic ? "DELIVERY DRIVER" : "STAMPING PLANT",
+    (lic ? "YOU NEED A DRIVING LICENSE \u2014 £"+cost+"." : "YOU NEED TO BE TRAINED FIRST \u2014 £"+cost+".")+"<br><br>BUY NOW?",
+    "BUY NOW \u2014 £"+cost, ()=>{
+      if(S.money<cost){ beep(150,.12,"sawtooth"); return toast("NOT ENOUGH MONEY \u2014 £"+cost+" NEEDED",1); }
+      S.money-=cost;
+      if(lic) S.license=true; else S.factoryTrained=true;
+      renderMeters(); renderGoOut(); saveGame(true);
+      beep(700,.08); setTimeout(()=>beep(940,.1),90);
+      toast(lic ? "LICENSED TO DRIVE!" : "TRAINED UP \u2014 THE PLANT WILL HAVE YOU NOW.",1);
+      go();
+    },
+    "NOT NOW", null);
+}
 function renderGoOut(){
-  const workL=S.earned<5000, compL=S.lvl<15, beachL=S.lvl<9, litL=S.lvl<18, agiL=S.lvl<8;
+  const lic=!!S.license, trained=!!S.factoryTrained, compL=S.lvl<15, beachL=S.lvl<9, litL=S.lvl<18, agiL=S.lvl<8;
   const rows=[
     {req:10, html:herdGoOutRow()},
-    {req:0, html:'<div class="prow"><span class="nm">&#9642; DELIVERY DRIVER<br><span class="tiny">DELIVER PARCELS FOR CASH</span></span><button data-go="paperboy">GO</button></div>'},
+    {req:0, html:'<div class="prow'+(lic?"":" locked")+'"><span class="nm">&#9642; DELIVERY DRIVER<br><span class="tiny">'+(lic?"DELIVER PARCELS FOR CASH":"NEEDS A DRIVING LICENSE \u2014 £"+LICENSE_COST)+'</span></span><button data-go="paperboy">'+(lic?"GO":"£"+LICENSE_COST)+'</button></div>'},
     GOOUT_SHELVED.agility ? shelvedRow("agility",18) :
     {req:18, html:'<div class="prow'+(agiL?" locked":"")+'"><span class="nm">&#9650; AGILITY TRAINING<br><span class="tiny">'+(agiL?"UNLOCKS LV.18":"-15 ENERGY \u2014 +12 XP")+'</span></span><button data-go="agility" '+(agiL?"disabled":"")+'>TRAIN</button></div>'},
     GOOUT_SHELVED.beach ? shelvedRow("beach",9) :
@@ -11214,8 +11236,8 @@ function renderGoOut(){
     GOOUT_SHELVED.comp ? shelvedRow("comp",15) :
     {req:15, html:'<div class="prow'+(compL?" locked":"")+'"><span class="nm">&#9733; DOG COMPETITION<br><span class="tiny">'+(compL?"UNLOCKS LV.15":"PRIZE MONEY \u2014 "+(3-S.compsToday)+"/3 TODAY")+'</span></span><button data-go="comp" '+(compL?"disabled":"")+'>ENTER</button></div>'},
     {req:55, html:'<div class="prow'+(litL?" locked":"")+'"><span class="nm">&#9829; VISIT THE BREEDER<br><span class="tiny">'+(litL?"UNLOCKS LV.55":(S.litter?"A PUP AWAITS":"ONE LITTER, ONE SUCCESSOR"))+'</span></span><button data-go="litter" '+(litL?"disabled":"")+'>GO</button></div>'},
-    // money-gated rather than level-gated, and £5000 is a long grind \u2014 so it anchors the bottom
-    {req:99, html:'<div class="prow'+(workL?" locked":"")+'"><span class="nm">&#9830; STAMPING PLANT<br><span class="tiny">'+(workL?"UNLOCKS AT £5000 EARNED":"EARN MONEY")+'</span></span><button data-go="work" '+(workL?"disabled":"")+'>GO</button></div>'}
+    // bought into with training, and £2000 is a long save \u2014 so it anchors the bottom
+    {req:99, html:'<div class="prow'+(trained?"":" locked")+'"><span class="nm">&#9830; STAMPING PLANT<br><span class="tiny">'+(trained?"EARN MONEY":"NEEDS TRAINING \u2014 £"+FACTORY_TRAIN_COST)+'</span></span><button data-go="work">'+(trained?"GO":"£"+FACTORY_TRAIN_COST)+'</button></div>'}
   ];
   $("#gooutList").innerHTML = unlockSort(rows);
 }
@@ -11224,9 +11246,11 @@ $("#gooutList").addEventListener("click",e=>{
   const g=t.dataset.go;
   // a shelved activity answers where you are; GO OUT stays open
   if(g==="shelved"){ beep(150,.08); return toastBubble(GOOUT_SHELVED_MSG); }
+  if(g==="work" || g==="paperboy"){
+    const go=()=>{ $("#goout").classList.remove("show"); g==="work" ? enterWork() : enterPaperboy(); };
+    return jobGate(g==="work" ? "train" : "license", go);
+  }
   $("#goout").classList.remove("show");
-  if(g==="work") enterWork();
-  if(g==="paperboy") enterPaperboy();
   if(g==="herd") herdGoOutTap();
   if(g==="comp") openPre("comp");
   if(g==="agility"){
@@ -25556,10 +25580,10 @@ function parkDraw(t){
     // flat and still, bobbing gently, with a dark edge so a white bone reads on any ground
     const bob=SETTINGS.reduceMotion ? 0 : Math.sin(t*3.2+dr.x*0.37+dr.y*0.11)*1.6;
     ctx.save(); ctx.translate(dx2,dy2);
-    ctx.fillStyle="rgba(0,0,0,.22)"; ctx.beginPath(); ctx.ellipse(0,4,6,1.6,0,0,7); ctx.fill();
+    ctx.fillStyle="rgba(0,0,0,.22)"; ctx.beginPath(); ctx.ellipse(0,3.2,4.8,1.3,0,0,7); ctx.fill();
     ctx.translate(0,bob-1);
-    for(const [ox,oy] of [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,1],[-1,1],[1,-1]]) drawBone(ctx, ox, oy, 1, "#14100c");
-    drawBone(ctx, 0, 0, 1, "#fff");
+    for(const [ox,oy] of [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,1],[-1,1],[1,-1]]) drawBone(ctx, ox, oy, BONE_PICK_SC, "#14100c");
+    drawBone(ctx, 0, 0, BONE_PICK_SC, "#fff");
     ctx.restore();
   }
   for(const p of PK.powerups){
