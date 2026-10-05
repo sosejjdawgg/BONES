@@ -1076,7 +1076,7 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.408a</span>
+          <span id="devToggle">v0.409a</span>
         </div>
       </div>
 
@@ -3497,7 +3497,8 @@ $("#lgList").addEventListener("click",e=>{
   performSave();
 });
 /* ==================== THE WALL ====================
-   Every dog who has passed hangs on the far right of the back wall, oldest at the top, a little
+   Every dog who has passed hangs on the back wall - the window's wall - on its LEFT side, between
+   the corner and the lamp, oldest first, a little
    numeral plate under each. Tapping one opens him: his picture, his name, what he was born with
    and what he passed on. MEMBOX is where each was drawn this frame, which is the tap target. */
 const MEMPIC={};
@@ -3523,12 +3524,14 @@ function memThumb(img,tw,th){
 }
 let MEMBOX=[];
 function memLayout(n,w,h){
-  // the strip of back wall right of the window, and down past it: two columns, three if crowded
+  /* The back wall runs 0.245-0.755 across and stops at 0.415 down (ROOM.backHW / backY). Its right
+     half is the window; the lamp hangs dead centre down to ~0.22; the left half is clear, so that
+     is where they hang - inset from the corner, short of the lamp's shade, above the skirting. */
   const cols = n<=4 ? 2 : 3;
-  let fw = (cols===2 ? 0.072 : 0.05)*w;
-  const x0=0.775*w, x1=0.985*w, y0=0.115*h, y1=0.405*h, plate=Math.max(7,h*0.028);
+  let fw = (cols===2 ? 0.056 : 0.036)*w;
+  const x0=0.262*w, x1=0.418*w, y0=0.10*h, y1=0.40*h, plate=Math.max(7,h*0.026);
   const rows=Math.ceil(n/cols);
-  const cellH=()=>fw*1.25+plate+h*0.012;
+  const cellH=()=>fw*1.25+plate+h*0.022;     // frame, plate, and a clear gap before the next row
   while(rows*cellH()>(y1-y0) && fw>10) fw*=0.9;
   const gapX=((x1-x0)-cols*fw)/(cols+1);
   const out=[];
@@ -7132,7 +7135,7 @@ function robotTick(dt){
       if(Math.random()<0.22)                  // grit kicked up behind the tracks
         SUDS.push({x:B.x-B.dir*0.035, y:0.795, r:1.4+Math.random()*2.2, life:0.32});
       // he pauses under the photo of the BONES who came before. once per trip.
-      if((S.memorial||[]).length && !B.sawPhoto && B.x>0.80){      // under THE WALL
+      if((S.memorial||[]).length && !B.sawPhoto && B.x<0.36){      // under THE WALL
         B.sawPhoto=true;
         if(Math.random()<0.5){ B.pauseT=1.7; B.pauseMsg="..."; }
       }
