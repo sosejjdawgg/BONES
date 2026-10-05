@@ -1054,7 +1054,7 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.405a</span>
+          <span id="devToggle">v0.406a</span>
         </div>
       </div>
 
@@ -1211,7 +1211,7 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
           <span class="gh">WALKS & THE DOGPARK</span><br>
           TAP GO OUT FOR WORK, TRAINING OR THE BEACH — OR HEAD TO THE DOGPARK ONCE HE HITS LV.5. BARK AT SQUIRRELS, BIRDS & CATS TO SCARE THEM OFF — HE DOESN'T HURT ANYONE, THEY JUST DROP A BONE AND SCUTTLE AWAY. SURVIVE THE WAVES AND REACH THE RED EXIT TO BANK REAL XP BEFORE HE GETS OVERRUN.<br><br>
           <span class="gh">ROUNDS &amp; THE SHEET</span><br>
-          YOUR FIRST SHEET IS THE SIX SIDE OBJECTIVES. FINISH ALL SIX IN ONE RUN AND GET OUT OF THE RED EXIT ALIVE TO UNLOCK SHEET 2 — FROM THEN ON EVERY VISIT IS A ROUND: A 1:00 CLOCK ON THE HEADER AND FIVE GOALS TOP-LEFT. GRAB THE <b>+30</b> CLOCKS LYING ON THE GRASS FOR MORE TIME (UP TO 3:30). TICK ALL FIVE AND THE SHEET STAMPS CLEAR — THEN WALK OUT OF THE RED EXIT ALIVE TO BANK IT AND THE NEXT VISIT BRINGS THE NEXT SHEET. RUN OUT OF TIME AND HE WALKS HIMSELF OUT: EVERYTHING ELSE STILL BANKS, THE SHEET WAITS FOR NEXT TIME. EVERY BONE ON THE GROUND IS WORTH EXACTLY ONE.<br><br>
+          EVERY VISIT IS A ROUND WITH A 1:00 CLOCK ON THE HEADER. YOUR FIRST SHEET IS THE SIX SIDE OBJECTIVES; FINISH ALL SIX IN ONE RUN AND GET OUT OF THE RED EXIT ALIVE TO UNLOCK SHEET 2, WHICH ADDS ITS GOALS TOP-LEFT. GRAB THE <b>+30</b> CLOCKS LYING ON THE GRASS FOR MORE TIME (UP TO 3:30). TICK ALL FIVE AND THE SHEET STAMPS CLEAR — THEN WALK OUT OF THE RED EXIT ALIVE TO BANK IT AND THE NEXT VISIT BRINGS THE NEXT SHEET. RUN OUT OF TIME AND HE WALKS HIMSELF OUT: EVERYTHING ELSE STILL BANKS, THE SHEET WAITS FOR NEXT TIME. EVERY BONE ON THE GROUND IS WORTH EXACTLY ONE.<br><br>
           <span class="gh">SHEET 3 &amp; THE MUSHROOM</span><br>
           SHEET 3 ASKS FOR FOUR THINGS, AND ITS PROGRESS CARRIES OVER BETWEEN VISITS: HAVE A NICE TRIP, DEFEAT 5 TREES, MIDAS TOUCH (CLEAR 100 CRITTERS AS GOLDEN BOY) AND FULLY UPGRADE A GORILLA. ON SHEET 3 A RED-AND-WHITE MUSHROOM ALWAYS GROWS ON THE INSIDE EDGE OF THE BANDANA DOG'S GROVE (AFTERWARDS, ONE VISIT IN TWENTY). EAT IT AND FOR 15 SECONDS EVERYTHING SWIMS: THE CRITTERS BACK OFF AND WATCH, AND THE TREES WALK AT YOU INSTEAD. ONE BARK BLOWS A TREE AWAY AND IT SPILLS 20 BONES.<br><br>
           <span class="gh">BARK &amp; DASH</span><br>
@@ -12793,7 +12793,7 @@ const PK_QUESTS=[
   {id:"friends", n:"FIND YOUR FRIENDS",  d:"MEET THE DOG IN THE BANDANA",  xp:500},
   {id:"birds",   n:"CLEAR 100 BIRDS",    d:"",                             xp:200, goal:100},
   {id:"recruit", n:"RECRUIT A FRIEND",   d:"HIRE ANYONE AT ALL",           xp:200},
-  {id:"crew",    n:"TEAMWORK MAKES THE DREAM WORK", d:"EVERY FRIEND, MAXED", xp:1000},
+  {id:"crew",    n:"TEAMWORK MAKES THE DREAM WORK", d:"ONE OF EACH FRIEND", xp:1000},
   {id:"burning", n:"THE FOREST IS BURNING", d:"THE GROVE AT FULL BLAZE",   xp:500},
   {id:"golden",  n:"GOLDEN BOY",         d:"CATCH THE GOLDEN BIRD",        xp:500}
 ];
@@ -12848,7 +12848,7 @@ function pkQuestTick(dt){
   }
   if(!pkQuestIs("crew")){
     let all=true;
-    for(const k of ["sq","bird","cat","ape"]) if(pkPalTier(k)<(PAL_MAXTIER[k]||4)){ all=false; break; }
+    for(const k of ["sq","bird","cat","ape"]) if(pkPalTier(k)<1){ all=false; break; }   // recruited is enough
     if(all) pkQuestHit("crew");
   }
   // "maximum trees on fire" is FIRE_CAP, which is the game's own definition of maximum - not
@@ -13376,9 +13376,12 @@ function pkRoundStart(){
   const no=pkSheetNo(), def=SHEETS[no-1]||null;
   PK.walkOut=null;
   const kept = def && def.keep && S.pkSheetProg && S.pkSheetProg[no];
-  PK.round = def ? {no, def, t:ROUND_T, shown:ROUND_T, done:{}, over:null, clear:false, pipT:0,
+  /* EVERY RUN HAS A ROUND. The clock is the run's, not the sheet's: a visit with no sheet laid on
+     it (sheet 1, or an unwritten slot) still gets the clock and the +30s - its sheet is simply
+     empty (none), so it has no card, can never stamp CLEAR and banks nothing of its own. */
+  PK.round = {no, def:def||{n:"", lines:[], none:true}, t:ROUND_T, shown:ROUND_T, done:{}, over:null, clear:false, pipT:0,
     love:0, cnt:{}, toys:new Set(), buddyHere:false, loveSpawned:false,
-    p30:{st:"wait", t:P30_FIRST}, flowers:null, rest:0, restP:null, healAcc:0, hearts:[], gbone:null} : null;
+    p30:{st:"wait", t:P30_FIRST}, flowers:null, rest:0, restP:null, healAcc:0, hearts:[], gbone:null};
   if(kept && PK.round){ Object.assign(PK.round.done, kept.done||{}); Object.assign(PK.round.cnt, kept.cnt||{}); }
   pkSheetBuild();
 }
@@ -13416,7 +13419,7 @@ function pkRoundHit(id){
   pkSheetSync(); pkRoundCheckClear();
 }
 function pkRoundCheckClear(){
-  const R=PK.round; if(!R || R.over) return;
+  const R=PK.round; if(!R || R.over || R.def.none) return;
   const all=pkRoundAllDone();
   if(all===R.clear) return;
   R.clear=all;
@@ -13699,7 +13702,7 @@ function pkDrawExitPip(ctx,gx,gy,t){
 function pkSheetBuild(){
   const el=$("#pkSheet"); if(!el) return;
   const R=PK.round;
-  if(!R){ el.className=""; el.innerHTML=""; return; }
+  if(!R || R.def.none){ el.className=""; el.innerHTML=""; return; }
   el.className="";
   el.innerHTML='<div class="ps-h">'+R.def.n+'</div>'+R.def.lines.map(l=>
     '<div class="ps-r" data-id="'+l.id+'"><span class="ps-b"></span><span class="ps-n">'+l.n+'</span>'+
@@ -13728,11 +13731,12 @@ function pkSheetHeartPop(){
 }
 // header clock + card visibility, once a frame from syncParkHeader
 function pkRoundSyncUI(){
+  if(PK.active && !PK.round) pkRoundStart();    // a run without a round is a bug, not a mode
   const c=$("#pkClock"), sh=$("#pkSheet"), tk=$("#pkTicker"), R=PK.round;
-  const on=!!R && PK.active && !bossOn();
+  const on=!!R && PK.active && !bossOn();       // the shop pauses it; nothing but Wolfie hides it
   if(c.classList.contains("on")!==on) c.classList.toggle("on",on);
   if(tk && tk.classList.contains("clk")!==on) tk.classList.toggle("clk",on);
-  const cardOn = on && !PK.shop && !PK.friendsOpen && !PK.convertOpen;
+  const cardOn = on && !R.def.none && !PK.shop && !PK.friendsOpen && !PK.convertOpen;
   if(sh.classList.contains("on")!==cardOn) sh.classList.toggle("on",cardOn);
   if(!on) return;
   const secs=Math.max(0,Math.ceil(R.shown-0.001));
@@ -13750,6 +13754,7 @@ function pkRoundHideUI(){
    else leaves the same sheet waiting, shown dimmed - never flashed red at him. */
 function pkSheetSettle(how){
   let R=PK.round; const el=$("#resSheet");
+  if(R && R.def.none){ if(!R.over) R.over=how; R=null; }    // the clock's round; no sheet of its own
   // sheet 1: the side objectives. Only a safe checkout with all six done rolls it - anything less
   // shows nothing extra here, the side objectives list below already says where he got to
   if(!R && pkSheetNo()===1 && how==="bank" && PK.quest && pkQuestAllDone())
@@ -18056,28 +18061,28 @@ const PAL_MAXTIER={sq:4, bird:4, cat:4, ape:4};
 // survive a run — recruiting one is a real pick, not an impulse buy
 const PAL_TIERS={
   sq:[
-    {n:"SQUIRREL PACK", fx:"PACK OF 2 \u2014 CIRCLES YOU, THROWS NUTS", c:30},
-    {n:"SQUIRREL PACK", fx:"PACK OF 3 \u2014 FASTER FIRE",             c:70},
-    {n:"SQUIRREL PACK", fx:"PACK OF 4 \u2014 HEAVIER HITS",            c:120},
-    {n:"SQUIRREL PACK", fx:"PACK OF 5 \u2014 LASER EYES",              c:200},
+    {n:"SQUIRREL PACK", fx:"PACK OF 2 \u2014 CIRCLES YOU, THROWS NUTS", c:23},
+    {n:"SQUIRREL PACK", fx:"PACK OF 3 \u2014 FASTER FIRE",             c:53},
+    {n:"SQUIRREL PACK", fx:"PACK OF 4 \u2014 HEAVIER HITS",            c:90},
+    {n:"SQUIRREL PACK", fx:"PACK OF 5 \u2014 LASER EYES",              c:150},
   ],
   bird:[
-    {n:"BIRD FLOCK",   fx:"4 BIRDS, EVERY 14 SEC",           c:32},
-    {n:"BIRD FLOCK",   fx:"6 BIRDS, EVERY 10 SEC",           c:51},
-    {n:"BIRD FLOCK",   fx:"8 BIRDS, EVERY 8 SEC",            c:75},
-    {n:"BIRD FLOCK",   fx:"10 BIRDS, EVERY 7 SEC — DOUBLE DAMAGE",c:106},
+    {n:"BIRD FLOCK",   fx:"4 BIRDS, EVERY 14 SEC",           c:24},
+    {n:"BIRD FLOCK",   fx:"6 BIRDS, EVERY 10 SEC",           c:38},
+    {n:"BIRD FLOCK",   fx:"8 BIRDS, EVERY 8 SEC",            c:56},
+    {n:"BIRD FLOCK",   fx:"10 BIRDS, EVERY 7 SEC — DOUBLE DAMAGE",c:80},
   ],
   cat:[
-    {n:"CAT FRIEND",   fx:"CUTS AHEAD \u2014 LEAP HITS UP TO 3",   c:29},
-    {n:"CAT FRIEND",   fx:"WIDER CUT \u2014 UP TO 5",              c:48},
-    {n:"CAT FRIEND",   fx:"FAST AGGRESSIVE LINE \u2014 UP TO 7",   c:72},
-    {n:"CAT FRIEND",   fx:"T4: FULL POWER \u2014 UP TO 10 IN ONE LEAP", c:91},
+    {n:"CAT FRIEND",   fx:"CUTS AHEAD \u2014 LEAP HITS UP TO 3",   c:22},
+    {n:"CAT FRIEND",   fx:"WIDER CUT \u2014 UP TO 5",              c:36},
+    {n:"CAT FRIEND",   fx:"FAST AGGRESSIVE LINE \u2014 UP TO 7",   c:54},
+    {n:"CAT FRIEND",   fx:"T4: FULL POWER \u2014 UP TO 10 IN ONE LEAP", c:68},
   ],
   ape:[
-    {n:"APE FRIEND",   fx:"REAR GUARD \u2014 LEAPS AND SMASHES", c:500},
-    {n:"APE FRIEND",   fx:"FASTER SMASHES",                    c:200},
-    {n:"APE FRIEND",   fx:"BIGGER BLAST, QUICKER",              c:300},
-    {n:"APE FRIEND",   fx:"T4: RAPID CROWD CONTROL",            c:400},
+    {n:"APE FRIEND",   fx:"REAR GUARD \u2014 LEAPS AND SMASHES", c:100},
+    {n:"APE FRIEND",   fx:"FASTER SMASHES",                    c:50},
+    {n:"APE FRIEND",   fx:"BIGGER BLAST, QUICKER",              c:50},
+    {n:"APE FRIEND",   fx:"T4: RAPID CROWD CONTROL",            c:50},
   ]
 };
 function pkPalTier(k){ const p=PK.pals.find(q=>q.k===k); return p?p.tier:0; }
