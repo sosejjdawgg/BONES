@@ -1053,7 +1053,7 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.402a</span>
+          <span id="devToggle">v0.403a</span>
         </div>
       </div>
 
@@ -2253,7 +2253,8 @@ function openSkillPanel(){
      protect against.
      Open on the cheapest thing he could actually learn right now, so the readout underneath is
      never blank and the first thing you read is a live option rather than an instruction. */
-  const next=TRICKS.find(t=>!hasTrick(t.k) && !t.soon && (!t.req||hasTrick(t.req)) && (S.pts||0)>=t.cost);
+  const next=xpFetchWaiting() ? trickBy("fetch")      // the ball comes first, always
+    : TRICKS.find(t=>!hasTrick(t.k) && !t.soon && (!t.req||hasTrick(t.req)) && (S.pts||0)>=t.cost);
   TREESEL=null; treeSelect(next ? next.k : "bond");
   renderSkillPanel();
   $("#skillPanel").classList.add("show");
@@ -2934,6 +2935,57 @@ function spendSkillPoint(k){
      open until the player closes it. */
 }
 
+/* THE UNSPENT POINT. A skill point sitting in the bank is the one thing on DOGCAM the player must
+   not miss - the very first one is FETCH, and fetch is how he gets his ball. So the bar asks for
+   it the way a Nintendo game asks: the bar's rim glows gold and a glint sweeps along it, a little
+   "!" bubble bobs over its end, the label blinks what is waiting, and every so often - only when
+   nothing else is on screen - a soft two-note chime. Tapping the bar opens the tree on it. */
+const XPREM={chimeT:0, on:false, since:0};
+const XPREM_CHIME_EVERY=40;
+function xpFetchWaiting(){ const f=trickBy("fetch"); return !!f && !hasTrick("fetch") && (S.pts||0)>=f.cost; }
+function xpRemindDraw(ctx,t,x,y,w,h){
+  const RM=!!SETTINGS.reduceMotion, n=S.pts||0, fetch=xpFetchWaiting();
+  // the rim: gold, breathing
+  const gl=0.55+0.45*Math.sin(t*5);
+  ctx.save();
+  ctx.strokeStyle="rgba(244,210,60,"+gl.toFixed(3)+")"; ctx.lineWidth=2;
+  ctx.strokeRect(x-2,y-2,w+4,h+4);
+  // the glint: a bright slash that runs the length of the bar every couple of seconds
+  if(!RM){
+    const k=(t%2.2)/0.7;
+    if(k<1){
+      ctx.beginPath(); ctx.rect(x+2,y+2,w-4,h-4); ctx.clip();
+      const gx=x-20+(w+40)*k;
+      const g=ctx.createLinearGradient(gx-14,0,gx+14,0);
+      g.addColorStop(0,"rgba(255,236,140,0)"); g.addColorStop(0.5,"rgba(255,236,140,.85)"); g.addColorStop(1,"rgba(255,236,140,0)");
+      ctx.fillStyle=g; ctx.beginPath(); ctx.moveTo(gx-10,y+h); ctx.lineTo(gx+4,y); ctx.lineTo(gx+14,y); ctx.lineTo(gx,y+h); ctx.closePath(); ctx.fill();
+    }
+  }
+  ctx.restore();
+  // the label says exactly what is waiting, blinking gold and white
+  ctx.save(); ctx.textAlign="right"; ctx.font="7px 'Press Start 2P',monospace";
+  ctx.fillStyle=Math.floor(t*2.5)%2 ? "#ffe27a" : "#fff";
+  ctx.fillText(fetch ? "\u25B2 TAP \u2014 LEARN FETCH!" : "\u25B2 TAP \u2014 "+n+" SKILL POINT"+(n===1?"":"S"), x+w, y-5);
+  ctx.restore();
+  // the "!" bubble, bobbing over the bar's far end
+  const bob=RM?0:Math.abs(Math.sin(t*4))*-4;
+  const bx=x+w-9, by=y-31+bob;
+  ctx.save();
+  ctx.fillStyle="#fff"; ctx.strokeStyle="#111"; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx-9,by-9,18,18,4) : ctx.rect(bx-9,by-9,18,18); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(bx-3,by+8); ctx.lineTo(bx,by+13); ctx.lineTo(bx+3,by+8); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(bx-3.5,by+9.5); ctx.lineTo(bx,by+14); ctx.lineTo(bx+3.5,by+9.5); ctx.stroke();
+  ctx.fillStyle="#fff"; ctx.fillRect(bx-3,by+7,6,3);
+  ctx.fillStyle="#e8302a"; ctx.fillRect(bx-1.5,by-5.5,3,7); ctx.fillRect(bx-1.5,by+3,3,3);
+  ctx.restore();
+  // the chime, now and then, and only when nothing else is asking for attention
+  if(!XPREM.on){ XPREM.on=true; XPREM.chimeT=t-XPREM_CHIME_EVERY+2.5; }
+  XPREM.seen=t;
+  if(t-XPREM.chimeT>=XPREM_CHIME_EVERY && canPromptSkill() && !PARTY.on){
+    XPREM.chimeT=t;
+    beep(1319,.07,"square",.028,{prio:0}); setTimeout(()=>beep(1760,.11,"square",.026,{prio:0}),110);
+  }
+}
 const XPF=[]; let LVLFX=0; let MEMIMG=null;
 const XPANIM={lvl:1,frac:0,snd:0,pauseT:0,parts:[],ready:false,danceOwed:false};
 let XPLOCK=false;
@@ -9822,6 +9874,7 @@ function drawCam(t){
   ctx.fillText(showPup ? S.pup.name+" \u2014 PUPPY LV."+S.pup.lvl : NAME()+" \u2014 "+stageName(dl)+" LV."+dl, xbX, xbY-5);
   ctx.textAlign="right";
   if(XPANIM.ready){ ctx.fillStyle=Math.floor(t*3)%2?"#fff":"#f22"; ctx.fillText("TAP \u25B2 LEVEL UP!", xbX+xbW, xbY-5); ctx.fillStyle="#fff"; }
+  else if(!showPup && XPANIM.pauseT<=0 && (S.pts||0)>0) xpRemindDraw(ctx,t,xbX,xbY,xbW,xbH);
   else ctx.fillText("XP", xbX+xbW, xbY-5);
   ctx.textAlign="left";
   // floating +XP
