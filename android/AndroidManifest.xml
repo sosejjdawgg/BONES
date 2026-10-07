@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- BONES for Android: the single-file HTML game in a full-screen WebView. build.sh fills in the
+     version from the html it packages. No INTERNET permission: the font is bundled and the game
+     makes no network calls, so the app works offline and asks for nothing it does not use. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.sosejjdawgg.bones">
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <application
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:allowBackup="true"
+        android:hardwareAccelerated="true"
+        android:theme="@style/BonesTheme">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="portrait"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density|fontScale">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
