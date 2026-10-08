@@ -763,7 +763,7 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
 .hm-title{font-size:14px;letter-spacing:3px;margin-top:4px;color:#fff;text-shadow:2px 2px 0 #1b140c,-1px -1px 0 #1b140c,1px -1px 0 #1b140c,-1px 1px 0 #1b140c}
 .hm-subline{font-size:7px;color:#fff;letter-spacing:2px;text-shadow:1px 1px 0 #1b140c,-1px -1px 0 #1b140c,1px -1px 0 #1b140c,-1px 1px 0 #1b140c}
 #hRecap{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;padding:14px;
-  background:rgba(4,8,3,.72);animation:hrIn .35s ease both;overflow-y:auto}
+  background:rgba(4,8,3,.72);animation:hrIn .35s ease both;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain}
 #hRecap.hidden{display:none}
 @keyframes hrIn{from{opacity:0}to{opacity:1}}
 .hr-card{width:100%;max-width:360px;border:3px solid #fff;background:#10160c;padding:14px 14px 12px;display:flex;flex-direction:column;
@@ -782,7 +782,15 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
 .hr-star i{font-style:normal;font-size:5px;letter-spacing:1px;color:#8a8a82;line-height:1.4}
 .hr-star.on i{color:#f6f2e8}
 .hr-tiles{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:6px;margin-top:16px}   /* headroom: the parade walks on them */
-.hr-parade{position:absolute;left:0;top:0;pointer-events:none;z-index:7}
+/* THE PARADE'S CANVAS IS NOT INSIDE THE RECAP. It used to be a child of the scrolling #hRecap, sized
+   to it by hand every frame from rounded clientWidth/clientHeight - so on a phone whose screen is a
+   fractional number of CSS pixels (1080x2400 at 2.625 is 411.43x914.29) it sat a fraction of a pixel
+   LARGER than its own scroller, and a canvas redrawn sixty times a second inside a box it overflows
+   is a repaint of that whole box every frame. In the Android app's WebView that read as the entire
+   recap vibrating and blurring. It now lies over the recap as a sibling on its own layer, sized by
+   CSS to exactly the panel, and follows the recap's scroll by drawing offset rather than by living
+   in it. */
+.hr-parade{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:7;will-change:transform}
 .hr-tile{transform-origin:50% 100%}
 .hr-tile.hr-thump{animation:hrThump .28s ease-out}
 @keyframes hrThump{0%{transform:none}35%{transform:translateY(3px) scale(1.05,.9)}70%{transform:translateY(-1px) scale(.98,1.03)}100%{transform:none}}
@@ -1076,7 +1084,7 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.409a</span>
+          <span id="devToggle">v0.410a</span>
         </div>
       </div>
 
@@ -13682,7 +13690,7 @@ function startPark(plus){
     inv:0, fx:[],
     x:0,y:0,vx:0,vy:0, joy:null,
     en:[], fr:[], gate:{}, gateArm:true, gateAsk:false, started:false, shop:null, biscuits:[], drops:[], nuts:[],
-    powerups:[], zoomT:0, over:0, regenT:0, regenAcc:0, hurtT:0, hpSeen:0, zoom:1, sniffLvl:0, w2Stage:0,
+    powerups:[], zoomT:0, over:0, regenT:0, regenAcc:0, hurtT:0, hpSeen:0, zoom:1, sniffLvl:0, w2Stage:0, stormGapT:0,
     zoomFromWave:0, zoomAnim:null, uiCamPct:PK_CAM_PCT0,
     trees:[], scorch:[], embers:[], treeGrid:null, treeGridDirty:true,
     plusMode:!!plus, mixTypes:null, mixLabel:null, swoopT:0,
@@ -15170,11 +15178,11 @@ function pkLoveTake(e){
   /* A frozen ally cannot fight: the startled branch sits above the charmed one in the enemy loop
      and would hold it in place for the rest of its flinch. */
   e.startledT=0;
-  /* It leaves its formation the moment it turns. pkLoveEnemyTick owns its movement from here, so
-     the flags are cleared rather than left set: a stale stormForm/vForm/flock on a charmed bird is
+  /* It leaves the storm the moment it turns. pkLoveEnemyTick owns its movement from here, so
+     the flag is cleared rather than left set: a stale stormForm on a charmed bird is
      a path nothing walks any more, and it is exactly the sort of thing the next reader trips on.
      Its dive state goes with them so a bird caught mid-swoop cannot land the peck it was on. */
-  e.stormForm=false; e.vForm=false; e.flock=false;
+  e.stormForm=false;
   e.diving=false; e.swoopWindT=0; e.peck=undefined;
   if(!e.loveHp){
     e.loveHp=true;
@@ -15540,50 +15548,38 @@ function pkSpawnGoldenBird(){
   toast("A GOLDEN BIRD FLIES BY — CATCH IT!",1);
   beep(900,.05); setTimeout(()=>beep(1200,.06),70);
 }
-// WAVE 2 \u2014 BIRD BACKUP: a quick opening pass of birds crossing the screen in lines, then
-// the real event: a single huge storm fills the sky at once (see pkSpawnBirdStorm) rather than
-// trickling in three at a time. 1-hit kill like every other bird. If it'd fly clean off the
-// engagement area, it rubber-bands its heading back toward the fray instead of leaving, so the
-// flock keeps looping through until every last one is knocked down.
+/* WAVE 2 - THE STORM. A swarm circles overhead and the birds come down at him ONE AT A TIME: each
+   one locks on, glows red and telegraphs for STORM_SWOOP_WINDUP, dives, and then the whole swarm
+   waits STORM_PECK_GAP before the next one so much as starts to telegraph. 1-hit kill like every
+   other bird, and only a diving bird is close enough to bark.
+   THE FORMATIONS ARE GONE. The wave used to open with a row of birds crossing in a line and finish
+   with a flying V for whatever was left; both arrived several at once from off-screen, faster than
+   a bark recharges, and read as unfair rather than hard. The storm is the whole wave now.
+   One attacker at a time means one bird down per ~4s of perfect barking (telegraph + dive + gap),
+   so the wave is sized for that against the round clock - see STORM_N. */
+const STORM_N=10;
 function pkSpawnFlock(){
   const remaining=Math.max(1, PK.waveQuota-PK.waveSpawned);
   PK.w2Stage=(PK.w2Stage||0)+1;
-  if(PK.w2Stage===1) return pkSpawnBirdRow(Math.min(3*pkPlusMult(),remaining));
-  if(PK.w2Stage===2) return pkSpawnBirdStorm(Math.min(Math.round(18*pkPlusMult()),remaining));
-  return pkSpawnBirdV(remaining);   // whatever's left dives in as the V \u2014 always finishes the wave
-}
-function pkSpawnBirdRow(n){
-  const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
-  const WW=PK.WW||w*2, WH=PK.WH||h*2;
-  const diagonals=[Math.PI*0.25, Math.PI*0.75, Math.PI*1.25, Math.PI*1.75];
-  const ang=diagonals[Math.floor(Math.random()*4)], perp=ang+Math.PI/2;
-  const R=pkOffscreenR(w,h,0.85);
-  const cx=PK.x-Math.cos(ang)*R, cy=PK.y-Math.sin(ang)*R;   // upstream of the flight path
-  const sp=90+Math.random()*20;
-  for(let i=0;i<n;i++){
-    const off=(i-(n-1)/2)*15+(Math.random()-0.5)*8;         // a row, one after another
-    const sxo=cx+Math.cos(perp)*off, syo=cy+Math.sin(perp)*off;
-    pkEnMake({t:"bird", flock:true, x:(sxo+WW)%WW, y:(syo+WH)%WH,
-      hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp, vx:Math.cos(ang)*sp, vy:Math.sin(ang)*sp,
-      ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
-  }
-  if(Math.random()<STALK_CHANCE) pkSpawnStalkCat(PK.x+(Math.random()-0.5)*80, PK.y+(Math.random()-0.5)*80, 1+Math.floor(Math.random()*2));
-  toast(n+" BIRDS INBOUND \u2014 BACKUP ARRIVES!",1);
-  beep(520,.09,"square",.05); setTimeout(()=>beep(680,.09,"square",.05),90);
-  return n;
+  // the storm, then (only if the quota ever outruns it - UNLEASHED's multiplier) a few more join it
+  return PK.w2Stage===1 ? pkSpawnBirdStorm(Math.min(Math.round(STORM_N*pkPlusMult()),remaining), false)
+                        : pkSpawnBirdStorm(Math.min(4,remaining), true);
 }
 // no more flat red-glowing aggro ring — instead a loose, chaotic swirl overhead (mostly ambient,
 // no threat while swirling) with one or two birds at a time peeling off to actually swoop and
 // dive at BONES. A miss or a survived hit sends the diver back up to rejoin the swirl for
 // another pass later, so the whole flock cycles through real attacks instead of just circling.
-const STORM_SWIRL_MAX_ACTIVE=3;   // bumped for the bigger swarm — still telegraphed, just a bit busier
+const STORM_SWIRL_MAX_ACTIVE=1;   // ONE at a time: a second diver arrived before the bark had recharged
 // how far a circling/diving storm bird's presence reaches into the grove, and how hard that
 // makes the nearest trees flutter — purely visual, cinematic weight for the swarm overhead
 const STORM_TREE_R=140, STORM_SWAY_MULT=5;
 // the beat between a bird locking onto BONES and the real, fast dive actually launching — this
 // is the player's whole reaction window, telegraphed on-screen by the same red windup dot every
 // other windup attack in the park already flashes
-const STORM_SWOOP_WINDUP=0.55;
+const STORM_SWOOP_WINDUP=1.1;     // was 0.55: long enough to see which one, turn, and be ready to bark
+// ...and after every attack (landed, missed, or barked out of the sky) the swarm holds off this long
+// before the next bird starts to telegraph - see PK.stormGapT
+const STORM_PECK_GAP=2.0;
 /* ---------- every bird's attack: wait, peck once, get out ----------
    A bird used to home straight at BONES and then STAY there, because nothing in its loop ever
    told it to leave: the contact test only fired when he had no invulnerability frames left, so a
@@ -15679,7 +15675,7 @@ function pkBirdPeck(e,dt,WW,WH,dmg){
   e.dir = vx<0 ? -1 : 1;
   return false;
 }
-function pkSpawnBirdStorm(n){
+function pkSpawnBirdStorm(n,join){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
   const R=Math.max(w,h)*0.42, baseAng=Math.random()*6.283;
@@ -15691,28 +15687,8 @@ function pkSpawnBirdStorm(n){
       swoopCd:1.2+Math.random()*2.6, hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:150, vx:0, vy:0,
       ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
   }
-  toast("A STORM OF BIRDS \u2014 THEY'RE CIRCLING OVERHEAD",1);
+  toast(join ? n+" MORE BIRDS JOIN THE STORM" : "A STORM OF BIRDS \u2014 BARK THE ONE THAT GLOWS RED",1);
   beep(260,.12,"sawtooth",.04); setTimeout(()=>beep(220,.12,"sawtooth",.04),120);
-  return n;
-}
-// the flying V: a real assault, homing straight at BONES instead of flying a fixed line
-function pkSpawnBirdV(n){
-  const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
-  const WW=PK.WW||w*2, WH=PK.WH||h*2;
-  const ang=Math.random()*6.283, perp=ang+Math.PI/2;
-  const R=pkOffscreenR(w,h,0.9);
-  const cx=PK.x-Math.cos(ang)*R, cy=PK.y-Math.sin(ang)*R;
-  const sp=150;
-  for(let i=0;i<n;i++){
-    const side=i%2===0?1:-1, rank=Math.ceil(i/2);
-    const off=side*rank*22, back=rank*18;   // wingmen trail behind the leader — a real V shape
-    const sxo=cx+Math.cos(perp)*off-Math.cos(ang)*back, syo=cy+Math.sin(perp)*off-Math.sin(ang)*back;
-    pkEnMake({t:"bird", vForm:true, angry:true, x:(sxo+WW)%WW, y:(syo+WH)%WH,
-      hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp, vx:Math.cos(ang)*sp, vy:Math.sin(ang)*sp,
-      ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0});
-  }
-  toast("INCOMING \u2014 FLYING V!",1);
-  beep(200,.14,"sawtooth",.06); setTimeout(()=>beep(160,.16,"sawtooth",.06),110);
   return n;
 }
 const LASER_WIDTH=13;
@@ -16145,7 +16121,7 @@ function pkIgniteAnimal(e){
    class. That keeps property access in the hot per-enemy loop monomorphic, and it makes it
    impossible for a stale per-type flag (a recycled bird still believing it is a mad squirrel) to
    survive into the next life. */
-const EN_FIELDS=["t","x","y","hp","hpMax","sp","vx","vy","kx","ky","dir","fi","ft","ph","life","side","alpha","big","boss","small","decor","angry","hellish","hunting","circling","flock","vForm","stormForm","diving","swoop","swoopCd","swoopWindT","orbitAng","orbitR","orbitSpd","roost","standing","spooked","spookT","spookVx","spookVy","stalk","stalkAggro","anchorX","anchorY","leapT","windT","leapAng","lvx","lvy","ranger","madsq","fromTree","atkState","atkCd","strafeDir","laserState","chargeT","aimAng","aimBase","aimErr","sweepT","beamLen","cd","burnT","palBeamT","madsqExplode","explodeT","heading","spdCur","introT","leapState","leapCd","leapWindT","leapActT","leapDur","leapStartX","leapStartY","leapDX","leapDY","landT","fleeing","fleeT","fleeVx","fleeVy","shockT","hitT","xrayT","bounceT","bounceMax","bounceSpin","heroOutro","ablaze","ablazeT","ablazeHurtT","apeCounted","panicAng","panicJit","igniteCdT","love","loveTgt","loveCd","loveHp","loveFlash","lovePulse","counted","invulnT","contactT","peck","peckT","peckCd","peckAng","startledT"];
+const EN_FIELDS=["t","x","y","hp","hpMax","sp","vx","vy","kx","ky","dir","fi","ft","ph","life","side","alpha","big","boss","small","decor","hellish","hunting","stormForm","diving","swoop","swoopCd","swoopWindT","orbitAng","orbitR","orbitSpd","roost","standing","spooked","spookT","spookVx","spookVy","stalk","stalkAggro","anchorX","anchorY","leapT","windT","leapAng","lvx","lvy","ranger","madsq","fromTree","atkState","atkCd","strafeDir","laserState","chargeT","aimAng","aimBase","aimErr","sweepT","beamLen","cd","burnT","palBeamT","madsqExplode","explodeT","heading","spdCur","introT","leapState","leapCd","leapWindT","leapActT","leapDur","leapStartX","leapStartY","leapDX","leapDY","landT","fleeing","fleeT","fleeVx","fleeVy","shockT","hitT","xrayT","bounceT","bounceMax","bounceSpin","heroOutro","ablaze","ablazeT","ablazeHurtT","apeCounted","panicAng","panicJit","igniteCdT","love","loveTgt","loveCd","loveHp","loveFlash","lovePulse","counted","invulnT","contactT","peck","peckT","peckCd","peckAng","startledT"];
 const EN_BLANK={};
 for(const f of EN_FIELDS) EN_BLANK[f]=undefined;
 const EN_POOL=[], EN_POOL_MAX=420;
@@ -17693,7 +17669,7 @@ function pkSpawnMixBurst(types){
 // spec. waves beyond 10 keep extending the mix pattern with a gently rising quota.
 function pkWaveQuota(wv){
   if(wv===1) return 2;    // catch 2 birds — the introduction, deliberately tiny
-  if(wv===2) return 24;   // the birds are upset — a real, sky-filling swarm
+  if(wv===2) return STORM_N;   // the storm: every one of them has to come down and be barked
   if(wv===3) return 10;   // attack of the cats
   // from wave 4 the park stops trickling and starts pouring. These are kill counts, not
   // on-screen counts — pkMaxAlive is what actually governs how many are in front of you at once.
@@ -17718,7 +17694,7 @@ function pkAliveCount(){ let n=0; for(let i=0;i<PK.en.length;i++) if(!PK.en[i].f
 // what each wave is called. 6 onwards is the same escalating joke, told straight.
 const WNAME={
   1:"CATCH 2 BIRDS",
-  2:"CLEAR 24 BIRDS",
+  2:"CLEAR "+STORM_N+" BIRDS",
   3:"ATTACK OF THE CATS",
   4:"WATCH OUT — NUTS!",
   5:"THEY'RE COMING OUT OF THE GOD DAMNED TREES!",
@@ -18148,7 +18124,6 @@ function pkBark(){
         e.kx=dxw/d*PK.knock*1.6; e.ky=dyw/d*PK.knock*1.6;   // shove them, and let it read
         e.hitT=0.22;                                       // white flash on the sprite
         pkHitMark(e.x, e.y, false);
-        if(e.flock && !e.circling) e.circling=true;   // survives a hit -> breaks formation to circle and dive-attack
       }
     }
   }
@@ -18767,7 +18742,7 @@ function pkSeparate(dt,WW,WH){
   const R2=SEP_R*SEP_R;
   for(let i=0;i<PK.en.length;i++){
     const e=PK.en[i];
-    if(e.fleeing || e.standing || e.boss || e.stormForm || e.flock) continue;
+    if(e.fleeing || e.standing || e.boss || e.stormForm) continue;
     if(!Number.isFinite(e.x) || !Number.isFinite(e.y)) continue;
     // the cell walk is written out rather than going through pkEnemiesNear's callback: at this
     // density that callback would mean one fresh closure per enemy per frame, which is precisely
@@ -18808,7 +18783,7 @@ function pkRecycleStragglers(dt,WW,WH){
   for(let i=0;i<PK.en.length;i++){
     const e=PK.en[i];
     if(e.fleeing || e.love || e.boss || e.roost || e.standing || e.spooked || e.decor || e.swoop) continue;
-    if(e.stormForm || e.flock || e.vForm) continue;          // formations own their own paths
+    if(e.stormForm) continue;                                 // the storm owns its own paths
     const d=Math.hypot(wd(e.x-PK.x,WW),wd(e.y-PK.y,WH));
     if(d<far) continue;
     const a=Math.random()*6.283;
@@ -24091,7 +24066,7 @@ function parkUpdate(dt){
   if(PK.spawnT<=0 && PK.waveSpawned<PK.waveQuota && !PK.waveOutro && aliveNow<maxAlive){
     const wv=PK.wave;
     if(wv===1){ PK.spawnT=5.5; PK.waveSpawned+=pkSpawnBirdGroup(); }             // CLEAR THE BIRDS: loose roosts, standing until disturbed
-    else if(wv===2){ PK.spawnT=8; PK.waveSpawned+=pkSpawnFlock(); }              // BIRD BACKUP: long diagonal formations
+    else if(wv===2){ PK.spawnT=8; PK.waveSpawned+=pkSpawnFlock(); }              // THE STORM: one diver at a time
     else if(wv===3){ PK.spawnT=4; PK.waveSpawned+=pkSpawnCatSquad(); }           // CAT BACKUP: direct cat squads
     else if(wv===4){ PK.spawnT=4.5; PK.waveSpawned+=pkSpawnRangerSquad(); }      // NUT THROWERS: ranged squirrels
     else if(wv===5){ PK.spawnT=5; PK.waveSpawned+=pkSpawnMadSquad(); }           // out of the trees: rotating-beam squirrels
@@ -24203,6 +24178,13 @@ function parkUpdate(dt){
     const sa=Math.random()*6.283;
     SPARKS.push({x:PK.x+Math.cos(sa)*14, y:PK.y+Math.sin(sa)*14-10, vx:Math.cos(sa)*18, vy:Math.sin(sa)*18-30, life:0.35+Math.random()*0.25, gold:true});
   }
+  /* THE STORM TAKES TURNS. While any storm bird is telegraphing or diving the breather is held
+     full; once none is, it counts down, and no bird may start its telegraph until it is empty.
+     Measured off the birds themselves, so every way an attack ends counts the same - a peck that
+     landed, a dive that missed, a bird barked out of the sky mid-dive. */
+  { let storm=false;
+    for(const o of PK.en) if(o.stormForm && !o.fleeing && (o.diving || o.swoopWindT>0)){ storm=true; break; }
+    PK.stormGapT = storm ? STORM_PECK_GAP : Math.max(0,(PK.stormGapT||0)-dt); }
   for(let i=PK.en.length-1;i>=0;i--){
     const e=PK.en[i];
     e.kx*=0.88; e.ky*=0.88;
@@ -24615,29 +24597,6 @@ function parkUpdate(dt){
       e.ft+=dt; if(e.ft>0.14){ e.ft=0; e.fi++; }
       continue;
     }
-    if(e.flock){
-      // straight-line flight, no homing — if it'd fly clean out of the fray, rubber-band
-      // the heading back toward the player's area instead of leaving
-      const dxw=wd(PK.x-e.x,WW), dyw=wd(PK.y-e.y,WH);
-      const d=Math.hypot(dxw,dyw)||1;
-      // the formation only ever owned the APPROACH. Once it is on him it breaks up into the
-      // hit-and-run cycle, so a row that arrives never settles onto him -- see pkBirdPeck
-      if(e.peck || d<pkBirdHoldR()*2.4){
-        if(pkBirdPeck(e,dt,WW,WH,10)) return pkDeath();
-        continue;
-      }
-      const leash=Math.max(w,h)*0.9;
-      if(d>leash){
-        const ang2=Math.atan2(dyw,dxw)+(Math.random()-0.5)*0.5;
-        e.vx=Math.cos(ang2)*e.sp; e.vy=Math.sin(ang2)*e.sp;
-      }
-      e.dir = e.vx<0 ? -1 : 1;
-      e.ph+=dt*6;
-      e.ft+=dt; if(e.ft>0.12){ e.ft=0; e.fi++; }
-      e.x=(e.x+(e.vx+e.kx)*dt+WW)%WW;
-      e.y=(e.y+(e.vy+e.ky)*dt+WH)%WH;
-      continue;
-    }
     if(e.stormForm){
       if(e.swoopWindT>0){
         // locked onto BONES and about to dive: it hangs almost in place, shuddering — the red
@@ -24654,8 +24613,8 @@ function parkUpdate(dt){
         continue;
       }
       if(!e.diving){
-        // just swirling — ambient, no threat at all — until its cooldown is up and fewer than
-        // STORM_SWIRL_MAX_ACTIVE birds are already mid-dive or already telegraphing one
+        // just swirling — ambient, no threat at all — until its cooldown is up, nobody else is
+        // telegraphing or diving, and the swarm's breather after the last attack has run out
         e.swoopCd-=dt;
         e.orbitAng+=e.orbitSpd*dt;
         const tx=PK.x+Math.cos(e.orbitAng)*e.orbitR, ty=PK.y+Math.sin(e.orbitAng)*e.orbitR*0.6;
@@ -24666,8 +24625,12 @@ function parkUpdate(dt){
         e.x=(e.x+e.vx*dt+WW)%WW; e.y=(e.y+e.vy*dt+WH)%WH;
         if(e.swoopCd<=0){
           const activeSwoops=PK.en.reduce((a,o)=>a+(o.stormForm&&(o.diving||o.swoopWindT>0)?1:0),0);
-          if(activeSwoops<STORM_SWIRL_MAX_ACTIVE){ e.swoopWindT=STORM_SWOOP_WINDUP; e.swoopCd=99; }
-          else e.swoopCd=0.5+Math.random()*0.7;
+          if(activeSwoops<STORM_SWIRL_MAX_ACTIVE && !(PK.stormGapT>0)){
+            e.swoopWindT=STORM_SWOOP_WINDUP; e.swoopCd=99;
+            beep(620,.05,"square",.03); setTimeout(()=>beep(620,.05,"square",.03),130);   // the lock-on chirp
+          }
+          // ready and waiting: ask again soon, so the next attack follows the breather promptly
+          else e.swoopCd=0.15+Math.random()*0.3;
         }
         continue;
       }
@@ -24698,22 +24661,6 @@ function parkUpdate(dt){
         e.orbitAng=Math.atan2(wd(e.y-PK.y,WH),wd(e.x-PK.x,WW));
         e.orbitR=maxR*0.44;
       }
-      continue;
-    }
-    if(e.vForm){
-      // a real dive: homes on BONES instead of flying a fixed line, closing fast — the assault
-      const dxw2=wd(PK.x-e.x,WW), dyw2=wd(PK.y-e.y,WH), d2=Math.hypot(dxw2,dyw2)||1;
-      // ...and then it breaks. The V is the arrival, not a place to park -- see pkBirdPeck
-      if(e.peck || d2<pkBirdHoldR()*2.4){
-        if(pkBirdPeck(e,dt,WW,WH,12)) return pkDeath();
-        continue;
-      }
-      e.vx=dxw2/d2*e.sp; e.vy=dyw2/d2*e.sp;
-      e.dir=e.vx<0?-1:1;
-      e.ph+=dt*10;
-      e.ft+=dt; if(e.ft>0.1){ e.ft=0; e.fi++; }
-      e.x=(e.x+(e.vx+e.kx)*dt+WW)%WW;
-      e.y=(e.y+(e.vy+e.ky)*dt+WH)%WH;
       continue;
     }
     // every other bird -- the mixed waves from 6 on -- flies the same hit-and-run cycle
@@ -25614,13 +25561,14 @@ function drawEnemy(ctx,e,sx,sy){
     ctx.fillStyle="#fff"; ctx.font="bold 13px 'Press Start 2P',monospace"; ctx.textAlign="center";
     ctx.fillText("!", sx, sy-24); ctx.textAlign="left";
   }
-  if((e.atkState==="windup" || e.leapState==="windup" || e.swoopWindT>0) && Math.floor(performance.now()/80)%2){
+  if((e.atkState==="windup" || e.leapState==="windup" || (e.swoopWindT>0 && !e.stormForm)) && Math.floor(performance.now()/80)%2){
     ctx.fillStyle="#f22"; ctx.beginPath(); ctx.arc(sx, sy-26, 2.4, 0, 7); ctx.fill();
   }
   // mad squirrels glow red the whole time they're charging or sweeping their beam
   const madGlow = e.madsq && !e.ablaze && (e.laserState==="charge" || e.laserState==="sweep");
-  // wave 2's circling/V-formation birds are out for blood — same red glow reused for "angry"
-  const angryGlow = !!e.angry;
+  // the storm bird that has locked on glows red from the first beat of its telegraph to the end of
+  // its dive - in a sky full of identical birds, the colour is what says WHICH ONE
+  const angryGlow = !!(e.stormForm && !e.fleeing && (e.swoopWindT>0 || e.diving));
   // caught fire and panicking: a warm, flickering flame right under it, unmistakable at a glance
   const ablazeGlow = !!e.ablaze;
   const frames = ENEMYIMG[e.t];
@@ -25629,6 +25577,17 @@ function drawEnemy(ctx,e,sx,sy){
   let eh = e.alpha?32 : e.t==="cat"?(e.small?22*0.7:22):e.t==="bird"?18:16;
   if(e.big) eh*=1.9;
   const ew = eh*img.naturalWidth/img.naturalHeight;
+  /* THE STORM'S TELEGRAPH: a red ring closing in on the bird as the dive approaches, and a "!" over
+     it. The ring is the countdown - when it reaches the bird, the bird comes. */
+  if(e.stormForm && e.swoopWindT>0 && !e.fleeing){
+    const k=clamp(e.swoopWindT/STORM_SWOOP_WINDUP,0,1);
+    ctx.save(); ctx.strokeStyle="#ff3b30"; ctx.lineWidth=2.2; ctx.globalAlpha=0.55+0.45*(1-k);
+    ctx.beginPath(); ctx.arc(sx, sy-eh*0.5, ew*0.55+22*k, 0, 7); ctx.stroke();
+    ctx.globalAlpha=1; ctx.font="bold 12px 'Press Start 2P',monospace"; ctx.textAlign="center";
+    ctx.fillStyle="#000"; ctx.fillText("!", sx+1, sy-eh-7);
+    ctx.fillStyle="#fff"; ctx.fillText("!", sx, sy-eh-8);
+    ctx.restore(); ctx.textAlign="left";
+  }
   if(e.alpha){
     ctx.strokeStyle="#f22"; ctx.lineWidth=2;
     ctx.globalAlpha=0.5+0.5*Math.abs(Math.sin(e.ph+performance.now()/300));
@@ -31111,22 +31070,26 @@ function hpDrawSheep(ctx,s,t){
   if(s.ram){ ctx.strokeStyle="#c8a15e"; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(face*5.6,-7+dip,1.9,0,5.2); ctx.stroke(); }
   ctx.restore();
 }
+// the backing store, matched to the canvas's REAL (fractional) size - measured only when it can
+// have changed (the start, a resize), never once a frame
 function hpSize(){
-  const P=HPARADE, el=P.el, cv=P.cv; if(!el||!cv) return;
-  const card=el.querySelector(".hr-card");
-  const W=el.clientWidth, H=Math.max(el.clientHeight, card ? card.offsetTop+card.offsetHeight+30 : 0);
-  const dpr=Math.min(3,window.devicePixelRatio||1);
-  if(cv._w!==W || cv._h!==H || cv._d!==dpr){
-    cv._w=W; cv._h=H; cv._d=dpr;
-    cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr);
-    cv.style.width=W+"px"; cv.style.height=H+"px";
-  }
-  P.ctx.setTransform(dpr,0,0,dpr,0,0);
+  const P=HPARADE, cv=P.cv; if(!cv || !P.dirty) return;
+  P.dirty=false;
+  const r=cv.getBoundingClientRect(), dpr=Math.min(3,window.devicePixelRatio||1);
+  const bw=Math.max(1,Math.round(r.width*dpr)), bh=Math.max(1,Math.round(r.height*dpr));
+  if(cv.width!==bw) cv.width=bw;
+  if(cv.height!==bh) cv.height=bh;
+  cv._w=r.width; cv._h=r.height;
 }
+function hpResized(){ HPARADE.dirty=true; if(HPARADE.still) requestAnimationFrame(()=>{ hpSize(); hpDraw(); }); }
 function hpDraw(){
   const P=HPARADE, ctx=P.ctx, T=P.terr, cv=P.cv; if(!ctx||!cv) return;
-  ctx.clearRect(0,0,cv._w||cv.width,cv._h||cv.height);
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.clearRect(0,0,cv.width,cv.height);
   if(!T) return;
+  // terrain is in the recap's scrolling coordinates: draw it shifted by however far it is scrolled
+  const kx=cv.width/(cv._w||cv.width), ky=cv.height/(cv._h||cv.height);
+  ctx.setTransform(kx,0,0,ky,0,-(P.el?P.el.scrollTop:0)*ky);
   const t=P.t;
   // shadows on whatever is underneath, shrinking with height
   for(const s of P.sheep){
@@ -31179,10 +31142,14 @@ function herdParadeStart(R){
   const P=HPARADE, el=$("#hRecap"); if(!el) return;
   const n=Math.min(HERD_FLOCK, Math.max(0,R.penned|0)); if(n<=0) return;
   const cv=document.createElement("canvas"); cv.className="hr-parade"; cv.setAttribute("aria-hidden","true");
-  el.appendChild(cv);
+  el.parentNode.insertBefore(cv, el.nextSibling);          // over the recap, not in it - see .hr-parade
   const tok={}; P.token=tok;
-  Object.assign(P,{el, cv, ctx:cv.getContext("2d"), n, dir:1, pass:0, parts:[], sheep:[], terr:null, t:0, gapT:1.15});
+  Object.assign(P,{el, cv, ctx:cv.getContext("2d"), n, dir:1, pass:0, parts:[], sheep:[], terr:null, t:0, gapT:1.15,
+                   dirty:true, still:false});
+  window.addEventListener("resize", hpResized);
   if(SETTINGS.reduceMotion){
+    P.still=true;
+    el.addEventListener("scroll", hpDraw, {passive:true});  // the standing herd scrolls with the boxes
     setTimeout(()=>{ if(P.token!==tok) return; hpSize(); P.terr=hpTerrain(); hpStill(); }, 650);
     return;
   }
@@ -31200,6 +31167,9 @@ function herdParadeStart(R){
 }
 function herdParadeStop(){
   const P=HPARADE; P.token=null; cancelAnimationFrame(P.raf);
+  window.removeEventListener("resize", hpResized);
+  if(P.el) P.el.removeEventListener("scroll", hpDraw);
+  P.still=false;
   if(P.cv && P.cv.parentNode) P.cv.remove();
   P.cv=null; P.ctx=null; P.el=null; P.sheep=[]; P.parts=[]; P.terr=null;
 }
