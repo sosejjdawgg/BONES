@@ -965,6 +965,42 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
 #pkStick.run #pkNub{background:#ffe9a0}
 body.reduce-motion #pkNub{transition:none}
 #app.bossfight #pkPad{display:none}
+/* THE STICK FLOATS. A thumb that lands anywhere on the pad's empty middle grabs it: the ring jumps
+   to the thumb, and drifts along behind it if the thumb runs past the rim, then glides back to its
+   corner on release. --sx/--sy is that offset from the corner. */
+#pkStick{transform:translate(var(--sx,0px),var(--sy,0px));transition:border-color .12s ease,background-color .12s ease,transform .24s cubic-bezier(.2,.9,.25,1)}
+#pkStick.on{transition:border-color .12s ease,background-color .12s ease,transform 0s}
+#pkStick.float{z-index:2}
+body.reduce-motion #pkStick{transition:none}
+/* bigger to hit than to see: every pad button answers a thumb 7px outside its edge */
+#pkBtns button::before,.pk-ab::before{content:"";position:absolute;inset:-7px}
+#pkBtns button{overflow:visible}
+#pkBtns button::after{overflow:hidden}
+/* THE EARNED MOVES: round, 44px, on an arc over the stick and the stack. The ring of light round
+   each is its recharge - it closes as the move comes back - and a ready move breathes gold. */
+#pkAbil{position:absolute;right:0;bottom:0;width:0;height:0}
+.pk-ab{position:absolute;width:44px;height:44px;border-radius:50%;padding:0;display:none;align-items:center;justify-content:center;
+  font-size:6px;letter-spacing:.5px;color:#fff;background:#000;border:3px solid #fff;
+  background-image:conic-gradient(rgba(255,255,255,.26) calc(var(--cd,0)*360deg),transparent 0);
+  transition:transform .06s ease,opacity .2s ease,border-color .15s ease;touch-action:none}
+.pk-ab.on{display:flex}
+.pk-ab:active{transform:scale(.92)}
+.pk-ab.cooling{opacity:.72}
+.pk-ab.ready{border-color:#ffd84a;color:#ffe9a0;animation:pkHot .5s ease-in-out infinite alternate}
+.pk-ab[data-slot="0"]{right:24px;bottom:102px}
+.pk-ab[data-slot="1"]{right:76px;bottom:94px}
+.pk-ab[data-slot="2"]{right:128px;bottom:86px}
+#pkPad.off .pk-ab{opacity:.32}
+#pkPad.star .pk-ab{filter:grayscale(1);opacity:.42;border-color:#9a9a9a;color:#bbb;animation:none}
+.pk-ab.no{animation:pkNo .26s ease}
+/* ...and the first time one shows up in a run it ARRIVES: out of nothing, overshoots, settles, with
+   a gold shockwave off it - the player worked for this */
+.pk-ab.pop{animation:pkAbPop .7s cubic-bezier(.2,1.6,.35,1) both}
+.pk-ab.pop::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:3px solid #ffd84a;pointer-events:none;
+  animation:pkAbWave .7s ease-out both}
+@keyframes pkAbPop{0%{transform:scale(0) rotate(-40deg);filter:brightness(3)}55%{transform:scale(1.3) rotate(6deg)}
+  80%{transform:scale(.94)}100%{transform:none;filter:none}}
+@keyframes pkAbWave{0%{transform:scale(.6);opacity:1}100%{transform:scale(2.4);opacity:0}}
 #hCtrl button{position:relative;overflow:hidden;transition:transform .06s ease,opacity .2s ease}
 #hCtrl button:active{transform:scale(.96)}
 #hCtrl button::after{content:"";position:absolute;left:0;top:0;bottom:0;width:calc(var(--cd,0)*100%);
@@ -1099,7 +1135,7 @@ body.reduce-motion #pkNub{transition:none}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.411a</span>
+          <span id="devToggle">v0.412a</span>
         </div>
       </div>
 
@@ -1373,6 +1409,9 @@ body.reduce-motion #pkNub{transition:none}
         <div id="pkPad">
           <div id="pkBtns"><button id="pkBarkBtn">BARK<small id="pkBarkTag"></small></button><button id="pkDashBtn">DASH</button></div>
           <div id="pkStick" aria-label="Move"><i id="pkStickRun"></i><b id="pkNub"></b></div>
+          <!-- the moves he has EARNED - the wings' leap, the blade's whirlwind, UNLEASHED's judgment -
+               fan round the stick's upper-left as he unlocks them, and pop in when they arrive -->
+          <div id="pkAbil"><button class="pk-ab" id="pkLeapBtn" data-ab="leap">LEAP</button><button class="pk-ab" id="pkSpinBtn" data-ab="spin">SPIN</button><button class="pk-ab" id="pkJudgeBtn" data-ab="judge">JUDGE</button></div>
         </div>
         <div id="pkBottomBtns" style="position:absolute;left:8px;bottom:10px;display:flex;gap:10px;z-index:5">
           <button class="tiny red" id="pkEndRunBtn">&#9873; END RUN</button>
@@ -13737,7 +13776,7 @@ function startPark(plus){
   PK.waveBanner=null; pkTickerClear(); pkTick("WAVE 1 \u00B7 "+pkWaveName(1), "wave", 2.8, 2);
   PK.autoBark=false; PK.dashT=0; PK.dashCd=0; PK.barkQ=0; PK.barkHot=false;
   PK.dashLvl=0; PK.dashFire=[]; PK.dashHits=null; PK.dashLay=null;
-  PK.kbT=0; PK.shopN=0; PK.upRecent={};
+  PK.kbT=0; PK.shopN=0; PK.upRecent={}; PK.abSeen={};   // every earned move pops in afresh each run
   pkLegacyApply();         // THE LINE: the ladders he was born with, maxed before the first wave
   PK.starTrail=[]; PK.starFlash=0; PK.starBanner=0; PK.starWarnN=0;
   PK.tripT=0; PK.walkTrees=[]; PK.mush={plan:pkMushPlanned(), list:null};
@@ -18077,14 +18116,48 @@ function pkDrawDashFire(ctx,DX,DY,WW,WH,w,h,t){
   }
   ctx.restore();
 }
+/* THE EARNED MOVES. Each is on the arc only once he has it: the wings' LEAP, the blade's SPIN (the
+   whirlwind - the stick-circle still casts it too), and UNLEASHED's JUDGE (the rage bar's lightning -
+   tapping the bar still works). Slots fill in the order listed, so the arc never has a gap. */
+const PK_AB=[
+  {k:"leap",  has:()=>pkHasWings(),                         cd:()=>clamp((PK.wingCd||0)/WING_CD,0,1), ready:()=>!(PK.wingCd>0)&&!PK.jump, name:"LEAP"},
+  {k:"spin",  has:()=>PK.plusMode && pkSwordTier()>=1,      cd:()=>clamp((PK.swordSpinCd||0)/SWORD_SPIN_CD,0,1), ready:()=>pkWhirlwindReady(), name:"WHIRLWIND"},
+  {k:"judge", has:()=>!!PK.plusMode,                        cd:()=>1-clamp((PK.rage||0)/100,0,1), ready:()=>PK.rage>=100, name:"JUDGMENT"}
+];
+function pkAbList(){ return PK.active ? PK_AB.filter(a=>a.has()) : []; }
+function pkAbSync(){
+  const list=pkAbList();
+  PK.abSeen=PK.abSeen||{};
+  for(const a of PK_AB){
+    const b=document.querySelector('.pk-ab[data-ab="'+a.k+'"]'); if(!b) continue;
+    const i=list.indexOf(a), on=i>=0;
+    if(b._on!==on){ b._on=on; b.classList.toggle("on",on); }
+    if(!on) continue;
+    if(b.dataset.slot!==String(i)) b.dataset.slot=String(i);
+    // the arrival: once per run, the first frame it is his
+    if(!PK.abSeen[a.k]){
+      PK.abSeen[a.k]=true;
+      b.classList.remove("pop"); void b.offsetWidth; b.classList.add("pop");
+      clearTimeout(b._popT); b._popT=setTimeout(()=>b.classList.remove("pop"),760);
+      haptic([12,40,24]);
+      [660,880,1175].forEach((f,j)=>setTimeout(()=>beep(f,.07,"square",.04),j*70));
+      pkTick("NEW MOVE \u00B7 "+a.name+" \u2014 ON THE PAD", "info", 2.6);
+    }
+    const cd=a.cd().toFixed(2);
+    if(b._cd!==cd){ b._cd=cd; b.style.setProperty("--cd",cd); b.classList.toggle("cooling",+cd>0.001); }
+    const rd=!!a.ready();
+    if(b._rd!==rd){ b._rd=rd; b.classList.toggle("ready",rd); }
+  }
+}
 // the buttons' faces: the cooldown filling across, gold when one's in the cone, AUTO when it's his
 function pkCtrlSync(){
   const el=$("#pkPad"); if(!el) return;
   const show = PK.active && !PK.shop && !PK.friendsOpen && !PK.convertOpen && !bossOn();
   el.style.display = show ? "" : "none";
   // a panel came up: a press waiting on the frame is dropped, and the stick lets go with the buttons
-  if(!show){ PK.barkQ=0; pkStickLetGo(); return; }
+  if(!show){ PK.barkQ=0; pkStickLetGo(); PK.held=false; return; }
   pkStickSync();
+  pkAbSync();
   // the music button sits 10px after the cog, wherever that row ends at this width (measured only
   // when the width changes - the row is fixed text, so nothing else moves it)
   if(pkCtrlSync._mw!==innerWidth){
@@ -27154,6 +27227,8 @@ function pkPalHudRows(w){
    everything is lit at once on a short pad, the pills give up their gaps (10px, down to 3px) before
    the rage bar is allowed to slide in behind the stick. pkPadDraw and pkRageBarY space from here. */
 const PK_PAD_FLOOR=112;
+// ...and with any earned move on the arc over the stick, its top (156px up) plus the same margin
+function pkPadFloor(){ return pkAbList().length ? 166 : PK_PAD_FLOOR; }
 /* ...AND THE PAD STOPS SHRINKING WHERE ITS STACK WOULD MEET THE CLUSTER. The view grows as the park
    opens (pkCamPctFor), taking height off the pad; on a short phone, with friends, armour, the pills
    and the rage bar all on it, that could leave the stack nowhere to go but behind the stick. So the
@@ -27166,7 +27241,7 @@ function pkPadNeed(w){
   let y=Math.max(44, rows.length ? rows[rows.length-1].stay.y+rows[rows.length-1].stay.h+8 : 14+8+(armorH>0?armorH+10:30)+8);
   const pills=2+(PK.plusMode && pkSwordTier()>=1?1:0)+(pkHasWings()?1:0);
   y+=pills*(18+3)+(PK.plusMode?22+3:0);
-  return y+PK_PAD_FLOOR;
+  return y+pkPadFloor();
 }
 function pkPadRoom(w,h){
   if(bossOn()) return;                       // the fight drives the split itself (pkBossLayoutTick)
@@ -27181,7 +27256,7 @@ function pkCamPctFit(z){ return Math.max(PK_CAM_PCT0, Math.min(pkCamPctFor(z), P
 function pkPillGap(h,y0){
   const n=(PK.zoomT>0?1:0)+(PK.regenT>0?1:0)+(PK.plusMode && pkSwordTier()>=1?1:0)+(pkHasWings()?1:0);
   if(!n || !h) return 10;
-  const need=n*18+(PK.plusMode?22:0), room=h-PK_PAD_FLOOR-y0;
+  const need=n*18+(PK.plusMode?22:0), room=h-pkPadFloor()-y0;
   return clamp((room-need)/n, 3, 10);
 }
 // mirrors pkPadDraw's own pillY stacking (hp/armour/pal-bar stack, then zoomies, regen, and the
@@ -27210,7 +27285,7 @@ function pkPadDraw(t){
   // its pills where this would land)
   if(!PK.shop && !PK.joy && !PK.friendsOpen && !PK.convertOpen && h>300 && !(PK.zoomFromWave>0)){
     ctx.fillStyle=bossOn()?"#444":"rgba(220,235,210,.42)"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText(DN("STICK OR DRAG TO MOVE BONES"), w/2, h/2);
+    ctx.fillText(DN("TOUCH ANYWHERE TO MOVE BONES"), w/2, h/2);
   }
   // the bones count: a card, and it flashes gold and swells a touch whenever it goes up
   if(bossOn()){ ctx.strokeStyle="#666"; ctx.lineWidth=2; ctx.strokeRect(8,10,110,30); }
@@ -27378,7 +27453,7 @@ function pkPadDraw(t){
     const gy0=Math.max(94,pillY+4), shown=glines.slice(0,2);
     // no room left above the bottom row (a short pad with every pill lit): it steps aside until
     // a pill runs out, rather than being drawn in behind BARK and DASH
-    if(gy0+shown.length*10+20 <= h-PK_PAD_FLOOR+4){
+    if(gy0+shown.length*10+20 <= h-pkPadFloor()+4){
     shown.forEach((ln,i)=>ctx.fillText(ln, w/2, gy0+i*10));
     const gby=gy0+shown.length*10-2;
     const gbw=Math.min(220,w*0.7), gbx=w/2-gbw/2;
@@ -27609,10 +27684,13 @@ function pkPadDraw(t){
       else PK.tapT=nowS;
     }
     if(PK.joy && PK.joy.stick) return;   // a thumb is on the stick: a second finger on the grass does not steal the steer
+    // THE STICK COMES TO THE THUMB: any landing on the pad's empty middle grabs it right there
+    if(pkStickGrab(e,true)){ try{cv.setPointerCapture(e.pointerId);}catch(_){} return; }
     PK.joy={ox:e.clientX-r.left,oy:e.clientY-r.top,dx:0,dy:0};
     try{cv.setPointerCapture(e.pointerId);}catch(_){}
   });
   cv.addEventListener("pointermove",e=>{
+    if(e.pointerId===STICK.id){ if(STICK.joy && PK.joy===STICK.joy) pkStickAim(e); return; }
     if(!PK.active||!PK.joy||PK.joy.stick) return;
     const r=cv.getBoundingClientRect();
     let dx=((e.clientX-r.left)-PK.joy.ox)/JOY_R, dy=((e.clientY-r.top)-PK.joy.oy)/JOY_R;
@@ -27620,7 +27698,8 @@ function pkPadDraw(t){
     if(l>1){dx/=l;dy/=l;}
     PK.joy.dx=dx; PK.joy.dy=dy;
   });
-  const up=()=>{ if(!(PK.joy && PK.joy.stick)) PK.joy=null; PK.held=false; };   // letting go brings him down
+  const up=e=>{ if(e.pointerId===STICK.id){ pkStickLetGo(); PK.held=false; return; }
+                if(!(PK.joy && PK.joy.stick)) PK.joy=null; PK.held=false; };   // letting go brings him down
   cv.addEventListener("pointerup",up); cv.addEventListener("pointercancel",up);
 })();
 /* ==================== THE STICK ====================
@@ -27633,11 +27712,43 @@ function pkPadDraw(t){
    hole, time up) by nulling PK.joy; the stick obeys the same way: it lets go, and stays dead until
    the finger is lifted and put back, exactly like a drag. */
 const PK_STICK_TRAVEL=29;                    // ring radius 46 - nub radius 17
-const STICK={id:null, joy:null};
+const PK_STICK_FOLLOW=10;                    // a floating ring trails a thumb this far past its rim
+const STICK={id:null, joy:null, cx:0, cy:0, dock:null, float:false, run:false};
+// where the ring rests: the pad's bottom-right corner, 46px in each way (it is the pad's last child)
+function pkStickDock(){ const r=$("#pkPad").getBoundingClientRect(); return {x:r.right-46, y:r.bottom-46}; }
+function pkStickPlace(){
+  const st=$("#pkStick"), d=STICK.dock;
+  st.style.setProperty("--sx",(STICK.cx-d.x).toFixed(1)+"px"); st.style.setProperty("--sy",(STICK.cy-d.y).toFixed(1)+"px");
+}
+/* Take hold. From the ring itself (float false) the centre is the corner; from the pad's empty
+   middle (float true) the ring is fetched to the thumb - kept inside the pad so it never hangs off
+   an edge - and the press starts dead centre, so landing never lurches him. */
+function pkStickGrab(e,float){
+  if(!PK.active || STICK.id!==null || !pkCanAct()) return false;
+  const pad=$("#pkPad"); if(pad.style.display==="none") return false;
+  const st=$("#pkStick");
+  STICK.dock=pkStickDock(); STICK.float=!!float; STICK.run=false;
+  if(float){
+    const pr=$("#park").getBoundingClientRect(), m=48;
+    STICK.cx=clamp(e.clientX, pr.left+m, pr.right-m); STICK.cy=clamp(e.clientY, pr.top+m, pr.bottom-m);
+  } else { STICK.cx=STICK.dock.x; STICK.cy=STICK.dock.y; }
+  STICK.id=e.pointerId; STICK.joy={dx:0,dy:0,stick:true};
+  PK.joy=STICK.joy;
+  st.classList.add("on"); st.classList.toggle("float",STICK.float);
+  pkStickPlace();
+  haptic(8);
+  pkStickAim(e);
+  return true;
+}
 function pkStickAim(e){
-  const st=$("#pkStick"), r=st.getBoundingClientRect();
-  let dx=e.clientX-(r.left+r.width/2), dy=e.clientY-(r.top+r.height/2);
-  const l=Math.hypot(dx,dy);
+  let dx=e.clientX-STICK.cx, dy=e.clientY-STICK.cy;
+  let l=Math.hypot(dx,dy);
+  // a floating ring follows a thumb that runs off its rim, so steering never hits a wall
+  if(STICK.float && l>PK_STICK_TRAVEL+PK_STICK_FOLLOW){
+    const k=(l-PK_STICK_TRAVEL-PK_STICK_FOLLOW)/l;
+    STICK.cx+=dx*k; STICK.cy+=dy*k; dx-=dx*k; dy-=dy*k; l=Math.hypot(dx,dy);
+    pkStickPlace();
+  }
   if(l>PK_STICK_TRAVEL){ dx*=PK_STICK_TRAVEL/l; dy*=PK_STICK_TRAVEL/l; }
   $("#pkNub").style.transform="translate("+dx.toFixed(1)+"px,"+dy.toFixed(1)+"px)";
   STICK.joy.dx=dx/PK_STICK_TRAVEL; STICK.joy.dy=dy/PK_STICK_TRAVEL;
@@ -27645,9 +27756,10 @@ function pkStickAim(e){
 function pkStickLetGo(){
   if(STICK.id===null && !STICK.joy) return;
   if(STICK.joy && PK.joy===STICK.joy) PK.joy=null;
-  STICK.id=null; STICK.joy=null;
-  const st=$("#pkStick"); st.classList.remove("on","run");
-  $("#pkNub").style.transform="";            // home - the transition eases it there
+  STICK.id=null; STICK.joy=null; STICK.float=false;
+  const st=$("#pkStick"); st.classList.remove("on","run","float");
+  st.style.setProperty("--sx","0px"); st.style.setProperty("--sy","0px");   // home - glides back to its corner
+  $("#pkNub").style.transform="";
 }
 // once a frame from pkCtrlSync: the run ring where the gait really changes, and gold past it
 function pkStickSync(){
@@ -27656,21 +27768,16 @@ function pkStickSync(){
   const run=pkJoyRunAt().toFixed(2);
   if(st._run!==run){ st._run=run; st.style.setProperty("--run",run); }
   const running=!!(STICK.joy && Math.hypot(STICK.joy.dx,STICK.joy.dy)>=pkJoyRunAt());
-  if(st._running!==running){ st._running=running; st.classList.toggle("run",running); }
+  if(st._running!==running){ st._running=running; st.classList.toggle("run",running); if(running) haptic(5); }   // a tick as the run engages
 }
 (function(){
   const st=$("#pkStick");
   st.addEventListener("pointerdown",e=>{
     e.preventDefault();
-    if(!PK.active || STICK.id!==null) return;
     const r=st.getBoundingClientRect();
     // the ring, not its square: a press in a corner is a press on the grass's edge, not the stick
     if(Math.hypot(e.clientX-(r.left+r.width/2), e.clientY-(r.top+r.height/2))>r.width/2) return;
-    STICK.id=e.pointerId; STICK.joy={dx:0,dy:0,stick:true};
-    PK.joy=STICK.joy;
-    st.classList.add("on");
-    try{st.setPointerCapture(e.pointerId);}catch(_){}
-    pkStickAim(e);
+    if(pkStickGrab(e,false)){ try{st.setPointerCapture(e.pointerId);}catch(_){} }
   });
   st.addEventListener("pointermove",e=>{
     if(e.pointerId!==STICK.id || !STICK.joy || PK.joy!==STICK.joy) return;
@@ -33238,6 +33345,11 @@ function herdLoop(dt,t){
   press("#hDash",herdDash);
   press("#pkBarkBtn",pkBarkPress);
   press("#pkDashBtn",pkDashPress);
+  // the earned moves. LEAP is held like the pad's old double-tap: down takes off, up comes down
+  press("#pkLeapBtn",()=>{ if(!pkCanAct()||pkStar()) return; if(PK.wingCd>0||PK.jump) return pkCtrlNo("#pkLeapBtn"); haptic(12); pkLeap(); });
+  for(const ev of ["pointerup","pointercancel","pointerleave"]) $("#pkLeapBtn").addEventListener(ev,()=>{ PK.held=false; });
+  press("#pkSpinBtn",()=>{ if(!pkCanAct()||pkStar()) return; if(!pkWhirlwindReady()) return pkCtrlNo("#pkSpinBtn"); haptic(14); pkWhirlwindSlash(); });
+  press("#pkJudgeBtn",()=>{ if(!pkCanAct()||pkStar()) return; if(!(PK.rage>=100)) return pkCtrlNo("#pkJudgeBtn"); haptic([20,30,40]); pkHeavenlyJudgment(); });
   window.addEventListener("keydown",e=>{
     if(e.repeat || MODE!=="park" || !PK.active) return;
     // the farm's keys (Space barks, Shift dashes), plus B and Z for anyone used to those
