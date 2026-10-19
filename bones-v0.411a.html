@@ -564,7 +564,7 @@ body.reduce-motion .screen.screen-in{animation:none}
    across the rage bar and the wave goal and ran its XP numbers off the right edge. Anchored to
    the bottom instead, above the END RUN row, because that row is the one fixed thing in a pad
    whose height moves with the camera split. */
-#pkQuests{position:absolute;left:10px;right:10px;bottom:56px;z-index:4;pointer-events:none;
+#pkQuests{position:absolute;left:10px;right:186px;bottom:56px;z-index:4;pointer-events:none;
   font-family:'Press Start 2P',monospace;font-size:6.5px;line-height:1.6;text-align:left;
   text-shadow:0 1px 0 #000}
 /* THE HEADER IS THE MENU. A real <button>, so it hit-tests itself against the END RUN row sitting
@@ -593,10 +593,9 @@ body.reduce-motion .screen.screen-in{animation:none}
    in the corner on purpose, so it never competes with a screen's own bottom controls (this used
    to sit low enough to overlap Delivery Driver's THROW/HOLD row) */
 #globalMusicBtn{position:absolute;right:10px;bottom:78px;z-index:45;width:28px;height:28px;padding:0;border-radius:50%;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center;background:#000;border:2px solid #fff;color:#fff;opacity:.72}
-/* in DOGPARK the pad's own HUD (pal rows, armour bar) is drawn top-down onto the canvas and
-   reaches further down the shorter the pad gets, so the button drops into the empty bottom-right
-   corner instead — the END RUN/settings pair lives bottom-LEFT, so nothing else wants that space */
-#app.in-park #globalMusicBtn{bottom:12px}
+/* in DOGPARK the bottom-right corner is the stick's, so the button joins END RUN and the cog in the
+   bottom-left row, 10px after the cog (--pkMusicL is measured off that row - see pkCtrlSync) */
+#app.in-park #globalMusicBtn{right:auto;left:var(--pkMusicL,132px);bottom:9px}
 #globalMusicBtn.muted{color:#666;border-color:#666}
 #globalMusicBtn.muted::after{content:"";position:absolute;width:24px;height:2px;background:#f22;transform:rotate(-45deg)}
 #pkDevbar button,#runDevbar button,#pbDevbar button{flex:1;font-size:6px;padding:5px 3px;border-color:#555;color:#aaa}
@@ -928,28 +927,44 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
 #herdPanel{z-index:53;touch-action:none}
 #herdcv{flex:1;min-height:0;width:100%;display:block;touch-action:none;image-rendering:pixelated}
 #hBack{position:absolute;top:8px;left:8px;z-index:2;font-size:7px;padding:6px 8px;background:#000}
-/* the park's BARK and DASH: the farm's two buttons, in the pad's bottom row between the settings
-   cog and the music button - the one strip nothing on the pad ever grows into. Everything else
-   down here (pal rows, pills, the rage bar, the wave goal, the side objectives) stacks above it. */
-#pkCtrl{position:absolute;right:48px;bottom:9px;width:min(270px,calc(100% - 160px));display:flex;gap:8px;z-index:5;
+/* THE PAD. A fixed cluster in the pad's bottom-right corner: BARK over DASH, and the stick as the
+   rightmost thing. 10px off the bottom, 12px off the right, 6px between the buttons, 10px between
+   them and the stick. Everything the canvas draws stacks above it (PK_PAD_FLOOR), the side
+   objectives stop short of it, and END RUN, the cog and the music button keep the left. */
+#pkPad{position:absolute;right:12px;bottom:10px;display:flex;align-items:flex-end;gap:10px;z-index:5;
   touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
-#pkCtrl button{position:relative;overflow:hidden;flex:1;min-width:0;height:42px;font-size:10px;padding:0;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;gap:4px;background:#000;border:3px solid #fff;color:#fff;
+#pkBtns{display:flex;flex-direction:column;gap:6px}
+#pkBtns button{position:relative;overflow:hidden;width:64px;height:36px;font-size:8px;padding:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:3px;background:#000;border:3px solid #fff;color:#fff;
   transition:transform .06s ease,opacity .2s ease,border-color .15s ease,color .15s ease}
-#pkCtrl button small{font-size:5px;letter-spacing:1px;color:#7fd46a}
-#pkCtrl button small:empty{display:none}
-#pkCtrl button:active{transform:scale(.95)}
-#pkCtrl button::after{content:"";position:absolute;left:0;top:0;bottom:0;width:calc(var(--cd,0)*100%);
+#pkBtns button small{font-size:5px;letter-spacing:1px;color:#7fd46a}
+#pkBtns button small:empty{display:none}
+#pkBtns button:active{transform:scale(.96)}
+#pkBtns button::after{content:"";position:absolute;left:0;top:0;bottom:0;width:calc(var(--cd,0)*100%);
   background:rgba(255,255,255,.22);pointer-events:none}
-#pkCtrl button.cooling{opacity:.7}
-#pkCtrl.off button,#pkCtrl button.mute{opacity:.32}
-#pkCtrl.star button{filter:grayscale(1);opacity:.42;border-color:#9a9a9a;color:#bbb}
-#pkCtrl button.hot{border-color:#ffd84a;color:#ffe9a0;animation:pkHot .42s ease-in-out infinite alternate}
+#pkBtns button.cooling{opacity:.7}
+#pkPad.off button,#pkBtns button.mute{opacity:.32}
+#pkPad.star button{filter:grayscale(1);opacity:.42;border-color:#9a9a9a;color:#bbb}
+#pkBtns button.hot{border-color:#ffd84a;color:#ffe9a0;animation:pkHot .42s ease-in-out infinite alternate}
 @keyframes pkHot{from{box-shadow:0 0 0 0 rgba(255,216,74,.0),0 0 4px rgba(255,216,74,.35)}
   to{box-shadow:0 0 0 3px rgba(255,216,74,.28),0 0 16px rgba(255,216,74,.6)}}
-#pkCtrl button.no{animation:pkNo .26s ease}
+#pkBtns button.no{animation:pkNo .26s ease}
 @keyframes pkNo{20%{transform:translateX(-4px)}45%{transform:translateX(4px)}70%{transform:translateX(-2px)}}
-#app.bossfight #pkCtrl{display:none}
+/* the stick: a 92px ring and a 34px nub that rides inside it. The dashed ring is where the walk
+   becomes a run (pkJoyRunAt, the drag's own threshold) and goes gold while he is running. */
+#pkStick{position:relative;width:92px;height:92px;flex:none;border-radius:50%;border:3px solid rgba(255,255,255,.5);
+  background:rgba(0,0,0,.42);transition:border-color .12s ease,background-color .12s ease}
+#pkStick.on{border-color:rgba(255,255,255,.72);background:rgba(255,255,255,.07)}
+#pkStickRun{position:absolute;left:50%;top:50%;width:calc(var(--run,.7)*58px + 34px);height:calc(var(--run,.7)*58px + 34px);
+  transform:translate(-50%,-50%);border-radius:50%;border:1px dashed rgba(255,255,255,.28);pointer-events:none}
+#pkStick.run #pkStickRun{border-color:rgba(255,216,74,.75)}
+#pkNub{position:absolute;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;
+  background:#fff;border:3px solid #000;box-shadow:0 0 0 2px rgba(255,255,255,.35);pointer-events:none;
+  transform:translate(0,0);transition:transform .16s ease-out}
+#pkStick.on #pkNub{transition:none}
+#pkStick.run #pkNub{background:#ffe9a0}
+body.reduce-motion #pkNub{transition:none}
+#app.bossfight #pkPad{display:none}
 #hCtrl button{position:relative;overflow:hidden;transition:transform .06s ease,opacity .2s ease}
 #hCtrl button:active{transform:scale(.96)}
 #hCtrl button::after{content:"";position:absolute;left:0;top:0;bottom:0;width:calc(var(--cd,0)*100%);
@@ -1084,7 +1099,7 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.410a</span>
+          <span id="devToggle">v0.411a</span>
         </div>
       </div>
 
@@ -1353,13 +1368,17 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
              way; a done row is struck through and dimmed rather than removed, because the list
              emptying itself would take the sense of progress with it. -->
         <div id="pkQuests" class="hidden"></div>
-        <!-- BARK and DASH: the herding field's two verbs, on the park's own pad -->
-        <div id="pkCtrl"><button id="pkBarkBtn">BARK<small id="pkBarkTag"></small></button><button id="pkDashBtn">DASH</button></div>
+        <!-- THE PAD: bottom-right, BARK stacked over DASH and the stick to their right. It replaced
+             the side-by-side #pkCtrl row. The left of the pad stays the sheet's and END RUN's. -->
+        <div id="pkPad">
+          <div id="pkBtns"><button id="pkBarkBtn">BARK<small id="pkBarkTag"></small></button><button id="pkDashBtn">DASH</button></div>
+          <div id="pkStick" aria-label="Move"><i id="pkStickRun"></i><b id="pkNub"></b></div>
+        </div>
         <div id="pkBottomBtns" style="position:absolute;left:8px;bottom:10px;display:flex;gap:10px;z-index:5">
           <button class="tiny red" id="pkEndRunBtn">&#9873; END RUN</button>
           <button class="tiny" id="pkSettingsBtn">&#9881;</button>
         </div>
-        <span id="pkDevToggle" style="position:absolute;bottom:2px;right:6px;color:#333;font-size:9px;cursor:pointer;padding:8px;z-index:95">&#9881;</span>
+        <span id="pkDevToggle" style="position:absolute;top:0;right:2px;color:#333;font-size:9px;cursor:pointer;padding:8px;z-index:95">&#9881;</span>
         <div id="pkDevbar" class="hidden">
           <button class="tiny" id="pkDevSkip">SKIP WAVE</button>
           <button class="tiny" id="pkDevHeal">FULL HEAL</button>
@@ -18060,10 +18079,19 @@ function pkDrawDashFire(ctx,DX,DY,WW,WH,w,h,t){
 }
 // the buttons' faces: the cooldown filling across, gold when one's in the cone, AUTO when it's his
 function pkCtrlSync(){
-  const el=$("#pkCtrl"); if(!el) return;
+  const el=$("#pkPad"); if(!el) return;
   const show = PK.active && !PK.shop && !PK.friendsOpen && !PK.convertOpen && !bossOn();
   el.style.display = show ? "" : "none";
-  if(!show){ PK.barkQ=0; return; }   // a panel came up: a press waiting on the frame is dropped
+  // a panel came up: a press waiting on the frame is dropped, and the stick lets go with the buttons
+  if(!show){ PK.barkQ=0; pkStickLetGo(); return; }
+  pkStickSync();
+  // the music button sits 10px after the cog, wherever that row ends at this width (measured only
+  // when the width changes - the row is fixed text, so nothing else moves it)
+  if(pkCtrlSync._mw!==innerWidth){
+    const bb=$("#pkBottomBtns"), app=$("#app");
+    if(bb && bb.offsetWidth){ pkCtrlSync._mw=innerWidth;
+      app.style.setProperty("--pkMusicL", Math.round(bb.getBoundingClientRect().right-app.getBoundingClientRect().left+10)+"px"); }
+  }
   // a cinematic or the wave send-off has the frame: the buttons stay put but go quiet
   const live=pkCanAct();
   if(el._live!==live){ el._live=live; el.classList.toggle("off",!live); }
@@ -18208,7 +18236,7 @@ function pkWaveZoomStep(){
   const to=Math.min(PK_ZOOM_MAX, from+pkZoomStep());
   if(to<=from) return;                       // already all the way out — nothing left to give
   if(SETTINGS.reduceMotion){                 // no travel, just the outcome and the settle
-    PK.zoomFromWave=to; pkApplyZoom(); pkApplyUISplit(pkCamPctFor(to));
+    PK.zoomFromWave=to; pkApplyZoom(); pkApplyUISplit(pkCamPctFit(to));
     beep(220,.09,"triangle",.06,{prio:2});
     return;
   }
@@ -18221,7 +18249,7 @@ function pkWaveZoomAdvance(){
   const ease=p*p*(3-2*p);                    // smoothstep: eases out of the kill and into the rest
   PK.zoomFromWave=a.from+(a.to-a.from)*ease;
   pkApplyZoom();
-  pkApplyUISplit(pkCamPctFor(PK.zoomFromWave));
+  pkApplyUISplit(pkCamPctFit(PK.zoomFromWave));
   // a ratchet rather than a metronome: the clicks are spaced by eased progress, so they crowd
   // together through the fast middle of the move and thin out as it settles
   const want=Math.floor(ease*PK_ZOOM_CLICKS);
@@ -18232,7 +18260,7 @@ function pkWaveZoomAdvance(){
     if(a.clicks>3) beep(f*1.7,.014,"square",.018,{prio:0});
   }
   if(p>=1){
-    PK.zoomFromWave=a.to; pkApplyZoom(); pkApplyUISplit(pkCamPctFor(a.to));
+    PK.zoomFromWave=a.to; pkApplyZoom(); pkApplyUISplit(pkCamPctFit(a.to));
     PK.zoomAnim=null;
     beep(220,.09,"triangle",.055,{prio:2});           // the mechanism dropping into its notch
     setTimeout(()=>beep(140,.14,"sawtooth",.04,{prio:1}),40);
@@ -27119,11 +27147,37 @@ function pkPalHudRows(w){
   }
   return rows;
 }
-/* THE PAD'S FLOOR. The bottom row - END RUN, the cog, BARK, DASH, the music button - is real DOM
-   laid over the canvas, so nothing drawn may stack down into it. When everything is lit at once
-   on a short pad, the pills give up their gaps (10px, down to 3px) before the rage bar is allowed
-   to slide in behind BARK. pkPadDraw and pkRageBarY both space the stack from here. */
-const PK_PAD_FLOOR=54;
+/* THE PAD'S FLOOR. The bottom of the pad is real DOM laid over the canvas - END RUN, the cog and
+   the music button on the left, the #pkPad cluster on the right - so nothing drawn may stack down
+   into it. The cluster is the tall one (10px inset + the 92px stick) and it sits under the right
+   column AND the centred rage bar and wave goal, so the floor is its top plus a margin. When
+   everything is lit at once on a short pad, the pills give up their gaps (10px, down to 3px) before
+   the rage bar is allowed to slide in behind the stick. pkPadDraw and pkRageBarY space from here. */
+const PK_PAD_FLOOR=112;
+/* ...AND THE PAD STOPS SHRINKING WHERE ITS STACK WOULD MEET THE CLUSTER. The view grows as the park
+   opens (pkCamPctFor), taking height off the pad; on a short phone, with friends, armour, the pills
+   and the rage bar all on it, that could leave the stack nowhere to go but behind the stick. So the
+   split is capped at whatever still fits the stack above PK_PAD_FLOOR. The stack is measured as it
+   COULD be (both timed pills counted whether lit or not), so the split does not breathe every time
+   zoomies or regen blink on and off - it only moves when something lasting arrives (a friend, the
+   armour, the blade, the wings). */
+function pkPadNeed(w){
+  const rows=pkPalHudRows(w), armorH=PK.armorUnlocked ? 30 : 0;
+  let y=Math.max(44, rows.length ? rows[rows.length-1].stay.y+rows[rows.length-1].stay.h+8 : 14+8+(armorH>0?armorH+10:30)+8);
+  const pills=2+(PK.plusMode && pkSwordTier()>=1?1:0)+(pkHasWings()?1:0);
+  y+=pills*(18+3)+(PK.plusMode?22+3:0);
+  return y+PK_PAD_FLOOR;
+}
+function pkPadRoom(w,h){
+  if(bossOn()) return;                       // the fight drives the split itself (pkBossLayoutTick)
+  if(pkPadRoom._ih!==innerHeight){ pkPadRoom._ih=innerHeight; pkPadRoom._h=$("#app").clientHeight; }
+  const cur=PK.uiCamPct||PK_CAM_PCT0;
+  PK.padRoomPct = cur + (h-pkPadNeed(w))*100/Math.max(1,pkPadRoom._h||h);
+  if(PK.zoomAnim) return;                    // a zoom step in flight applies the cap itself
+  const want=Math.max(PK_CAM_PCT0, Math.min(pkCamPctFor(PK.zoomFromWave), PK.padRoomPct));
+  if(Math.abs(want-cur)>0.4) pkApplyUISplit(want);
+}
+function pkCamPctFit(z){ return Math.max(PK_CAM_PCT0, Math.min(pkCamPctFor(z), PK.padRoomPct||100)); }
 function pkPillGap(h,y0){
   const n=(PK.zoomT>0?1:0)+(PK.regenT>0?1:0)+(PK.plusMode && pkSwordTier()>=1?1:0)+(pkHasWings()?1:0);
   if(!n || !h) return 10;
@@ -27152,9 +27206,11 @@ function pkPadDraw(t){
   // the how-to-move hint sits dead centre, which is also where the pal rows reach down to once
   // the pad has given up enough height to the view (see pkApplyUISplit). It has done its job by
   // then anyway — this only ever shows on a full-size pad, which is the first wave or two.
-  if(!PK.shop && !PK.joy && !PK.friendsOpen && !PK.convertOpen && h>300){
+  // (gated on the park not having opened up yet: a pad held tall by pkPadRoom late in a run has
+  // its pills where this would land)
+  if(!PK.shop && !PK.joy && !PK.friendsOpen && !PK.convertOpen && h>300 && !(PK.zoomFromWave>0)){
     ctx.fillStyle=bossOn()?"#444":"rgba(220,235,210,.42)"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText(DN("DRAG ANYWHERE TO MOVE BONES"), w/2, h/2);
+    ctx.fillText(DN("STICK OR DRAG TO MOVE BONES"), w/2, h/2);
   }
   // the bones count: a card, and it flashes gold and swells a touch whenever it goes up
   if(bossOn()){ ctx.strokeStyle="#666"; ctx.lineWidth=2; ctx.strokeRect(8,10,110,30); }
@@ -27169,6 +27225,7 @@ function pkPadDraw(t){
   // neither one fights for a tap.
   $("#pkBottomBtns").style.display = (!PK.shop && !PK.friendsOpen && !PK.convertOpen) ? "" : "none";
   pkCtrlSync();
+  pkPadRoom(w,h);
   let hudBottomY=44;   // grows as the armour/pal stack below actually uses space, so the wave
                        // goal block (drawn later) always clears it with real room instead of a guess
   {
@@ -27335,7 +27392,7 @@ function pkPadDraw(t){
     }
     ctx.textAlign="left";
   }
-  if(PK.joy){
+  if(PK.joy && !PK.joy.stick){      // the fixed stick draws itself - see #pkStick
     /* The outer ring is the pad's actual travel radius rather than a circle a few px inside it:
        once deflection means speed, "how far out am I" is something the player has to be able to
        read. The dashed ring is where the walk turns into a run - gold once he's running - and the
@@ -27551,19 +27608,77 @@ function pkPadDraw(t){
       if(nowS-(PK.tapT||-9)<0.32){ PK.tapT=-9; pkLeap(); }
       else PK.tapT=nowS;
     }
+    if(PK.joy && PK.joy.stick) return;   // a thumb is on the stick: a second finger on the grass does not steal the steer
     PK.joy={ox:e.clientX-r.left,oy:e.clientY-r.top,dx:0,dy:0};
     try{cv.setPointerCapture(e.pointerId);}catch(_){}
   });
   cv.addEventListener("pointermove",e=>{
-    if(!PK.active||!PK.joy) return;
+    if(!PK.active||!PK.joy||PK.joy.stick) return;
     const r=cv.getBoundingClientRect();
     let dx=((e.clientX-r.left)-PK.joy.ox)/JOY_R, dy=((e.clientY-r.top)-PK.joy.oy)/JOY_R;
     const l=Math.hypot(dx,dy);
     if(l>1){dx/=l;dy/=l;}
     PK.joy.dx=dx; PK.joy.dy=dy;
   });
-  const up=()=>{ PK.joy=null; PK.held=false; };   // letting go brings him down
+  const up=()=>{ if(!(PK.joy && PK.joy.stick)) PK.joy=null; PK.held=false; };   // letting go brings him down
   cv.addEventListener("pointerup",up); cv.addEventListener("pointercancel",up);
+})();
+/* ==================== THE STICK ====================
+   A ring 92px across with a 34px nub. Touch anywhere inside the ring to grab it; the nub follows
+   the finger, its centre clamped PK_STICK_TRAVEL from the middle so the nub never leaves the ring,
+   and lets go home on release (eased; snapped under reduceMotion). It only aims: it writes the
+   same PK.joy {dx,dy} the field drag writes, scaled so its rim is full deflection, so the dead
+   zone (JOY_DEAD) and the walk-to-run point (pkJoyRunAt) are the drag's own - one set of gaits.
+   The game takes the steer away from the drag in a handful of places (the shop, the boss, the
+   hole, time up) by nulling PK.joy; the stick obeys the same way: it lets go, and stays dead until
+   the finger is lifted and put back, exactly like a drag. */
+const PK_STICK_TRAVEL=29;                    // ring radius 46 - nub radius 17
+const STICK={id:null, joy:null};
+function pkStickAim(e){
+  const st=$("#pkStick"), r=st.getBoundingClientRect();
+  let dx=e.clientX-(r.left+r.width/2), dy=e.clientY-(r.top+r.height/2);
+  const l=Math.hypot(dx,dy);
+  if(l>PK_STICK_TRAVEL){ dx*=PK_STICK_TRAVEL/l; dy*=PK_STICK_TRAVEL/l; }
+  $("#pkNub").style.transform="translate("+dx.toFixed(1)+"px,"+dy.toFixed(1)+"px)";
+  STICK.joy.dx=dx/PK_STICK_TRAVEL; STICK.joy.dy=dy/PK_STICK_TRAVEL;
+}
+function pkStickLetGo(){
+  if(STICK.id===null && !STICK.joy) return;
+  if(STICK.joy && PK.joy===STICK.joy) PK.joy=null;
+  STICK.id=null; STICK.joy=null;
+  const st=$("#pkStick"); st.classList.remove("on","run");
+  $("#pkNub").style.transform="";            // home - the transition eases it there
+}
+// once a frame from pkCtrlSync: the run ring where the gait really changes, and gold past it
+function pkStickSync(){
+  const st=$("#pkStick"); if(!st) return;
+  if(STICK.joy && PK.joy!==STICK.joy) pkStickLetGo();       // the game took the steer: let go
+  const run=pkJoyRunAt().toFixed(2);
+  if(st._run!==run){ st._run=run; st.style.setProperty("--run",run); }
+  const running=!!(STICK.joy && Math.hypot(STICK.joy.dx,STICK.joy.dy)>=pkJoyRunAt());
+  if(st._running!==running){ st._running=running; st.classList.toggle("run",running); }
+}
+(function(){
+  const st=$("#pkStick");
+  st.addEventListener("pointerdown",e=>{
+    e.preventDefault();
+    if(!PK.active || STICK.id!==null) return;
+    const r=st.getBoundingClientRect();
+    // the ring, not its square: a press in a corner is a press on the grass's edge, not the stick
+    if(Math.hypot(e.clientX-(r.left+r.width/2), e.clientY-(r.top+r.height/2))>r.width/2) return;
+    STICK.id=e.pointerId; STICK.joy={dx:0,dy:0,stick:true};
+    PK.joy=STICK.joy;
+    st.classList.add("on");
+    try{st.setPointerCapture(e.pointerId);}catch(_){}
+    pkStickAim(e);
+  });
+  st.addEventListener("pointermove",e=>{
+    if(e.pointerId!==STICK.id || !STICK.joy || PK.joy!==STICK.joy) return;
+    pkStickAim(e);
+  });
+  const up=e=>{ if(e.pointerId===STICK.id) pkStickLetGo(); };
+  st.addEventListener("pointerup",up); st.addEventListener("pointercancel",up);
+  st.addEventListener("lostpointercapture",up);
 })();
 // real buttons — see #pkBottomBtns in bones.html. Visibility is toggled every frame in
 // pkPadDraw, same condition the canvas-drawn version used to gate its own hit-test on.
@@ -29084,7 +29199,7 @@ function drawPaperboy(t){
    Controls are the park's hands, not a new stick: drag anywhere is the same throttled joystick
    (JOY_R / pkJoyThrottle), he is drawn with the same eight-way strips (pkDirDraw) with WOLFIE's
    white rim so a black dog reads on a black field. BARK and DASH are two buttons in the same
-   ctrlrow the runner uses - and since v0.397a the park borrows them back (#pkCtrl): its bark is
+   ctrlrow the runner uses - and since v0.397a the park borrows them back (#pkPad): its bark is
    pressed too, unless AUTO BARK has been bought for the run.
    ============================================================================================ */
 const HF_W=360, HF_H=640;                 // the paddock, in field units; the canvas letterboxes it
