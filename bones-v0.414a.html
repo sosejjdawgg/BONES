@@ -1148,7 +1148,7 @@ body.reduce-motion #pkNub{transition:none}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.413a</span>
+          <span id="devToggle">v0.414a</span>
         </div>
       </div>
 
@@ -17834,6 +17834,24 @@ function pkBarkOmni(){ return pkBarkArc()>=360; }
    45-degree steps and it would visibly miss things the player was pointing at. This holds its
    last value while he stands still, exactly as the sprite facing does. */
 function pkBarkFace(){ return PK.faceAng||0; }
+// the whiplash detector: recent firm pushes on the stick, and whether this one points back the
+// way one of them did (see THE WHIPLASH in parkUpdate)
+const WHIP_T=0.28, WHIP_TOL=10*Math.PI/180, WHIP_MAG=0.5;
+const WHIP=[];
+function pkWhiplashTick(){
+  const now=performance.now()/1000;
+  while(WHIP.length && now-WHIP[0].t>WHIP_T) WHIP.shift();
+  const j=PK.joy, m=j?Math.hypot(j.dx,j.dy):0;
+  if(m<WHIP_MAG) return false;                  // passing through the middle keeps the history
+  const ang=Math.atan2(j.dy,j.dx);
+  for(const o of WHIP){
+    let d=Math.abs(ang-o.a)%(2*Math.PI); if(d>Math.PI) d=2*Math.PI-d;
+    if(d>=Math.PI-WHIP_TOL){ WHIP.length=0; return true; }
+  }
+  WHIP.push({t:now, a:ang});
+  if(WHIP.length>40) WHIP.shift();
+  return false;
+}
 /* The charge gauge. Three nested arcs along the wedge, evenly spaced from BARK_ARC_IN out to the
    full reach, one stroke weight throughout, and a floor on the alpha so an un-charged bark still
    shows the player where it will land without painting over the park.
@@ -24276,6 +24294,15 @@ function parkUpdate(dt){
   // it turned (the sweep below never excluded e.love), so a fresh ally could die on the same
   // frame it was charmed. No bark, no accidental kills, for the length of the mode.
   let barkReady = !pkStar() && !PK.loveMode && PK.z<WING_CLEAR_Z && PK.barkCd<=0;
+  /* THE WHIPLASH. Snap the stick round to dead behind him - 180 degrees, give or take 10, inside
+     WHIP_T - with the bark fully charged, and he spins and barks on the turn: whatever was creeping
+     up behind him gets it in the face. Read off the stick, not his velocity, so it is the player's
+     flick that counts; a gentle U-turn is far too slow to qualify. One shout a frame as ever. */
+  if(pkWhiplashTick() && barkReady && pkCanAct()){
+    pkBark(); barkReady=false; PK.barkQ=0;
+    PK.fx.push({x:PK.x, y:PK.y-30, txt:"WHIPLASH!", life:0.9});
+    PK.shake=Math.max(PK.shake||0,0.12); haptic([10,20,30]);
+  }
   // the pressed one: fired here, so it hits exactly what the automatic one would have. One shout
   // a frame, whoever asked for it - a press never doubles up with AUTO BARK or the zoomies.
   if(PK.barkQ>0){
