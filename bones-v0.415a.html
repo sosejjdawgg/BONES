@@ -1,4 +1,13 @@
 <!DOCTYPE html>
+<!--
+  BONES - (c) 2026 James Scott. All rights reserved.
+  The source code, game design, characters, art, animation, sound effects, text, the name
+  "BONES" and its logo are the intellectual property of James Scott. Being able to read this
+  file does not grant any right to copy, modify, re-host, redistribute, sell, reuse or train
+  machine-learning or AI systems on any part of it. See COPYRIGHT.md. Third-party music and the
+  Press Start 2P font remain their creators' property, under their own licences (credited in the
+  game: SETTINGS > COPYRIGHT & CREDITS). Permission requests: jamscoot22@gmail.com
+-->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -38,6 +47,8 @@
 })();
 </script>
 <meta name="description" content="A brutalist black, white and red pixel-art dog care sim.">
+<meta name="author" content="James Scott">
+<meta name="copyright" content="© 2026 James Scott. All rights reserved.">
 <meta name="theme-color" content="#000000">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
@@ -91,6 +102,17 @@ button.red:active{background:#f22;color:#000}
 #namebox.hidden{display:none}
 #dogNameIn{background:#000;color:#fff;border:3px solid #fff;font-family:inherit;font-size:13px;text-transform:uppercase;text-align:center;padding:10px;width:200px;letter-spacing:3px}
 #start .warn{font-size:8px;color:#f22;line-height:1.8;max-width:280px}
+/* the owner's mark: on the title screen every time the game opens, small and out of the way */
+#startCopy{position:absolute;left:0;right:0;bottom:10px;text-align:center;font-size:6px;letter-spacing:1px;color:#6a6a6a;pointer-events:none}
+/* COPYRIGHT & CREDITS - the policy, in the game's own voice, reachable from Settings */
+#copyPanel .pscroll{width:88%}
+#copyBody{display:flex;flex-direction:column;gap:9px;text-align:left;font-size:7px;line-height:1.75;color:#cfcfcf;padding:2px}
+#copyBody h3{font-size:8px;color:#e8c14a;letter-spacing:1px;margin-top:6px;font-weight:normal}
+#copyBody .cr-own{font-size:9px;color:#fff;text-align:center;line-height:1.8}
+#copyBody ul{list-style:none;display:flex;flex-direction:column;gap:5px}
+#copyBody li::before{content:"\25B8  ";color:#777}
+#copyBody b{color:#fff;font-weight:normal}
+#copyBody .cr-mail{color:#9fd3ff;word-break:break-all}
 #adopt{font-size:13px;padding:16px 22px}
 /* shown in place of the breed picker when a save is waiting — the cold open runs either way,
    and only once it lands does the player get asked which door they're going through */
@@ -1048,6 +1070,7 @@ body.reduce-motion #pkNub{transition:none}
       <button id="btnNewGame" class="red">&#10005; NEW GAME</button>
     </div>
     <div class="warn">A DOG IS FOR LIFE.<br>ADOPT RESPONSIBLY.</div>
+    <div id="startCopy">&#169; 2026 JAMES SCOTT &#183; ALL RIGHTS RESERVED</div>
   </div>
 
   <div id="game" class="hidden" style="display:flex;flex-direction:column;height:100%;position:relative">
@@ -1148,7 +1171,7 @@ body.reduce-motion #pkNub{transition:none}
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.414a</span>
+          <span id="devToggle">v0.415a</span>
         </div>
       </div>
 
@@ -1376,8 +1399,45 @@ body.reduce-motion #pkNub{transition:none}
           <div class="settingrow"><span>VIGNETTE</span><div class="rangewrap"><input type="range" id="setVignette" min="0" max="100" step="5"><span id="setVignetteVal">60%</span></div></div>
         </div>
         <button class="menurow" id="mReplayTutorial" style="width:82%">&#9635; REPLAY DELIVERY TUTORIAL</button>
+        <button class="menurow" id="mCopyright" style="width:82%">&#169; COPYRIGHT &amp; CREDITS</button>
         <button class="tiny red" id="setEndRunPk" style="width:82%;display:none">&#9873; END THIS RUN</button>
         </div>
+      </div>
+
+      <!-- COPYRIGHT & CREDITS - the same policy as COPYRIGHT.md, kept in step with it -->
+      <div id="copyPanel" class="overpanel">
+        <button class="tiny pclose" id="copyClose">&#10005; CLOSE</button>
+        <h2>&#169; COPYRIGHT</h2>
+        <div class="pscroll"><div id="copyBody">
+          <div class="cr-own">BONES (ALPHA)<br>&#169; 2026 JAMES SCOTT<br>ALL RIGHTS RESERVED</div>
+          <div>BONES IS AN ORIGINAL GAME CREATED AND OWNED BY JAMES SCOTT, PROTECTED BY THE COPYRIGHT, DESIGNS AND PATENTS ACT 1988 AND INTERNATIONAL TREATIES INCLUDING THE BERNE CONVENTION.</div>
+          <h3>WHAT IS PROTECTED</h3>
+          <ul><li>THE CODE, THE WEB GAME AND THE ANDROID APP</li>
+            <li>THE GAME DESIGN AND MECHANICS: DOGCAM, DOGPARK, SHEEP HERDING, DELIVERY DRIVER, WOLFIE, THE LEGACY LINE</li>
+            <li>BONES AND EVERY DOG IN HIS LINE, HIS PUPPIES, WOLFIE, THE NOURISH-BOT, THE MYSTERIOUS DOG AND EVERY OTHER CHARACTER</li>
+            <li>ALL ART, PIXEL ART, ANIMATION, PORTRAITS AND INTERFACE</li>
+            <li>SOUND EFFECTS, TEXT, LOGO AND TITLE SCREEN</li>
+            <li>THE NAME <b>"BONES"</b> AND ITS LOGO, USED AS TRADE MARKS OF JAMES SCOTT</li></ul>
+          <h3>YOU MAY</h3>
+          <ul><li>PLAY THROUGH THE OFFICIAL LINK OR APP, AND SHARE THE OFFICIAL LINK</li>
+            <li>SCREENSHOT, RECORD AND STREAM YOURSELF PLAYING - CREDIT <b>"BONES BY JAMES SCOTT"</b> AND DON'T IMPLY ENDORSEMENT. MONETISED VIDEOS ARE FINE; THE GAME ITSELF MAY NOT BE SOLD OR REDISTRIBUTED</li></ul>
+          <h3>NOT WITHOUT WRITTEN PERMISSION</h3>
+          <ul><li>COPY, RE-HOST, MIRROR, FRAME OR REDISTRIBUTE THE GAME OR APP</li>
+            <li>SELL OR COMMERCIALLY EXPLOIT THE GAME OR ITS ASSETS</li>
+            <li>REUSE ITS CODE, ART, CHARACTERS OR SOUNDS ANYWHERE ELSE</li>
+            <li>MAKE CLONES, MODS, PORTS OR RE-SKINS</li>
+            <li>USE THE NAME "BONES" OR ITS LOGO IN A WAY THAT CONFUSES WHO MADE OR APPROVES SOMETHING</li>
+            <li>USE THE GAME OR ITS ASSETS TO TRAIN MACHINE-LEARNING OR AI SYSTEMS</li></ul>
+          <h3>THIRD-PARTY CREDITS</h3>
+          <ul><li>DOGCAM MUSIC: "8-BIT LOFI SPACE RELAXATION" BY CLOCK EYES</li>
+            <li>DOGPARK MUSIC: "A BIT OF HOPE" BY FESLIYAN STUDIOS (FESLIYANSTUDIOS.COM)</li>
+            <li>SHEEP HERDING MUSIC: "PEACEFUL WORLD", RELAXING 8-BIT GAME MUSIC BGM PACK</li>
+            <li>WOLFIE'S THEME: CREDIT TO BE CONFIRMED</li>
+            <li>FONT: PRESS START 2P, THE PRESS START 2P PROJECT AUTHORS, SIL OPEN FONT LICENSE 1.1</li></ul>
+          <div>THESE REMAIN THEIR CREATORS' PROPERTY, UNDER THEIR OWN LICENCES.</div>
+          <h3>PERMISSION, COPIES AND CLAIMS</h3>
+          <div>TO ASK PERMISSION, REPORT A COPY OR CLONE, OR IF YOU BELIEVE SOMETHING HERE IS YOUR WORK, EMAIL <span class="cr-mail">JAMSCOOT22@GMAIL.COM</span>. FOR A CLAIM, INCLUDE YOUR NAME AND CONTACT DETAILS, THE WORK YOU OWN, WHAT IN THE GAME YOU BELIEVE INFRINGES IT, AND A STATEMENT THAT YOUR NOTICE IS ACCURATE AND THAT YOU OWN OR ACT FOR THE RIGHTS. EVERY NOTICE IS REVIEWED PROMPTLY.</div>
+        </div></div>
       </div>
 
       <!-- CHARM SHOP -->
@@ -3969,7 +4029,7 @@ const CAM_DISMISS_PANELS = [
   ["goout","goClose"], ["shopPanel","shopClose"], ["supplies","supClose"],
   ["todoPanel","todoClose"], ["mailPanel","mailClose"], ["menuPanel","menuClose"],
   ["dlogPanel","dlogClose"], ["skillPanel","skillLater"],
-  ["careGuidePanel","careClose"], ["settingsPanel","settingsClose"],
+  ["careGuidePanel","careClose"], ["settingsPanel","settingsClose"], ["copyPanel","copyClose"],
   ["nourish","nourishClose"], ["moneyPick","mpCancel"], ["mystPanel","mystClose"],
   ["pinPanel","pinClose"],
 ];
@@ -12039,6 +12099,9 @@ $("#mSettings").onclick=()=>{
 // PK.settingsOpen/PB.settingsOpen only matter while a DOGPARK run or delivery route is live (see
 // pkPadDraw's gear button and the paperboy HUD's) — pausing the world while this panel covers the
 // screen, same as the shop/friends/gate prompts
+// COPYRIGHT & CREDITS opens over Settings and closes back to it
+$("#mCopyright").onclick=()=>{ $("#copyPanel").classList.add("show"); beep(500,.05); };
+$("#copyClose").onclick=()=>{ $("#copyPanel").classList.remove("show"); beep(400,.05); };
 $("#settingsClose").onclick=()=>{
   $("#settingsPanel").classList.remove("show");
   if(typeof PK!=="undefined") PK.settingsOpen=false;
@@ -12844,6 +12907,8 @@ $("#btnNewGame").onclick=()=>{
 };
 
 /* ---------- main loop ---------- */
+// the owner's mark in the console, for anyone opening the source
+try{ console.info("%cBONES %c\u00A9 2026 James Scott. All rights reserved. See COPYRIGHT.md.","font-weight:bold","font-weight:normal"); }catch(e){}
 const RESTORED = loadGame();
 document.body.classList.toggle("reduce-motion", SETTINGS.reduceMotion);
 $("#startDog").src = PORTRAITS.happy;

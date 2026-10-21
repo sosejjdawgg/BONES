@@ -33,6 +33,7 @@ open(dst,'w',encoding='utf-8').write(s)
 print("packaged",src,"->",len(s),"bytes")
 PY
 cp "$HERE"/fonts/*.woff2 "$HERE/fonts/OFL.txt" "$OUT/assets/fonts/"
+cp "$ROOT/COPYRIGHT.md" "$ROOT/LICENSE" "$OUT/assets/"      # the ownership notice ships inside the app too
 
 # 2. resources and manifest
 "$BT/aapt2" compile --dir "$HERE/res" -o "$OUT/res.zip"
