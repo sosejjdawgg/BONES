@@ -47,6 +47,7 @@ These parts of the Game are not owned by James Scott, remain the property of the
 - Music (Sheep Herding): "Peaceful World", from the "Relaxing 8-bit Game Music" royalty-free BGM pack. Creator credit to be confirmed.
 - Music (Wolfie boss fight): creator credit to be confirmed.
 - Font: Press Start 2P by The Press Start 2P Project Authors (CodeMan38), SIL Open Font License 1.1.
+- Theme fonts: Space Grotesk (Florian Karsten), Fredoka (Milena Brandão), Archivo Narrow (Omnibus-Type) and Patrick Hand (Patrick Wagesreiter), each under the SIL Open Font License 1.1.
 
 ## Reporting copying of BONES
 
