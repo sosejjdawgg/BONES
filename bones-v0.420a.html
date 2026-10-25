@@ -586,7 +586,7 @@ body.reduce-motion .screen.screen-in{animation:none}
    across the rage bar and the wave goal and ran its XP numbers off the right edge. Anchored to
    the bottom instead, above the END RUN row, because that row is the one fixed thing in a pad
    whose height moves with the camera split. */
-#pkQuests{position:absolute;left:10px;right:186px;bottom:44px;z-index:4;pointer-events:none;
+#pkQuests{position:absolute;left:10px;right:10px;bottom:44px;z-index:4;pointer-events:none;
   font-family:'Press Start 2P',monospace;font-size:6.5px;line-height:1.6;text-align:left;
   text-shadow:0 1px 0 #000}
 /* THE HEADER IS THE MENU. A real <button>, so it hit-tests itself against the END RUN row sitting
@@ -949,95 +949,90 @@ body.reduce-motion #herdMap,body.reduce-motion #herdPanel{animation:none;opacity
 #herdPanel{z-index:53;touch-action:none}
 #herdcv{flex:1;min-height:0;width:100%;display:block;touch-action:none;image-rendering:pixelated}
 #hBack{position:absolute;top:8px;left:8px;z-index:2;font-size:7px;padding:6px 8px;background:#000}
-/* THE GAMEPAD. One unit: the stick, BARK over DASH, and the earned moves on their arc, sitting on a
-   glass shell. It rests bottom-right, ON TOP of two rows that never move: the utility row (END RUN,
-   the cog, the music button) along the very bottom, and the side objectives just above it on the
-   left. Grab it anywhere on the pad's empty middle and the WHOLE unit comes to the thumb - see
-   pkPadMoveTo - lingers a moment after you let go, then glides home. --ux/--uy is that offset. */
-.gpad{position:absolute;right:12px;bottom:48px;display:flex;align-items:flex-end;gap:10px;z-index:5;isolation:isolate;
-  transform:translate(var(--ux,0px),var(--uy,0px));transition:transform .38s cubic-bezier(.2,.9,.25,1);
-  touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
-.gpad.held{transition:transform .05s linear}
-body.reduce-motion .gpad{transition:none}
-/* the shell: frosted glass under the stick and the stack, so they read as one controller */
-.gpad::before{content:"";position:absolute;left:-10px;right:-10px;top:-10px;bottom:-8px;z-index:-1;border-radius:30px;
-  background:linear-gradient(160deg,rgba(255,255,255,.09),rgba(255,255,255,.02) 55%,rgba(0,0,0,.18));
-  -webkit-backdrop-filter:blur(6px) saturate(1.2);backdrop-filter:blur(6px) saturate(1.2);
-  border:1px solid rgba(255,255,255,.14);box-shadow:0 10px 26px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.12);
-  transition:border-color .2s ease,box-shadow .2s ease}
-.gpad.held::before{border-color:rgba(255,255,255,.3);box-shadow:0 14px 34px rgba(0,0,0,.6),0 0 0 4px rgba(255,255,255,.04),inset 0 1px 0 rgba(255,255,255,.18)}
-.gpad .gp-btns{display:flex;flex-direction:column;gap:6px}
-/* keycaps: a lit top edge, a bevel under them, and they sink when pressed. The recharge sweeps
-   across as a band in the face itself (--cd) rather than an overlay, so the rounded corners hold. */
-.gpad .gp-btns button,.pk-ab{position:relative;padding:0;color:#fff;border:2px solid rgba(255,255,255,.88);
-  background:linear-gradient(90deg,rgba(255,255,255,.24) calc(var(--cd,0)*100%),transparent 0),linear-gradient(180deg,#24242c,#0b0b10);
-  box-shadow:0 3px 0 rgba(255,255,255,.16),0 6px 14px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.22);
-  transition:transform .07s ease,box-shadow .07s ease,opacity .2s ease,border-color .15s ease,color .15s ease;touch-action:none}
-.gpad .gp-btns button{width:64px;height:36px;font-size:8px;border-radius:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
-.gpad .gp-btns button small{font-size:5px;letter-spacing:1px;color:#7fd46a}
-.gpad .gp-btns button small:empty{display:none}
-.gpad .gp-btns button:active,.pk-ab:active{transform:translateY(2px) scale(.96);box-shadow:0 1px 0 rgba(255,255,255,.12),0 2px 6px rgba(0,0,0,.5),inset 0 2px 6px rgba(0,0,0,.5)}
-.gpad .gp-btns button.cooling,.pk-ab.cooling{opacity:.75}
-.gpad.off .gp-btns button,.gpad .gp-btns button.mute,.gpad .gp-btns button.tired{opacity:.32}
-.gpad.star .gp-btns button{filter:grayscale(1);opacity:.42;border-color:#9a9a9a;color:#bbb;animation:none}
-.gpad .gp-btns button.hot{border-color:#ffd84a;color:#ffe9a0;animation:pkHot .42s ease-in-out infinite alternate}
-@keyframes pkHot{from{box-shadow:0 3px 0 rgba(255,216,74,.25),0 0 4px rgba(255,216,74,.35)}
-  to{box-shadow:0 3px 0 rgba(255,216,74,.35),0 0 0 3px rgba(255,216,74,.28),0 0 18px rgba(255,216,74,.65)}}
-.gpad .gp-btns button.no,.pk-ab.no{animation:pkNo .26s ease}
+/* THE CONTROL DECK (v0.420a), the standard for every minigame that steers a dog. Two halves, one rule:
+   the LEFT half is the actions, the RIGHT half is movement.
+   Left: one big tile per action he has right now - BARK, then DASH, then whatever he has earned
+   (LEAP, SPIN, JUDGE) in a row beneath - each one marked, and far bigger than a thumb.
+   Right: put a thumb down anywhere and a paw-print stick appears under it; let go and it is gone.
+   The deck itself takes no touches - only the tiles do - so a touch anywhere else on the right
+   falls through to the screen underneath, which is what fetches the stick (see makePawStick). */
+.gdeck{position:absolute;display:flex;gap:12px;z-index:5;pointer-events:none;
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+.gd-acts{flex:0 0 calc(50% - 6px);display:flex;flex-direction:column;gap:6px;min-width:0}
+.gdeck button.gd-act{pointer-events:auto;touch-action:none;position:relative;flex:1 1 0;min-height:0;padding:0;margin:0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  font-size:11px;letter-spacing:2px;color:#fff;border:2px solid rgba(255,255,255,.55);border-radius:14px;
+  background:linear-gradient(90deg,rgba(255,255,255,.2) calc(var(--cd,0)*100%),transparent 0),rgba(14,14,20,.74);
+  box-shadow:0 4px 0 rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.14);
+  transition:transform .07s ease,border-color .15s ease,opacity .2s ease,color .15s ease}
+.gdeck button.gd-main{flex-grow:1.15;font-size:12px}
+.gdeck button.gd-act:active{transform:translateY(2px) scale(.97);box-shadow:0 1px 0 rgba(0,0,0,.45),inset 0 2px 8px rgba(0,0,0,.5);
+  background:linear-gradient(90deg,rgba(255,255,255,.2) calc(var(--cd,0)*100%),transparent 0),rgba(40,40,52,.86);border-color:#fff}
+.gdeck button.gd-act small{font-size:6px;letter-spacing:1px;color:#7fd46a}
+.gdeck button.gd-act small:empty{display:none}
+.gdeck button.gd-act.cooling{color:rgba(255,255,255,.6)}
+.gdeck button.gd-act.hot{border-color:#ffd84a;color:#ffe9a0;animation:pkHot .42s ease-in-out infinite alternate}
+.gdeck button.gd-act.no{animation:pkNo .26s ease}
+.gdeck.off button.gd-act,.gdeck button.gd-act.mute,.gdeck button.gd-act.tired{opacity:.34}
+.gdeck.star button.gd-act{filter:grayscale(1);opacity:.42;border-color:#9a9a9a;color:#bbb;animation:none}
+@keyframes pkHot{from{box-shadow:0 4px 0 rgba(0,0,0,.45),0 0 4px rgba(255,216,74,.35)}
+  to{box-shadow:0 4px 0 rgba(0,0,0,.45),0 0 0 3px rgba(255,216,74,.28),0 0 18px rgba(255,216,74,.65)}}
 @keyframes pkNo{20%{transform:translateX(-4px)}45%{transform:translateX(4px)}70%{transform:translateX(-2px)}}
-/* bigger to hit than to see: every pad button answers a thumb 7px outside its edge */
-.gpad .gp-btns button::before,.pk-ab::before{content:"";position:absolute;inset:-7px}
-/* the press ripple: a ring of light from exactly where the thumb landed, clipped to the cap */
-.pk-rip{position:absolute;inset:0;border-radius:inherit;overflow:hidden;pointer-events:none}
-.pk-rip i{position:absolute;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:rgba(255,255,255,.55);
-  animation:pkRip .42s ease-out forwards}
-@keyframes pkRip{to{transform:scale(9);opacity:0}}
-/* THE STICK: a lit bowl, a dashed ring where the run starts, a wedge of light on the rim that
-   points the way he is going (gold when he runs), and a domed nub. */
-.gpad .gp-stick{position:relative;width:92px;height:92px;flex:none;border-radius:50%;border:2px solid rgba(255,255,255,.55);
-  background:radial-gradient(circle at 50% 42%,rgba(255,255,255,.08),rgba(0,0,0,.45) 70%);
-  box-shadow:inset 0 3px 10px rgba(0,0,0,.6),0 0 0 1px rgba(0,0,0,.4);
-  transition:border-color .12s ease,box-shadow .2s ease}
-.gpad .gp-stick.on{border-color:rgba(255,255,255,.85);box-shadow:inset 0 3px 10px rgba(0,0,0,.55),0 0 16px rgba(255,255,255,.18)}
-.gpad .gp-stick.run{border-color:rgba(255,216,74,.9);box-shadow:inset 0 3px 10px rgba(0,0,0,.55),0 0 20px rgba(255,216,74,.35)}
-.gpad .gp-run{position:absolute;left:50%;top:50%;width:calc(var(--run,.7)*58px + 34px);height:calc(var(--run,.7)*58px + 34px);
-  transform:translate(-50%,-50%);border-radius:50%;border:1px dashed rgba(255,255,255,.26);pointer-events:none}
-.gpad .gp-stick.run .gp-run{border-color:rgba(255,216,74,.75)}
-.gpad .gp-dir{position:absolute;inset:-2px;border-radius:50%;pointer-events:none;opacity:var(--mag,0);
-  background:conic-gradient(from calc(var(--ang,0deg) - 38deg),rgba(255,255,255,.9) 0 76deg,transparent 0);
-  -webkit-mask:radial-gradient(circle,transparent 62%,#000 64%);mask:radial-gradient(circle,transparent 62%,#000 64%)}
-.gpad .gp-stick.run .gp-dir{background:conic-gradient(from calc(var(--ang,0deg) - 38deg),rgba(255,216,74,.95) 0 76deg,transparent 0)}
-.gpad .gp-nub{position:absolute;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;
-  background:radial-gradient(circle at 35% 30%,#fff,#dcdce6 55%,#9d9dab);border:2px solid rgba(0,0,0,.65);
-  box-shadow:0 5px 10px rgba(0,0,0,.55),inset 0 -2px 4px rgba(0,0,0,.25);pointer-events:none;
-  transform:translate(0,0);transition:transform .2s cubic-bezier(.3,1.5,.5,1)}
-.gpad .gp-stick.on .gp-nub{transition:none;box-shadow:0 7px 14px rgba(0,0,0,.6),inset 0 -2px 4px rgba(0,0,0,.25)}
-.gpad .gp-stick.run .gp-nub{background:radial-gradient(circle at 35% 30%,#fff7d6,#ffd84a 60%,#c8962a)}
-body.reduce-motion .gpad .gp-nub{transition:none}
-#app.bossfight .gpad{display:none}
-/* THE EARNED MOVES: round keycaps on an arc over the stick and the stack. Their recharge is a ring
-   of light closing round the cap; a ready move breathes gold. */
-#pkAbil{position:absolute;right:0;bottom:0;width:0;height:0}
-.pk-ab{position:absolute;width:44px;height:44px;border-radius:50%;display:none;align-items:center;justify-content:center;
-  font-size:6px;letter-spacing:.5px;
-  background:conic-gradient(rgba(255,255,255,.26) calc(var(--cd,0)*360deg),transparent 0),linear-gradient(180deg,#24242c,#0b0b10)}
-.pk-ab.on{display:flex}
-.pk-ab.ready{border-color:#ffd84a;color:#ffe9a0;animation:pkHot .5s ease-in-out infinite alternate}
-.pk-ab[data-slot="0"]{right:24px;bottom:102px}
-.pk-ab[data-slot="1"]{right:76px;bottom:94px}
-.pk-ab[data-slot="2"]{right:128px;bottom:86px}
-.gpad.off .pk-ab{opacity:.32}
-.gpad.star .pk-ab{filter:grayscale(1);opacity:.42;border-color:#9a9a9a;color:#bbb;animation:none}
+/* the earned moves share one row under DASH, a tile each; the row is only there once one is his */
+.gd-moves{display:none;flex:.9 1 0;gap:6px;min-height:0}
+.gd-moves.any{display:flex}
+.gdeck .gd-moves button.pk-ab{display:none;font-size:8px;letter-spacing:1px;
+  background:linear-gradient(0deg,rgba(255,255,255,.2) calc((1 - var(--cd,0))*100%),transparent 0),rgba(14,14,20,.74)}
+.gdeck .gd-moves button.pk-ab.on{display:flex}
+.gdeck .gd-moves button.pk-ab.ready{border-color:#ffd84a;color:#ffe9a0;animation:pkHot .5s ease-in-out infinite alternate}
 /* ...and the first time one shows up in a run it ARRIVES: out of nothing, overshoots, settles, with
    a gold shockwave off it - the player worked for this */
-.pk-ab.pop{animation:pkAbPop .7s cubic-bezier(.2,1.6,.35,1) both}
-.pk-ab.pop::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:3px solid #ffd84a;pointer-events:none;
+.gdeck .gd-moves button.pk-ab.pop{animation:pkAbPop .7s cubic-bezier(.2,1.6,.35,1) both}
+.pk-ab.pop::after{content:"";position:absolute;inset:-4px;border-radius:inherit;border:3px solid #ffd84a;pointer-events:none;
   animation:pkAbWave .7s ease-out both}
-@keyframes pkAbPop{0%{transform:scale(0) rotate(-40deg);filter:brightness(3)}55%{transform:scale(1.3) rotate(6deg)}
-  80%{transform:scale(.94)}100%{transform:none;filter:none}}
-@keyframes pkAbWave{0%{transform:scale(.6);opacity:1}100%{transform:scale(2.4);opacity:0}}
-/* herding wears the same gamepad (see makeGamepad), over the field, bottom-right */
-#hPad{bottom:34px}                /* clear of the version tag in the corner */
+@keyframes pkAbPop{0%{transform:scale(0);filter:brightness(3)}55%{transform:scale(1.15)}80%{transform:scale(.96)}100%{transform:none;filter:none}}
+@keyframes pkAbWave{0%{transform:scale(.8);opacity:1}100%{transform:scale(1.5);opacity:0}}
+/* the press ripple: a ring of light from exactly where the thumb landed, clipped to the tile */
+.pk-rip{position:absolute;inset:0;border-radius:inherit;overflow:hidden;pointer-events:none}
+.pk-rip i{position:absolute;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:rgba(255,255,255,.5);
+  animation:pkRip .42s ease-out forwards}
+@keyframes pkRip{to{transform:scale(14);opacity:0}}
+/* the right half at rest: a ghost paw that says where to put a thumb, gone while one is down */
+.gd-move{flex:1;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.gd-hint{display:flex;flex-direction:column;align-items:center;gap:8px;opacity:.5;transition:opacity .2s ease;
+  font-size:7px;letter-spacing:2px;color:#fff;text-align:center;line-height:1.5}
+.gd-hint svg{width:44px;height:44px}
+.gdeck.held .gd-hint{opacity:0}
+/* THE PAW STICK: a soft ring that appears where the thumb lands, a dashed ring where the run
+   starts, a wedge of light on the rim for the heading, and the paw itself as the nub - turned so
+   its toes lead the way he is going. Gold when he runs. */
+.gd-stick{position:absolute;left:0;top:0;width:108px;height:108px;margin:-54px 0 0 -54px;border-radius:50%;pointer-events:none;
+  border:2px solid rgba(255,255,255,.55);background:radial-gradient(circle,rgba(255,255,255,.07),rgba(0,0,0,.38) 72%);
+  box-shadow:inset 0 3px 10px rgba(0,0,0,.5),0 0 16px rgba(255,255,255,.12);
+  opacity:0;transform:scale(.6);transition:opacity .12s ease,transform .14s cubic-bezier(.2,1.4,.4,1),border-color .12s ease}
+.gd-stick.on{opacity:1;transform:none}
+.gd-stick.run{border-color:rgba(255,216,74,.9);box-shadow:inset 0 3px 10px rgba(0,0,0,.5),0 0 20px rgba(255,216,74,.35)}
+body.reduce-motion .gd-stick{transition:none}
+.gd-stick .gp-run{position:absolute;left:50%;top:50%;width:calc(var(--run,.7)*68px + 40px);height:calc(var(--run,.7)*68px + 40px);
+  transform:translate(-50%,-50%);border-radius:50%;border:1px dashed rgba(255,255,255,.26)}
+.gd-stick.run .gp-run{border-color:rgba(255,216,74,.75)}
+.gd-stick .gp-dir{position:absolute;inset:-2px;border-radius:50%;opacity:var(--mag,0);
+  background:conic-gradient(from calc(var(--ang,0deg) - 38deg),rgba(255,255,255,.9) 0 76deg,transparent 0);
+  -webkit-mask:radial-gradient(circle,transparent 62%,#000 64%);mask:radial-gradient(circle,transparent 62%,#000 64%)}
+.gd-stick.run .gp-dir{background:conic-gradient(from calc(var(--ang,0deg) - 38deg),rgba(255,216,74,.95) 0 76deg,transparent 0)}
+.gd-stick .gp-nub{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px 0 0 -26px;
+  filter:drop-shadow(0 5px 6px rgba(0,0,0,.55))}
+.gd-stick .gp-nub svg{width:100%;height:100%;display:block}
+.gd-stick .gp-nub .pw{fill:#f4f1ea;stroke:#1b1712;stroke-width:2.5}
+.gd-stick.run .gp-nub .pw{fill:#ffd84a}
+#app.bossfight .gdeck{display:none}
+/* DOGPARK's deck: over the pad's floor, above the side objectives and the utility row */
+#pkPad{left:10px;right:10px;bottom:70px;height:116px}
+#pkPad.moves{height:170px}
+/* herding's: the bottom of the field, clear of the version tag in the corner */
+#hPad{left:10px;right:10px;bottom:34px;height:150px}
+/* ...and out on the grass its tiles are glass, so the flock still shows through them */
+#hPad button.gd-act{background:linear-gradient(90deg,rgba(255,255,255,.22) calc(var(--cd,0)*100%),transparent 0),rgba(10,14,8,.38)}
 #herdToast{position:absolute;left:50%;top:100px;transform:translateX(-50%);background:#000;border:3px solid #fff;
   padding:8px 12px;font-size:8px;z-index:61;display:none;max-width:88%;text-align:center;line-height:1.6;pointer-events:none}
 #herdToast.red{border-color:#f22;color:#f22}
@@ -1106,12 +1101,10 @@ html[data-theme] #copyBody{color:var(--ink)}
 html[data-theme] #copyBody h3{color:var(--gold)}
 html[data-theme] #copyBody .cr-own,html[data-theme] #copyBody b{color:var(--head)}
 /* the DOGPARK gamepad, re-capped in each theme's colours */
-html[data-theme] .gpad .gp-btns button,html[data-theme] .pk-ab{border-color:var(--line);color:var(--btn-ink);
+html[data-theme] .gdeck button.gd-act{border-color:var(--line);color:var(--btn-ink);
   background:linear-gradient(90deg,var(--cdfill) calc(var(--cd,0)*100%),transparent 0),var(--key)}
-html[data-theme] .pk-ab{background:conic-gradient(var(--cdfill) calc(var(--cd,0)*360deg),transparent 0),var(--key)}
-html[data-theme] .gpad .gp-stick{border-color:var(--line)}
-html[data-theme] .pk-ab{border-radius:50%}
-html[data-theme="concrete"] .pk-ab{border-radius:0}
+html[data-theme] .gdeck .gd-moves button.pk-ab{background:linear-gradient(0deg,var(--cdfill) calc((1 - var(--cd,0))*100%),transparent 0),var(--key)}
+html[data-theme] .gd-stick{border-color:var(--line)}
 html[data-theme="brat"] .themeSw{background:#fff0f8;color:#5c0a39;border-color:#e0218a;border-radius:20px}
 html[data-theme] #pkBottomBtns button,html[data-theme] #globalMusicBtn{border-color:var(--line)}
 html[data-theme]{--cdfill:rgba(127,127,127,.3)}
@@ -1152,7 +1145,7 @@ html[data-theme="concrete"] #hud{border-bottom-width:2px;box-shadow:0 3px 0 var(
 html[data-theme="concrete"] .prow,html[data-theme="concrete"] .settingrow{border-left:6px solid var(--line-soft)}
 html[data-theme="concrete"] #doggieLog{border-left:8px solid var(--acc)}
 html[data-theme="concrete"] #bCall{box-shadow:6px 6px 0 #000,0 0 0 4px var(--bg) inset}
-html[data-theme="concrete"] .gpad .gp-btns button,html[data-theme="concrete"] .pk-ab{border-radius:0;box-shadow:4px 4px 0 #000}
+html[data-theme="concrete"] .gdeck button.gd-act{border-radius:0;box-shadow:4px 4px 0 #000}
 
 /* ======== 2. BISCUIT - the doggy one ========
    Brown, cream and white like a biscuit tin: soft chunky toy buttons that squash down when pressed,
@@ -1201,7 +1194,7 @@ html[data-theme="brat"] .settinghead::before{content:"\2727  "}
 html[data-theme="brat"] #doggieLog,html[data-theme="brat"] .prow,html[data-theme="brat"] .settingrow{box-shadow:0 3px 12px rgba(224,33,138,.18)}
 html[data-theme="brat"] #bCall{background:radial-gradient(circle at 35% 30%,#fff,#ffb3da 40%,#e0218a);color:#5c0a39;box-shadow:0 0 0 4px #fff,0 8px 24px rgba(224,33,138,.5)}
 html[data-theme="brat"] #dlogLabel{background:#8ace00;color:#141414;padding:2px 5px;border-radius:4px}
-html[data-theme="brat"] .gpad .gp-btns button,html[data-theme="brat"] .pk-ab{color:#fff;border-color:#fff}
+html[data-theme="brat"] .gdeck button.gd-act{color:#fff;border-color:#fff}
 
 /* ======== 4. POCKET - the handheld ========
    It already IS a pixel game; this is the machine it was always meant to run on. Four greens
@@ -1297,7 +1290,7 @@ html[data-theme="maison"] #bCall:active{background:#7d2a1a}
 html[data-theme="maison"] #doggieLog{border-left:none;border-right:none}
 html[data-theme="maison"] #dlogLabel{color:var(--acc);font-style:italic;letter-spacing:.06em}
 html[data-theme="maison"] .prow,html[data-theme="maison"] .settingrow{border-left:none;border-right:none;border-top:none}
-html[data-theme="maison"] .gpad .gp-btns button,html[data-theme="maison"] .pk-ab{color:#1a1714;border-color:#1a1714}
+html[data-theme="maison"] .gdeck button.gd-act{color:#1a1714;border-color:#1a1714}
 
 /* ======== 8. SPATIAL - spatial computing ========
    Interfaces that float: frosted glass panes over a slow, saturated colour field, soft depth,
@@ -1483,7 +1476,7 @@ html[data-theme="terminal"] .prow,html[data-theme="terminal"] .settingrow{border
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.419a</span>
+          <span id="devToggle">v0.420a</span>
         </div>
       </div>
 
@@ -1794,12 +1787,17 @@ html[data-theme="terminal"] .prow,html[data-theme="terminal"] .settingrow{border
         <div id="pkQuests" class="hidden"></div>
         <!-- THE PAD: bottom-right, BARK stacked over DASH and the stick to their right. It replaced
              the side-by-side #pkCtrl row. The left of the pad stays the sheet's and END RUN's. -->
-        <div class="gpad" id="pkPad">
-          <div class="gp-btns" id="pkBtns"><button id="pkBarkBtn">BARK<small id="pkBarkTag"></small></button><button id="pkDashBtn">DASH</button></div>
-          <div class="gp-stick" id="pkStick" aria-label="Move"><i class="gp-run" id="pkStickRun"></i><i class="gp-dir" id="pkStickDir"></i><b class="gp-nub" id="pkNub"></b></div>
-          <!-- the moves he has EARNED - the wings' leap, the blade's whirlwind, UNLEASHED's judgment -
-               fan round the stick's upper-left as he unlocks them, and pop in when they arrive -->
-          <div id="pkAbil"><button class="pk-ab" id="pkLeapBtn" data-ab="leap">LEAP</button><button class="pk-ab" id="pkSpinBtn" data-ab="spin">SPIN</button><button class="pk-ab" id="pkJudgeBtn" data-ab="judge">JUDGE</button></div>
+        <!-- THE CONTROL DECK: the left half is the actions, a tile each - BARK, DASH, and under them the
+             moves he has EARNED (the wings' leap, the blade's whirlwind, UNLEASHED's judgment), which
+             pop in as they arrive. The right half is movement: a paw-print stick under the thumb. -->
+        <div class="gdeck" id="pkPad">
+          <div class="gd-acts" id="pkBtns">
+            <button class="gd-act gd-main" id="pkBarkBtn">BARK<small id="pkBarkTag"></small></button>
+            <button class="gd-act" id="pkDashBtn">DASH</button>
+            <div class="gd-moves" id="pkAbil"><button class="gd-act pk-ab" id="pkLeapBtn" data-ab="leap">LEAP</button><button class="gd-act pk-ab" id="pkSpinBtn" data-ab="spin">SPIN</button><button class="gd-act pk-ab" id="pkJudgeBtn" data-ab="judge">JUDGE</button></div>
+          </div>
+          <div class="gd-move"><div class="gd-hint"><i></i>TOUCH TO MOVE</div></div>
+          <div class="gd-stick" id="pkStick" aria-label="Move"><i class="gp-run"></i><i class="gp-dir"></i><b class="gp-nub" id="pkNub"></b></div>
         </div>
         <div id="pkBottomBtns" style="position:absolute;left:8px;bottom:10px;display:flex;gap:10px;z-index:5">
           <button class="tiny red" id="pkEndRunBtn">&#9873; END RUN</button>
@@ -1956,7 +1954,7 @@ html[data-theme="terminal"] .prow,html[data-theme="terminal"] .settingrow{border
     <canvas id="herdcv"></canvas>
     <button class="tiny" id="hBack">&#10005; EXIT</button>
     <div id="hRecap" class="hidden" role="dialog" aria-label="Round recap"></div>
-    <div class="gpad" id="hPad"><div class="gp-btns"><button id="hBark">BARK</button><button id="hDash">DASH</button></div><div class="gp-stick" aria-label="Move"><i class="gp-run"></i><i class="gp-dir"></i><b class="gp-nub"></b></div></div>
+    <div class="gdeck" id="hPad"><div class="gd-acts"><button class="gd-act gd-main" id="hBark">BARK</button><button class="gd-act" id="hDash">DASH</button></div><div class="gd-move"><div class="gd-hint"><i></i>TOUCH TO MOVE</div></div><div class="gd-stick" aria-label="Move"><i class="gp-run"></i><i class="gp-dir"></i><b class="gp-nub"></b></div></div>
   </div>
   <div id="herdToast"></div>
   <div id="toast"></div>
@@ -18698,6 +18696,8 @@ function pkAbList(){ return PK.active ? PK_AB.filter(a=>a.has()) : []; }
 function pkAbSync(){
   const list=pkAbList();
   PK.abSeen=PK.abSeen||{};
+  const any=list.length>0, row=$("#pkAbil");
+  if(row._any!==any){ row._any=any; row.classList.toggle("any",any); $("#pkPad").classList.toggle("moves",any); }
   for(const a of PK_AB){
     const b=document.querySelector('.pk-ab[data-ab="'+a.k+'"]'); if(!b) continue;
     const i=list.indexOf(a), on=i>=0;
@@ -18725,7 +18725,7 @@ function pkCtrlSync(){
   const show = PK.active && !PK.shop && !PK.friendsOpen && !PK.convertOpen && !bossOn();
   el.style.display = show ? "" : "none";
   // a panel came up: a press waiting on the frame is dropped, and the stick lets go with the buttons
-  if(!show){ PK.barkQ=0; pkStickLetGo(); pkPadDock(); PK.held=false; return; }
+  if(!show){ PK.barkQ=0; pkStickLetGo(); PK.held=false; return; }
   pkStickSync();
   pkAbSync();
   // the music button sits 10px after the cog, wherever that row ends at this width (measured only
@@ -27823,9 +27823,9 @@ function pkPalHudRows(w){
    column AND the centred rage bar and wave goal, so the floor is its top plus a margin. When
    everything is lit at once on a short pad, the pills give up their gaps (10px, down to 3px) before
    the rage bar is allowed to slide in behind the stick. pkPadDraw and pkRageBarY space from here. */
-const PK_PAD_FLOOR=150;
+const PK_PAD_FLOOR=196;                     // the deck: 70px up, 116px tall, and a 10px margin over it
 // ...and with any earned move on the arc over the stick, its top (156px up) plus the same margin
-function pkPadFloor(){ return pkAbList().length ? 204 : PK_PAD_FLOOR; }
+function pkPadFloor(){ return pkAbList().length ? 250 : PK_PAD_FLOOR; }   // ...170px with the moves row
 /* ...AND THE PAD STOPS SHRINKING WHERE ITS STACK WOULD MEET THE CLUSTER. The view grows as the park
    opens (pkCamPctFor), taking height off the pad; on a short phone, with friends, armour, the pills
    and the rage bar all on it, that could leave the stack nowhere to go but behind the stick. So the
@@ -27875,15 +27875,7 @@ function pkRageBarY(w,h){
 function pkPadDraw(t){
   const [ctx,w,h]=fit($("#parkcv"));
   pkDeckBG(ctx,w,h);
-  // the how-to-move hint sits dead centre, which is also where the pal rows reach down to once
-  // the pad has given up enough height to the view (see pkApplyUISplit). It has done its job by
-  // then anyway — this only ever shows on a full-size pad, which is the first wave or two.
-  // (gated on the park not having opened up yet: a pad held tall by pkPadRoom late in a run has
-  // its pills where this would land)
-  if(!PK.shop && !PK.joy && !PK.friendsOpen && !PK.convertOpen && h>300 && !(PK.zoomFromWave>0)){
-    ctx.fillStyle=bossOn()?"#444":"rgba(220,235,210,.42)"; ctx.font="8px 'Press Start 2P',monospace"; ctx.textAlign="center";
-    ctx.fillText(DN("TOUCH ANYWHERE TO MOVE BONES"), w/2, h/2);
-  }
+  // (the how-to-move hint is the deck's ghost paw now - see .gd-hint)
   // the bones count: a card, and it flashes gold and swells a touch whenever it goes up
   if(bossOn()){ ctx.strokeStyle="#666"; ctx.lineWidth=2; ctx.strokeRect(8,10,110,30); }
   else pkDeckCard(ctx,8,10,110,30, PFX.boneFx>0 ? "rgba(232,193,74,.9)" : null);
@@ -28274,15 +28266,17 @@ function pkPadDraw(t){
       const bw=Math.min(180,r.width*0.65), bx=r.width/2-bw/2, by2=pkRageBarY(r.width,r.height), bh=22;
       if(hit2(bx,by2,bw,bh)){ pkHeavenlyJudgment(); return; }
     }
-    // double-tap anywhere on the pad deploys — the second tap is HELD to stay up
+    // THE DIVIDING LINE: the left half of the pad is the action tiles' and never movement
+    if(e.clientX<pkPadMidX()) return;
+    // double-tap the right half deploys — the second tap is HELD to stay up
     if(pkHasWings()){
       const nowS=performance.now()/1000;
       if(nowS-(PK.tapT||-9)<0.32){ PK.tapT=-9; pkLeap(); }
       else PK.tapT=nowS;
     }
     if(PK.joy && PK.joy.stick) return;   // a thumb is on the stick: a second finger on the grass does not steal the steer
-    // THE STICK COMES TO THE THUMB: any landing on the pad's empty middle grabs it right there
-    if(pkStickGrab(e,true)){ try{cv.setPointerCapture(e.pointerId);}catch(_){} return; }
+    // THE PAW COMES TO THE THUMB: any landing on the right half puts the stick right there
+    if(pkStickGrab(e)){ try{cv.setPointerCapture(e.pointerId);}catch(_){} return; }
     PK.joy={ox:e.clientX-r.left,oy:e.clientY-r.top,dx:0,dy:0};
     try{cv.setPointerCapture(e.pointerId);}catch(_){}
   });
@@ -28299,65 +28293,45 @@ function pkPadDraw(t){
                 if(!(PK.joy && PK.joy.stick)) PK.joy=null; PK.held=false; };   // letting go brings him down
   cv.addEventListener("pointerup",up); cv.addEventListener("pointercancel",up);
 })();
-/* ==================== THE STICK ====================
-   A ring 92px across with a 34px nub. Touch anywhere inside the ring to grab it; the nub follows
-   the finger, its centre clamped PK_STICK_TRAVEL from the middle so the nub never leaves the ring,
-   and lets go home on release (eased; snapped under reduceMotion). It only aims: it writes the
-   same PK.joy {dx,dy} the field drag writes, scaled so its rim is full deflection, so the dead
-   zone (JOY_DEAD) and the walk-to-run point (pkJoyRunAt) are the drag's own - one set of gaits.
-   The game takes the steer away from the drag in a handful of places (the shop, the boss, the
-   hole, time up) by nulling PK.joy; the stick obeys the same way: it lets go, and stays dead until
-   the finger is lifted and put back, exactly like a drag. */
-const PK_STICK_TRAVEL=29;                    // ring radius 46 - nub radius 17
-const PK_STICK_FOLLOW=10;                    // a floating stick trails a thumb this far past its rim
-const PK_PAD_LINGER=1.2;                     // seconds the gamepad waits where you left it before going home
+/* ==================== THE PAW STICK ====================
+   Put a thumb down anywhere on the right half and a stick appears under it, the paw print as its
+   nub; drag and he goes, let go and it is gone. It only aims: it writes the same {dx,dy} the old
+   field drag wrote, scaled so its rim is full deflection, so the dead zone (JOY_DEAD) and the
+   walk-to-run point (pkJoyRunAt) are the drag's own - one set of gaits.
+   The game takes the steer away in a handful of places (the shop, the boss, the hole, time up) by
+   nulling the joy; the stick obeys: it lets go, and stays dead until the thumb is lifted and put
+   back down. */
+const GD_TRAVEL=34;                          // ring radius 54 - paw radius 20ish
+const GD_FOLLOW=12;                          // the stick trails a thumb this far past its rim
+const GD_R=54;                               // the ring's radius: it is kept this far inside its bounds
 const PK_PAD_ROWS=38;                        // the utility row it must never sit on
-/* THE GAMEPAD, one build for every minigame that steers a dog: the stick, its keycaps on a glass
-   shell, the whole unit coming to the thumb and lingering there before it glides home. A minigame
-   hands over its .gpad element and how to reach its steer (getJoy/setJoy - the same {dx,dy} the
-   old field drag wrote), when a grab is allowed (can), the room the unit needs round the stick
-   (ext: left/up/right/down) and the strip along the bottom it must never sit on (rows).
-   g.st is the live state: STICK.lx/ly is the LOGICAL centre - where the thumb landed - and the
-   nub reads off that, so a grab never lurches him even when the unit had to stop short of the
-   thumb at an edge. ox/oy is the whole gamepad's offset from its resting place. */
-function makeGamepad(cfg){
-  const pad=cfg.pad, st=pad.querySelector(".gp-stick"), nub=pad.querySelector(".gp-nub");
-  const S0={id:null, joy:null, lx:0, ly:0, ox:0, oy:0, float:false, homeT:0};
-  const g={st:S0, pad, stick:st};
-  // the stick's resting centre on screen, from layout (offsets ignore the transform, so this is
-  // right even mid-glide)
-  g.home=()=>{
-    const pr=pad.offsetParent.getBoundingClientRect();
-    return {x:pr.left+pad.offsetLeft+pad.offsetWidth-46, y:pr.top+pad.offsetTop+pad.offsetHeight-46};
+const GD_PAW='<svg viewBox="0 0 64 64" aria-hidden="true"><g class="pw">'+
+  '<ellipse cx="32" cy="44" rx="15" ry="13"/><ellipse cx="13" cy="27" rx="6.5" ry="8" transform="rotate(-24 13 27)"/>'+
+  '<ellipse cx="24.5" cy="14" rx="6.5" ry="8.5" transform="rotate(-8 24.5 14)"/><ellipse cx="39.5" cy="14" rx="6.5" ry="8.5" transform="rotate(8 39.5 14)"/>'+
+  '<ellipse cx="51" cy="27" rx="6.5" ry="8" transform="rotate(24 51 27)"/></g></svg>';
+/* One build for every minigame. A minigame hands over its .gdeck, its .gd-stick, the screen
+   rectangle the ring must stay inside (bounds), when a grab is allowed (can), and how to reach its
+   steer (getJoy/setJoy). g.st is the live state: lx/ly is the LOGICAL centre - where the thumb
+   landed - and the steer reads off that, so a touch near an edge never lurches him even though the
+   ring itself has to sit a little further in (cx/cy). */
+function makePawStick(cfg){
+  const deck=cfg.deck, st=cfg.stick, nub=st.querySelector(".gp-nub");
+  nub.innerHTML=GD_PAW;
+  deck.querySelectorAll(".gd-hint i").forEach(i=>{ i.outerHTML=GD_PAW; });
+  const S0={id:null, joy:null, lx:0, ly:0, cx:0, cy:0, ang:0};
+  const g={st:S0, deck, stick:st};
+  const place=(x,y)=>{
+    const b=cfg.bounds();
+    S0.cx=clamp(x, b.l+GD_R, b.r-GD_R); S0.cy=clamp(y, b.t+GD_R, b.b-GD_R);
+    const pr=st.offsetParent.getBoundingClientRect();
+    st.style.left=(S0.cx-pr.left).toFixed(1)+"px"; st.style.top=(S0.cy-pr.top).toFixed(1)+"px";
   };
-  // carry the whole gamepad so the stick's centre is at (cx,cy), as near as the edges allow:
-  // never off the side, never over the bottom row
-  g.moveTo=(cx,cy)=>{
-    const home=g.home(), pr=pad.offsetParent.getBoundingClientRect(), x0=cfg.ext();
-    const x=clamp(cx, pr.left+x0.left, pr.right-x0.right), y=clamp(cy, pr.top+x0.up, pr.bottom-cfg.rows-x0.down);
-    S0.ox=x-home.x; S0.oy=y-home.y;
-    pad.style.setProperty("--ux",S0.ox.toFixed(1)+"px"); pad.style.setProperty("--uy",S0.oy.toFixed(1)+"px");
-    return {x,y};
-  };
-  g.dock=()=>{
-    clearTimeout(S0.homeT); S0.homeT=0;
-    if(!S0.ox && !S0.oy) return;
-    S0.ox=0; S0.oy=0;
-    pad.style.setProperty("--ux","0px"); pad.style.setProperty("--uy","0px");
-  };
-  // a tap on any of its buttons while it lingers keeps it where it is a little longer
-  g.keep=()=>{ if(S0.homeT){ clearTimeout(S0.homeT); S0.homeT=setTimeout(g.dock,PK_PAD_LINGER*1000); } };
-  /* Take hold. From the ring (float false) the centre is the ring as it stands; from the empty
-     field (float true) the whole gamepad is fetched so the stick is under the thumb. */
-  g.grab=(e,float)=>{
-    if(S0.id!==null || !cfg.can() || pad.style.display==="none") return false;
-    clearTimeout(S0.homeT); S0.homeT=0;
-    S0.float=!!float;
-    if(float){ g.moveTo(e.clientX,e.clientY); S0.lx=e.clientX; S0.ly=e.clientY; }
-    else { const r=st.getBoundingClientRect(); S0.lx=r.left+r.width/2; S0.ly=r.top+r.height/2; }
+  g.grab=e=>{
+    if(S0.id!==null || !cfg.can() || deck.style.display==="none") return false;
+    S0.lx=e.clientX; S0.ly=e.clientY; place(S0.lx,S0.ly);
     S0.id=e.pointerId; S0.joy={dx:0,dy:0,stick:true};
     cfg.setJoy(S0.joy);
-    st.classList.add("on"); pad.classList.add("held");
+    st.classList.add("on"); deck.classList.add("held");
     haptic(8);
     g.aim(e);
     return true;
@@ -28365,32 +28339,34 @@ function makeGamepad(cfg){
   g.aim=e=>{
     let dx=e.clientX-S0.lx, dy=e.clientY-S0.ly;
     let l=Math.hypot(dx,dy);
-    // a floating gamepad follows a thumb that runs off the rim, so steering never hits a wall
-    if(S0.float && l>PK_STICK_TRAVEL+PK_STICK_FOLLOW){
-      const k=(l-PK_STICK_TRAVEL-PK_STICK_FOLLOW)/l, sx=dx*k, sy=dy*k;
-      S0.lx+=sx; S0.ly+=sy; dx-=sx; dy-=sy; l=Math.hypot(dx,dy);
-      const home=g.home(); g.moveTo(home.x+S0.ox+sx, home.y+S0.oy+sy);
+    // a thumb that runs off the rim drags the whole stick after it, so steering never hits a wall
+    if(l>GD_TRAVEL+GD_FOLLOW){
+      const k=(l-GD_TRAVEL-GD_FOLLOW)/l;
+      S0.lx+=dx*k; S0.ly+=dy*k; dx-=dx*k; dy-=dy*k; l=Math.hypot(dx,dy);
+      place(S0.lx,S0.ly);
     }
-    if(l>PK_STICK_TRAVEL){ dx*=PK_STICK_TRAVEL/l; dy*=PK_STICK_TRAVEL/l; }
-    nub.style.transform="translate("+dx.toFixed(1)+"px,"+dy.toFixed(1)+"px)";
-    S0.joy.dx=dx/PK_STICK_TRAVEL; S0.joy.dy=dy/PK_STICK_TRAVEL;
-    // the wedge on the rim: which way, and how hard
+    if(l>GD_TRAVEL){ dx*=GD_TRAVEL/l; dy*=GD_TRAVEL/l; }
+    S0.joy.dx=dx/GD_TRAVEL; S0.joy.dy=dy/GD_TRAVEL;
+    // the paw sits where the thumb is (as far as the ring allows) with its toes leading the way
+    let nx=e.clientX-S0.cx, ny=e.clientY-S0.cy; const nl=Math.hypot(nx,ny);
+    if(nl>GD_TRAVEL){ nx*=GD_TRAVEL/nl; ny*=GD_TRAVEL/nl; }
     const m=Math.hypot(S0.joy.dx,S0.joy.dy);
+    if(m>JOY_DEAD) S0.ang=Math.atan2(dy,dx)*180/Math.PI+90;
+    nub.style.transform="translate("+nx.toFixed(1)+"px,"+ny.toFixed(1)+"px) rotate("+S0.ang.toFixed(0)+"deg)";
+    // the wedge on the rim: which way, and how hard
     st.style.setProperty("--mag", m>JOY_DEAD ? Math.min(1,0.35+m*0.65).toFixed(2) : "0");
-    if(m>JOY_DEAD) st.style.setProperty("--ang",(Math.atan2(dy,dx)*180/Math.PI+90).toFixed(1)+"deg");
+    if(m>JOY_DEAD) st.style.setProperty("--ang",S0.ang.toFixed(1)+"deg");
   };
-  // the move handler both the ring and the field share: only the thumb that holds it, and only
+  // the move handler the screen underneath routes to: only the thumb that holds it, and only
   // while the game still lets it steer
   g.move=e=>{ if(e.pointerId===S0.id && S0.joy && cfg.getJoy()===S0.joy) g.aim(e); };
   g.letGo=()=>{
     if(S0.id===null && !S0.joy) return;
     if(S0.joy && cfg.getJoy()===S0.joy) cfg.setJoy(null);
-    S0.id=null; S0.joy=null; S0.float=false;
+    S0.id=null; S0.joy=null; S0.ang=0;
     st.classList.remove("on","run"); st.style.setProperty("--mag","0");
-    pad.classList.remove("held");
+    deck.classList.remove("held");
     nub.style.transform="";
-    // the gamepad stays where you left it for a beat - a quick re-grab or a button finds it there
-    if(S0.ox || S0.oy){ clearTimeout(S0.homeT); S0.homeT=setTimeout(g.dock,PK_PAD_LINGER*1000); }
   };
   // once a frame: the run ring where the gait really changes, and gold past it
   g.sync=()=>{
@@ -28400,46 +28376,29 @@ function makeGamepad(cfg){
     const running=!!(S0.joy && Math.hypot(S0.joy.dx,S0.joy.dy)>=pkJoyRunAt());
     if(st._running!==running){ st._running=running; st.classList.toggle("run",running); if(running) haptic(5); }   // a tick as the run engages
   };
-  // shown or not: hidden, it lets go and goes home so it comes back where it lives
   g.show=v=>{
     const d=v?"":"none";
-    if(pad.style.display!==d) pad.style.display=d;
-    if(!v){ g.letGo(); g.dock(); }
+    if(deck.style.display!==d) deck.style.display=d;
+    if(!v) g.letGo();
     return v;
   };
-  // the feel layer: a ripple from the exact touch point on any of its buttons
-  pad.addEventListener("pointerdown",e=>{
-    const b=e.target.closest(".gp-btns button,.pk-ab"); if(!b) return;
-    g.keep();
-    if(SETTINGS.reduceMotion) return;
+  // the feel layer: a ripple from the exact touch point on any tile
+  deck.addEventListener("pointerdown",e=>{
+    const b=e.target.closest(".gd-act"); if(!b || SETTINGS.reduceMotion) return;
     const r=b.getBoundingClientRect(), w=document.createElement("span"), i=document.createElement("i");
     w.className="pk-rip"; i.style.left=(e.clientX-r.left)+"px"; i.style.top=(e.clientY-r.top)+"px";
     w.appendChild(i); b.appendChild(w); setTimeout(()=>w.remove(),450);
   },true);
-  // the ring itself
-  st.addEventListener("pointerdown",e=>{
-    e.preventDefault();
-    const r=st.getBoundingClientRect();
-    // the ring, not its square: a press in a corner is a press on the field's edge, not the stick
-    if(Math.hypot(e.clientX-(r.left+r.width/2), e.clientY-(r.top+r.height/2))>r.width/2) return;
-    if(g.grab(e,false)){ try{st.setPointerCapture(e.pointerId);}catch(_){} }
-  });
-  st.addEventListener("pointermove",g.move);
-  const up=e=>{ if(e.pointerId===S0.id) g.letGo(); };
-  st.addEventListener("pointerup",up); st.addEventListener("pointercancel",up);
-  st.addEventListener("lostpointercapture",up);
   return g;
 }
-// DOGPARK's gamepad. The earned moves on their arc need more room up and to the left.
-const PKPAD=makeGamepad({pad:$("#pkPad"), rows:PK_PAD_ROWS,
-  ext:()=>{ const ab=pkAbList().length>0; return {left:ab?150:130, up:ab?112:58, right:58, down:56}; },
+// DOGPARK's: anywhere on the right half of the pad, down to the utility row
+const PKPAD=makePawStick({deck:$("#pkPad"), stick:$("#pkStick"),
+  bounds:()=>{ const r=$("#park").getBoundingClientRect(); return {l:r.left, t:r.top, r:r.right, b:r.bottom-PK_PAD_ROWS}; },
   can:()=>PK.active && pkCanAct(), getJoy:()=>PK.joy, setJoy:j=>{ PK.joy=j; }});
 const STICK=PKPAD.st;
-function pkPadHome(){ return PKPAD.home(); }
-function pkPadMoveTo(cx,cy){ return PKPAD.moveTo(cx,cy); }
-function pkPadDock(){ PKPAD.dock(); }
-function pkPadKeep(){ PKPAD.keep(); }
-function pkStickGrab(e,float){ return PKPAD.grab(e,float); }
+// the dividing line: a touch on the left half of the pad is never movement
+function pkPadMidX(){ const r=$("#park").getBoundingClientRect(); return r.left+r.width/2; }
+function pkStickGrab(e){ return PKPAD.grab(e); }
 function pkStickAim(e){ PKPAD.aim(e); }
 function pkStickLetGo(){ PKPAD.letGo(); }
 function pkStickSync(){ PKPAD.sync(); }
@@ -33980,18 +33939,22 @@ function herdLoop(dt,t){
   if(!$("#choice").classList.contains("show")) herdUpdate(sh,dt);
   if(HERD.active && S.herd.shift){ herdDraw(S.herd.shift,t); herdSyncButtons(S.herd.shift); }
 }
-// SHEEP HERDING's gamepad: DOGPARK's own; all it keeps clear of is the version tag
-const HPAD=makeGamepad({pad:$("#hPad"), rows:24, ext:()=>({left:130, up:58, right:58, down:56}),
+// SHEEP HERDING's deck: DOGPARK's own; all it keeps clear of is the version tag
+const HPAD=makePawStick({deck:$("#hPad"), stick:$("#hPad .gd-stick"),
+  bounds:()=>{ const r=$("#herdPanel").getBoundingClientRect(); return {l:r.left, t:r.top, r:r.right, b:r.bottom-24}; },
   can:()=>HERD.active && !$("#choice").classList.contains("show"),
   getJoy:()=>HERD.joy, setJoy:j=>{ HERD.joy=j; }});
 (function(){
   const cv=$("#herdcv");
-  // THE STICK COMES TO THE THUMB: a finger anywhere on the field fetches the whole gamepad to it.
-  // A second finger while one is steering does not steal the steer.
+  // THE PAW COMES TO THE THUMB: a finger anywhere on the right half of the field puts the stick
+  // there; the left half is the action tiles' and never movement. A second finger while one is
+  // steering does not steal the steer.
   cv.addEventListener("pointerdown",e=>{
     if(!HERD.active) return;
     e.preventDefault();
-    if(HPAD.grab(e,true)){ try{cv.setPointerCapture(e.pointerId);}catch(_){} }
+    const r=cv.getBoundingClientRect();
+    if(e.clientX<r.left+r.width/2) return;
+    if(HPAD.grab(e)){ try{cv.setPointerCapture(e.pointerId);}catch(_){} }
   });
   cv.addEventListener("pointermove",HPAD.move);
   const up=e=>{ if(e.pointerId===HPAD.st.id) HPAD.letGo(); };
