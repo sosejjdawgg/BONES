@@ -586,7 +586,7 @@ body.reduce-motion .screen.screen-in{animation:none}
    across the rage bar and the wave goal and ran its XP numbers off the right edge. Anchored to
    the bottom instead, above the END RUN row, because that row is the one fixed thing in a pad
    whose height moves with the camera split. */
-#pkQuests{position:absolute;left:10px;right:10px;bottom:44px;z-index:4;pointer-events:none;
+#pkQuests{position:absolute;left:10px;right:10px;bottom:calc(var(--pkRowTop,34px) + 10px);z-index:6;pointer-events:none;
   font-family:'Press Start 2P',monospace;font-size:6.5px;line-height:1.6;text-align:left;
   text-shadow:0 1px 0 #000}
 /* THE HEADER IS THE MENU. A real <button>, so it hit-tests itself against the END RUN row sitting
@@ -604,7 +604,10 @@ body.reduce-motion .screen.screen-in{animation:none}
 #pkQuests .qbox{display:inline-block;width:7px;text-align:center;border:1px solid #6b5a24;
   color:#4a4a52;line-height:1.1;font-size:7px}
 #pkQuests .qbox.all{border-color:#e8c14a;background:#e8c14a;color:#111}
-#pkQuests .qlist{padding-left:2px}
+/* open, the list rises over the deck's tiles, so it brings its own backing to be read on (and still
+   lets every touch through to the tiles under it) */
+#pkQuests .qlist{padding:5px 7px;margin-bottom:4px;background:rgba(8,8,12,.94);border:1px solid #3a3a42;max-width:340px}
+#pkQuests .qlist:empty{display:none}
 #pkQuests .qrow{display:flex;justify-content:space-between;gap:8px;color:#b9b9c2;padding:1px 0}
 #pkQuests .qrow .qx{color:#6a6a72;flex:none}
 #pkQuests .qrow .qn{color:#e8c14a}
@@ -1027,7 +1030,7 @@ body.reduce-motion .gd-stick{transition:none}
 .gd-stick.run .gp-nub .pw{fill:#ffd84a}
 #app.bossfight .gdeck{display:none}
 /* DOGPARK's deck: over the pad's floor, above the side objectives and the utility row */
-#pkPad{left:10px;right:10px;bottom:70px;height:116px}
+#pkPad{left:10px;right:10px;bottom:calc(var(--pkRowTop,34px) + 36px);height:116px}
 #pkPad.moves{height:170px}
 /* herding's: the bottom of the field, clear of the version tag in the corner */
 #hPad{left:10px;right:10px;bottom:34px;height:150px}
@@ -1058,6 +1061,10 @@ html[data-theme]{--rad:0px;--radc:0px;--bw:3px;--fsa:none;--frame:var(--line);--
 html[data-theme] body{background:var(--page);color:var(--ink)}
 html[data-theme] body *:not(svg):not(svg *){font-family:var(--font)!important}
 html[data-theme] body{font-size-adjust:var(--fsa)}
+/* ...and form controls take it too. The browser's own stylesheet gives every button and input a
+   `font` shorthand, which quietly resets font-size-adjust - so every button in every theme was
+   drawing its text at the theme font's natural size, about 70% of what the rest of the page got. */
+html[data-theme] body :is(button,input,select,textarea){font-size-adjust:inherit}
 html[data-theme] #app{border-color:var(--frame);background:var(--bg)}
 html[data-theme] #panel,html[data-theme] #start,html[data-theme] .overpanel{background:var(--bg)}
 html[data-theme] .overpanel{background:var(--bg-panel)}
@@ -1123,14 +1130,50 @@ html[data-theme] #devToggle{background:var(--bg);color:var(--mute);border-color:
 .themeSw.on{outline:3px solid #f22;outline-offset:2px}
 html[data-theme] .themeSw.on{outline-color:var(--acc)}
 
+/* READABLE ON EVERY THEME. Classic's greens, golds and reds were picked for black; on a cream, pink
+   or green page they all but vanish. Each theme sets its own --good / --goldtx / --bad (all 5:1 or
+   better on its own panels) and every one of those hard-coded colours reads from them here. */
+html[data-theme]{--good:#3fdc7a;--goldtx:var(--gold);--bad:var(--acc)}
+html[data-theme] #money1,html[data-theme] #hud .money{color:var(--good)}
+html[data-theme] .wallet,html[data-theme] #hudBones{color:var(--goldtx)}
+html[data-theme] #dlogLabel{color:var(--goldtx)}
+html[data-theme] .settinghead{color:var(--bad)}
+html[data-theme] .themeSw small{opacity:1;color:var(--mute)}
+html[data-theme] #globalMusicBtn{opacity:.92}
+html[data-theme] #pkEndRunBtn{color:var(--bad);border-color:var(--bad)}
+/* the gold that says NOW on a tile is the theme's own gold, on the theme's own key */
+html[data-theme] .gdeck button.gd-act.hot,html[data-theme] .gdeck .gd-moves button.pk-ab.ready{color:var(--goldtx);border-color:var(--goldtx)}
+/* a "coming soon" breed is greyed out, not invisible */
+html[data-theme] .breed.locked{opacity:.75}
+/* the herding map's live card is a theme button, so its small print takes the theme's inks */
+html[data-theme] .hm-node:not(.st-locked):not(.st-short) .hm-goal{color:var(--mute)}
+html[data-theme] .hm-node:not(.st-locked):not(.st-short) .hm-plat em{color:var(--goldtx)}
+/* the end-of-run title is coloured inline (white for a win, red for a loss): re-ink both per theme */
+html[data-theme] #resTitle[style*="255, 255, 255"]{color:var(--head)!important}
+html[data-theme] #resTitle[style*="255, 34, 34"]{color:var(--bad)!important}
+html[data-theme="brat"] #resTitle[style]{color:#141414!important}
+html[data-theme="spatial"] .hm-node:not(.st-locked):not(.st-short),html[data-theme="spatial"] #hmHome{background:rgba(42,22,80,.8)}
+html[data-theme="maison"] .hm-node:not(.st-locked):not(.st-short){background:#f6f2ea}
+html[data-theme="maison"] .hm-node.st-locked,html[data-theme="maison"] .hm-node.st-short{color:#ece6da;background:rgba(26,23,20,.74)}
+html[data-theme="maison"] .hm-node.st-locked .hm-sub2{color:#b9b0a2}
+/* the utility row sits on the dark pad, so its buttons carry the theme's own page under them */
+html[data-theme] #pkBottomBtns button{background:var(--btn)}
+html[data-theme="maison"] #pkBottomBtns button{background:#f6f2ea}
+html[data-theme="brat"] #pkEndRunBtn{color:#fff;border-color:#fff}
+html[data-theme] .breed .bs{color:var(--bad)}
+html[data-theme="riso"] .settinghead{color:#003e6b!important}
+html[data-theme="riso"] #globalMusicBtn{opacity:1}
+html[data-theme="pocket"] #camhead .rec{color:#0f380f}
+html[data-theme="terminal"] #resTitle[style*="255, 255, 255"]{color:#fff!important}
+html[data-theme="terminal"] #resTitle[style*="255, 34, 34"]{color:#ffb3ad!important}
 /* ======== 1. CONCRETE - brutalist, brought up to now ========
    Still the black, white and red - but poured: a concrete grain under everything, a grotesk that
    means it, hard offset shadows that make every button a slab you press INTO, and red used like a
    warning stripe, sparingly and hard. */
-html[data-theme="concrete"]{--page:#111;--bg:#232321;--bg-panel:#1c1c1a;--card:#2c2c29;--ink:#ecE9e2;--head:#fff;
-  --line:#ece9e2;--line-soft:#55534e;--acc:#ff3b1f;--gold:#ffb000;--mute:#8e8a83;
+html[data-theme="concrete"]{--good:#3fdc7a;--goldtx:#ffb000;--bad:#ff6a52;--page:#111;--bg:#232321;--bg-panel:#1c1c1a;--card:#2c2c29;--ink:#ecE9e2;--head:#fff;
+  --line:#ece9e2;--line-soft:#55534e;--acc:#ff3b1f;--gold:#ffb000;--mute:#aca79f;
   --btn:#1d1d1b;--btn-ink:#ece9e2;--btn-act:#ff3b1f;--btn-act-ink:#111;--btn-sh:4px 4px 0 #000;--btn-sh-act:1px 1px 0 #000;
-  --rad:0px;--radc:0px;--bw:2px;--font:'Space Grotesk',system-ui,sans-serif;--fsa:cap-height 1;--frame:#000;--key:#1d1d1b;--cdfill:rgba(255,59,31,.32)}
+  --rad:0px;--radc:0px;--bw:2px;--font:'Space Grotesk',system-ui,sans-serif;--fsa:cap-height 1.08;--frame:#000;--key:#1d1d1b;--cdfill:rgba(255,59,31,.32)}
 html[data-theme="concrete"] #app,html[data-theme="concrete"] #panel,html[data-theme="concrete"] .overpanel,html[data-theme="concrete"] #start{
   background-image:radial-gradient(rgba(255,255,255,.035) 1px,transparent 1.2px),radial-gradient(rgba(0,0,0,.28) 1px,transparent 1.2px);
   background-size:3px 3px,5px 5px;background-position:0 0,1px 2px}
@@ -1150,10 +1193,10 @@ html[data-theme="concrete"] .gdeck button.gd-act{border-radius:0;box-shadow:4px 
 /* ======== 2. BISCUIT - the doggy one ========
    Brown, cream and white like a biscuit tin: soft chunky toy buttons that squash down when pressed,
    round friendly type, paw prints in the paper, a collar-red accent and a dog-tag gold. */
-html[data-theme="biscuit"]{--page:#e6cfa6;--bg:#fbf1de;--bg-panel:#fff6e6;--card:#fffaf2;--ink:#4a2e1a;--head:#6b3f1f;
-  --line:#8b5a2b;--line-soft:#dcbc8f;--acc:#cf4f2b;--gold:#c07f1c;--mute:#9a7a59;
+html[data-theme="biscuit"]{--good:#2e6e31;--goldtx:#875400;--bad:#b3261e;--page:#e6cfa6;--bg:#fbf1de;--bg-panel:#fff6e6;--card:#fffaf2;--ink:#4a2e1a;--head:#6b3f1f;
+  --line:#8b5a2b;--line-soft:#dcbc8f;--acc:#cf4f2b;--gold:#c07f1c;--mute:#7a5634;
   --btn:#fffaf2;--btn-ink:#5a3519;--btn-act:#8b5a2b;--btn-act-ink:#fff6e6;--btn-sh:0 4px 0 #c49766;--btn-sh-act:0 1px 0 #c49766;
-  --rad:16px;--radc:18px;--bw:3px;--font:'Fredoka',system-ui,sans-serif;--fsa:cap-height 1;--frame:#8b5a2b;--key:#fffaf2;--cdfill:rgba(139,90,43,.22)}
+  --rad:16px;--radc:18px;--bw:3px;--font:'Fredoka',system-ui,sans-serif;--fsa:cap-height 1.08;--frame:#8b5a2b;--key:#fffaf2;--cdfill:rgba(139,90,43,.22)}
 html[data-theme="biscuit"] #app,html[data-theme="biscuit"] #panel,html[data-theme="biscuit"] .overpanel,html[data-theme="biscuit"] #start{
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cg fill='%238b5a2b' fill-opacity='.07'%3E%3Ccircle cx='14' cy='18' r='5'/%3E%3Ccircle cx='7' cy='10' r='2.4'/%3E%3Ccircle cx='12' cy='7' r='2.4'/%3E%3Ccircle cx='17' cy='7' r='2.4'/%3E%3Ccircle cx='22' cy='10' r='2.4'/%3E%3Ccircle cx='46' cy='50' r='5'/%3E%3Ccircle cx='39' cy='42' r='2.4'/%3E%3Ccircle cx='44' cy='39' r='2.4'/%3E%3Ccircle cx='49' cy='39' r='2.4'/%3E%3Ccircle cx='54' cy='42' r='2.4'/%3E%3C/g%3E%3C/svg%3E")}
 html[data-theme="biscuit"] #app{border-width:4px}
@@ -1175,8 +1218,8 @@ html[data-theme="biscuit"] .dogbtn img{border-radius:50%;border-color:#c49766}
    Barbie's world (the hot pink #E0218A, glossy pills, sparkle) with brat's voice: everything in
    lower case, a narrow grotesk smudged soft at the edges, and acid lime (#8ACE00) for the bits
    that matter - the title is a brat cover. */
-html[data-theme="brat"]{--page:#ff2e93;--bg:#ffd1e8;--bg-panel:#ffe2f1;--card:#fff0f8;--ink:#5c0a39;--head:#e0218a;
-  --line:#e0218a;--line-soft:#f5a3cc;--acc:#e0218a;--gold:#6aa400;--mute:#b8679a;
+html[data-theme="brat"]{--good:#3a6600;--goldtx:#7a4e00;--bad:#b0001d;--page:#ff2e93;--bg:#ffd1e8;--bg-panel:#ffe2f1;--card:#fff0f8;--ink:#5c0a39;--head:#e0218a;
+  --line:#e0218a;--line-soft:#f5a3cc;--acc:#e0218a;--gold:#6aa400;--mute:#8f3069;
   --btn:linear-gradient(180deg,#ff9ad1,#ff4fa8);--btn-ink:#fff;--btn-act:#8ace00;--btn-act-ink:#141414;
   --btn-sh:0 4px 14px rgba(224,33,138,.35),inset 0 2px 0 rgba(255,255,255,.55);--btn-sh-act:0 1px 4px rgba(224,33,138,.3);
   --rad:999px;--radc:20px;--bw:2px;--font:'Archivo Narrow','Arial Narrow',sans-serif;--fsa:cap-height 1.12;--frame:#e0218a;
@@ -1200,8 +1243,8 @@ html[data-theme="brat"] .gdeck button.gd-act{color:#fff;border-color:#fff}
    It already IS a pixel game; this is the machine it was always meant to run on. Four greens
    (#0F380F #306230 #8BAC0F #9BBC0F), the grey plastic case with its one curved corner, a dot-matrix
    grid over the screen, and the whole picture - DOGCAM and park included - pushed into the four. */
-html[data-theme="pocket"]{--page:#a7a59d;--bg:#9bbc0f;--bg-panel:#9bbc0f;--card:#8bac0f;--ink:#0f380f;--head:#0f380f;
-  --line:#0f380f;--line-soft:#306230;--acc:#0f380f;--gold:#306230;--mute:#306230;
+html[data-theme="pocket"]{--good:#0f380f;--goldtx:#0f380f;--bad:#0f380f;--page:#a7a59d;--bg:#9bbc0f;--bg-panel:#9bbc0f;--card:#8bac0f;--ink:#0f380f;--head:#0f380f;
+  --line:#0f380f;--line-soft:#306230;--acc:#0f380f;--gold:#306230;--mute:#0f380f;
   --btn:#8bac0f;--btn-ink:#0f380f;--btn-act:#0f380f;--btn-act-ink:#9bbc0f;--btn-sh:inset -3px -3px 0 #306230;--btn-sh-act:inset 2px 2px 0 #0f380f;
   --rad:3px;--radc:3px;--bw:3px;--font:'Press Start 2P',monospace;--frame:#55595f;--key:#8bac0f;--cdfill:rgba(15,56,15,.35)}
 html[data-theme="pocket"] #app{border-width:8px;border-radius:12px 12px 46px 12px;box-shadow:0 0 0 2px #2f3236}
@@ -1217,8 +1260,8 @@ html[data-theme="pocket"] #pkClock,html[data-theme="pocket"] #pkSheet,html[data-
    BONES as his owner's scrapbook: lined exercise-book paper with the red margin, ballpoint-blue
    handwriting, buttons cut out of card with wobbly hand-drawn edges, headings held on with washi
    tape, highlighter for the important bits, the whole lot pinned to a cork board. */
-html[data-theme="scrapbook"]{--page:#b4875a;--bg:#fdfaf0;--bg-panel:#fdfaf0;--card:#fffdf7;--ink:#1f2a6b;--head:#1f2a6b;
-  --line:#1f2a6b;--line-soft:#8b93c9;--acc:#e0402c;--gold:#d88400;--mute:#6a72a8;
+html[data-theme="scrapbook"]{--good:#1e7a3a;--goldtx:#8f5400;--bad:#c0301c;--page:#b4875a;--bg:#fdfaf0;--bg-panel:#fdfaf0;--card:#fffdf7;--ink:#1f2a6b;--head:#1f2a6b;
+  --line:#1f2a6b;--line-soft:#8b93c9;--acc:#e0402c;--gold:#d88400;--mute:#4b5390;
   --btn:#fffdf7;--btn-ink:#1f2a6b;--btn-act:#ffe45c;--btn-act-ink:#1f2a6b;--btn-sh:2px 3px 0 rgba(31,42,107,.22);--btn-sh-act:0 0 0 rgba(0,0,0,0);
   --rad:255px 15px 225px 15px/15px 225px 15px 255px;--radc:16px 255px 20px 225px/225px 18px 255px 15px;--bw:2px;
   --font:'Patrick Hand','Comic Sans MS',cursive;--fsa:cap-height 1.24;--frame:#7a5532;--key:#fffdf7;--cdfill:rgba(255,228,92,.7)}
@@ -1251,10 +1294,10 @@ html[data-theme="scrapbook"] .prow,html[data-theme="scrapbook"] .settingrow{box-
 /* ======== 6. PIT WALL - motorsport broadcast ========
    The timing tower and the pit wall: carbon-fibre weave, heavy italic type, the race red, kerb
    stripes, and the sector colours (purple fastest, green personal best, yellow) as the accents. */
-html[data-theme="pitwall"]{--page:#09090b;--bg:#141418;--bg-panel:#101014;--card:#1c1c22;--ink:#f4f4f6;--head:#fff;
-  --line:#e10600;--line-soft:#3a3a46;--acc:#e10600;--gold:#b44cff;--mute:#8b8b9a;
+html[data-theme="pitwall"]{--good:#3fdc7a;--goldtx:#c98bff;--bad:#ff4d45;--page:#09090b;--bg:#141418;--bg-panel:#101014;--card:#1c1c22;--ink:#f4f4f6;--head:#fff;
+  --line:#e10600;--line-soft:#3a3a46;--acc:#e10600;--gold:#b44cff;--mute:#a8a8b6;
   --btn:#1c1c22;--btn-ink:#fff;--btn-act:#e10600;--btn-act-ink:#fff;--btn-sh:inset 0 -3px 0 rgba(0,0,0,.45);--btn-sh-act:inset 0 3px 0 rgba(0,0,0,.45);
-  --rad:0px;--radc:0px;--bw:2px;--font:'Titillium Web',system-ui,sans-serif;--fsa:cap-height 1;--frame:#e10600;--key:#1c1c22;--cdfill:rgba(225,6,0,.45)}
+  --rad:0px;--radc:0px;--bw:2px;--font:'Titillium Web',system-ui,sans-serif;--fsa:cap-height 1.08;--frame:#e10600;--key:#1c1c22;--cdfill:rgba(225,6,0,.45)}
 html[data-theme="pitwall"] body *{font-style:italic}
 html[data-theme="pitwall"] #app,html[data-theme="pitwall"] #panel,html[data-theme="pitwall"] .overpanel,html[data-theme="pitwall"] #start{
   background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.035) 0 2px,transparent 2px 4px),repeating-linear-gradient(-45deg,rgba(0,0,0,.35) 0 2px,transparent 2px 4px)}
@@ -1266,7 +1309,7 @@ html[data-theme="pitwall"] .settinghead{color:#fff;font-weight:700}
 html[data-theme="pitwall"] .settinghead::before{content:"";display:inline-block;width:28px;height:6px;margin-right:8px;vertical-align:1px;
   background:linear-gradient(90deg,#b44cff 0 33%,#00d26a 33% 66%,#ffd400 66%)}
 html[data-theme="pitwall"] #doggieLog{border-left:5px solid #b44cff}
-html[data-theme="pitwall"] #dlogLabel{color:#b44cff}
+html[data-theme="pitwall"] #dlogLabel{color:#c98bff}
 html[data-theme="pitwall"] #bCall{border:6px solid transparent;background:radial-gradient(circle,#1c1c22 60%,transparent 61%),repeating-conic-gradient(#e10600 0 15deg,#fff 15deg 30deg);background-origin:border-box;color:#fff}
 html[data-theme="pitwall"] #start h1{font-weight:700;color:#fff;border:none;background:linear-gradient(100deg,transparent 0 14px,#e10600 14px calc(100% - 14px),transparent calc(100% - 14px));padding:20px 40px}
 html[data-theme="pitwall"] .prow,html[data-theme="pitwall"] .settingrow,html[data-theme="pitwall"] .dogbtn{border-left:4px solid #00d26a}
@@ -1274,32 +1317,32 @@ html[data-theme="pitwall"] .prow,html[data-theme="pitwall"] .settingrow,html[dat
 /* ======== 7. MAISON - fashion editorial ========
    Quiet luxury in print: a bone-white stock, a high-contrast Didone, hairline rules, letters
    tracked wide like a masthead, and the only colours are camel and an oxblood. Less, louder. */
-html[data-theme="maison"]{--page:#e6dfd2;--bg:#f6f2ea;--bg-panel:#f6f2ea;--card:transparent;--ink:#1a1714;--head:#1a1714;
-  --line:#1a1714;--line-soft:#cfc5b4;--acc:#7d2a1a;--gold:#9a7b4f;--mute:#8a8073;
+html[data-theme="maison"]{--good:#2f6b3a;--goldtx:#6f5532;--bad:#9b2c1a;--page:#e6dfd2;--bg:#f6f2ea;--bg-panel:#f6f2ea;--card:transparent;--ink:#1a1714;--head:#1a1714;
+  --line:#1a1714;--line-soft:#cfc5b4;--acc:#7d2a1a;--gold:#9a7b4f;--mute:#6b6256;
   --btn:transparent;--btn-ink:#1a1714;--btn-act:#1a1714;--btn-act-ink:#f6f2ea;--btn-sh:none;--btn-sh-act:none;
-  --rad:0px;--radc:0px;--bw:1px;--font:'Playfair Display',Georgia,serif;--fsa:cap-height .95;--frame:#1a1714;--key:#f6f2ea;--cdfill:rgba(154,123,79,.3)}
+  --rad:0px;--radc:0px;--bw:1px;--font:'Playfair Display',Georgia,serif;--fsa:cap-height 1.08;--frame:#1a1714;--key:#f6f2ea;--cdfill:rgba(154,123,79,.3)}
 html[data-theme="maison"] button{letter-spacing:.22em;font-weight:500}
 html[data-theme="maison"] .overpanel h2{font-style:italic;font-weight:400;font-size:30px;letter-spacing:.02em;text-transform:none;
   border-top:1px solid #1a1714;border-bottom:1px solid #1a1714;padding:8px 22px}
-html[data-theme="maison"] .settinghead{color:var(--gold);letter-spacing:.32em;font-size:8px}
+html[data-theme="maison"] .settinghead{color:var(--goldtx);letter-spacing:.32em;font-size:8px}
 html[data-theme="maison"] #start h1{border:none;font-weight:700;letter-spacing:.18em;font-size:60px;padding:14px 10px;
   border-top:1px solid #1a1714;border-bottom:1px solid #1a1714}
 html[data-theme="maison"] #start h1::before{content:"ISSUE 01  \2014  AUTUMN / WINTER";position:absolute;left:0;right:0;top:-22px;font-size:7px;letter-spacing:.4em;font-weight:400}
 html[data-theme="maison"] #bCall{background:#1a1714;color:#f6f2ea;border-color:#1a1714}
 html[data-theme="maison"] #bCall:active{background:#7d2a1a}
 html[data-theme="maison"] #doggieLog{border-left:none;border-right:none}
-html[data-theme="maison"] #dlogLabel{color:var(--acc);font-style:italic;letter-spacing:.06em}
+html[data-theme="maison"] #dlogLabel{color:var(--acc)!important;font-style:italic;letter-spacing:.06em}
 html[data-theme="maison"] .prow,html[data-theme="maison"] .settingrow{border-left:none;border-right:none;border-top:none}
 html[data-theme="maison"] .gdeck button.gd-act{color:#1a1714;border-color:#1a1714}
 
 /* ======== 8. SPATIAL - spatial computing ========
    Interfaces that float: frosted glass panes over a slow, saturated colour field, soft depth,
    generous rounding, light type, and nothing opaque that does not have to be. */
-html[data-theme="spatial"]{--page:#20123d;--bg:#2a1650;--bg-panel:rgba(42,22,80,.62);--card:rgba(255,255,255,.12);--ink:#fff;--head:#fff;
-  --line:rgba(255,255,255,.4);--line-soft:rgba(255,255,255,.2);--acc:#ff8a66;--gold:#ffe08a;--mute:rgba(255,255,255,.68);
+html[data-theme="spatial"]{--good:#7dffb0;--goldtx:#ffe08a;--bad:#ffa093;--page:#20123d;--bg:#2a1650;--bg-panel:rgba(42,22,80,.62);--card:rgba(255,255,255,.12);--ink:#fff;--head:#fff;
+  --line:rgba(255,255,255,.4);--line-soft:rgba(255,255,255,.2);--acc:#ff8a66;--gold:#ffe08a;--mute:rgba(255,255,255,.8);
   --btn:rgba(255,255,255,.14);--btn-ink:#fff;--btn-act:rgba(255,255,255,.42);--btn-act-ink:#1d1236;
   --btn-sh:0 8px 24px rgba(0,0,0,.25),inset 0 1px 0 rgba(255,255,255,.35);--btn-sh-act:0 2px 8px rgba(0,0,0,.25);
-  --rad:22px;--radc:26px;--bw:1px;--font:'Space Grotesk',system-ui,sans-serif;--fsa:cap-height .98;--frame:transparent;--key:rgba(255,255,255,.16);--cdfill:rgba(255,255,255,.3)}
+  --rad:22px;--radc:26px;--bw:1px;--font:'Space Grotesk',system-ui,sans-serif;--fsa:cap-height 1.08;--frame:transparent;--key:rgba(255,255,255,.16);--cdfill:rgba(255,255,255,.3)}
 html[data-theme="spatial"] #app,html[data-theme="spatial"] #panel,html[data-theme="spatial"] #start{background-color:#2a1650;
   background-image:radial-gradient(at 15% 20%,#ff6fb5 0,transparent 45%),radial-gradient(at 85% 10%,#5b8cff 0,transparent 45%),
   radial-gradient(at 70% 85%,#ffb36b 0,transparent 45%),radial-gradient(at 20% 90%,#7c4dff 0,transparent 50%);background-attachment:fixed}
@@ -1318,8 +1361,8 @@ html[data-theme="spatial"] #hud,html[data-theme="spatial"] #footer{border-color:
 /* ======== 9. RISO - the zine ========
    Risograph print: two fluorescent drums (blue and pink) over newsprint, the second one never
    quite lined up with the first, halftone dots, paper grain, heavy condensed caps. */
-html[data-theme="riso"]{--page:#e9e2d2;--bg:#f3eee3;--bg-panel:#f3eee3;--card:#f3eee3;--ink:#0078bf;--head:#0078bf;
-  --line:#0078bf;--line-soft:#8fbfe0;--acc:#ff48b0;--gold:#e0a800;--mute:#5a95c4;
+html[data-theme="riso"]{--good:#006e4e;--goldtx:#7f5c00;--bad:#c2006d;--page:#e9e2d2;--bg:#f3eee3;--bg-panel:#f3eee3;--card:#f3eee3;--ink:#0078bf;--head:#0078bf;
+  --line:#0078bf;--line-soft:#8fbfe0;--acc:#ff48b0;--gold:#e0a800;--mute:#2b6894;
   --btn:#f3eee3;--btn-ink:#0078bf;--btn-act:#ff48b0;--btn-act-ink:#f3eee3;--btn-sh:3px 3px 0 rgba(255,72,176,.85);--btn-sh-act:0 0 0 transparent;
   --rad:0px;--radc:0px;--bw:3px;--font:'Archivo Narrow','Arial Narrow',sans-serif;--fsa:cap-height 1.1;--frame:#0078bf;--key:#f3eee3;--cdfill:rgba(255,232,0,.75)}
 html[data-theme="riso"] #app,html[data-theme="riso"] #panel,html[data-theme="riso"] .overpanel,html[data-theme="riso"] #start{
@@ -1336,10 +1379,10 @@ html[data-theme="riso"] #doggieLog{box-shadow:4px 3px 0 rgba(255,232,0,.95)}
 /* ======== 10. TERMINAL - the trading floor ========
    A finance terminal: amber monospace on pure black, the panel headers as solid blue bars, gains
    in green and losses in red, everything dense, square and a cursor blinking where a title goes. */
-html[data-theme="terminal"]{--page:#000;--bg:#000;--bg-panel:#000;--card:#070707;--ink:#ffa028;--head:#ffa028;
-  --line:#ffa028;--line-soft:#4a3210;--acc:#ff3b30;--gold:#00d26a;--mute:#b07a2c;
+html[data-theme="terminal"]{--good:#00d26a;--goldtx:#ffa028;--bad:#ff6b5e;--page:#000;--bg:#000;--bg-panel:#000;--card:#070707;--ink:#ffa028;--head:#ffa028;
+  --line:#ffa028;--line-soft:#4a3210;--acc:#ff3b30;--gold:#00d26a;--mute:#d0913a;
   --btn:#000;--btn-ink:#ffa028;--btn-act:#ffa028;--btn-act-ink:#000;--btn-sh:none;--btn-sh-act:none;
-  --rad:0px;--radc:0px;--bw:1px;--font:'JetBrains Mono',ui-monospace,monospace;--fsa:cap-height .95;--frame:#ffa028;--key:#000;--cdfill:rgba(255,160,40,.3)}
+  --rad:0px;--radc:0px;--bw:1px;--font:'JetBrains Mono',ui-monospace,monospace;--fsa:cap-height 1.04;--frame:#ffa028;--key:#000;--cdfill:rgba(255,160,40,.3)}
 html[data-theme="terminal"] button{letter-spacing:.02em}
 html[data-theme="terminal"] .overpanel h2{background:#1a3fd6;color:#fff;font-weight:700;font-size:15px;width:100%;text-align:left;padding:5px 10px}
 html[data-theme="terminal"] .overpanel h2::after{content:"\2588";margin-left:6px;animation:blink 1s steps(2) infinite}
@@ -1476,7 +1519,7 @@ html[data-theme="terminal"] .prow,html[data-theme="terminal"] .settingrow{border
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.420a</span>
+          <span id="devToggle">v0.421a</span>
         </div>
       </div>
 
@@ -18730,10 +18773,14 @@ function pkCtrlSync(){
   pkAbSync();
   // the music button sits 10px after the cog, wherever that row ends at this width (measured only
   // when the width changes - the row is fixed text, so nothing else moves it)
-  if(pkCtrlSync._mw!==innerWidth){
+  // ...and the row's real height goes to the objectives and the deck above it, so a theme with a
+  // taller font can never push one onto the other (measured when the width or the theme changes)
+  const mkey=innerWidth+"|"+(document.documentElement.dataset.theme||"");
+  if(pkCtrlSync._mw!==mkey){
     const bb=$("#pkBottomBtns"), app=$("#app");
-    if(bb && bb.offsetWidth){ pkCtrlSync._mw=innerWidth;
-      app.style.setProperty("--pkMusicL", Math.round(bb.getBoundingClientRect().right-app.getBoundingClientRect().left+10)+"px"); }
+    if(bb && bb.offsetWidth){ pkCtrlSync._mw=mkey;
+      app.style.setProperty("--pkMusicL", Math.round(bb.getBoundingClientRect().right-app.getBoundingClientRect().left+10)+"px");
+      app.style.setProperty("--pkRowTop", Math.max(34, Math.round($("#park").getBoundingClientRect().bottom-bb.getBoundingClientRect().top))+"px"); }
   }
   // a cinematic or the wave send-off has the frame: the buttons stay put but go quiet
   const live=pkCanAct();
