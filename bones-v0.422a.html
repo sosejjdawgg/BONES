@@ -1519,7 +1519,7 @@ html[data-theme="terminal"] .prow,html[data-theme="terminal"] .settingrow{border
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.421a</span>
+          <span id="devToggle">v0.422a</span>
         </div>
       </div>
 
@@ -6338,6 +6338,15 @@ function dogSprite(){
   const WALKY=(stt==="walk"||stt==="come"||stt==="chase"||stt==="fetch"||stt==="zoomies"||
                stt==="drinkgo"||stt==="eatgo"||stt==="beggo"||stt==="treatgo"||stt==="inspgo"||stt==="loungego");
   const dirReady = DOGDIRIMG.E && DOGDIRIMG.E.complete && DOGDIRIMG.E.naturalWidth;
+  if(WALKY && CAM.moving && dirReady && stt==="zoomies" && dogRunReady() && dogRunBody()>0){
+    const R=dogRunFrame(RMW||1,RMH||1,CAM.x,CAM.z,CAM.oct|0,CAM.runPh|0);
+    if(R){
+      // the gallop's own stored size: `body` here is what makes per = B/body come out right
+      const art={w:R.a.w, h:R.a.h, n:R.n, foot:R.foot, body:dogRunBody()/(R.a.sc||1)};
+      return { key:"run:"+R.D.k, art, img:R.img, fi:R.f, flip:!!R.D.f,
+               face:(R.D.k==="N"||R.D.k==="S")?0:1, lift:0, foot:R.foot, sx:R.f*R.a.w, sw:R.a.w, sh:R.a.h, leap:false };
+    }
+  }
   if(WALKY && CAM.moving && dirReady){
     const D=DOGDIR_MAP[(((CAM.oct|0)%8)+8)%8];
     const a=DOGDIR[D.k], img=DOGDIRIMG[D.k];
@@ -6746,6 +6755,7 @@ function camBehavior(dt){
     const sdx=(rmX(CAM.x,cz)-rmX(px,pz))*RMW, sdy=(rmY(cz)-rmY(pz))*RMH;
     const seen=Math.hypot(sdx,sdy)/Math.max(1e-6,rmUnit(cz));
     CAM.walkPh=(CAM.walkPh||0)+Math.min(0.6,seen/WALK_STRIDE)*DOGDIR_N;
+    CAM.runPh=(CAM.runPh||0)+Math.min(0.6,seen/RUN_STRIDE)*DOGRUN_N;
     CAM.walkHold = step>2e-4 ? WALK_HOLD : Math.max(0,(CAM.walkHold||0)-dt);
     CAM.px=CAM.x; CAM.pz=cz;
     CAM.moving=(CAM.walkHold||0)>0; }
@@ -7054,7 +7064,7 @@ function camBehavior(dt){
     CAM.dir = CAM.zTarget>CAM.x?1:-1;
     CAM.oct = dogOctant(CAM.dir, Math.sin(CAM.t*3.1)*0.5); CAM.moving=true;
     CAM.z = clamp(CAM.z + Math.sin(CAM.t*3.1)*0.55*dt, 0.12, 0.94);   // he weaves, not a rail
-    CAM.x += CAM.dir*0.62*dt;
+    CAM.x += CAM.dir*0.85*dt;
     // barrelling through the pile sends bones tumbling everywhere
     for(const tr of TREATS){
       if(Math.abs(tr.x-CAM.x)<0.075 && tr.y>0.72){
@@ -7977,7 +7987,7 @@ function dogDirFeet(k){
   DOGDIR_FEET[k]=out;
   return out;
 }
-function dogDirDraw(ctx,w,h,x,z,oct,fi,bodyF){
+function dogDirDraw(ctx,w,h,x,z,oct,fi,bodyF,plain){
   const D=DOGDIR_MAP[((oct|0)%8+8)%8], a=DOGDIR[D.k], img=DOGDIRIMG[D.k];
   if(!a||!img||!img.complete||!img.naturalWidth) return false;
   const n=a.n, f=(((fi|0)%n)+n)%n;
@@ -7989,9 +7999,143 @@ function dogDirDraw(ctx,w,h,x,z,oct,fi,bodyF){
   const cx=rmX(x,z)*w, fy=rmY(z)*h;
   const feet=dogDirFeet(D.k);
   const foot=(feet && feet[f]) || a.foot;      // this frame's own lowest paw, not the sheet's
+  const x0=Math.round(cx-dw/2);
+  if(!plain) pawContacts(ctx, pawSpots("dir"+D.k,img,f*a.w,a.w,foot), x0, sc, !!D.f, cx, fy);
   ctx.save(); ctx.imageSmoothingEnabled=false;
   if(D.f){ ctx.translate(cx*2,0); ctx.scale(-1,1); }
-  ctx.drawImage(img, f*a.w,0,a.w,a.h, Math.round(cx-dw/2), Math.round(fy-foot*sc), dw, dh);
+  ctx.drawImage(img, f*a.w,0,a.w,a.h, x0, Math.round(fy-foot*sc), dw, dh);
+  ctx.restore();
+  return true;
+}
+/* ==================== PLANTED ====================
+   Why he still looked like he hovered, after the feet were fixed. His paws DID sit on the floor
+   line (measured on every sheet: each set's foot line is exactly its lowest opaque row). The
+   shadow was the problem: one small blob centred ON that line, under the middle of him. Its top
+   half vanished behind his black legs, so all anyone saw was the half below his paws - shadow,
+   then a strip of bare carpet, then dog. That is what hovering looks like.
+   So the shadow now goes down first, wider (most of his length) and pushed up the floor so his
+   paws stand IN it rather than above it; and under every paw that is actually touching the carpet
+   there is a small, dark contact shadow - read off the art per frame, so a walking dog only has
+   contact under the feet that are down. Contact shadows are what plant a sprite on a floor. */
+const PAW_ROWS=3;            // a paw "touches" if it has pixels in the last few rows above the floor line
+const SHEET_ROWS={}, PAW_SPOTS={};
+function sheetPixels(img){
+  if(img._px) return img._px;
+  const c=document.createElement("canvas"); c.width=img.naturalWidth; c.height=img.naturalHeight;
+  const x=c.getContext("2d",{willReadFrequently:true}); x.drawImage(img,0,0);
+  img._px={w:c.width, d:x.getImageData(0,0,c.width,c.height).data};
+  return img._px;
+}
+// per frame of a strip: its lowest opaque row (the floor line under it) and its highest
+function sheetRows(key,img,fw,fh,n){
+  if(SHEET_ROWS[key]) return SHEET_ROWS[key];
+  if(!img||!img.complete||!img.naturalWidth) return null;
+  const P=sheetPixels(img), low=new Float32Array(n), top=new Float32Array(n);
+  for(let f=0;f<n;f++){
+    low[f]=fh; top[f]=0;
+    outer: for(let yy=fh-1;yy>=0;yy--){ for(let xx=f*fw;xx<(f+1)*fw;xx++) if(P.d[(yy*P.w+xx)*4+3]>24){ low[f]=yy+1; break outer; } }
+    outer2: for(let yy=0;yy<fh;yy++){ for(let xx=f*fw;xx<(f+1)*fw;xx++) if(P.d[(yy*P.w+xx)*4+3]>24){ top[f]=yy; break outer2; } }
+  }
+  return (SHEET_ROWS[key]={low,top});
+}
+// the column spans, inside one frame, where a paw meets the floor line `foot`
+function pawSpots(key,img,sx,fw,foot){
+  const k=key+"|"+sx+"|"+foot;
+  if(PAW_SPOTS[k]) return PAW_SPOTS[k];
+  if(!img||!img.complete||!img.naturalWidth) return [];
+  const P=sheetPixels(img), out=[];
+  let run=-1;
+  for(let xx=0;xx<=fw;xx++){
+    let hit=false;
+    if(xx<fw) for(let yy=Math.max(0,Math.round(foot)-PAW_ROWS); yy<Math.round(foot) && !hit; yy++)
+      if(P.d[(yy*P.w+sx+xx)*4+3]>100) hit=true;
+    if(hit && run<0) run=xx;
+    if(!hit && run>=0){ out.push([run,xx]); run=-1; }
+  }
+  return (PAW_SPOTS[k]=out);
+}
+// the span of him across the lowest `depth` stored rows above the floor line: his footprint
+const FOOTPRINTS={};
+function footprint(key,img,sx,fw,foot,depth){
+  const k=key+"|"+sx+"|"+foot;
+  if(FOOTPRINTS[k]) return FOOTPRINTS[k];
+  if(!img||!img.complete||!img.naturalWidth) return null;
+  const P=sheetPixels(img); let lo=1e9, hi=-1;
+  for(let yy=Math.max(0,Math.round(foot-depth)); yy<Math.round(foot); yy++)
+    for(let xx=0; xx<fw; xx++) if(P.d[(yy*P.w+sx+xx)*4+3]>100){ if(xx<lo) lo=xx; if(xx>hi) hi=xx; }
+  return (FOOTPRINTS[k] = hi<0 ? null : {a:lo, b:hi+1});
+}
+// a footprint on screen: its centre and its width, mirrored about cx like the draw
+function footOnScreen(fp,x0,sc,flip,cx){
+  if(!fp) return null;
+  let mid=x0+(fp.a+fp.b)/2*sc; if(flip) mid=2*cx-mid;
+  return {mid, wid:(fp.b-fp.a)*sc};
+}
+/* The contact shadows, for a frame drawn with its left edge at x0 and `sc` screen px per stored
+   px, standing on screen row fy. Mirrored frames are mirrored about cx, as the draw is. */
+function pawContacts(ctx,spots,x0,sc,flip,cx,fy){
+  if(!spots.length) return;
+  ctx.save(); ctx.fillStyle="rgba(0,0,0,.5)";
+  for(const [a,b] of spots){
+    let sx=x0+(a+b)/2*sc; if(flip) sx=2*cx-sx;
+    const rx=Math.max(2.2,(b-a)*sc*0.7);
+    ctx.beginPath(); ctx.ellipse(sx, fy, rx, Math.max(1.2,rx*0.36), 0,0,7); ctx.fill();
+  }
+  ctx.restore();
+}
+/* His big shadow, cast by his FOOTPRINT - the width of him in the lowest sixth of the frame (legs and paws), read
+   off the art - and centred on it, so a sniffing dog's shadow sits under his front and a begging
+   one is a small pool under his hind feet rather than a disc the width of the sprite. Its centre
+   is pushed a third of its depth UP the floor so his paws stand in it. `lift` thins it as he
+   leaves the floor; with no footprint (art not decoded yet) it falls back to a dog's width. */
+function dogShadow(ctx,w,h,x,z,fs,lift){
+  const up=clamp(lift||0,0,1), sc=rmSc(z);
+  const cx=fs ? fs.mid : rmX(x,z)*w;
+  const rx=clamp(fs ? fs.wid*0.58 : 0.055*sc*w, 0.03*sc*w, 0.08*sc*w)*(1-up*0.30), ry=rx*0.3;
+  ctx.save(); ctx.globalAlpha=0.36*(1-up*0.62); ctx.fillStyle="#000";
+  ctx.beginPath(); ctx.ellipse(cx, rmY(z)*h-ry*0.35, rx, ry, 0,0,7); ctx.fill(); ctx.restore();
+}
+
+/* ==================== HE RUNS ON THE ZOOMIES ====================
+   The zoomies used to borrow the walk sheets and simply play them faster, which reads as a dog
+   power-walking. He has a real gallop - DOGPARK's eight-way run sheets - so on the DOGCAM floor
+   he wears that instead. The run art is drawn at a different stored size from the walk art, so
+   it is matched to him by MEASURING both side-on sheets (tallest frame against tallest frame)
+   rather than by a guessed constant: galloping, he is exactly the dog he was walking. Every
+   frame stands on its own lowest paw, as the walk does, and RUN_STRIDE is a gallop's stride, so
+   his legs keep pace with the floor going by. */
+const RUN_STRIDE=0.42;       // floor units covered by one full pass of the gallop
+const DOGRUN_N=8;
+let DOGRUN_BODY=0;
+function dogRunBody(){
+  if(DOGRUN_BODY) return DOGRUN_BODY;
+  const wa=DOGDIR.E, ra=PKDIRS.E;
+  const wr=sheetRows("walkE",DOGDIRIMG.E,wa.w,wa.h,wa.n), rr=sheetRows("runE",PKDIRIMG.E,ra.w,ra.h,ra.n||DOGRUN_N);
+  if(!wr||!rr) return 0;
+  let wH=0,rH=0;
+  for(let f=0;f<wa.n;f++) wH=Math.max(wH,wr.low[f]-wr.top[f]);
+  for(let f=0;f<(ra.n||DOGRUN_N);f++) rH=Math.max(rH,rr.low[f]-rr.top[f]);
+  return (DOGRUN_BODY = rH*wa.body/Math.max(1,wH));
+}
+function dogRunReady(){ return !!(PKDIRIMG.E && PKDIRIMG.E.complete && PKDIRIMG.E.naturalWidth && DOGDIRIMG.E && DOGDIRIMG.E.complete && DOGDIRIMG.E.naturalWidth); }
+// the geometry of one gallop frame on the floor, shared by the draw and the sprite query
+function dogRunFrame(w,h,x,z,oct,fi,bodyF){
+  const D=PKDIR_MAP[((oct|0)%8+8)%8], a=PKDIRS[D.k], img=PKDIRIMG[D.k];
+  if(!a||!img||!img.complete||!img.naturalWidth) return null;
+  const body=dogRunBody(); if(!body) return null;
+  const n=a.n||DOGRUN_N, f=(((fi|0)%n)+n)%n;
+  const sc=(bodyF||dogBodyF())/body*h*(a.sc||1);
+  const rows=sheetRows("run"+D.k,img,a.w,a.h,n);
+  const foot=rows?rows.low[f]:a.h;
+  const cx=rmX(x,z)*w, fy=rmY(z)*h;
+  return {D,a,img,f,n,sc,foot,cx,fy, x0:Math.round(cx-a.ax*a.w*sc), dw:a.w*sc, dh:a.h*sc};
+}
+function dogRunDraw(ctx,w,h,x,z,oct,fi,bodyF,plain){
+  const R=dogRunFrame(w,h,x,z,oct,fi,bodyF); if(!R) return false;
+  if(!plain) pawContacts(ctx, pawSpots("run"+R.D.k,R.img,R.f*R.a.w,R.a.w,R.foot), R.x0, R.sc, !!R.D.f, R.cx, R.fy);
+  ctx.save(); ctx.imageSmoothingEnabled=false;
+  if(R.D.f){ ctx.translate(R.cx*2,0); ctx.scale(-1,1); }
+  ctx.drawImage(R.img, R.f*R.a.w,0,R.a.w,R.a.h, R.x0, Math.round(R.fy-R.foot*R.sc), R.dw, R.dh);
   ctx.restore();
   return true;
 }
@@ -9839,7 +9983,8 @@ function lampLayer(i,ctx){
 function lampEraseDog(o,k){
   const M=DOGMASK; if(!M || !(k>0.01)) return;
   o.save(); o.globalCompositeOperation="destination-out"; o.globalAlpha=k; o.imageSmoothingEnabled=false;
-  if(M.dir) dogDirDraw(o,M.w,M.h,M.x,M.z,M.oct,M.fi);
+  if(M.run) dogRunDraw(o,M.w,M.h,M.x,M.z,M.oct,M.fi,undefined,true);
+  else if(M.dir) dogDirDraw(o,M.w,M.h,M.x,M.z,M.oct,M.fi,undefined,true);
   else { if(M.flip){ o.translate(M.cx*2,0); o.scale(-1,1); } o.drawImage(M.img,M.x0,M.y0,M.dw,M.dh); }
   o.restore();
 }
@@ -10531,6 +10676,7 @@ function drawCam(t){
   const dirReady = DOGDIRIMG.E && DOGDIRIMG.E.complete && DOGDIRIMG.E.naturalWidth;
   // the ceremony draws him itself, side-on and against nothing — see THE EVOLUTION
   const useDir = WALKY && CAM.moving && dirReady && !EVO.active;
+  const useRun = useDir && stt==="zoomies" && dogRunReady() && dogRunBody()>0;
   /* dhF means "how tall is the DOG". For the old frames that was the whole sprite, so each pose
      needed its own number. The new sets carry `body`, so one number covers every pose and a lying
      dog is short and a rearing one tall because the ART says so, not because a constant does. */
@@ -10564,13 +10710,25 @@ function drawCam(t){
   let dh = art ? h*dogBodyF()*(art.h/art.body)
                : h*dhF*scl*CAMZ()*rmSc(CAM.z)/ROOM.nearSc;
   let dw=0;
-  if(useDir){
+  if(useRun){
     const up=clamp(dogLift()/Math.max(1e-4,dogBodyFloor()*0.55),0,1);
-    rmShadow(ctx,w,h,CAM.x,CAM.z, 0.055*(1-up*0.30), 0.32*(1-up*0.62));
+    const R=dogRunFrame(w,h,CAM.x,CAM.z,CAM.oct|0,CAM.runPh|0);
+    const fp=R && footprint("run"+R.D.k,R.img,R.f*R.a.w,R.a.w,R.foot,dogRunBody()/6);
+    dogShadow(ctx,w,h,CAM.x,CAM.z,R&&footOnScreen(fp,R.x0,R.sc,!!R.D.f,R.cx),up);
+    dogRunDraw(ctx,w,h,CAM.x,CAM.z,CAM.oct|0,CAM.runPh|0);
+    DOGMASK={dir:true, run:true, w, h, x:CAM.x, z:CAM.z, oct:CAM.oct|0, fi:CAM.runPh|0};
+    CAMDWF = R ? R.dw/w : CAMDWF;
+  } else if(useDir){
+    const up=clamp(dogLift()/Math.max(1e-4,dogBodyFloor()*0.55),0,1);
+    const D=DOGDIR[DOGDIR_MAP[((CAM.oct|0)%8+8)%8].k];
+    const dwD=D.w*(dogBodyF()/D.body*h);
+    { const M=DOGDIR_MAP[((CAM.oct|0)%8+8)%8], im=DOGDIRIMG[M.k], n=D.n, f=(((CAM.walkPh|0)%n)+n)%n;
+      const ft=dogDirFeet(M.k), foot=(ft&&ft[f])||D.foot, sc=dogBodyF()/D.body*h, cx=rmX(CAM.x,CAM.z)*w;
+      const fp=footprint("dir"+M.k,im,f*D.w,D.w,foot,D.body/6);
+      dogShadow(ctx,w,h,CAM.x,CAM.z,footOnScreen(fp,Math.round(cx-dwD/2),sc,!!M.f,cx),up); }
     dogDirDraw(ctx,w,h,CAM.x,CAM.z,CAM.oct|0,CAM.walkPh|0);
     DOGMASK={dir:true, w, h, x:CAM.x, z:CAM.z, oct:CAM.oct|0, fi:CAM.walkPh|0};
-    const D=DOGDIR[DOGDIR_MAP[((CAM.oct|0)%8+8)%8].k];
-    CAMDWF = D.w*(dogBodyF()/D.body*h)/w;
+    CAMDWF = dwD/w;
   } else if(!EVO.active && img.complete && img.naturalWidth){
     dw = dh*img.naturalWidth/img.naturalHeight;
     CAMDWF = dw/w;
@@ -10582,17 +10740,24 @@ function drawCam(t){
     const kK = (CAM.leapK===undefined?1:CAM.leapK);
     const kDrop = (art && art.lift && stt==="leap")
       ? (1-kK)*(art.lift[CAM.fi%frames.length]||0)*(dh/art.h) : 0;
-    ctx.save(); ctx.imageSmoothingEnabled=false;
     // "roll" is in here now: he travels while he rolls, and a dog rolling left drawn facing
     // right is a dog sliding backwards across his own carpet
     const flip = (stt==="zoomies"||stt==="walk"||stt==="sniff"||stt==="inspect"||stt==="lounge"||stt==="loungeup"||stt==="idle"||stt==="catch"||stt==="come"||stt==="chase"||stt==="fetch"||stt==="drinkgo"||stt==="drink"||stt==="eatgo"||stt==="eat"||stt==="treatgo"||stt==="treateat"||stt==="beggo"||stt==="beg"||stt==="begwait"||stt==="stay"||stt==="party"||stt==="roll") && CAM.dir<0;
+    // his shadow first, from the same {x,z}, then a contact shadow under each paw that is down -
+    // see PLANTED. Nothing touches the floor while a leap has him in the air.
+    { const up=clamp(dogLift()/Math.max(1e-4,dogBodyFloor()*0.55),0,1);
+      const s2=dh/img.naturalHeight, footPx=art ? art.foot*img.naturalHeight/art.h : img.naturalHeight;
+      const fp=art && footprint("set:"+fkey+":"+(CAM.fi%frames.length),img,0,img.naturalWidth,footPx,art.body*img.naturalHeight/art.h/6);
+      dogShadow(ctx,w,h,CAM.x,CAM.z,footOnScreen(fp,dx-dw/2,s2,flip,dx),up);
+      if(art && !(lz>0.5) && !(up>0.05)){
+        const fy=rmY(CAM.z)*h;
+        pawContacts(ctx, pawSpots("set:"+fkey+":"+(CAM.fi%frames.length),img,0,img.naturalWidth,footPx), dx-dw/2, s2, flip, dx, fy);
+      } }
+    ctx.save(); ctx.imageSmoothingEnabled=false;
     if(flip){ ctx.translate(dx*2,0); ctx.scale(-1,1); }
     ctx.drawImage(img, dx-dw/2, rmY(CAM.z)*h-anchor+bob-lz+kDrop, dw, dh);
     ctx.restore();
     DOGMASK={dir:false, img, flip, cx:dx, x0:dx-dw/2, y0:rmY(CAM.z)*h-anchor+bob-lz+kDrop, dw, dh};
-    // his shadow, from the same {x,z} - it is what stops him floating when he is up the room
-    { const up=clamp(dogLift()/Math.max(1e-4,dogBodyFloor()*0.55),0,1);
-      rmShadow(ctx,w,h,CAM.x,CAM.z, 0.055*(1-up*0.30), 0.32*(1-up*0.62)); }
   }
   if(!pupDone && (!bowlsFront || pupBehindBowls)){ pupDraw(ctx,w,h,t); pupDone=true; }
   if(binFront) drawBin(ctx,w,h,t);
