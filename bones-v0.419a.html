@@ -1483,7 +1483,7 @@ html[data-theme="terminal"] .prow,html[data-theme="terminal"] .settingrow{border
         </div>
         <div id="footer">
           <span id="bests">BEST &#8212;</span>
-          <span id="devToggle">v0.418a</span>
+          <span id="devToggle">v0.419a</span>
         </div>
       </div>
 
@@ -16085,33 +16085,60 @@ const STORM_PECK_GAP=2.0;
    So no bird holds station on him any more. It waits out on a ring at the edge of the bark's own
    reach, telegraphs, makes ONE fast pass, and leaves at speed whether the peck landed or not.
    The ring is derived from pkBarkR so the wait always happens somewhere he can actually answer. */
-const BIRD_HOLD_MIN=20, BIRD_HOLD_MAX=70;
+/* REVISED (v0.419a): the ring was the problem. It sat at the bark's own reach, so every bird on
+   the field orbited right on top of him - measured, a dozen within 110px of him on average in a
+   bird wave, nineteen at worst - and three of them could dive at once off a 0.42s tell. It hurt
+   rarely and annoyed constantly. Now the birds keep a WIDE ring, out where he can see them all;
+   they take turns the way the storm does (one at a time, two in UNLEASHED, with a breather after
+   every attack); the tell is long enough to turn and face it; and a bird that has made its pass
+   bounces off him and lands DAZED beside him for a beat - the moment to bark it. And there are
+   only ever a few of them: see BIRD_LIVE_CAP in pkSpawnMixBurst. */
+const BIRD_HOLD_MIN=110, BIRD_HOLD_MAX=180;    // out of his face, still on screen
 const BIRD_PECK_R=15;                          // where the peck lands
-const BIRD_DIVE_SPD=1.5, BIRD_AWAY_SPD=2.1;    // it leaves faster than it came in
-const BIRD_WINDUP=0.42;                        // the reaction window, drawn as the usual red dot
+const BIRD_DIVE_SPD=1.5, BIRD_AWAY_SPD=1.6;    // it leaves faster than it came in
+const BIRD_WINDUP=0.8;                         // the tell: a red ring closing on it, and a "!"
 const BIRD_AWAY_T=0.85, BIRD_DIVE_MAX=1.8;     // and a run that never connects gives up
-const BIRD_CD_MIN=0.9, BIRD_CD_MAX=2.2;        // the wait between passes
-const BIRD_MAX_DIVING=3;                       // how many commit at once, so it stays readable
-function pkBirdHoldR(){ return clamp(pkBarkR()*0.85, BIRD_HOLD_MIN, BIRD_HOLD_MAX); }
+const BIRD_CD_MIN=1.2, BIRD_CD_MAX=3.0;        // each bird's own wait between passes
+const BIRD_GAP=1.1;                            // the whole flock's breather after any attack
+const BIRD_DAZE=1.3;                           // landed beside him, stunned: bark it
+const BIRD_DAZE_AT=28;                         // how far off him it lands, so the cone can find it
+const BIRD_LIVE_CAP=5;                         // mixed-wave birds alive at once (x2 UNLEASHED)
+function pkBirdHoldR(){ return clamp(pkBarkR()*1.8, BIRD_HOLD_MIN, BIRD_HOLD_MAX); }
 function pkBirdCd(){ return BIRD_CD_MIN+Math.random()*(BIRD_CD_MAX-BIRD_CD_MIN); }
+function pkBirdMaxDiving(){ return PK.plusMode ? 2 : 1; }
 function pkBirdsCommitted(){
   let n=0;
-  for(const o of PK.en) if(!o.fleeing && (o.peck==="dive" || o.peck==="wind" || (o.stormForm&&(o.diving||o.swoopWindT>0)))) n++;
+  for(const o of PK.en) if(!o.fleeing && (o.peck==="dive" || o.peck==="wind")) n++;
   return n;
+}
+// a bird that has made its pass drops beside him, out along the line it came in on
+function pkBirdLand(e,fromX,fromY){
+  const a=Math.atan2(fromY,fromX);
+  e.x=(PK.x+Math.cos(a)*BIRD_DAZE_AT+PK.WW)%PK.WW;
+  e.y=(PK.y+Math.sin(a)*BIRD_DAZE_AT+PK.WH)%PK.WH;
+  e.kx=0; e.ky=0;
+  beep(520,.04,"square",.02); setTimeout(()=>beep(390,.05,"square",.02),60);
 }
 // returns true only if the peck killed him, so the caller can bail out of the enemy loop
 function pkBirdPeck(e,dt,WW,WH,dmg){
   const dxw=wd(PK.x-e.x,WW), dyw=wd(PK.y-e.y,WH), d=Math.hypot(dxw,dyw)||1;
-  const hold=pkBirdHoldR();
   if(!e.peck){
     e.peck="hold"; e.peckCd=pkBirdCd(); e.peckT=0;
+    e.holdK=0.9+Math.random()*0.35;            // a loose ring, not a ruled one
     e.orbitAng=Math.atan2(-dyw,-dxw);
-    e.orbitSpd=(Math.random()<0.5?-1:1)*(1.0+Math.random()*0.9);
+    e.orbitSpd=(Math.random()<0.5?-1:1)*(0.25+Math.random()*0.3);   // a slow drift round him
   }
+  const hold=pkBirdHoldR()*(e.holdK||1);
   e.ph+=dt*7;
-  e.ft+=dt; if(e.ft>0.1){ e.ft=0; e.fi++; }
+  if(e.peck!=="daze"){ e.ft+=dt; if(e.ft>0.1){ e.ft=0; e.fi++; } }   // a landed bird stops flapping
   let vx=0, vy=0;
-  if(e.peck==="away"){
+  if(e.peck==="daze"){
+    e.peckT-=dt;
+    if(e.peckT<=0){
+      e.peck="away"; e.peckT=BIRD_AWAY_T;
+      e.peckAng=Math.atan2(-dyw,-dxw)+(Math.random()-0.5)*0.7;
+    }
+  } else if(e.peck==="away"){
     e.peckT-=dt;
     vx=Math.cos(e.peckAng)*e.sp*BIRD_AWAY_SPD;
     vy=Math.sin(e.peckAng)*e.sp*BIRD_AWAY_SPD;
@@ -16121,53 +16148,55 @@ function pkBirdPeck(e,dt,WW,WH,dmg){
     vx=dxw/d*e.sp*BIRD_DIVE_SPD;
     vy=dyw/d*e.sp*BIRD_DIVE_SPD;
     if(d<BIRD_PECK_R || e.peckT>BIRD_DIVE_MAX){
-      // ONE peck. The pull-out is outside the damage test on purpose: an arriving bird that finds
-      // him already invulnerable leaves anyway rather than waiting on his centre for the frames
-      // to run out, which is what used to turn a dive into a hover.
-      if(d<BIRD_PECK_R && PK.inv<=0 && !pkInvuln()){
+      // ONE peck, then it lands - whether the peck found him or his invulnerability frames did
+      const reached=d<BIRD_PECK_R;
+      if(reached && PK.inv<=0 && !pkInvuln()){
         pkStruck(dmg, e, 0.6);
         beep(110,.12,"sawtooth");
         if(PK.hp<=0) return true;
       }
+      if(reached){ e.peck="daze"; e.peckT=BIRD_DAZE; pkBirdLand(e,-dxw,-dyw); e.dir=dxw<0?-1:1; return false; }
       e.peck="away"; e.peckT=BIRD_AWAY_T; e.kx=0; e.ky=0;
       e.peckAng=Math.atan2(-dyw,-dxw)+(Math.random()-0.5)*0.7;
     }
-  } else {
-    // HOLD -- drifting round the ring, waiting for its window
+  } else if(e.peck!=="wind"){
+    // HOLD -- drifting round the wide ring, waiting for its turn
     e.peckCd-=dt;
     e.orbitAng+=e.orbitSpd*dt;
-    const tx=PK.x+Math.cos(e.orbitAng)*hold*1.2, ty=PK.y+Math.sin(e.orbitAng)*hold*1.2*0.78;
+    const tx=PK.x+Math.cos(e.orbitAng)*hold, ty=PK.y+Math.sin(e.orbitAng)*hold*0.78;
     const tdx=wd(tx-e.x,WW), tdy=wd(ty-e.y,WH), td=Math.hypot(tdx,tdy)||1;
     const sp=Math.min(e.sp, td/Math.max(dt,0.001));   // never overshoot the station
     vx=tdx/td*sp; vy=tdy/td*sp;
     if(e.peckCd<=0){
-      // the slot check walks PK.en, so a bird that finds the queue full takes a short retry
-      // rather than asking again on every single frame for as long as the queue stays full
-      if(pkBirdsCommitted()<BIRD_MAX_DIVING){ e.peck="wind"; e.swoopWindT=BIRD_WINDUP; }
+      // its turn only once nobody else is on him and the flock's breather has run out
+      if(pkBirdsCommitted()<pkBirdMaxDiving() && !(PK.birdGapT>0)){
+        e.peck="wind"; e.swoopWindT=BIRD_WINDUP;
+        beep(620,.05,"square",.03); setTimeout(()=>beep(620,.05,"square",.03),130);   // the lock-on chirp
+      }
       else e.peckCd=0.25+Math.random()*0.4;
     }
   }
   if(e.peck==="wind"){
     // it hangs almost still and shudders: the beat the player reads before the run starts
     e.swoopWindT-=dt;
-    vx=vx*0.25+Math.sin(performance.now()/45+e.ph)*18;
-    vy=vy*0.25+Math.cos(performance.now()/55+e.ph)*12;
+    vx=Math.sin(performance.now()/45+e.ph)*18;
+    vy=Math.cos(performance.now()/55+e.ph)*12;
     if(e.swoopWindT<=0){ e.peck="dive"; e.peckT=0; e.swoopWindT=0; beep(300,.06,"sawtooth",.04); }
   }
   e.x=(e.x+(vx+e.kx)*dt+WW)%WW;
   e.y=(e.y+(vy+e.ky)*dt+WH)%WH;
   /* THE HARD RULE, and it is a position clamp rather than a steering nudge because steering can
-     always lose to knockback, separation or a wrap. Outside a committed dive, nothing may end a
-     frame inside the ring. */
-  if(e.peck!=="dive" && !(e.peck==="away" && e.peckT>BIRD_AWAY_T-0.25)){
-    const ax=wd(e.x-PK.x,WW), ay=wd(e.y-PK.y,WH), ad=Math.hypot(ax,ay);
-    if(ad<hold){
+     always lose to knockback, separation or a wrap: a bird that is waiting may not drift in on
+     him. Only a dive comes close, and only the bird it put down stays there. */
+  if(e.peck==="hold" || e.peck==="wind" || (e.peck==="away" && e.peckT<BIRD_AWAY_T-0.4)){
+    const ax=wd(e.x-PK.x,WW), ay=wd(e.y-PK.y,WH), ad=Math.hypot(ax,ay), keep=hold*0.7;
+    if(ad<keep){
       const a=ad>0.001 ? Math.atan2(ay,ax) : Math.random()*6.283;
-      e.x=(PK.x+Math.cos(a)*hold+WW)%WW;
-      e.y=(PK.y+Math.sin(a)*hold+WH)%WH;
+      e.x=(PK.x+Math.cos(a)*keep+WW)%WW;
+      e.y=(PK.y+Math.sin(a)*keep+WH)%WH;
     }
   }
-  e.dir = vx<0 ? -1 : 1;
+  if(vx) e.dir = vx<0 ? -1 : 1;
   return false;
 }
 function pkSpawnBirdStorm(n,join){
@@ -16195,7 +16224,76 @@ function pkLaserRange(){
   const cv=$("#dogcv");
   return Math.min(cv.clientWidth,cv.clientHeight)/(2*(PK.zoom||1))*0.82;
 }
-function pkPlusMult(){ return PK.plusMode ? 2 : 1; }   // DOGPARK UNLEASHED: same wave structure, double enemies on screen at once
+function pkPlusMult(){ return PK.plusMode ? 2 : 1; }
+/* SQUIRRELS LIVE IN THE TREES (v0.419a). Waves 3-6 sent them in hordes, two or three at a time
+   out of thin air at the edge of the screen, kept topped up to a dozen and a half on the field.
+   Now there are half as many (SQ_THIN: the squads, and the live-enemy floor and ceiling of the
+   two all-squirrel waves), and every squirrel comes out of a TREE near him, one after another,
+   rather than appearing in the open. Never the grove's deep ring, though, where he could never
+   reach one to answer it - and a squirrel that wanders in there is put back out (pkSqKeepOut). */
+const SQ_THIN=0.5, SQ_TRICKLE_GAP=0.75;
+function pkSqThinWave(){ return PK.wave>=3 && PK.wave<=6; }
+// a squad of n, thinned in the thin waves (randomly rounded, so 2-3 becomes mostly 1, sometimes 2)
+function pkSqSquadN(n){ return pkSqThinWave() ? Math.max(1, Math.floor(n*SQ_THIN+Math.random())) : n; }
+// inside a grove's dense ring (the same pad pkInGrove uses), pushed back out to its edge
+function pkSqKeepOut(e){
+  for(const g of PK.groveCenters){
+    const dx=wd(e.x-g.x,PK.WW), dy=wd(e.y-g.y,PK.WH), d=Math.hypot(dx,dy), R=g.r*1.15;
+    if(d<R){
+      const a=d>0.001 ? Math.atan2(dy,dx) : Math.random()*6.283;
+      e.x=(g.x+Math.cos(a)*R+PK.WW)%PK.WW; e.y=(g.y+Math.sin(a)*R+PK.WH)%PK.WH;
+    }
+  }
+}
+// where a squad comes from: a standing tree just past the edge of what he can see, out of the deep
+// grove; failing that the near edge of the nearest grove, on his side of it; failing that null
+function pkSqTreeSpot(w,h){
+  const lo=pkOffscreenR(w,h,0.45), hi=pkOffscreenR(w,h,1.25), c=[];
+  for(const tr of PK.trees){
+    if(tr.wood || tr.state==="ash" || tr.knockT>0) continue;
+    const d=Math.hypot(wd(tr.x-PK.x,PK.WW), wd(tr.y-PK.y,PK.WH));
+    if(d<lo || d>hi || pkInGrove(tr.x,tr.y)) continue;
+    c.push(tr);
+  }
+  if(c.length){ const tr=c[Math.floor(Math.random()*c.length)]; return {x:tr.x, y:tr.y+6, tree:tr}; }
+  let g=null, gd=1e9;
+  for(const o of PK.groveCenters){ const d=Math.hypot(wd(PK.x-o.x,PK.WW), wd(PK.y-o.y,PK.WH)); if(d<gd){ gd=d; g=o; } }
+  if(!g) return null;
+  const a=Math.atan2(wd(PK.y-g.y,PK.WH), wd(PK.x-g.x,PK.WW));
+  return {x:(g.x+Math.cos(a)*g.r*1.3+PK.WW)%PK.WW, y:(g.y+Math.sin(a)*g.r*1.3+PK.WH)%PK.WH, tree:null};
+}
+/* Send a squad of squirrels out of one tree, one at a time. Each one is counted toward the wave the
+   moment it is queued, so the spawner's own arithmetic is unchanged; one still in the tree when the
+   wave turns over simply never comes out. fallback(i) gives the old open-ground spot if there is
+   no tree to be had at all. */
+function pkSqTrickle(list,w,h,fallback){
+  const spot=pkSqTreeSpot(w,h);
+  PK.sqQ=PK.sqQ||[];
+  list.forEach((o,i)=>{
+    if(spot){ o.x=(spot.x+(Math.random()-0.5)*14+PK.WW)%PK.WW; o.y=(spot.y+(Math.random()-0.5)*8+PK.WH)%PK.WH; }
+    else { const f=fallback(i); o.x=f.x; o.y=f.y; }
+    PK.sqQ.push({t:i*SQ_TRICKLE_GAP+Math.random()*0.25, wave:PK.wave, o, tree:spot&&spot.tree});
+  });
+}
+function pkSqQueueTick(dt){
+  const Q=PK.sqQ; if(!Q || !Q.length) return;
+  for(let i=Q.length-1;i>=0;i--){
+    const q=Q[i];
+    if(q.wave!==PK.wave){ Q.splice(i,1); continue; }
+    q.t-=dt; if(q.t>0) continue;
+    Q.splice(i,1);
+    pkEnMake(q.o);
+    // the tree it came out of gives it away: a shiver and a few leaves shaken loose
+    const tr=q.tree;
+    if(tr && tr.state==="ok"){
+      tr.sway+=1.2;
+      for(let k=0;k<4 && PK.leaves.length<40;k++){
+        const a=Math.random()*6.283, r=Math.random()*TREE_R;
+        PK.leaves.push({x:tr.x+Math.cos(a)*r, y:tr.y-30+Math.sin(a)*r*0.6, vy:16+Math.random()*16, t:Math.random()*6, ph:Math.random()*6.283, life:1+Math.random()*0.6});
+      }
+    }
+  }
+}   // DOGPARK UNLEASHED: same wave structure, double enemies on screen at once
 /* ---------- trees: cover, collision, kindling, and squirrel nests ---------- */
 // the BBBSSHHHZZZHHH — layered saw tones plus a noise-ish crackle tail
 function pkBlastSfx(){
@@ -17721,14 +17819,14 @@ function pkSpawnRangerSquad(){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
   const remaining=Math.max(1, PK.waveQuota-PK.waveSpawned);
-  const n=Math.min((2+Math.floor(Math.random()*2))*pkPlusMult(), remaining);
-  const ang=Math.random()*6.283, R=pkOffscreenR(w,h,0.65);
+  const n=Math.min(pkSqSquadN((2+Math.floor(Math.random()*2))*pkPlusMult()), remaining);
+  const ang=Math.random()*6.283, R=pkOffscreenR(w,h,0.65), list=[];
   for(let i=0;i<n;i++){
-    const a2=ang+(Math.random()-0.5)*0.9;
-    pkEnMake({t:"sq", ranger:true, x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
+    list.push({t:"sq", ranger:true, x:0, y:0,
       hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:RANGER_APPROACH_SPD, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
       atkState:"approach", atkCd:0.6+Math.random()*0.8, strafeDir:Math.random()<0.5?1:-1});
   }
+  pkSqTrickle(list,w,h,()=>{ const a2=ang+(Math.random()-0.5)*0.9; return {x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH}; });
   return n;
 }
 // WAVE 5 — MAD SQUIRRELS: you made them mad. Same weak 1 HP, but their eyes glow red and they
@@ -17738,14 +17836,14 @@ function pkSpawnMadSquad(){
   const cv=$("#dogcv"), w=cv.clientWidth, h=cv.clientHeight;
   const WW=PK.WW||w*2, WH=PK.WH||h*2;
   const remaining=Math.max(1, PK.waveQuota-PK.waveSpawned);
-  const n=Math.min((2+Math.floor(Math.random()*2))*pkPlusMult(), remaining);
-  const ang=Math.random()*6.283, R=pkOffscreenR(w,h);
+  const n=Math.min(pkSqSquadN((2+Math.floor(Math.random()*2))*pkPlusMult()), remaining);
+  const ang=Math.random()*6.283, R=pkOffscreenR(w,h), list=[];
   for(let i=0;i<n;i++){
-    const a2=ang+(Math.random()-0.5)*0.9;
-    pkEnMake({t:"sq", madsq:true, x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH,
+    list.push({t:"sq", madsq:true, x:0, y:0,
       hp:pkEnemyHp(1), hpMax:pkEnemyHp(1), sp:78, ph:Math.random()*6, kx:0, ky:0, dir:1, fi:0, ft:0,
       laserState:"seek", chargeT:0, aimAng:0, sweepT:0, cd:0.6+Math.random()*0.8});
   }
+  pkSqTrickle(list,w,h,()=>{ const a2=ang+(Math.random()-0.5)*0.9; return {x:(PK.x+Math.cos(a2)*R+WW)%WW, y:(PK.y+Math.sin(a2)*R+WH)%WH}; });
   return n;
 }
 // WAVE 6 — THE ALPHAS: exactly 2 giant alpha cats (5-hit kill, gigantic leap attack) plus a
@@ -18149,16 +18247,26 @@ function pkSpawnMixBurst(types){
   const n=Math.min(((2+Math.floor(Math.random()*3))+Math.floor(climb/1.5))*pkPlusMult(), remaining);
   const ang=Math.random()*6.283, R=pkOffscreenR(w,h);
   const spread=Math.min(6.283, 0.9+climb*0.15);   // fans out wider each wave — surrounded, not funneled
+  // only a few birds at once (BIRD_LIVE_CAP): past that, the burst sends the other kind instead
+  let birds=0;
+  for(const e of PK.en) if(e.t==="bird" && !e.fleeing && !e.stormForm && !e.standing && !e.swoop && !e.decor) birds++;
+  const birdCap=BIRD_LIVE_CAP*pkPlusMult(), other=types.find(t=>t!=="bird")||"cat";
+  const sqList=[];
+  let made=0;
   for(let i=0;i<n;i++){
-    const type=types[Math.floor(Math.random()*types.length)];
+    let type=types[Math.floor(Math.random()*types.length)];
+    if(type==="bird"){ if(birds>=birdCap) type=other; else birds++; }
+    if((type==="ranger"||type==="madsq") && pkSqThinWave() && Math.random()<SQ_THIN) continue;   // half the squirrels
+    made++;
     const a2=ang+(Math.random()-0.5)*spread;
     const x=(PK.x+Math.cos(a2)*R+WW)%WW, y=(PK.y+Math.sin(a2)*R+WH)%WH;
+    if(type==="ranger"){ sqList.push({t:"sq", ranger:true, x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:RANGER_APPROACH_SPD, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0, atkState:"approach", atkCd:0.6+Math.random()*0.8, strafeDir:Math.random()<0.5?1:-1}); continue; }
+    if(type==="madsq"){ sqList.push({t:"sq", madsq:true, x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:78, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0, laserState:"seek", chargeT:0, aimAng:0, sweepT:0, cd:0.6+Math.random()*0.8}); continue; }
     if(type==="bird") pkEnMake({t:"bird", x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:106.25, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0});   // +25% over the original 85
     else if(type==="cat") pkEnMake({t:"cat", x,y, hp:pkEnemyHp(2),hpMax:pkEnemyHp(2), sp:48, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0});
-    else if(type==="ranger") pkEnMake({t:"sq", ranger:true, x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:RANGER_APPROACH_SPD, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0, atkState:"approach", atkCd:0.6+Math.random()*0.8, strafeDir:Math.random()<0.5?1:-1});
-    else if(type==="madsq") pkEnMake({t:"sq", madsq:true, x,y, hp:pkEnemyHp(1),hpMax:pkEnemyHp(1), sp:78, ph:Math.random()*6, kx:0,ky:0, dir:1, fi:0, ft:0, laserState:"seek", chargeT:0, aimAng:0, sweepT:0, cd:0.6+Math.random()*0.8});
   }
-  return n;
+  if(sqList.length){ const at=sqList.map(o=>({x:o.x,y:o.y})); pkSqTrickle(sqList,w,h,i=>at[i]); }
+  return made;
 }
 // how many enemies a wave needs cleared \u2014 hand-set to match the redesigned wave-by-wave
 // spec. waves beyond 10 keep extending the mix pattern with a gently rising quota.
@@ -18168,8 +18276,10 @@ function pkWaveQuota(wv){
   if(wv===3) return 10;   // attack of the cats
   // from wave 4 the park stops trickling and starts pouring. These are kill counts, not
   // on-screen counts — pkMaxAlive is what actually governs how many are in front of you at once.
-  if(wv===4) return 35;   // watch out, nuts
-  if(wv===5) return 45;   // coming out of the trees
+  // 4 and 5 were 35 and 45. Half as many squirrels on the field halves how fast they go down, so
+  // the counts come down with them - otherwise the thinner waves would just drag on twice as long
+  if(wv===4) return 20;   // watch out, nuts
+  if(wv===5) return 24;   // coming out of the trees
   return Math.round(60*Math.pow(1.22, wv-6));   // 60, 73, 89, 109, 133, 162, 197...
 }
 /* ---------- horde density ----------
@@ -18182,10 +18292,15 @@ function pkMaxAlive(){
   const base = PK.plusMode ? 150 : 85;   // measured: ~60fps at this density, 52fps by ~290
   // eased in over the opening waves so wave 1 stays the gentle thing it is
   const ramp = clamp(0.30+(PK.wave-1)*0.17, 0.30, 1);
-  return Math.max(14, Math.round(base*ramp));
+  // the squirrel waves keep half the horde; wave 6 thins by however much of its mix is squirrels
+  const sqShare = (PK.wave===4 || PK.wave===5) ? 1
+    : (PK.wave===6 && PK.mixTypes) ? PK.mixTypes.filter(t=>t==="ranger"||t==="madsq").length/PK.mixTypes.length : 0;
+  const sq = 1-sqShare*(1-SQ_THIN);
+  return Math.max(Math.round(14*sq), Math.round(base*ramp*sq));
 }
 function pkMinAlive(){ return Math.round(pkMaxAlive()*0.34); }
-function pkAliveCount(){ let n=0; for(let i=0;i<PK.en.length;i++) if(!PK.en[i].fleeing) n++; return n; }
+function pkAliveCount(){ let n=0; for(let i=0;i<PK.en.length;i++) if(!PK.en[i].fleeing) n++;
+  return n+(PK.sqQ?PK.sqQ.length:0); }   // a squirrel still on its way out of a tree is already coming
 // what each wave is called. 6 onwards is the same escalating joke, told straight.
 const WNAME={
   1:"CATCH 2 BIRDS",
@@ -24615,6 +24730,7 @@ function parkUpdate(dt){
     PK.apeWaveT=(PK.apeWaveT||0)-dt;
     if(PK.apeWaveT<=0){ pkSpawnApeCouple(); PK.apeWaveT=7+Math.random()*3; }
   }
+  pkSqQueueTick(dt);
   PK.spawnT-=dt;
   const aliveNow=pkAliveCount(), maxAlive=pkMaxAlive();
   // starving: hurry the next batch along rather than waiting out the full interval
@@ -24750,9 +24866,13 @@ function parkUpdate(dt){
   { let storm=false;
     for(const o of PK.en) if(o.stormForm && !o.fleeing && (o.diving || o.swoopWindT>0)){ storm=true; break; }
     PK.stormGapT = storm ? STORM_PECK_GAP : Math.max(0,(PK.stormGapT||0)-dt); }
+  { let busy=false;
+    for(const o of PK.en) if(!o.fleeing && (o.peck==="wind" || o.peck==="dive")){ busy=true; break; }
+    PK.birdGapT = busy ? BIRD_GAP : Math.max(0,(PK.birdGapT||0)-dt); }
   for(let i=PK.en.length-1;i>=0;i--){
     const e=PK.en[i];
     e.kx*=0.88; e.ky*=0.88;
+    if(e.t==="sq" && !e.fleeing && !e.love) pkSqKeepOut(e);
     // a near-miss from the Whirlwind Slash startles rather than hits: frozen for a beat (still
     // takes knockback drift, still gets downed if something else lands on it) instead of pressing
     // its own attack — reads as a flinch, not a stun the player has to fight through
@@ -25163,6 +25283,12 @@ function parkUpdate(dt){
       continue;
     }
     if(e.stormForm){
+      // a diver that reached him sits stunned beside him for a beat - the storm's opening
+      if(e.dazeT>0){
+        e.dazeT-=dt;
+        e.x=(e.x+e.kx*dt+WW)%WW; e.y=(e.y+e.ky*dt+WH)%WH;
+        continue;
+      }
       if(e.swoopWindT>0){
         // locked onto BONES and about to dive: it hangs almost in place, shuddering — the red
         // flash (drawn generically off e.swoopWindT>0, same as any other windup) plus this beat
@@ -25221,6 +25347,7 @@ function parkUpdate(dt){
          invulnerability frames stayed on him -- homing, so it could never satisfy d2>maxR either. */
       if(landed || d2<BIRD_PECK_R || d2>maxR || e.peckT>BIRD_DIVE_MAX){
         e.diving=false; e.peckT=0;
+        if(landed || d2<BIRD_PECK_R){ e.dazeT=BIRD_DAZE; pkBirdLand(e,-dxw2,-dyw2); }
         e.swoopCd=(landed?2:1.2)+Math.random()*(landed?3:2);
         // wrap-aware: the raw difference is meaningless across the seam of a looping world
         e.orbitAng=Math.atan2(wd(e.y-PK.y,WH),wd(e.x-PK.x,WW));
@@ -26126,14 +26253,14 @@ function drawEnemy(ctx,e,sx,sy){
     ctx.fillStyle="#fff"; ctx.font="bold 13px 'Press Start 2P',monospace"; ctx.textAlign="center";
     ctx.fillText("!", sx, sy-24); ctx.textAlign="left";
   }
-  if((e.atkState==="windup" || e.leapState==="windup" || (e.swoopWindT>0 && !e.stormForm)) && Math.floor(performance.now()/80)%2){
+  if((e.atkState==="windup" || e.leapState==="windup" || (e.swoopWindT>0 && !e.stormForm && !e.peck)) && Math.floor(performance.now()/80)%2){
     ctx.fillStyle="#f22"; ctx.beginPath(); ctx.arc(sx, sy-26, 2.4, 0, 7); ctx.fill();
   }
   // mad squirrels glow red the whole time they're charging or sweeping their beam
   const madGlow = e.madsq && !e.ablaze && (e.laserState==="charge" || e.laserState==="sweep");
   // the storm bird that has locked on glows red from the first beat of its telegraph to the end of
   // its dive - in a sky full of identical birds, the colour is what says WHICH ONE
-  const angryGlow = !!(e.stormForm && !e.fleeing && (e.swoopWindT>0 || e.diving));
+  const angryGlow = !!(!e.fleeing && ((e.stormForm && (e.swoopWindT>0 || e.diving)) || e.peck==="wind" || e.peck==="dive"));
   // caught fire and panicking: a warm, flickering flame right under it, unmistakable at a glance
   const ablazeGlow = !!e.ablaze;
   const frames = ENEMYIMG[e.t];
@@ -26144,8 +26271,8 @@ function drawEnemy(ctx,e,sx,sy){
   const ew = eh*img.naturalWidth/img.naturalHeight;
   /* THE STORM'S TELEGRAPH: a red ring closing in on the bird as the dive approaches, and a "!" over
      it. The ring is the countdown - when it reaches the bird, the bird comes. */
-  if(e.stormForm && e.swoopWindT>0 && !e.fleeing){
-    const k=clamp(e.swoopWindT/STORM_SWOOP_WINDUP,0,1);
+  if(((e.stormForm && e.swoopWindT>0) || e.peck==="wind") && !e.fleeing){
+    const k=clamp(e.swoopWindT/(e.stormForm?STORM_SWOOP_WINDUP:BIRD_WINDUP),0,1);
     ctx.save(); ctx.strokeStyle="#ff3b30"; ctx.lineWidth=2.2; ctx.globalAlpha=0.55+0.45*(1-k);
     ctx.beginPath(); ctx.arc(sx, sy-eh*0.5, ew*0.55+22*k, 0, 7); ctx.stroke();
     ctx.globalAlpha=1; ctx.font="bold 12px 'Press Start 2P',monospace"; ctx.textAlign="center";
@@ -26196,6 +26323,12 @@ function drawEnemy(ctx,e,sx,sy){
     }
   }
   ctx.restore();
+  if(!e.fleeing && (e.peck==="daze" || e.dazeT>0)){
+    const tt=performance.now()/1000;
+    ctx.save(); ctx.fillStyle="#ffe14a";
+    for(let k=0;k<3;k++){ const a=tt*5+k*2.094; ctx.fillRect(Math.round(sx+Math.cos(a)*8)-1, Math.round(sy-eh-4+Math.sin(a)*3)-1, 3, 3); }
+    ctx.restore();
+  }
   // the instant of impact: the sprite blows out white
   if(e.hitT>0){
     ctx.save(); ctx.globalAlpha=Math.min(1,e.hitT/0.22)*0.85;
